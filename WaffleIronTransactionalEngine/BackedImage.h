@@ -41,5 +41,6 @@ private:
   VkDescriptorImageInfo info;
   VkSamplerCreateInfo samplerInfo;
   VkSampler sampler = NULL;
+  friend class Renderer;
 };
 

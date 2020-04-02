@@ -19,12 +19,13 @@ public:
   VkPhysicalDeviceMemoryProperties memProps;
   VkDevice device;
   uint32_t queueCount;
+  VkPipelineCache pipeCache;
   //TODO usage tracker for load balancer
   union {
-    struct { VQueue *graphicsQ, *computeQ, *transferQ; };//Use compute for raytracing (if any)
-    VQueue* queues[MAX_QUEUES];
+    struct { Queue *graphicsQ, *computeQ, *transferQ; };//Use compute for raytracing (if any)
+    Queue* queues[MAX_QUEUES];
   };
-  VQueue* presentQ;//populated by the first window that finds one, tried by future windows before exploring other queue options
+  Queue* presentQ;//populated by the first window that finds one, tried by future windows before exploring other queue options
 private:
 };
 

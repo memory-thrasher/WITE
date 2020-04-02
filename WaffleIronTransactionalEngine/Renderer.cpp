@@ -8,7 +8,6 @@ Renderer::~Renderer() {}
 
 //o must not be null. call unbind to disable rendering on this layer
 void Renderer::bind(Object* o, Shader* s, VMesh* m, renderLayerIdx rlIdx) {
-  //if (obj) unbind(o, layer->idx);//TODO avoid two sets of locks in one call by removing below instead
   ScopeLock slo(&o->lock);//each renderer belongs to exactly one object, which owns exactly MAX_RENDER_LAYER renderers. Save mutexes by using the owning object's lock.
   Renderer* r = o->renderLayer[rlIdx];
   Object* obj = r->obj;
@@ -70,18 +69,33 @@ void Renderer::setPerFrameCallback(packDataCB d) {
 void Renderer::render(glm::mat4d projection, GPU* gpu) {
   //pipeline is already selected
   Shader::Instance* buffer = buffers->get(gpu);
-  bool doInit = !buffer->inited;
-  if (doInit) {
+  if (!buffer->inited) {
     buffer->inited = true;
-    if(packInitial) packInitial->call(this, buffer->resources.data);
+    if(packInitial) packInitial->call(this, buffer->resources.get(), gpu);
   }
   (glm::mat4)*buffer->resources[0]->map() = obj->getTrans()->project(projection);
   buffer->resources[0]->unmap();
-  if(packPreRender) packPreRender->call(this, buffer->resources.data);
-  //TODO update descriptor set
+  updateInstanceData(0, gpu);
+  if(packPreRender) packPreRender->call(this, buffer->resources.get(), gpu);
   //bind descriptor set
   //bind vertex buffer
   //draw
+}
+
+void updateInstanceData(size_t resource, GPU* gpu) {//TODO batchify?
+  Shader::Instance* buffer = buffers->get(gpu);
+  struct Shader::shaderGpuResources* shaderRes = shader->resources.get(gpu);
+  VkWriteDescriptorSet write =
+    { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, NULL, buffer->descSet, resource, 0, 1, resourceLayout[resource].type, NULL, NULL, NULL };
+  switch(write.descriptorType) {
+  case SHADER_RESOURCE_SAMPLED_IMAGE:
+    write.pImageInfo = &((BackedImage*)buffer->resources[resource].get())->info;
+    break;
+  case SHADER_RESOURCE_SAMPLED_IMAGE:
+    write.pBufferInfo = ((BackedBuffer*)buffer->resources[resource].get())->info;
+    break;
+  }
+  vkUpdateDescriptorSet(gpu->device, 1, &write, 0, NULL);
 }
 
 

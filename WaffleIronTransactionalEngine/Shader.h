@@ -8,8 +8,8 @@
 class Shader : WITE::Shader {
 public:
   typedef struct {
-    std::vector<std::shared_ptr<ShaderResource>> resources;
-    //TODO descriptor set
+    std::unique_ptr<std::shared_ptr<ShaderResource>[]> resources;
+    VkDescriptorSet descSet;
     bool inited;
   } Instance;
   struct resourceLayoutEntry {
@@ -39,10 +39,14 @@ private:
     VkDescriptorSetLayout descLayout;
     VkPipelineLayoutCreateInfo pipelineLayoutInfo;
     VkPipelineLayout pipelineLayout;
-    VkPipeline pipeline;
-    //TODO pipeline cache
-    //descriptor pool(s)... vector?
+    std::vector<VkDescriptorPool> descPools;
+    std::unique_ptr<VkDescriptorPoolSize[]> descPoolSizes;
+    VkDescriptorPoolCreateInfo descPoolInfo;
+    VkDescriptorSetAllocateInfo descAllocInfo;//qazi-template, set descPool before use
+    void growDescPool(GPU*);
+    //TODO per-camera struct for pipe and friends
   };
+  void makePipeForRP(VkRenderPass rp, GPU* gpu, VkPipeline* out);
   GPUResource<shaderGpuResources> resources;
   struct subshader_t* subshaders;
   size_t subshaderCount, resourcesPerInstance;

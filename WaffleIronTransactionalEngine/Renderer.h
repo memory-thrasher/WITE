@@ -6,7 +6,7 @@
 
 class Renderer {
 public:
-  typedef class Callback_t<void, Renderer*, std::shared_ptr<Shader::Instance>*>* packDataCB;//size = count(resources)
+  typedef class Callback_t<void, Renderer*, std::shared_ptr<class ShaderResource>*, GPU*>* packDataCB;//size = count(resources)
   static void bind(Object*, Shader*, VMesh*, renderLayerIdx);
   static void unbind(Object*, renderLayerIdx);
   Renderer();
@@ -16,6 +16,7 @@ public:
   bool exists() { return obj; };
   void setOnceCallback(packDataCB);
   void setPerFrameCallback(packDataCB);
+  void updateInstanceData(size_t resource, GPU* gpu);
 private:
   RenderLayer * layer;//TODO use weak_ptr and hand out shared_ptr with getters
   Shader* shader;

@@ -27,6 +27,9 @@ struct vulkan_singleton vkSingleton;
 const char** ADDED_EXTENSIONS;
 const char* DEVICE_EXTENSIONS[DEVICE_EXTENSIONS_LEN] = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
 const VkAllocationCallbacks *vkAlloc = NULL;
+constexpr const VkVertexInputBindingDescription viBinding = { 0, FLOAT_BYTES, VK_VERTEX_INPUT_RATE_VERTEX };
+constexpr const VkVertexInputAttributeDescription viAttributes[2] =
+  { { 0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0 }, { { 1, 0, VK_FORMAT_R32G32B32_SFLOAT, 12 } } };
 
 export FILE* file_open(const char* path, const char* mode) {
 	FILE* ret = fopen(path, mode);

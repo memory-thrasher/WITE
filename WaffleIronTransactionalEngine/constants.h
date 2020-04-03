@@ -49,6 +49,16 @@ const char* LAYERS[] = {};
 
 #define newOrHere(_out) new(ensurePointer(_out))
 
+#ifdef _WIN32
+#define export_dec
+#define export_def __declspec(dllexport)
+#define wintypename typename
+typedef HANDLE FileHandle;
+#else
+//TODO
+#define wintypename
+#endif
+
 template<class _T> inline _T* ensurePointer(_T* out) {
 	if (!out) out = static_cast<_T*>(malloc(sizeof(_T)));
 	return out;

@@ -5,14 +5,14 @@
 
 #ifdef _WIN32
 
-export uint64_t timeNs() {
+export_def uint64_t timeNs() {
 	FILETIME ft;
 	GetSystemTimeAsFileTime(&ft);
 	return ((((LONGLONG)ft.dwHighDateTime) << 32LL) + (LONGLONG)ft.dwLowDateTime) * 100;
 	//wraparound is ~June 2185;  64 bit uint in nanoseconds
 }
 
-export void sleep(uint64_t ns) {
+export_def void sleep(uint64_t ns) {
 	uint64_t now = timeNs(), end = now + ns;
 	while (now < end) {
 		Sleep(CLAMPTODWORD((end - now) / NS_PER_MS));
@@ -31,22 +31,22 @@ constexpr const VkVertexInputBindingDescription viBinding = { 0, FLOAT_BYTES, VK
 constexpr const VkVertexInputAttributeDescription viAttributes[2] =
   { { 0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0 }, { { 1, 0, VK_FORMAT_R32G32B32_SFLOAT, 12 } } };
 
-export FILE* file_open(const char* path, const char* mode) {
+export_def FILE* file_open(const char* path, const char* mode) {
 	FILE* ret = fopen(path, mode);
 	if (!ret)
 		exit(2);
 	return ret;
 }
 
-export void flush(FILE* file) {
+export_def void flush(FILE* file) {
 	fflush(file);
 }
 
-export FILE* getERRLOGFILE() {
+export_def FILE* getERRLOGFILE() {
 	return errLogFile;
 }
 
-export void WITE_INIT(const char* gameName) {//TODO move this to mainLoop?
+export_def void WITE_INIT(const char* gameName) {//TODO move this to mainLoop?
 	unsigned int extensionCount;
 	const char* extensions[MAX_EXTENSIONS];
 	Thread::init();
@@ -77,7 +77,7 @@ export void WITE_INIT(const char* gameName) {//TODO move this to mainLoop?
 	for (i = 0;i < MAX_RENDER_LAYERS;i++) vkSingleton.renderLayers[i].idx = i;
 }
 
-export bool loadFile(const char* filename, size_t &lenout, const unsigned char** dataout) {
+export_def bool loadFile(const char* filename, size_t &lenout, const unsigned char** dataout) {
 	struct stat fstat;
 	size_t len, offset = 0, read;
 	if (stat(filename, &fstat))
@@ -105,14 +105,14 @@ fail:
 	return false;
 }
 
-export bool endsWith(const char* str, const char* suffix) {
+export_def bool endsWith(const char* str, const char* suffix) {
 	return strlen(str) >= strlen(suffix) && 0 == strcmp(str + strlen(str) - strlen(suffix), suffix);
 }
 
-export bool startsWith(const char* str, const char* prefix) {
+export_def bool startsWith(const char* str, const char* prefix) {
 	return 0 == strncmp(str, prefix, strlen(prefix));
 }
 
-export bool strcmp_s(const std::string& a, const std::string& b) {
+export_def bool strcmp_s(const std::string& a, const std::string& b) {
 	return a.compare(b) < 0;
 }

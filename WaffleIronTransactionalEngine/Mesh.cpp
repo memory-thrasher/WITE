@@ -56,7 +56,7 @@ void Mesh::proceduralMeshLoop(std::atomic_uint8_t* semaphore) {
     for (gpuIdx = 0;gpuIdx < vkSingleton.gpuCount;gpuIdx++) {
       map = vertexBuffers[gpuIdx][i].map();
       vertexBufferLen[gpuIdx][i] = 0;
-      next = allMeshes.nextLink();
+      next = allMeshesexpo.nextLink();
       while (next.get() != &allMeshes) {
 	mesh = next->getRef();
 	if (!mesh) continue;

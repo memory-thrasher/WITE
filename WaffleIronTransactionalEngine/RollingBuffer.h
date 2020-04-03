@@ -1,7 +1,7 @@
 #pragma once
 
 #include "stdafx.h"
-#include "Export.h"
+#include "constants.h"
 
 namespace WITE {
   /*
@@ -18,98 +18,95 @@ namespace WITE {
   */
   template<class HeadType, size_t DATA_SIZE = 0, size_t ENTRY_SIZE = sizeof(HeadType),
 	   typename SIZE_TYPE = size_t, SIZE_TYPE HeadType::*sizeField = NULL, bool ALLOW_REALLOC = true>
-  export class RollingBuffer {
+  class export_def RollingBuffer {
   private:
-    typedef struct HeadWithSizeType {
-      SIZE_TYPE size;
-      HeadType head;
-    };
+  typedef struct {
+    SIZE_TYPE size;
+    HeadType head;
+  } HeadWithSizeType;
   public:
-    template<SIZE_TYPE cloneSize = DATA_SIZE, SIZE_TYPE cloneCount = 1 + cloneSize / ENTRY_SIZE> class RBIterator;
-    static constexpr bool const& INLINEDATA = DATA_SIZE;
-    static constexpr bool const& VARIABLE_RECORD_SIZE = !ENTRY_SIZE;
-    static constexpr bool const& ADD_SIZE = std::is_null_pointer<sizeField> && VARIABLE_RECORD_SIZE;
-    static constexpr bool const& RESIZABLE = !INLINEDATA && ALLOW_REALLOC;
-    static constexpr bool const& MOVABLE = !INLINEDATA;
-    template<typename = std::enable_if_t<!INLINEDATA>> RollingBuffer(size_t size, uint8_t* data = NULL);//size in bytes
-    RollingBuffer();
-    ~RollingBuffer();
-    template<typename = std::enable_if_t<ADD_SIZE>> uint16_t push(HeadType* newData, SIZE_TYPE size, size_t* handleOut = NULL); //returns one of the constants above
-    template<typename = std::enable_if_t<ADD_SIZE>> uint16_t pushBlocking(HeadType* newData, SIZE_TYPE size, size_t* handleOut = NULL); //returns one of the constants above
-    template<typename = std::enable_if_t<!ADD_SIZE>> uint16_t push(HeadType* newData, size_t* handleOut = NULL); //returns one of the constants above
-    template<typename = std::enable_if_t<!ADD_SIZE>> uint16_t pushBlocking(HeadType* newData, size_t* handleOut = NULL); //returns one of the constants above
-    /*returns one of the constants above. maxsize in bytes returned. max in count entries.
-      First entry starts at data[0], second at data[starts[0]], data[starts[1]] ... until starts[n] = 0*/
-    uint16_t pop(uint8_t* data, size_t* starts, size_t maxsize, size_t max);
-    //Like pop but does not alter the stack, but does take an optional position tracker
-    uint16_t peek(uint8_t* data, size_t* starts, size_t maxsize, size_t max, size_t* pos);
-    uint16_t drop();//remove the next element without reading it
-    SIZE_TYPE used();
-    SIZE_TYPE count();
-    SIZE_TYPE freeSpace();
-    void readRaw(uint8_t* out, SIZE_TYPE in, SIZE_TYPE size);//careful; only checked for wrap
-    void writeRaw(SIZE_TYPE out, uint8_t* in, SIZE_TYPE size);//careful; only checked for wrap
-    //NOT thread safe; ensure no threads are doing anything while this is executing
-    template<typename = std::enable_if_t<MOVABLE>> uint16_t relocate(void* newhome, SIZE_TYPE newsize);
-    template<std::enable_if_t<RESIZABLE>> uint16_t resize(size_t size);
-    template<std::enable_if_t<RESIZABLE>> uint16_t swallow(uint8_t* newData, size_t dataSize, uint64_t* handleOut = NULL, size_t pad = 0); //grow if necessary, plus pad bytes
-    inline SIZE_TYPE sizeofnext(SIZE_TYPE = head);
-    template<SIZE_TYPE cloneSize = DATA_SIZE, SIZE_TYPE cloneCount = 1 + cloneSize / ENTRY_SIZE>
-    inline RBIterator<cloneSize, cloneCount> iter();
+  template<SIZE_TYPE cloneSize = DATA_SIZE, SIZE_TYPE cloneCount = 1 + cloneSize / ENTRY_SIZE> class RBIterator;
+#define INLINEDATA (constexpr bool(DATA_SIZE))
+#define VARIABLE_RECORD_SIZE (constexpr(!bool(ENTRY_SIZE)))
+#define ADD_SIZE (constexpr((NULL == sizeField) && VARIABLE_RECORD_SIZE))
+#define RESIZABLE (constexpr(!INLINEDATA && ALLOW_REALLOC))
+#define MOVABLE (constexpr(!INLINEDATA))
+  //size in bytes
+  template<typename std::enable_if_t<!INLINEDATA, size_t> = 0> RollingBuffer(size_t size, uint8_t* data = NULL);
+  RollingBuffer();
+  ~RollingBuffer();
+  typename std::enable_if_t<ADD_SIZE, uint16_t> push(HeadType* newData, SIZE_TYPE size, size_t* handleOut = NULL); //returns one of the constants above
+  typename std::enable_if_t<ADD_SIZE, uint16_t> pushBlocking(HeadType* newData, SIZE_TYPE size, size_t* handleOut = NULL); //returns one of the constants above
+  typename std::enable_if_t<!ADD_SIZE, uint16_t> push(HeadType* newData, size_t* handleOut = NULL); //returns one of the constants above
+  typename std::enable_if_t<!ADD_SIZE, uint16_t> pushBlocking(HeadType* newData, size_t* handleOut = NULL); //returns one of the constants above
+  /*returns one of the constants above. maxsize in bytes returned. max in count entries.
+    First entry starts at data[0], second at data[starts[0]], data[starts[1]] ... until starts[n] = 0*/
+  uint16_t pop(uint8_t* data, size_t* starts, size_t maxsize, size_t max);
+  //Like pop but does not alter the stack, but does take an optional position tracker
+  uint16_t peek(uint8_t* data, size_t* starts, size_t maxsize, size_t max, size_t* pos);
+  uint16_t drop();//remove the next element without reading it
+  SIZE_TYPE used();
+  SIZE_TYPE count();
+  SIZE_TYPE freeSpace();
+  void readRaw(uint8_t* out, SIZE_TYPE in, SIZE_TYPE size);//careful; only checked for wrap
+  void writeRaw(SIZE_TYPE out, uint8_t* in, SIZE_TYPE size);//careful; only checked for wrap
+  //NOT thread safe; ensure no threads are doing anything while this is executing
+  typename std::enable_if_t<MOVABLE, uint16_t> relocate(void* newhome, SIZE_TYPE newsize);
+  typename std::enable_if_t<RESIZABLE, uint16_t> resize(SIZE_TYPE size);
+  //grow if necessary, plus pad bytes
+  typename std::enable_if_t<RESIZABLE, uint16_t> swallow(uint8_t* newData, size_t dataSize, uint64_t* handleOut = NULL, size_t pad = 0);
+  inline SIZE_TYPE sizeofnext(SIZE_TYPE = head);
+  template<SIZE_TYPE cloneSize = DATA_SIZE, SIZE_TYPE cloneCount = 1 + cloneSize / ENTRY_SIZE>
+  inline RBIterator<cloneSize, cloneCount> iter();
   private:
-    RollingBuffer(const RollingBuffer&) = delete;
-    volatile SIZE_TYPE head = 0, tail = 0, size, entries = 0;
-    uint8_t* buf;
-    volatile uint8_t inline_data[DATA_SIZE];//zero if disabled, so harmless
-    bool outer = false;//when head = tail; true means buffer is full, false means empty, otherwise this should be false
-    inline bool wrapped() { return outer || head > tail; }
-    friend class RBIterator;
+  RollingBuffer(const RollingBuffer&) = delete;
+  volatile SIZE_TYPE head = 0, tail = 0, size, entries = 0;
+  uint8_t* buf;
+  volatile uint8_t inline_data[DATA_SIZE];//zero if disabled, so harmless
+  bool outer = false;//when head = tail; true means buffer is full, false means empty, otherwise this should be false
+  inline bool wrapped() { return outer || head > tail; }
+  friend class RBIterator<>;
   public:
-    template<SIZE_TYPE cloneSize = DATA_SIZE, SIZE_TYPE cloneCount = 1 + cloneSize / ENTRY_SIZE>
-    class RBIterator {//designed to be placed on the thread stack, used as a read buffer for batch reading
-    public:
-      typedef RollingBuffer<HeadType, DATA_SIZE, ENTRY_SIZE, SIZE_TYPE, sizeField, ALLOW_REALLOC> master_t;
-    private:
-      SIZE_TYPE i, readHead;
-      master_t* master;
-      uint8_t data[cloneSize];
-      size_t starts[cloneCount];
-    public:
-      RBIterator(master_t* rb) : master(rb), readHead(rb->head), i(-1) {}
-      SIZE_TYPE getHead() { return i ? starts[i - 1] : 0; }
-      HeadType* next() {//returns null when out
-	HeadType* ret;
-	if (i == -1 || !starts[i-1]) {
-	  if (master->peek(data, starts, cloneSize, cloneCount, &readHead) == RB_BUFFER_UNDERFLOW) return NULL;
-	  i = 0;
-	}
-	ret = static_cast<HeadType*>(data + (i ? starts[i-1] : 0));
-	i++;
-	return ret;
+  template<SIZE_TYPE cloneSize, SIZE_TYPE cloneCount>
+  class RBIterator {//designed to be placed on the thread stack, used as a read buffer for batch reading
+  public:
+    typedef RollingBuffer<HeadType, DATA_SIZE, ENTRY_SIZE, SIZE_TYPE, sizeField, ALLOW_REALLOC> master_t;
+  private:
+    SIZE_TYPE i, readHead;
+    master_t* master;
+    uint8_t data[cloneSize];
+    size_t starts[cloneCount];
+  public:
+    RBIterator(master_t* rb) : master(rb), readHead(rb->head), i(-1) {}
+    SIZE_TYPE getHead() { return i ? starts[i - 1] : 0; }
+    HeadType* next() {//returns null when out
+      HeadType* ret;
+      if (i == -1 || !starts[i-1]) {
+	if (master->peek(data, starts, cloneSize, cloneCount, &readHead) == RB_BUFFER_UNDERFLOW) return NULL;
+	i = 0;
       }
-    };
+      ret = static_cast<HeadType*>(data + (i ? starts[i-1] : 0));
+      i++;
+      return ret;
+    }
+  };
   };
 
   //and this is why atomics would work, if they weren't so slow
 #define BOUND_INC_HEAD(amnt) {head = head+amnt >= size ? head+amnt-size : head + amnt; outer = false;}
 #define BOUND_INC_TAIL(amnt) {tail = tail+amnt >= size ? tail+amnt-size : head + amnt; outer = head == tail;}
-#define RB_PROTO(RET) template<class HeadType, size_t DATA_SIZE = 0, size_t ENTRY_SIZE = sizeof(HeadType), \
-			       typename SIZE_TYPE = size_t, SIZE_TYPE HeadType::*sizeField = NULL> \
-  RET RollingBuffer<HeadType, DATA_SIZE, ENTRY_SIZE, SIZE_TYPE, sizeField>
-#define RB_FQN RollingBuffer<HeadType, DATA_SIZE, ENTRY_SIZE, SIZE_TYPE, sizeField>
+#define RB_PROTO(...) template<class HeadType, size_t DATA_SIZE, size_t ENTRY_SIZE, \
+			       typename SIZE_TYPE, SIZE_TYPE HeadType::*sizeField, bool ALLOW_REALLOC> \
+  ##__VA_ARGS__ RollingBuffer<HeadType, DATA_SIZE, ENTRY_SIZE, SIZE_TYPE, sizeField, ALLOW_REALLOC>
+#define RB_FQN RollingBuffer<HeadType, DATA_SIZE, ENTRY_SIZE, SIZE_TYPE, sizeField, ALLOW_REALLOC>
 
-  RB_PROTO()::RollingBuffer(size_t size, uint8_t* data = NULL) : size(size), buf(data ? data : malloc(size)) {}
+  RB_PROTO(template<typename std::enable_if_t<!INLINEDATA, size_t>>)::RollingBuffer(size_t size, uint8_t* data) :
+    size(size), buf(data ? data : malloc(size)) {};
 
-  RB_PROTO(template<std::enable_if_t<!INLINEDATA>>)::RollingBuffer() : buf(NULL), size(0) {}//must be relocated before used
-
-  RB_PROTO(template<std::enable_if_t<INLINEDATA>>)::RollingBuffer() : buf(&inline_data), size(DATA_SIZE) {}
+  RB_PROTO()::RollingBuffer() : buf(DATA_SIZE ? inline_data, NULL), size(DATA_SIZE) {}
 
   RB_PROTO()::~RollingBuffer() {
     constexpr if (ALLOW_REALLOC) free(buf);
-  }
-
-  RB_PROTO(std::unique_ptr<iterator_t>)::iterate() {
-    return std::make_unique<RBIterator>(this);
   }
 
   RB_PROTO(template<SIZE_TYPE cloneSize, SIZE_TYPE cloneCount> RB_FQN::RBIterator<cloneSize, cloneCount>)::iter() {
@@ -172,7 +169,7 @@ namespace WITE {
     return RB_SUCCESS;
   }
 
-  RB_PROTO(uint16_t)::push(HeadType* newData, SIZE_TYPE dataSize, size_t* handleOut) {
+  RB_PROTO(typename std::enable_if_t<ADD_SIZE, uint16_t>)::push(HeadType* newData, SIZE_TYPE dataSize, size_t* handleOut) {
     if (dataSize + sizeof(HeadWithSizeType) > freeSpace()) return RB_BUFFER_OVERFLOW;
     if (handleOut) *handleOut = tail;
     writeRaw(tail, dataSize, sizeof(SIZE_TYPE));
@@ -182,7 +179,7 @@ namespace WITE {
     return RB_SUCCESS;
   }
 
-  RB_PROTO(uint16_t)::pushBlocking(HeadType* newData, SIZE_TYPE size, size_t* handleOut) {
+  RB_PROTO(typename std::enable_if_t<ADD_SIZE, uint16_t>)::pushBlocking(HeadType* newData, SIZE_TYPE size, size_t* handleOut) {
     while(dataSize + sizeof(HeadWithSizeType) > freeSpace());//TODO yield?
     if (handleOut) *handleOut = tail;
     writeRaw(tail, dataSize, sizeof(SIZE_TYPE));
@@ -192,7 +189,7 @@ namespace WITE {
     return RB_SUCCESS;
   }
 
-  RB_PROTO(uint16_t)::push(HeadType* newData, size_t* handleOut) {
+  RB_PROTO(typename std::enable_if_t<!ADD_SIZE, uint16_t>)::push(HeadType* newData, size_t* handleOut) {
     SIZE_TYPE dataSize = sizeof(HeadType) + newData->*sizeField;
     if (dataSize + sizeof(HeadType) > freeSpace()) return RB_BUFFER_OVERFLOW;
     if (handleOut) *handleOut = tail;
@@ -202,7 +199,7 @@ namespace WITE {
     return RB_SUCCESS;
   }
 
-  RB_PROTO(uint16_t)::pushBlocking(HeadType* newData, size_t* handleOut) {
+  RB_PROTO(typename std::enable_if_t<!ADD_SIZE, uint16_t>)::pushBlocking(HeadType* newData, size_t* handleOut) {
     SIZE_TYPE dataSize = sizeof(HeadType) + newData->*sizeField;
     while(dataSize + sizeof(HeadType) > freeSpace());//TODO yield?
     if (handleOut) *handleOut = tail;
@@ -257,7 +254,7 @@ namespace WITE {
   }
 
   //NOT thread safe; ensure no threads are doing anything while this is executing; also invalidates all handles
-  RB_PROTO(uint16_t)::relocate(void* newStart, SIZE_TYPE newSize) {
+  RB_PROTO(typename std::enable_if_t<MOVABLE, uint16_t>)::relocate(void* newStart, SIZE_TYPE newSize) {
     void* newEnd, oldStart, oldEnd;
     size_t used = used(), leadingEmpty, trailingEmpty, mov;
     int64_t oldHead, oldTail, startOffset, movRemaining;
@@ -349,109 +346,22 @@ namespace WITE {
     return RB_SUCCESS;
   }
 
-  RB_PROTO(uint16_t)::swallow(uint8_t* newData, size_t dataSize, uint64_t* handleOut, size_t pad) {
+  RB_PROTO(typename std::enable_if_t<RESIZABLE, uint16_t>)::swallow(uint8_t* newData, size_t dataSize, uint64_t* handleOut, size_t pad) {
     uint16_t ret = RB_SUCCESS;
     if (used() + dataSize > size) ret = resize(used() + dataSize + pad);
     if (!ret) ret = push(newData, dataSize, handleOut);
     return ret;
   }
 
-  RB_PROTO(uint16_t)::resize(SIZE_TYPE newSize) {
+  RB_PROTO(typename std::enable_if_t<RESIZABLE, uint16_t>)::resize(SIZE_TYPE newSize) {
     return relocate(buf, newSize);//TODO streamline
   }
 
 }
 
-/*
-  backup of old, untested algs for resize
+#undef INLINEDATA
+#undef VARIABLE_RECORD_SIZE
+#undef ADD_SIZE
+#undef RESIZABLE
+#undef MOVABLE
 
-  RB_PROTO(uint16_t) resize(SIZE_TYPE newSize) {
-  uint16_t ret = RB_SUCCESS;
-  SIZE_TYPE newTail;
-  if (newSize > size) {
-  uint8_t* tempBuf = (uint8_t*)realloc(buf, newSize);
-  if (!tempBuf) {
-  ret = RB_NOMEM;
-  goto resizecleanup;
-  }
-  buf = tempBuf;
-  if (tail < head || (tail == head && outer)) {
-  SIZE_TYPE delta = newSize - size;
-  if (delta > tail) {//buffer did wrap, but now does not
-  newTail = tail + size;
-  memcpy(buf + size, buf, tail);
-  }
-  else {
-  newTail = tail - delta;
-  memcpy(buf + size, buf, tail - newTail);
-  memmove(buf, buf + tail - newTail, newTail);
-  }
-  if (MAP) {
-  struct mapEntry m;
-  for (SIZE_TYPE i = sizeof(struct header);i < map->used();
-  i += sizeof(struct mapEntry) + sizeof(struct header)) {
-  map->getByDepth((uint8_t*)&m, sizeof(struct mapEntry), i);
-  if (m.offset < tail) {
-  m.offset = (m.offset + newSize - delta) % newSize;
-  map->putByDepth((uint8_t*)&m, sizeof(struct mapEntry), i);
-  }
-  }
-  }
-  tail = newTail;
-  outer = false;
-  }
-  } else if (newSize != size) {//shrink; infrequent if ever
-  SIZE_TYPE c = used(), newHead, from, to, len;
-  if (newSize < c) {
-  ret = RB_BUFFER_OVERFLOW;
-  goto resizecleanup;
-  }
-  outer = newSize == c;
-  newTail = tail;
-  newHead = head;
-  if (tail >= newSize && head >= newSize) {
-  //entire active region is in the discard region (or else the size test would've failed)
-  newHead = 0;
-  newTail = c % newSize;
-  memcpy(buf + newHead, buf + head, c);
-  len = c;
-  to = newHead;
-  from = head;
-  } else if (tail >= newSize) {
-  //region did not wrap, but now will, move the tail end to the buffer beginning
-  newTail = tail - newSize;
-  len = tail - newSize + 1;
-  to = 0;
-  from = newSize;
-  memcpy(buf, buf + newSize, len);
-  } else if (head > tail || (head == tail && outer)) {
-  //region did wrap, either (beginning in) or (using the entirety of) the discard area
-  newHead = head - (size - newSize);
-  len = size - head;
-  from = head;
-  to = newHead;
-  memmove(buf + newHead, buf + head, len);
-  } //else entire active region is in the keep area, no moves needed
-  buf = static_cast<uint8_t*>(realloc(buf, newSize));
-  if (MAP) {
-  struct mapEntry m;
-  for (SIZE_TYPE i = sizeof(struct header);i < map->used();
-  i += sizeof(struct mapEntry) + sizeof(struct header)) {
-  map->getByDepth((uint8_t*)&m, sizeof(struct mapEntry), i);
-  if (m.offset >= from && m.offset < from + len) {
-  m.offset = m.offset + to - from;
-  map->putByDepth((uint8_t*)&m, sizeof(struct mapEntry), i);
-  }
-  }
-  }
-  tail = newTail;
-  head = newHead;
-  #ifdef _DEBUG
-  if (outer && head != tail) LOG("WARN: RollingBuffer shrink size fail");
-  #endif
-  }
-  size = newSize;
-  resizecleanup:
-  return ret;
-  }
-*/

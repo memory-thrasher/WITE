@@ -281,11 +281,4 @@ option(ANDROID OFF)
 
 include_directories(${glm_INCLUDE_DIR})
 
-file(GLOB SHADERS RELATIVE "${CMAKE_SOURCE_DIR}" CONFIGURE_DEPENDS shaders/*.frag shaders/*.vert)
-foreach(SFILE ${SHADERS})
-	add_custom_command (OUTPUT "Debug/${SFILE}.spv" COMMAND ${GLSLANG_VALIDATOR} -V "${CMAKE_SOURCE_DIR}/${SFILE}" -o "Debug/${SFILE}.spv" DEPENDS ${SFILE} )
-endforeach(SFILE)
-
-add_executable( main WIN32 testCube/main.cpp Debug/shaders/sample.frag.spv Debug/shaders/sample.vert.spv build/WITE.dll )
-target_link_libraries(main ${GLSLANG_LIBRARIES} ${VULKAN_LOADER} ${WINLIBS} ${SPIRV_TOOLS_LIBRARIES})
-
+add_subdirectory("WaffleIronTransactionalEngine")

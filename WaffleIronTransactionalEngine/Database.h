@@ -4,87 +4,89 @@
 
 namespace WITE {
 
-  export class Database
-  {
-  public:
+  template<class RET, class... RArgs> class Callback_t;
+  
+  class export_def Database
+    {
+    public:
     typedef uint64_t Entry;
     typedef uint16_t type;
-    typedef Callback_t<uint64_t, Entry, void*>* receiver_t;
+    typedef WITE::Callback_t<uint64_t, Entry, void*>* receiver_t;
     typedef Callback_t<void, Entry>* handle_t;
-    typedef struct typeHandles {
+    typedef struct {
       handle_t update, init, destroy;
-    };
-  private:
+    } typeHandles;
+    private:
     constexpr static size_t const& BLOCKSIZE = 4096;
     enum state_t : uint8_t { unallocated = 0, data, branch, trunk };//branches contain references to datas, trunks contain references to branches or other trunks
     enum logEntryType_t : uint8_t { del = 0, update };
-    typedef struct _entry {
+    typedef struct {
       state_t state;
       type type;//global enum-esque maintained by consumer, used by getEntriesOfType. [0,127] reserved
-    };
-  public:
+    } _entry;
+    public:
     constexpr static size_t const& BLOCKDATASIZE = BLOCKSIZE - sizeof(_entry);
-  private:
+    private:
     constexpr static size_t const& MAXPUTSIZE = BLOCKSIZE;//should be indexable by (enqueued)LogEntry::size
     constexpr static size_t const& MAXBLOCKPOINTERS = (BLOCKDATASIZE - sizeof(uint32_t)) / sizeof(Entry);//510
-    typedef struct blocklistData {
+    typedef struct {
       uint32_t subblockCount;
       Entry subblocks[MAXBLOCKPOINTERS];
-    };
-    typedef struct loadedEntry  {
+    } blocklistData;
+    typedef struct {
       _entry header;
       union {
 	uint8_t data[BLOCKDATASIZE];
 	blocklistData children;
       };
-    };
-    typedef struct enqueuedLogEntry {//smaller is better here
+    } loadedEntry;
+    typedef struct {//smaller is better here
       uint64_t frameIdx;
       logEntryType_t type;
       uint16_t size;
       uint64_t offset;//offset into entity or its children that will be overwritten when this log is applied
       Entry start;
-    };
-    typedef struct logEntry {
+    } enqueuedLogEntry;
+    typedef struct {
       uint64_t frameIdx;
       logEntryType_t type;
       size_t size;
       uint64_t offset;//offset into entry that will be overwritten when this log is applied
       size_t nextForObject;//-1 for none
       Entry start;
-    };
-    typedef struct cacheIndex {
+    } logEntry;
+    typedef struct {
       size_t score;
       Entry ent;
-    };
-    typedef struct cacheEntry {
+    } cacheIndex;
+    typedef struct {
       uint64_t lastUseFrame;
       Entry entry;
       uint32_t syncstate;//mostly pad for now, future expansion, bitmask of CACHESYNCSTATE_*
       uint32_t readsCachedLifetime;
       loadedEntry e;
-    };
-    typedef struct allocationTableEntry {
+    } cacheEntry;
+    typedef struct {
       cacheEntry* cacheLocation;//can be null
       uint64_t lastWrittenFrame, nextWriteFrame;
       size_t tlogHeadForObject, tlogTailForObject;//can be -1 for none
       state_t allocationState;//as of now, used for allocate/free, which might happen on the same frame but that's ok because they're managed by prime thread
       uint32_t readsThisFrame, readsLastFrame;//reset to 0 by master allocator, read to decide if it should be cached, dirty increment by other threads upon *disk* read
       Entry typeListNext, typeListLast;//linked list of all objects of this type, rebuilt on reload
-    };
-    typedef struct threadResource_t {
+    } allocationTableEntry;
+    typedef struct {
       typedef RollingBuffer<enqueuedLogEntry, 65536, 0, uint16_t, &enqueuedLogEntry::size> transactionalBacklog_t;
       transactionalBacklog_t transactionalBacklog;
       uint64_t currentFileIdx;//target if it exists, active otherwise
       FILE *activeFile, *targetFile;
       volatile Entry allocRet = -1;
       volatile size_t allocSize = 0;
-    };
+    } threadResource_t;
     typedef perTypeStatic typeHandles;
-    typedef struct perType {
+    typedef struct {
       Entry firstOfType, lastOfType;//linked list
-    };
-  public:
+    } perType;
+    public:
     Database(const char const * filenamefmt, size_t cachesize, int64_t loadidx = -1);//filenamefmt must contain %d
     Database(size_t cachesize);//temp db, no file backing, for static content like the main menu or splash
     ~Database();
@@ -114,7 +116,7 @@ namespace WITE {
     uint64_t sendMessageToAll(const std::string, const type receivers, void* data);
     type getEntryType(Entry e);
     static typeHandles* getHandlesOfType(type t);
-  private:
+    private:
     static const uint8_t zero[0];
     Database(const Database&) = delete;//no. just no.
     void push(enqueuedLogEntry*);
@@ -177,7 +179,7 @@ namespace WITE {
     void pt_rethinkLayout(size_t requiredNewEntries = 0);
     void pt_rethinkCache();
     void pt_push(logEntry*);
-  };
+    };
 
   template<class T> Database::Entry Database::allocate(type t) {
     Entry ret = allocate(sizeof(T));

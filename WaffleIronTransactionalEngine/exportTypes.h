@@ -5,29 +5,20 @@
 #include "AtomicLinkedList.h"
 #include "Database.h"
 
-#ifdef _WIN32
-#define export __declspec(dllexport)
-#define wintypename typename
-typedef HANDLE FileHandle;
-#else
-//TODO
-#define wintypename
-#endif
-
 namespace WITE {
 
   struct strcmp_t {
     bool operator() (const std::string& a, const std::string& b) const { return a.compare(b); }
   };
 
-  template<class RET, class... RArgs> class export Callback_t {
+  template<class RET, class... RArgs> class export_def Callback_t {
   public:
   virtual RET call(RArgs... rargs) = 0;
   virtual ~Callback_t() = default;
   template<class U, class... CArgs> static Callback_t<RET, RArgs...>* make(U* owner, CArgs... cargs, RET(U::*func)(CArgs..., RArgs...));
   };
 
-  template<class RET, class... RArgs> class export CallbackFactory {
+  template<class RET, class... RArgs> class export_def CallbackFactory {
   private:
   template<class T, class... CArgs> class Callback : public Callback_t<RET, RArgs...> {
   private:
@@ -58,7 +49,7 @@ namespace WITE {
 
   typedef class Callback_t<int, unsigned char*, size_t>* rawDataSource;//size_t = maxsize for write, return error code or 0
 
-  class export ShaderResource {
+  class export_def ShaderResource {
   public:
   virtual void load(rawDataSource) = 0;
   virtual unsigned char* map() = 0;
@@ -68,7 +59,7 @@ namespace WITE {
   virtual ~ShaderResource() = default;
   };
 
-  class export BBox3D {
+  class export_def BBox3D {
   public:
   union {
     struct { float minx, miny, minz, maxx, maxy, maxz, centerx, centery, centerz; };
@@ -81,7 +72,7 @@ namespace WITE {
   inline float height2D() { return maxy - miny; };
   };
 
-  class export IntBox3D {
+  class export_def IntBox3D {
   public:
   union {
     uint64_t comp[];
@@ -95,7 +86,7 @@ namespace WITE {
   inline bool sameSize(IntBox3D& o) { return o.maxx - o.minx == maxx - minx && o.maxy - o.miny == maxy - miny && o.maxz - o.minz == maxz - minz; };
   };
 
-  class export Shader {
+  class export_def Shader {
   public:
   struct resourceLayoutEntry {
     size_t type, stage, perInstance;
@@ -107,7 +98,7 @@ namespace WITE {
   virtual void ensureResources(GPU*) = 0;
   };
 
-  class export MeshSource {//mesh source can redirect to file load or cpu procedure, but should not store any mesh data. Mesh does that, per LOD.
+  class export_def MeshSource {//mesh source can redirect to file load or cpu procedure, but should not store any mesh data. Mesh does that, per LOD.
   public:
   virtual uint32_t populateMeshCPU(void*, uint32_t maxVerts, glm::vec3* viewOrigin) = 0;//returns number of verts used
   virtual Shader* getComputeMesh(void) { return NULL; };
@@ -115,7 +106,7 @@ namespace WITE {
   virtual ~MeshSource() = default;
   };
 
-  class export Camera{
+  class export_def Camera{
   public:
   static Camera* make(Window*, IntBox3D);//window owns camera object
   virtual ~Camera() = default;
@@ -131,7 +122,7 @@ namespace WITE {
   virtual GPU* getGPU() = 0;
   };
 
-  class export Window {
+  class export_def Window {
   public:
   virtual ~Window() = default;
   virtual std::vector<Camera*> iterateCameras(size_t &num) = 0;
@@ -145,7 +136,7 @@ namespace WITE {
   static std::vector<Window*> windows;
   };
 
-  class export SyncLock {
+  class export_def SyncLock {
   public:
   virtual ~SyncLock() = default;
   virtual void WaitForLock() = 0;
@@ -155,7 +146,7 @@ namespace WITE {
   virtual void yield() = 0;
   static std::unique_ptr<USyncLock> make();
   };
-  class export ScopeLock {
+  class export_def ScopeLock {
   public:
   static std::unique_ptr<ScopeLock> make(SyncLock * lock);
   virtual ~ScopeLock() = default;

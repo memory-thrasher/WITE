@@ -80,15 +80,14 @@ std::unique_ptr<Shader::Instance> Shader::makeResources(GPU* device) {
     if (!resourceLayout[i].perInstance) continue;
     switch (resourceLayout[i].type) {
     case SHADER_RESOURCE_UNIFORM:
-      ret->resources[i] = std::make_shared<BackedBuffer>(device, *static_cast<uint64_t*>(resourceLayout[i].moreData),
-							 VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT)));
+      ret->resources[i] = std::make_shared<BackedBuffer>(device, *static_cast<uint64_t*>(resourceLayout[i].moreData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
       break;
     case SHADER_RESOURCE_SAMPLED_IMAGE:
       struct imageData* idata = static_cast<struct imageData*>(resourceLayout[i].moreData);
       VkExtent2D ve2 = { idata->width, idata->height };
-      ret->resources[i] = std::make_shared<BackedImage>(device, ve2, static_cast<VkFormat>(idata->format))));
+      ret->resources[i] = std::make_shared<BackedImage>(device, ve2, static_cast<VkFormat>(idata->format));
       break;
-    default: CRASHRET(NULL);
+    default: CRASHRET(NULL); break;
     }
   }
   struct shaderGpuResources* gpuRes = resources.get(device);
@@ -103,6 +102,7 @@ std::unique_ptr<Shader::Instance> Shader::makeResources(GPU* device) {
     CRASHIFFAIL(vkAllocateDescriptorSets(gpu->device, &gpuRes->descAllocInfo, &ret->descSet));
   }
   ret->inited = false;
+  ret->rpRes = std::make_unique<std::map<VkRenderPass, struct rpResources>>();
   return ret;
 }
 
@@ -130,12 +130,19 @@ void Shader::makePipeForRP(VkRenderPass rp, GPU* gpu, VkPipeline* out) {//TODO c
   pipeInfo.stageCount = subshaders;
   pipeInfo.pStages = resources->stageInfos.get();
   pipeInfo.renderPass = rp;
-  CRASHIFFAIL(vkCreateGraphicsPipelines(gpu->device, pipelineCache, 1, &pipeInfo, NULL, &pipeline));
+  CRASHIFFAIL(vkCreateGraphicsPipelines(gpu->device, gpu->pipelineCache, 1, &pipeInfo, NULL, &pipeline));
   pipeInfo.pStages = pipeInfo.renderPass = pipeInfo.stageCount = 0;//don't leak handle to thread stack
 }
 
-void Shader::render(VkCommandBuffer cmd, renderLayerMask layers, glm::mat4d projection, GPU* gpu) {
-  //TODO bind something for this shader?
+void Shader::render(VkCommandBuffer cmd, renderLayerMask layers, glm::mat4d projection, GPU* gpu, VkRenderPass rp) {
+  struct shaderGpuResources* resources = resources.get(gpu);
+  auto rpr = resources->rpRes->[rp];//shared_ptr
+  if(!rpr) {
+    rpr = std::make_shared<struct rpResources>();
+    makePipeForRP(rp, gpu, &rpr->pipeline);
+    resources->rpRes->[rp] = rpr;
+  }
+  vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, rpr->pipeline);
   for(renderLayerIdx rl = 0;rl < MAX_RENDER_LAYERS;rl++) {
     if(layers & (1 << rl)) {
       auto end = renderers[i].end();
@@ -145,32 +152,17 @@ void Shader::render(VkCommandBuffer cmd, renderLayerMask layers, glm::mat4d proj
   }
 }
 
-void Shader::renderAll(VkCommandBuffer cmd, renderLayerMask layers, glm::mat4d projection, GPU* gpu) {
+void Shader::renderAll(VkCommandBuffer cmd, renderLayerMask layers, glm::mat4d projection, GPU* gpu, VkRenderPass rp) {
   auto end = allShaders.end();
   for(auto shader = allShaders.begin();shader != end;shader++)
-    (*shader)->render(cmd, layers, projection, gpu);
+    (*shader)->render(cmd, layers, projection, gpu, rp);
 }
 
-/*
-  size_t i;
-  struct resources_t* res;
-  res = resources + dev->idx;
-  if (res->stageInfos) return;
-  res->moduleInfo = { VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO, NULL, 0, 0, NULL };
-  res->stageInfos = new VkPipelineShaderStageCreateInfo[subshaderCount];
-  for (i = 0;i < subshaderCount;i++) {
-  res->stageInfos[i] = { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-  NULL, 0, subshaders[i].stageBit, NULL, "main", NULL };
-  CRASHIFFAIL(vkCreateShaderModule(dev->device, &res->moduleInfo, vkAlloc, &res->stageInfos[i].module));
-  }
-  VkDescriptorSetLayoutBinding  layoutBindings[] = {
-  { 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT, NULL },
-  { 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, NULL }//per texture?
-  };//FIXME this needs an import pathway, that does not need VK includes. TODO derive size from this pathway?
-  VkDescriptorSetLayoutCreateInfo descriptorLayout = {
-  VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, NULL, 0, 2, layoutBindings };
-  CRASHIFFAIL(vkCreateDescriptorSetLayout(dev->device, &descriptorLayout, vkAlloc, &res->descLayout));
-  VkPipelineLayoutCreateInfo pipelineInfo = { VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-  NULL, 0, 1, &res->descLayout, 0, NULL };
-  CRASHIFFAIL(vkCreatePipelineLayout(dev->device, &pipelineInfo, vkAlloc, &res->pipelineLayout));
-  }*/
+Shader* WITE::Shader::make(const char** filepath, size_t files, struct shaderResourceLayoutEntry* srles, size_t resources) {
+  return new Shader(filepath, files, slres, resources);
+}
+
+Shader* WITE::Shader::make(const char* filepathWildcard, struct shaderResourceLayoutEntry* srles, size_t resources) {
+  return new Shader(filepathWildcard, slres, resources);
+}
+

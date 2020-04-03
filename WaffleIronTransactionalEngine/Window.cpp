@@ -186,47 +186,10 @@ std::unique_ptr<WITE::Window> Window::make(size_t display) {
   return std::make_unique<Window>(display);
 }
 
-  /* no longer needed: main swapchain is not render target, just receives blitz
-  const VkFormat depthFormat = VK_FORMAT_D16_UNORM;
-  VkFormatProperties props;
-  vkGetPhysicalDeviceFormatProperties(presentQ->gpu->phys, depthFormat, &props);
-  depthBuffer = new BackedImage(presentQ->gpu, size,
-				 { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO, NULL, 0, NULL, VK_IMAGE_VIEW_TYPE_2D, depthFormat,
-				   { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A },
-				   { VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1 }
-				 }, {
-				     VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO, NULL, 0, VK_IMAGE_TYPE_2D,
-				     depthFormat,{ size.width, size.height, 1 }, 1, 1, VK_SAMPLE_COUNT_1_BIT,
-				     (props.linearTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) ?
-				     VK_IMAGE_TILING_LINEAR :
-				     (props.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) ?
-				     VK_IMAGE_TILING_OPTIMAL : VK_IMAGE_TILING_BEGIN_RANGE,
-				     VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_SHARING_MODE_EXCLUSIVE, 0, NULL,
-				     VK_IMAGE_LAYOUT_UNDEFINED
-				 });
-  //uniform - pipelineLayout removed from here, to shader
-  VkAttachmentDescription attachments[2] =
-    {{ 0, surfaceFormat, VK_SAMPLE_COUNT_1_BIT, VK_ATTACHMENT_LOAD_OP_CLEAR,
-       VK_ATTACHMENT_STORE_OP_STORE, VK_ATTACHMENT_LOAD_OP_DONT_CARE,
-       VK_ATTACHMENT_STORE_OP_DONT_CARE, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR },
-     { 0, depthBuffer->getFormat(), VK_SAMPLE_COUNT_1_BIT, VK_ATTACHMENT_LOAD_OP_CLEAR,
-       VK_ATTACHMENT_STORE_OP_STORE, VK_ATTACHMENT_LOAD_OP_LOAD, VK_ATTACHMENT_STORE_OP_STORE,
-       VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL }//only if depthPresent
-    };
-  VkAttachmentReference colorReference = { 0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL },
-    depthReference = { 1, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL };
-  VkSubpassDescription subpass = { 0, VK_PIPELINE_BIND_POINT_GRAPHICS, 0, NULL, 1, &colorReference,
-				   NULL, &depthReference, 0, NULL };
-  VkRenderPassCreateInfo rpInfo = { VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO, NULL, 0, 2, attachments,
-				    1, &subpass, 0, NULL };
-  CRASHIFFAIL(vkCreateRenderPass(graphicsQ->gpu->device, &rpInfo, NULL, &renderPass));
-  VkImageView attachedViews[2] = { NULL, depthBuffer->getImageView() };//FIXME does window really need a depth buffer?
-  VkFramebufferCreateInfo fbInfo = { VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO, NULL, 0, renderPass,
-				     2, attachedViews, size.width, size.height, 1 };
-  swapchain.framebuffers = (VkFramebuffer*)malloc(swapchain.imageCount * sizeof(VkFramebuffer));
-  if (!swapchain.framebuffers) CRASH;
-  for (i = 0;i < swapchain.imageCount;i++) {
-    attachedViews[0] = swapchain.images[i].getImageView();
-    CRASHIFFAIL(vkCreateFramebuffer(presentQ->gpu->device, &fbInfo, vkAlloc, &swapchain.framebuffers[i]));
-  }
-  //*/
+Camera* addCamera(IntBox3D box) {
+  cameras.emplace_back(box, presentQ);
+}
+
+Camera* getCamera(size_t idx) {
+  return cameras[idx];
+}

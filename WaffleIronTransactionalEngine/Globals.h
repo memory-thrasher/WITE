@@ -13,17 +13,17 @@
 #define DEVICE_EXTENSIONS_LEN (1i16)
 
 struct vulkan_singleton {
-	const char* extensions[MAX_EXTENSIONS];
-	unsigned extensionCount, layerCount;
-	const char* layers[LAYER_COUNT];
-	VkApplicationInfo appInfo;
-	VkInstanceCreateInfo createInfo;
-	VkInstance instance = NULL;
-	SyncLock lock;
-	unsigned gpuCount;
-	class GPU* gpus[MAX_GPUS];
-	class RenderLayer renderLayers[MAX_RENDER_LAYERS];
-	uint32_t vramGrabSize = (6*1024*1024*1024/SIZEOF_VERTEX);//TODO dynamic; total in verts, divide by VMesh.VERTEX_BUFFERS for per-buffer size
+  const char* extensions[MAX_EXTENSIONS];
+  unsigned extensionCount, layerCount;
+  const char* layers[LAYER_COUNT];
+  VkApplicationInfo appInfo;
+  VkInstanceCreateInfo createInfo;
+  VkInstance instance = NULL;
+  SyncLock lock;
+  unsigned gpuCount;
+  class GPU* gpus[MAX_GPUS];
+  class RenderLayer renderLayers[MAX_RENDER_LAYERS];
+  uint32_t vramGrabSize = (6*1024*1024*1024/SIZEOF_VERTEX);//TODO dynamic; total in verts, divide by Mesh.VERTEX_BUFFERS for per-buffer size
 };
 
 extern struct vulkan_singleton vkSingleton;

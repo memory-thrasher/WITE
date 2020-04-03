@@ -16,7 +16,7 @@ public:
   void unmap();
   size_t getSize();
   void load(rawDataSource);
-  VBackedBuffer* getBuffer() { return this; };
+  BackedBuffer* getBuffer() { return this; };
 private:
   VkDescriptorBufferInfo info;
   VkBuffer buffer = NULL;

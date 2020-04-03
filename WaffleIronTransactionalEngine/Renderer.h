@@ -7,7 +7,7 @@
 class Renderer {
 public:
   typedef class Callback_t<void, Renderer*, std::shared_ptr<class ShaderResource>*, GPU*>* packDataCB;//size = count(resources)
-  static void bind(Object*, Shader*, VMesh*, renderLayerIdx);
+  static void bind(Object*, Shader*, Mesh*, renderLayerIdx);
   static void unbind(Object*, renderLayerIdx);
   Renderer();
   ~Renderer();
@@ -20,7 +20,7 @@ public:
 private:
   RenderLayer * layer;//TODO use weak_ptr and hand out shared_ptr with getters
   Shader* shader;
-  VMesh* mesh;
+  Mesh* mesh;
   Object* obj;
   std::unique_ptr<GPUResource<Shader::Instance>> buffers;
   packDataCB packPreRender, packInitial;

@@ -15,7 +15,6 @@ public:
   void setLocation(glm::vec3);
   Window* getWindow() { return window; };
   IntBox3D getScreenRect() { return screenbox; };
-  void setTarget(Window* w, IntBox3D* ib) { window = w; screenbox = ib; };
   inline void setFov(double val) { fov = val; updateMaths(); };
   inline double getFov() { return fov; };
   inline bool appliesOnLayer(renderLayerIdx i) { return layerMask & (1 << i); };

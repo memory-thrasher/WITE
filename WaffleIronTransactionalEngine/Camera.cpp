@@ -25,6 +25,10 @@ void Camera::setLocation(glm::vec3d l) {
 
 void Camera::render(Queue::ExecutionPlan* ep) {
   VkCommandBuffer cmd = ep->beginParallel();
+  VkViewport viewport = { 0, 0, screenbox.width, screenbox.height, 0.01f, 100f };//TODO clipping plane as setting
+  VkScissors scissors = {{screenbox.width>>1, screenbox.height>>1}};
+  vkCmdSetViewport(cmd, 0, 1, &viewport);
+  vkCmdSetScissors(cmd, 0, 1, &scissors);
   vkCmdBeginRenderPass(cmd, &passes[0].beginInfo, VK_SUBPASS_CONTENTS_INLINE);
   Shader::renderAll(ep, layerMask, renderTransform.getMat(), gpu);
   vkEndRenderPass(cmd);
@@ -85,4 +89,8 @@ void Camera::recreateResources() {
     passes[i].beginInfo = { VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO, NULL, passes[i].renderPass, passes[i].fb,
 			    {{size.minx, size.miny}, {size.width, size.height}}, 2, &RenderPass::CLEAR};
   }
+}
+
+Camera* WITE::Camera::make(WITE::Window* w, IntBox3D box) {
+  w->addCamera(box);
 }

@@ -2,7 +2,7 @@
 
 #include "stdafx.h"
 #include "Export.h"
-#include "VBackedBuffer.h"
+#include "BackedBuffer.h"
 #include "Object.h"
 
 class Shader : WITE::Shader {
@@ -12,10 +12,6 @@ public:
     VkDescriptorSet descSet;
     bool inited;
   } Instance;
-  struct resourceLayoutEntry {
-    size_t type, stage, perInstance;
-    void* moreData;
-  };
   struct imageData {
     uint32_t width, height;
     uint64_t format;
@@ -23,14 +19,17 @@ public:
   Shader(const char* filepathWildcard, struct resourceLayoutEntry*, size_t resources);
   Shader(const char** filepath, size_t files, struct resourceLayoutEntry*, size_t resources);
   ~Shader();
-  void render(VkCommandBuffer cmd, renderLayerMask layers, glm::mat4d projection, GPU* gpu);
+  void render(VkCommandBuffer cmd, renderLayerMask layers, glm::mat4d projection, GPU* gpu, VkRenderPass rp);
   void ensureResources(GPU*);
-  static void renderAll(VkCommandBuffer ep, renderLayerMask layers, glm::mat4d projection, GPU* gpu);
+  static void renderAll(VkCommandBuffer ep, renderLayerMask layers, glm::mat4d projection, GPU* gpu, VkRenderPass rp);
 private:
   struct subshader_t {
     VkShaderModuleCreateInfo moduleInfo;//modulecreateflags, codesize, code
     const char* filepath;
     VkShaderStageFlagBits stageBit;
+  };
+  struct rpResources {
+    VkPipeline pipeline;
   };
   struct shaderGpuResources {
     std::unique_ptr<VkPipelineShaderStageCreateInfo[]> stageInfos;
@@ -44,7 +43,7 @@ private:
     VkDescriptorPoolCreateInfo descPoolInfo;
     VkDescriptorSetAllocateInfo descAllocInfo;//qazi-template, set descPool before use
     void growDescPool(GPU*);
-    //TODO per-camera struct for pipe and friends
+    std::unique_ptr<std::map<VkRenderPass, std::shared_ptr<struct rpResources>>> rpRes;
   };
   void makePipeForRP(VkRenderPass rp, GPU* gpu, VkPipeline* out);
   GPUResource<shaderGpuResources> resources;

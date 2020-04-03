@@ -50,7 +50,7 @@ export void enterMainLoop(Database* db) {
   uint8_t tempu8;
   database = db;//global assign
   meshSemaphore.store(0, std::memory_order_relaxed);
-  spawnThread(Thread::threadEntry_t::make(NULL, &meshSemaphore, &VMesh::proceduralMeshLoop));
+  spawnThread(Thread::threadEntry_t::make(NULL, &meshSemaphore, &Mesh::proceduralMeshLoop));
   for(i = 0;i < workerThreadCount;i++) spawnThread(Thread::threadEntry_t::make(NULL, &enterWorker));
   do {
     tempu8 = meshSemaphore.load(std::memory_order_consume);

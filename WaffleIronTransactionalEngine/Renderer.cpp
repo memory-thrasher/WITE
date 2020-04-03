@@ -7,7 +7,7 @@ Renderer::Renderer() : obj(NULL) {}
 Renderer::~Renderer() {}
 
 //o must not be null. call unbind to disable rendering on this layer
-void Renderer::bind(Object* o, Shader* s, VMesh* m, renderLayerIdx rlIdx) {
+void Renderer::bind(Object* o, Shader* s, Mesh* m, renderLayerIdx rlIdx) {
   ScopeLock slo(&o->lock);//each renderer belongs to exactly one object, which owns exactly MAX_RENDER_LAYER renderers. Save mutexes by using the owning object's lock.
   Renderer* r = o->renderLayer[rlIdx];
   Object* obj = r->obj;
@@ -68,7 +68,8 @@ void Renderer::setPerFrameCallback(packDataCB d) {
 
 void Renderer::render(glm::mat4d projection, GPU* gpu) {
   //pipeline is already selected
-  Shader::Instance* buffer = buffers->get(gpu);
+  Shader::Instance* buffer = buffers->get(gpu)[vertBuffer];
+  auto subbuf = mesh->subbuf.get(gpu);
   if (!buffer->inited) {
     buffer->inited = true;
     if(packInitial) packInitial->call(this, buffer->resources.get(), gpu);
@@ -77,9 +78,9 @@ void Renderer::render(glm::mat4d projection, GPU* gpu) {
   buffer->resources[0]->unmap();
   updateInstanceData(0, gpu);
   if(packPreRender) packPreRender->call(this, buffer->resources.get(), gpu);
-  //bind descriptor set
-  //bind vertex buffer
-  //draw
+  vkCmdBindDescriptorSet(cmd, VK_PUPELINE_BIND_POINT_GRAPHICS, shader->resources.get(gpu)->pipelineLayout, 0, 1, &buffer->descSet, 0, NULL);
+  vkCmdBindVertexBuffers(cmd, 0, 1, &Mesh::vertexBuffers.get(gpu)[vertBuffer]->verts, &subbuf.vbStart);//TODO move this to camera level, subdivide on draw
+  vkCmdDraw(cmd, subbuf.vbLength, 1, 0, 0);
 }
 
 void updateInstanceData(size_t resource, GPU* gpu) {//TODO batchify?

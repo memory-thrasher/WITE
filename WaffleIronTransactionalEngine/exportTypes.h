@@ -64,7 +64,7 @@ namespace WITE {
   virtual unsigned char* map() = 0;
   virtual void unmap() = 0;
   virtual size_t getSize() = 0;
-  virtual VBackedBuffer* getBuffer() = 0;
+  //virtual BackedBuffer* getBuffer() = 0;
   virtual ~ShaderResource() = default;
   };
 
@@ -95,32 +95,19 @@ namespace WITE {
   inline bool sameSize(IntBox3D& o) { return o.maxx - o.minx == maxx - minx && o.maxy - o.miny == maxy - miny && o.maxz - o.minz == maxz - minz; };
   };
 
-  class export VCamera{
+  class export Shader {
   public:
-  static VCamera* make();
-  virtual ~VCamera() = default;
-  virtual float getPixelTangent() = 0;
-  virtual float approxScreenArea(BBox3D*) = 0;
-  virtual glm::vec3* getLocation() = 0;
-  virtual Window* getWindow() = 0;
-  virtual IntBox3D getScreenRect() = 0;
-  virtual void setTarget(VWindow*, IntBox3D*) = 0;
-  virtual bool appliesOnLayer(renderLayerIdx i) = 0;
-  virtual GPU* getGPU() = 0;
-  virtual glm::mat4* getProjectionMatrix();
+  struct resourceLayoutEntry {
+    size_t type, stage, perInstance;
+    void* moreData;
   };
-
-  class export VShader {
-  public:
-  typedef std::vector<ShaderResource> InstanceResources;
-  static VShader* make(const char* filepathWildcard, size_t resources, struct shaderResourceLayoutEntry*);
-  static VShader* make(const char** filepath, size_t files, size_t resources, struct shaderResourceLayoutEntry*);
-  virtual ~VShader() = default;
-  virtual void render(VCamera* observer) = 0;
+  static Shader* make(const char* filepathWildcard, struct shaderResourceLayoutEntry*, size_t resources);//static collection contains all
+  static Shader* make(const char** filepath, size_t files, struct shaderResourceLayoutEntry*, size_t resources);//static collection contains all
+  virtual ~Shader() = default;
   virtual void ensureResources(GPU*) = 0;
   };
 
-  class export MeshSource {//mesh source can redirect to file load or cpu procedure, but should not store any mesh data. VMesh does that, per LOD.
+  class export MeshSource {//mesh source can redirect to file load or cpu procedure, but should not store any mesh data. Mesh does that, per LOD.
   public:
   virtual uint32_t populateMeshCPU(void*, uint32_t maxVerts, glm::vec3* viewOrigin) = 0;//returns number of verts used
   virtual Shader* getComputeMesh(void) { return NULL; };
@@ -128,54 +115,51 @@ namespace WITE {
   virtual ~MeshSource() = default;
   };
 
+  class export Camera{
+  public:
+  static Camera* make(Window*, IntBox3D);//window owns camera object
+  virtual ~Camera() = default;
+  virtual void resize(IntBox3D) = 0;
+  virtual float getPixelTangent() = 0;
+  virtual float approxScreenArea(BBox3D*) = 0;
+  virtual glm::vec3* getLocation() = 0;
+  virtual Window* getWindow() = 0;
+  virtual IntBox3D getScreenRect() = 0;
+  virtual void setFov(double) = 0;
+  virtual double getFov() = 0;
+  virtual bool appliesOnLayer(renderLayerIdx i) = 0;
+  virtual GPU* getGPU() = 0;
+  };
+
   class export Window {
   public:
   virtual ~Window() = default;
-  virtual void render() = 0;
-  virtual bool isRenderDone() = 0;
-  static void renderAll();
-  static bool areRendersDone();
-  static std::unique_ptr<VWindow> make(size_t display = 0);
+  virtual std::vector<Camera*> iterateCameras(size_t &num) = 0;
+  virtual void setSize(uint32_t width, uint32_t height) = 0;
+  virtual void setBounds(IntBox3D) = 0;
+  virtual void setLocation(int32_t x, int32_t y, uint32_t w, uint32_t h) = 0;
+  virtual Camera* addCamera(IntBox3D) = 0;
+  virtual Camerar* getCamera(size_t idx) = 0;
+  static std::unique_ptr<Window> make(size_t display = 0);
   protected:
   static std::vector<Window*> windows;
   };
 
-  class export USyncLock {
+  class export SyncLock {
   public:
-  virtual ~USyncLock() = default;
+  virtual ~SyncLock() = default;
   virtual void WaitForLock() = 0;
   virtual void ReleaseLock() = 0;
   virtual uint64_t getId() = 0;
   virtual bool isLocked() = 0;
-  virtual inline void yield() = 0;
+  virtual void yield() = 0;
   static std::unique_ptr<USyncLock> make();
   };
-  class export UScopeLock {
+  class export ScopeLock {
   public:
-  static std::unique_ptr<UScopeLock> make(USyncLock * lock, uint64_t timeoutNs = BASIC_LOCK_TIMEOUT);
-  virtual ~UScopeLock() = default;
-  virtual inline void yield() = 0;
-  };
-  class export UDataLock {
-  public:
-  static std::unique_ptr<UDataLock> make();
-  virtual ~UDataLock() = default;
-  virtual bool obtainReadLock(uint64_t timeoutNs = BASIC_LOCK_TIMEOUT) = 0;
-  virtual void releaseReadLock() = 0;
-  virtual bool obtainWriteLock(uint64_t timeoutNs = BASIC_LOCK_TIMEOUT) = 0;
-  virtual void releaseWriteLock() = 0;
-  virtual bool escalateToWrite(uint64_t timeoutNs = BASIC_LOCK_TIMEOUT) = 0;
-  virtual void dropWrite() = 0;
-  };
-  class export UScopeReadLock {
-  public:
-  static std::unique_ptr<UScopeReadLock> make(UDataLock * lock, uint64_t timeoutNs = BASIC_LOCK_TIMEOUT);
-  virtual ~UScopeReadLock() = default;
-  };
-  class export UScopeWriteLock {
-  public:
-  static std::unique_ptr<UScopeWriteLock> make(UDataLock * lock, uint64_t timeoutNs = BASIC_LOCK_TIMEOUT);
-  virtual ~UScopeWriteLock() = default;
+  static std::unique_ptr<ScopeLock> make(SyncLock * lock);
+  virtual ~ScopeLock() = default;
+  virtual void yield() = 0;
   };
   
 }

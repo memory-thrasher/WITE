@@ -1,8 +1,8 @@
 #pragma once
 
 #include "stdafx.h"
-#include "VBackedImage.h"
-#include "VCamera.h"
+#include "BackedImage.h"
+#include "Camera.h"
 
 class Window : public WITE::Window {
 public:
@@ -10,6 +10,11 @@ public:
   ~Window();
   bool isRenderDone();
   std::vector<Camera*>::iterator iterateCameras(size_t &num);
+  void setSize(uint32_t width, uint32_t height);
+  void setBounds(IntBox3D bounds);
+  void setLocation(int32_t x, int32_t y, uint32_t w, uint32_t h);
+  Camera* addCamera(IntBox3D);
+  Camera* getCamera(size_t idx);
 private:
   //static std::vector<Window*> windows;//already in super
   SDL_Window * sdlWindow;
@@ -29,11 +34,7 @@ private:
   } swapchain;
   BackedImage* depthBuffer;//TODO move to cam (and also store formate)
   VkRenderPass renderPass;//TODO move to shader
-  //VBackedBuffer* uniformBuffer;
-  //VkDescriptorSetLayout descLayout;
-  //VkPipelineLayout pipelineLayout;
-  std::vector<Camera*> cameras;
-  VkFense fense = NULL;//null if and only if there is no active render
+  std::vector<Camera> cameras;
   typedef struct {
     VkSwapchainKHR swapchain;
     uint32_t imageIdx;

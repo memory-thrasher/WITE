@@ -1,18 +1,17 @@
 #pragma once
 
-#include "Renderer.h"
+#include "Export.h"
 
-typedef uint8_t renderLayerIdx;
-typedef uint64_t renderLayerMask;
+class Renderer;
 
 class RenderLayer {
 public:
-	RenderLayer();
-	~RenderLayer();
-	renderLayerIdx idx;
+  RenderLayer();
+  ~RenderLayer();
+  WITE::renderLayerIdx idx;
 private:
-	SyncLock memberLock;
-	std::vector<class Renderer*> members;
-	friend class Renderer;
+  WITE::SyncLock memberLock;
+  std::vector<class Renderer*> members;
+  friend class Renderer;
 };
 

@@ -134,9 +134,9 @@ bool Window::isRenderDone() {
   return !graphicsQ->getComplexPlan().isRunning();
 }
 
-std::vector<Camera*>::iterator Window::iterateCameras(size_t &num) {
+Camera* Window::iterateCameras(size_t &num) {
   num = cameras.size();
-  return cameras.begin();
+  return cameras.data();
 }
 
 std::vector<WITE::Window*>::iterator WITE::Window::iterateWindows(size_t &num) {

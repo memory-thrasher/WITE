@@ -5,7 +5,7 @@
 
 class BackedImage;
 
-class BackedBuffer : public ShaderResource
+class BackedBuffer : public WITE::ShaderResource
 {
 public:
   BackedBuffer(GPU* dev, VkMemoryRequirements* memReqs, VkFlags heapflags = 0, VkFlags typeflags = 0);
@@ -15,7 +15,7 @@ public:
   unsigned char* map();
   void unmap();
   size_t getSize();
-  void load(rawDataSource);
+  void load(WITE::rawDataSource);
   BackedBuffer* getBuffer() { return this; };
 private:
   VkDescriptorBufferInfo info;

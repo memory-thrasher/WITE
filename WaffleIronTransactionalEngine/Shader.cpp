@@ -110,7 +110,7 @@ void Shader::makePipeForRP(VkRenderPass rp, GPU* gpu, VkPipeline* out) {//TODO c
   struct shaderGpuResources* resources = resources.get(gpu);
   static VkDynamicState dynamicStateEnables[VK_DYNAMIC_STATE_RANGE_SIZE] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR, 0 };
   static VkPipelineDynamicStateCreateInfo dynamicState = { VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO, NULL, 0, 2, dynamicStateEnables };
-  static VkPipelineVertexInputStateCreateInfo vi = { VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO, NULL, 0, 1, &viBinding, 2, viAttribs };
+  static VkPipelineVertexInputStateCreateInfo vi = { VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO, NULL, 0, 1, &viBinding, 2, viAttributes };
   static VkPipelineInputAssemblyStateCreateInfo ia = { VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO, NULL, 0,
 						       VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, VK_FALSE };
   static VkPipelineRasterizationStateCreateInfo rs = { VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO, NULL, 0, VK_FALSE, VK_FALSE,
@@ -134,7 +134,7 @@ void Shader::makePipeForRP(VkRenderPass rp, GPU* gpu, VkPipeline* out) {//TODO c
   pipeInfo.pStages = pipeInfo.renderPass = pipeInfo.stageCount = 0;//don't leak handle to thread stack
 }
 
-void Shader::render(VkCommandBuffer cmd, renderLayerMask layers, glm::mat4d projection, GPU* gpu, VkRenderPass rp) {
+void Shader::render(Queue::ExecutionPlan* ep, renderLayerMask layers, glm::dmat4 projection, GPU* gpu, VkRenderPass rp) {
   struct shaderGpuResources* resources = resources.get(gpu);
   auto rpr = resources->rpRes->[rp];//shared_ptr
   if(!rpr) {
@@ -142,7 +142,7 @@ void Shader::render(VkCommandBuffer cmd, renderLayerMask layers, glm::mat4d proj
     makePipeForRP(rp, gpu, &rpr->pipeline);
     resources->rpRes->[rp] = rpr;
   }
-  vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, rpr->pipeline);
+  vkCmdBindPipeline(ep->getActive();, VK_PIPELINE_BIND_POINT_GRAPHICS, rpr->pipeline);
   for(renderLayerIdx rl = 0;rl < MAX_RENDER_LAYERS;rl++) {
     if(layers & (1 << rl)) {
       auto end = renderers[i].end();
@@ -152,10 +152,10 @@ void Shader::render(VkCommandBuffer cmd, renderLayerMask layers, glm::mat4d proj
   }
 }
 
-void Shader::renderAll(VkCommandBuffer cmd, renderLayerMask layers, glm::mat4d projection, GPU* gpu, VkRenderPass rp) {
+void Shader::renderAll(Queue::ExecutionPlan* ep, renderLayerMask layers, glm::dmat4 projection, GPU* gpu, VkRenderPass rp) {
   auto end = allShaders.end();
   for(auto shader = allShaders.begin();shader != end;shader++)
-    (*shader)->render(cmd, layers, projection, gpu, rp);
+    (*shader)->render(ep, layers, projection, gpu, rp);
 }
 
 Shader* WITE::Shader::make(const char** filepath, size_t files, struct shaderResourceLayoutEntry* srles, size_t resources) {

@@ -9,11 +9,11 @@ public:
   Window(size_t display = 0);
   ~Window();
   bool isRenderDone();
-  std::vector<Camera*>::iterator iterateCameras(size_t &num);
+  Camera* iterateCameras(size_t &num);
   void setSize(uint32_t width, uint32_t height);
-  void setBounds(IntBox3D bounds);
+  void setBounds(WITE::IntBox3D bounds);
   void setLocation(int32_t x, int32_t y, uint32_t w, uint32_t h);
-  Camera* addCamera(IntBox3D);
+  Camera* addCamera(WITE::IntBox3D);
   Camera* getCamera(size_t idx);
 private:
   //static std::vector<Window*> windows;//already in super

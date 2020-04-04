@@ -1,6 +1,5 @@
 #pragma once
 
-#include "stdafx.h"
 #include "constants.h"
 
 namespace WITE {
@@ -26,19 +25,19 @@ namespace WITE {
   } HeadWithSizeType;
   public:
   template<SIZE_TYPE cloneSize = DATA_SIZE, SIZE_TYPE cloneCount = 1 + cloneSize / ENTRY_SIZE> class RBIterator;
-#define INLINEDATA (constexpr bool(DATA_SIZE))
-#define VARIABLE_RECORD_SIZE (constexpr(!bool(ENTRY_SIZE)))
-#define ADD_SIZE (constexpr((NULL == sizeField) && VARIABLE_RECORD_SIZE))
-#define RESIZABLE (constexpr(!INLINEDATA && ALLOW_REALLOC))
-#define MOVABLE (constexpr(!INLINEDATA))
+  constexpr static bool INLINEDATA = bool(DATA_SIZE);
+  constexpr static bool VARIABLE_RECORD_SIZE = !bool(ENTRY_SIZE);
+  constexpr static bool ADD_SIZE = ((NULL == sizeField) && VARIABLE_RECORD_SIZE);
+  constexpr static bool RESIZABLE = (!INLINEDATA && ALLOW_REALLOC);
+  constexpr static bool MOVABLE = (!INLINEDATA);
   //size in bytes
-  template<typename std::enable_if_t<!INLINEDATA, size_t> = 0> RollingBuffer(size_t size, uint8_t* data = NULL);
+  template<bool ID = INLINEDATA, typename std::enable_if_t<!ID, size_t> = 0> RollingBuffer(size_t size, uint8_t* data = NULL);
   RollingBuffer();
   ~RollingBuffer();
-  typename std::enable_if_t<ADD_SIZE, uint16_t> push(HeadType* newData, SIZE_TYPE size, size_t* handleOut = NULL); //returns one of the constants above
-  typename std::enable_if_t<ADD_SIZE, uint16_t> pushBlocking(HeadType* newData, SIZE_TYPE size, size_t* handleOut = NULL); //returns one of the constants above
-  typename std::enable_if_t<!ADD_SIZE, uint16_t> push(HeadType* newData, size_t* handleOut = NULL); //returns one of the constants above
-  typename std::enable_if_t<!ADD_SIZE, uint16_t> pushBlocking(HeadType* newData, size_t* handleOut = NULL); //returns one of the constants above
+  template<bool AS = ADD_SIZE> typename std::enable_if_t<AS, uint16_t> push(HeadType* newData, SIZE_TYPE size, size_t* handleOut = NULL);
+  template<bool AS = ADD_SIZE> typename std::enable_if_t<AS, uint16_t> pushBlocking(HeadType* newData, SIZE_TYPE size, size_t* handleOut = NULL);
+  template<bool AS = ADD_SIZE> typename std::enable_if_t<!AS, uint16_t> push(HeadType* newData, size_t* handleOut = NULL);
+  template<bool AS = ADD_SIZE> typename std::enable_if_t<!AS, uint16_t> pushBlocking(HeadType* newData, size_t* handleOut = NULL);
   /*returns one of the constants above. maxsize in bytes returned. max in count entries.
     First entry starts at data[0], second at data[starts[0]], data[starts[1]] ... until starts[n] = 0*/
   uint16_t pop(uint8_t* data, size_t* starts, size_t maxsize, size_t max);
@@ -51,10 +50,10 @@ namespace WITE {
   void readRaw(uint8_t* out, SIZE_TYPE in, SIZE_TYPE size);//careful; only checked for wrap
   void writeRaw(SIZE_TYPE out, uint8_t* in, SIZE_TYPE size);//careful; only checked for wrap
   //NOT thread safe; ensure no threads are doing anything while this is executing
-  typename std::enable_if_t<MOVABLE, uint16_t> relocate(void* newhome, SIZE_TYPE newsize);
-  typename std::enable_if_t<RESIZABLE, uint16_t> resize(SIZE_TYPE size);
+  template<bool M = MOVABLE> typename std::enable_if_t<M, uint16_t> relocate(void* newhome, SIZE_TYPE newsize);
+  template<bool R = RESIZABLE> typename std::enable_if_t<R, uint16_t> resize(SIZE_TYPE size);
   //grow if necessary, plus pad bytes
-  typename std::enable_if_t<RESIZABLE, uint16_t> swallow(uint8_t* newData, size_t dataSize, uint64_t* handleOut = NULL, size_t pad = 0);
+  template<bool R = RESIZABLE> typename std::enable_if_t<R, uint16_t> swallow(uint8_t* newData, size_t dataSize, uint64_t* handleOut = NULL, size_t pad = 0);
   inline SIZE_TYPE sizeofnext(SIZE_TYPE = head);
   template<SIZE_TYPE cloneSize = DATA_SIZE, SIZE_TYPE cloneCount = 1 + cloneSize / ENTRY_SIZE>
   inline RBIterator<cloneSize, cloneCount> iter();
@@ -62,10 +61,9 @@ namespace WITE {
   RollingBuffer(const RollingBuffer&) = delete;
   volatile SIZE_TYPE head = 0, tail = 0, size, entries = 0;
   uint8_t* buf;
-  volatile uint8_t inline_data[DATA_SIZE];//zero if disabled, so harmless
   bool outer = false;//when head = tail; true means buffer is full, false means empty, otherwise this should be false
+  volatile uint8_t inline_data[DATA_SIZE ? DATA_SIZE : 1];
   inline bool wrapped() { return outer || head > tail; }
-  friend class RBIterator<>;
   public:
   template<SIZE_TYPE cloneSize, SIZE_TYPE cloneCount>
   class RBIterator {//designed to be placed on the thread stack, used as a read buffer for batch reading
@@ -100,7 +98,7 @@ namespace WITE {
   ##__VA_ARGS__ RollingBuffer<HeadType, DATA_SIZE, ENTRY_SIZE, SIZE_TYPE, sizeField, ALLOW_REALLOC>
 #define RB_FQN RollingBuffer<HeadType, DATA_SIZE, ENTRY_SIZE, SIZE_TYPE, sizeField, ALLOW_REALLOC>
 
-  RB_PROTO(template<typename std::enable_if_t<!INLINEDATA, size_t>>)::RollingBuffer(size_t size, uint8_t* data) :
+  RB_PROTO(template<bool ID, typename std::enable_if_t<!ID, size_t> t>)::RollingBuffer(size_t size, uint8_t* data) :
     size(size), buf(data ? data : malloc(size)) {};
 
   RB_PROTO()::RollingBuffer() : buf(DATA_SIZE ? inline_data, NULL), size(DATA_SIZE) {}
@@ -169,7 +167,7 @@ namespace WITE {
     return RB_SUCCESS;
   }
 
-  RB_PROTO(typename std::enable_if_t<ADD_SIZE, uint16_t>)::push(HeadType* newData, SIZE_TYPE dataSize, size_t* handleOut) {
+  RB_PROTO(template<bool AS> typename std::enable_if_t<AS, uint16_t>)::push(HeadType* newData, SIZE_TYPE dataSize, size_t* handleOut) {
     if (dataSize + sizeof(HeadWithSizeType) > freeSpace()) return RB_BUFFER_OVERFLOW;
     if (handleOut) *handleOut = tail;
     writeRaw(tail, dataSize, sizeof(SIZE_TYPE));
@@ -179,7 +177,7 @@ namespace WITE {
     return RB_SUCCESS;
   }
 
-  RB_PROTO(typename std::enable_if_t<ADD_SIZE, uint16_t>)::pushBlocking(HeadType* newData, SIZE_TYPE size, size_t* handleOut) {
+  RB_PROTO(template<bool AS> typename std::enable_if_t<AS, uint16_t>)::pushBlocking(HeadType* newData, SIZE_TYPE size, size_t* handleOut) {
     while(dataSize + sizeof(HeadWithSizeType) > freeSpace());//TODO yield?
     if (handleOut) *handleOut = tail;
     writeRaw(tail, dataSize, sizeof(SIZE_TYPE));
@@ -189,7 +187,7 @@ namespace WITE {
     return RB_SUCCESS;
   }
 
-  RB_PROTO(typename std::enable_if_t<!ADD_SIZE, uint16_t>)::push(HeadType* newData, size_t* handleOut) {
+  RB_PROTO(template<bool AS> typename std::enable_if_t<!AS, uint16_t>)::push(HeadType* newData, size_t* handleOut) {
     SIZE_TYPE dataSize = sizeof(HeadType) + newData->*sizeField;
     if (dataSize + sizeof(HeadType) > freeSpace()) return RB_BUFFER_OVERFLOW;
     if (handleOut) *handleOut = tail;
@@ -199,7 +197,7 @@ namespace WITE {
     return RB_SUCCESS;
   }
 
-  RB_PROTO(typename std::enable_if_t<!ADD_SIZE, uint16_t>)::pushBlocking(HeadType* newData, size_t* handleOut) {
+  RB_PROTO(template<bool AS> typename std::enable_if_t<!AS, uint16_t>)::pushBlocking(HeadType* newData, size_t* handleOut) {
     SIZE_TYPE dataSize = sizeof(HeadType) + newData->*sizeField;
     while(dataSize + sizeof(HeadType) > freeSpace());//TODO yield?
     if (handleOut) *handleOut = tail;
@@ -254,7 +252,7 @@ namespace WITE {
   }
 
   //NOT thread safe; ensure no threads are doing anything while this is executing; also invalidates all handles
-  RB_PROTO(typename std::enable_if_t<MOVABLE, uint16_t>)::relocate(void* newStart, SIZE_TYPE newSize) {
+  RB_PROTO(template<bool M> typename std::enable_if_t<M, uint16_t>)::relocate(void* newStart, SIZE_TYPE newSize) {
     void* newEnd, oldStart, oldEnd;
     size_t used = used(), leadingEmpty, trailingEmpty, mov;
     int64_t oldHead, oldTail, startOffset, movRemaining;
@@ -346,14 +344,14 @@ namespace WITE {
     return RB_SUCCESS;
   }
 
-  RB_PROTO(typename std::enable_if_t<RESIZABLE, uint16_t>)::swallow(uint8_t* newData, size_t dataSize, uint64_t* handleOut, size_t pad) {
+  RB_PROTO(template<bool R> typename std::enable_if_t<R, uint16_t>)::swallow(uint8_t* newData, size_t dataSize, uint64_t* handleOut, size_t pad) {
     uint16_t ret = RB_SUCCESS;
     if (used() + dataSize > size) ret = resize(used() + dataSize + pad);
     if (!ret) ret = push(newData, dataSize, handleOut);
     return ret;
   }
 
-  RB_PROTO(typename std::enable_if_t<RESIZABLE, uint16_t>)::resize(SIZE_TYPE newSize) {
+  RB_PROTO(template<bool R> typename std::enable_if_t<R, uint16_t>)::resize(SIZE_TYPE newSize) {
     return relocate(buf, newSize);//TODO streamline
   }
 

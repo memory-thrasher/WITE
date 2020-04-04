@@ -3,12 +3,13 @@
 #include "stdafx.h"
 #include "Export.h"
 #include "BackedBuffer.h"
-#include "Object.h"
+#include "GPU.h"
+#include "Queue.h"
 
 class Shader : WITE::Shader {
 public:
   typedef struct {
-    std::unique_ptr<std::shared_ptr<ShaderResource>[]> resources;
+    std::unique_ptr<std::shared_ptr<class ShaderResource>[]> resources;
     VkDescriptorSet descSet;
     bool inited;
   } Instance;
@@ -19,10 +20,13 @@ public:
   Shader(const char* filepathWildcard, struct resourceLayoutEntry*, size_t resources);
   Shader(const char** filepath, size_t files, struct resourceLayoutEntry*, size_t resources);
   ~Shader();
-  void render(VkCommandBuffer cmd, renderLayerMask layers, glm::mat4d projection, GPU* gpu, VkRenderPass rp);
+  void render(VkCommandBuffer cmd, WITE::renderLayerMask layers, glm::dmat4 projection, GPU* gpu, VkRenderPass rp);
   void ensureResources(GPU*);
-  static void renderAll(VkCommandBuffer ep, renderLayerMask layers, glm::mat4d projection, GPU* gpu, VkRenderPass rp);
+  static void renderAll(Queue::ExecutionPlan* ep, WITE::renderLayerMask layers, glm::dmat4 projection, GPU* gpu, VkRenderPass rp);
 private:
+  static constexpr VkVertexInputBindingDescription viBinding = { 0, FLOAT_BYTES, VK_VERTEX_INPUT_RATE_VERTEX };
+  static constexpr VkVertexInputAttributeDescription viAttributes[2] =
+    { { 0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0 }, { 1, 0, VK_FORMAT_R32G32B32_SFLOAT, 12 } };
   struct subshader_t {
     VkShaderModuleCreateInfo moduleInfo;//modulecreateflags, codesize, code
     const char* filepath;
@@ -51,7 +55,7 @@ private:
   size_t subshaderCount, resourcesPerInstance;
   struct resourceLayoutEntry* resourceLayout;
   std::vector<class Renderer*> renderers[MAX_RENDER_LAYERS];
-  SyncLock lock;
+  WITE::SyncLock lock;
   std::unique_ptr<Instance> makeResources(GPU*);
   std::unique_ptr<struct shaderGpuResources> makeDescriptors(GPU*);
   static std::vector<std::shared_ptr<class Shader>> allShaders;

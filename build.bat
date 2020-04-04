@@ -11,7 +11,7 @@ if "%1" equ "clean" (
 )
 cd build || goto fail
 %cmake% -G "Visual Studio 15 2017 Win64" %* .. || goto end
-%msbuild% ALL_BUILD.vcxproj /p:Platform=x64 /p:Configuration=Debug /verbosity:quiet || goto end
+%msbuild% ALL_BUILD.vcxproj /p:Platform=x64 /p:Configuration=Debug /verbosity:quiet 2>&1 >build.log || goto end
 cd Debug
 echo -n executing from
 cd

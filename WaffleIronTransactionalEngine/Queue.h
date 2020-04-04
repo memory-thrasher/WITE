@@ -1,4 +1,5 @@
 #pragma once
+
 #include "stdafx.h"
 #include "Thread.h"
 
@@ -10,13 +11,13 @@ public:
   const VkCommandBufferBeginInfo CMDBUFFER_BEGIN_INFO = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, NULL, 0, NULL};
   class ExecutionPlan {//thread-specific resource: do *not* pass between threads. Locks queue once any begin is called, until isRunning has returned false.
   public:
-    ExecutionPlan(Queue* master) : queue(master);
+    ExecutionPlan(Queue* master) : queue(master) {};
     ~ExecutionPlan();
     VkCommandBuffer beginParallel();//returns an empty commandbuffer in the recording state with no pre-dependencies
     VkCommandBuffer beginSerial();//returns an empty commandbuffer in the recording state predependent on only the most recently returned commandbuffer
     VkCommandBuffer beginReduce();//returns an empty commandbuffer in the recording state predependent on all previously returned commandbuffers.
     VkCommandBuffer getActive();
-    void getStateSemaphores(VkSemaphore* outSems, size_t* outSemLen)
+    void getStateSemaphores(VkSemaphore* outSems, size_t* outSemLen);
     void submit();//submit the plan for execution
     bool isRunning();
     void queueWaitForSemaphore(VkSemaphore sem);
@@ -38,7 +39,7 @@ public:
   };
   Queue(GPU* gpu, uint32_t family, uint32_t idx);
   ~Queue();
-  std::unique_ptr<ScopeLock> hold;
+  std::unique_ptr<WITE::ScopeLock> hold;
   ExecutionPlan* getComplexPlan();//EP is a thread-specific resource
   VkCommandBuffer makeCmd();
   VkQueue getQueue() { return queue; };
@@ -51,10 +52,10 @@ public:
 private:
   VkQueueFamilyProperties* properties;
   VkQueue queue;
-  SyncLock lock;
+  WITE::SyncLock lock;
   VkCommandPool cmdPool;//FIXME this could be moved to ExecutionPlan for better multi-threading (no more locks)
   VkCommandBufferAllocateInfo bufInfo;
-  ThreadResource<ExecutionPlan> complexPlans;
+  WITE::ThreadResource<ExecutionPlan> complexPlans;
   void makeComplexPlan(ExecutionPlan* out);
   friend class ExecutionPlan;
 };

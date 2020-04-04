@@ -2,7 +2,7 @@
 #include "Mesh.h"
 #include "Window.h"
 
-GPUResource<Mesh::VertexBuffer_t> Mesh::vertexBuffers(vertexBuffers.constructor.make(NULL, &Mesh::makeBuffersFor));
+GPUResource<Mesh::VertexBuffer[Mesh::VERTEX_BUFFERS]> Mesh::vertexBuffers(vertexBuffers.constructor_v.make(NULL, &Mesh::makeBuffersFor));
 
 Mesh::Mesh(MeshSource* source) : source(source) {}
 

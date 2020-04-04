@@ -1,16 +1,15 @@
 #pragma once
 
 #include "Export.h"
-#include "Shader.h"
 #include "Transform.h"
+#include "Renderer.h"
 
 class Object
 {
 public:
-  //typedef CallbackFactory<size_t, Object*, 
-  Object(WITE::Database::Entry start, size_t transformOffset) : start(start), activeTransform();
+  Object(WITE::Database::Entry start, size_t transformOffset) : start(start), activeTransform(start, transformOffset) {};
   ~Object();
-  Transform* getTrans();//frame batched internally by Transform
+  Transform getTrans();//frame batched internally by Transform
   void pushTrans();//updates location record in db entry
 protected:
   void* objData;//??
@@ -23,16 +22,16 @@ private:
       next = (size > dataSectionSize) ? std::make_unique(start, offsetFromStart + dataSectionSize, size - dataSectionSize) :
 	std::nullptr;
     };
-    template<std::enable_if_t<!std::is_same<T, void>>>
-    Subresource(WITE::Database::Entry start, size_t offsetFromStart) : this(start, offsetFromStart, sizeof(T));
+    template<class U = T, typename = std::enable_if_t<!std::is_same<U, void>::value>>
+    Subresource(WITE::Database::Entry start, size_t offsetFromStart) : this(start, offsetFromStart, sizeof(U)) {};
     //size_t is the size of an int that can index memory, so is assumed to be the size of a register.
-    template<std::enable_if_t<!std::is_same<T, void>>, std::enable_if_t<sizeof(T) <= sizeof(size_t)>>
-    T get() {//for primitives, otherwise use output reference
-      T ret;
+    template<class U = T, typename = std::enable_if_t<!std::is_same<U, void>::value && sizeof(U) <= sizeof(size_t)>>
+    U get() {//for primitives, otherwise use output reference
+      U ret;
       get(&ret);
       return ret;
     };
-    template<std::enable_if_t<!std::is_same<T, void>>> get(T* out) {
+    template<class U = T> std::enable_if_t<!std::is_same<U, void>::value> get(U* out) {
       get(static_cast<uint8_t*>(out));
     };
     void get(uint8_t* out) {
@@ -45,7 +44,7 @@ private:
   };
   WITE::Database::Entry start;
   class Subresource<glm::dmat4x4> activeTransform;
-  Renderer renderLayer[MAX_RENDER_LAYERS];//change only via Renderer::bind; transient
+  class Renderer renderLayer[MAX_RENDER_LAYERS];//change only via Renderer::bind; transient
   friend class Renderer;
 };
 

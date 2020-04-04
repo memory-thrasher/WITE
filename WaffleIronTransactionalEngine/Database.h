@@ -1,11 +1,14 @@
 #pragma once
 
+#include "Thread.h"
 #include "RollingBuffer.h"
 
 namespace WITE {
 
-  template<class RET, class... RArgs> class Callback_t;
-  
+  struct strcmp_t {
+    bool operator() (const std::string& a, const std::string& b) const { return a.compare(b) < 0; };
+  };
+
   class export_def Database
     {
     public:
@@ -18,8 +21,8 @@ namespace WITE {
     } typeHandles;
     private:
     constexpr static size_t const& BLOCKSIZE = 4096;
-    enum state_t : uint8_t { unallocated = 0, data, branch, trunk };//branches contain references to datas, trunks contain references to branches or other trunks
-    enum logEntryType_t : uint8_t { del = 0, update };
+    enum state_t { unallocated = 0, data, branch, trunk };//branches contain references to datas, trunks contain references to branches or other trunks
+    enum logEntryType_t { del = 0, update };
     typedef struct {
       state_t state;
       type type;//global enum-esque maintained by consumer, used by getEntriesOfType. [0,127] reserved
@@ -82,31 +85,31 @@ namespace WITE {
       volatile Entry allocRet = -1;
       volatile size_t allocSize = 0;
     } threadResource_t;
-    typedef perTypeStatic typeHandles;
+    typedef typeHandles perTypeStatic;
     typedef struct {
       Entry firstOfType, lastOfType;//linked list
     } perType;
     public:
-    Database(const char const * filenamefmt, size_t cachesize, int64_t loadidx = -1);//filenamefmt must contain %d
+    Database(const char * filenamefmt, size_t cachesize, int64_t loadidx = -1);//filenamefmt must contain %d
     Database(size_t cachesize);//temp db, no file backing, for static content like the main menu or splash
     ~Database();
     void rebase();//advance index on current template
-    void rebase(const char const *, int64_t startidx);//save
+    void rebase(const char *, int64_t startidx);//save
     template<class T> Entry allocate(type);
     void free(Entry);
     void advanceFrame();//only called by master thread between renders
     size_t getEntriesOfType(type type, Entry* out, size_t maxout);//returns number of entries
     //puts
-    void put(Entry, const uint8_t const * in, uint64_t start, uint16_t len);//out starts with the bit that is updated
-    void put(Entry, const uint8_t const * in, uint64_t* starts, uint64_t* lens, size_t count);//in starts at beginning of entry data
-    template<class T> void put(Entry, const T const * in);//everything, avoid this
-    template<class T> void put(Entry, const T const * in, T::*field);
-    template<class T> void put(Entry, const T const * in ...);
+    void put(Entry, const uint8_t * in, uint64_t start, uint16_t len);//out starts with the bit that is updated
+    void put(Entry, const uint8_t * in, uint64_t* starts, uint64_t* lens, size_t count);//in starts at beginning of entry data
+    template<class T> void put(Entry, const T * in);//everything, avoid this
+    template<class T, class U> void put(Entry, const T * in, U T::*field);
+    template<class T> void put(Entry, const T * in ...);
     //gets
     void get(Entry, uint8_t* out, uint64_t start, uint16_t len);//out starts with the bit that is fetched
     void get(Entry, uint8_t* out, uint64_t* starts, uint64_t* lens, size_t count);//out starts at beginning of entry data
     template<class T> void get(Entry, T* out);//everything, general use
-    template<class T> void get(Entry, T* out, T::*field);
+    template<class T, class U> void get(Entry, T* out, U T::*field);
     template<class T> void get(Entry, T* out ...);
     Entry getChildEntryByIdx(Entry root, size_t idx);
     //inter object communication bs
@@ -127,7 +130,7 @@ namespace WITE {
     //void getStateAtFrame(uint64_t frame, Entry, uint8_t* out, size_t len, size_t offset);//recurse starting at requested frame
     state_t getEntryState(Entry e) { return getRaw<state_t>(e, offsetof(loadedEntry, header.state)); }
     void getEntriesWithUpdate(std::vector<Entry>* out);
-    const char const * filenamefmt;
+    const char * filenamefmt;
     volatile uint64_t filenameIdx, fileIdx = 0;
     std::string active, target;
     //vv these three share one giant malloc: "primeRam", and adapt at runtime to share it.
@@ -146,7 +149,8 @@ namespace WITE {
     std::atomic_uint8_t masterThreadState;
     ThreadResource<threadResource_t> threadResources;
     //prime thread only: (all transient)
-    static const size_t MAX_BATCH_FLUSH = 32, BUFFER_SIZE = 65536;
+    constexpr static size_t MAX_BATCH_FLUSH = 32;
+    constexpr static size_t BUFFER_SIZE = 65536;
     size_t pt_starts[MAX_BATCH_FLUSH], pt_writenBytesThisFrame, pt_writenBytesLastFrame, pt_freeSpace;
     uint64_t pt_lastWriteFrame;
     FILE* pt_activeF, *pt_targetF;
@@ -156,10 +160,9 @@ namespace WITE {
       struct {
 	uint8_t padToLoglen[sizeof(logEntry) - sizeof(enqueuedLogEntry)];//pad so data lines up with log data
 	union {
-	  uint8_t raw[0];
+	  uint8_t raw[1];
 	  struct {
 	    enqueuedLogEntry header;
-	    uint8_t data[0];
 	  };
 	};
       } enqueuedLog;
@@ -192,17 +195,17 @@ namespace WITE {
     return ret;
   }
 
-  template<class T> void Database::put(Entry e, const T const * in) {//everything, avoid this
+  template<class T> void Database::put(Entry e, const T * in) {//everything, avoid this
     uint64_t size = sizeof(T), zero = 0;
     put(e, static_cast<uint8_t*>(in), &zero, &size, 1);
   }
 
-  template<class T> void Database::put(Entry e , const T const * in, T::*field) {
-    uint64_t size = sizeof(*field), offset = offsetof(T, *field);
+  template<class T, class U> void Database::put(Entry e , const T * in, U T::*field) {
+    uint64_t size = sizeof(U), offset = offsetof(T, *field);
     put(e, static_cast<uint8_t*>(in), &offset, &size, 1);
   }
 
-  template<class T> void Database::put(Entry e, const T const * in ...) {
+  template<class T> void Database::put(Entry e, const T * in ...) {
     uint64_t starts[1024], lens[1024], i;
     T::* field;
     va_list fields;
@@ -214,7 +217,7 @@ namespace WITE {
 	lens[i] = sizeof(*field);
 	field = va_arg(fields, T::*);
       }
-      put(e, reinterpret_cast<const uint8_t const *>(in), starts, lens, i);
+      put(e, reinterpret_cast<const uint8_t *>(in), starts, lens, i);
     } while (field);
     va_end(fields);
   }
@@ -223,8 +226,8 @@ namespace WITE {
     get(e, reinterpret_cast<uint8_t*>(out), 0, sizeof(T));
   }
 
-  template<class T> void Database::get(Entry e, T* out, T::*field) {
-    get(e, reinterpret_cast<uin8_t*>(out), offsetof(T, *field), sizeof(*field));
+  template<class T, class U> void Database::get(Entry e, T* out, U T::*field) {
+    get(e, reinterpret_cast<uin8_t*>(out), offsetof(T, *field), sizeof(U));
   }
 
   template<class T> void Database::get(Entry e, T* out ...) {

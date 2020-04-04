@@ -66,7 +66,7 @@ void Renderer::setPerFrameCallback(packDataCB d) {
   packPreRender = d;
 }
 
-void Renderer::render(glm::mat4d projection, GPU* gpu) {
+void Renderer::render(glm::dmat4 projection, GPU* gpu) {
   //pipeline is already selected
   Shader::Instance* buffer = buffers->get(gpu)[vertBuffer];
   auto subbuf = mesh->subbuf.get(gpu);

@@ -2,7 +2,6 @@
 
 #include "stdafx.h"
 #include "exportTypes.h"
-#include "RollingBuffer.h"
 #include "RenderLayer.h"
 
 #define ADDED_EXTENSION_COUNT 0
@@ -19,11 +18,11 @@ struct vulkan_singleton {
   VkApplicationInfo appInfo;
   VkInstanceCreateInfo createInfo;
   VkInstance instance = NULL;
-  SyncLock lock;
+  WITE::SyncLock lock;
   unsigned gpuCount;
   class GPU* gpus[MAX_GPUS];
   class RenderLayer renderLayers[MAX_RENDER_LAYERS];
-  uint32_t vramGrabSize = (6*1024*1024*1024/SIZEOF_VERTEX);//TODO dynamic; total in verts, divide by Mesh.VERTEX_BUFFERS for per-buffer size
+  uint64_t vramGrabSize = (6ull*1024*1024*1024/SIZEOF_VERTEX);//TODO dynamic; total in verts, divide by Mesh.VERTEX_BUFFERS for per-buffer size
 };
 
 extern struct vulkan_singleton vkSingleton;
@@ -31,7 +30,7 @@ extern const char** ADDED_EXTENSIONS;
 extern const char* DEVICE_EXTENSIONS[DEVICE_EXTENSIONS_LEN];
 extern const VkAllocationCallbacks *vkAlloc;
 extern size_t threadCount;
-extern Database* database;
+extern WITE::Database* database;
 extern uint8_t vertBuffer;
 
 //helpers: (different header?)

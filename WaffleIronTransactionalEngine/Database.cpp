@@ -1,5 +1,7 @@
+#include <cstdio>
 #include "stdafx.h"
 #include "Database.h"
+#include "Export.h"
 
 #define BLOCK_INCREMENT_SIZE (512*1024*1024) //512mb
 #define BLOCK_INCREMENT_COUNT (BLOCK_INCREMENT_SIZE/Database::BLOCKSIZE)
@@ -14,7 +16,7 @@
 
 namespace WITE {
 
-  Database::Database(const char const * filenamefmt, size_t cachesize, int64_t loadidx) : 
+  Database::Database(const char * filenamefmt, size_t cachesize, int64_t loadidx) : 
     filenamefmt(filenamefmt), filenameIdx(loadidx), masterThreadState(0),
     allocTabRaw(malloc(cachesize)), primeRamSize(cachesize), pt_cacheStaging(NULL) {
     //TODO audit default allocation of prime ram
@@ -22,11 +24,11 @@ namespace WITE {
     Entry i;
     _entry header;
     perType pt;
-    char buffer[constexpr glm::min(L_tmpnam, BLOCKSIZE)];
+    char buffer[glm::max<size_t>(L_tmpnam, BLOCKSIZE)];
     FILE *active;
     currentFrame = targetFrame = 0;
     if(!filenamefmt) {
-      tmpnam(buffer);//make temp file name
+      std::tmpnam(buffer);//make temp file name
     } else {
       sprintf(buffer, filenamefmt, loadidx);
     }
@@ -58,7 +60,7 @@ namespace WITE {
 	cache[i].lastUseFrame = cache[i].syncstate = cache[i].readsCachedLifetime = 0;
 	allocTab[i].cacheLocation = &cache[i];
       } else {
-	fseek(active, i * sizeof(loadedEntry), SEEK_SET);
+	fseek(active, (size_t)(i * sizeof(loadedEntry)), SEEK_SET);
 	fread(&header, sizeof(header), 1, active);
 	allocTab[i].cacheLocation = NULL;
       }
@@ -83,7 +85,7 @@ namespace WITE {
     pt_cacheStagingSize = cacheCount;
   }
 
-  Database::Database(size_t cachesize) : Database(NULL, cachesize);
+  Database::Database(size_t cachesize) : Database(NULL, cachesize) {}
 
   Database::~Database() {
     masterThreadState = 2;
@@ -103,7 +105,7 @@ namespace WITE {
     fileIdx++;
   }
 
-  void Database::rebase(const char const * name, int64_t startidx) {
+  void Database::rebase(const char * name, int64_t startidx) {
     filenameIdx = startidx - 1;
     filenamefmt = name;
     rebase();
@@ -138,20 +140,20 @@ namespace WITE {
     return count;
   }
 
-  void Database::put(Entry target, const uint8_t const * in, uint64_t start, uint16_t len) {
-    enqueuedLogEntry ele = { this->currentFrame, update, start, len, target };
+  void Database::put(Entry target, const uint8_t * in, uint64_t start, uint16_t len) {
+    enqueuedLogEntry ele = { this->currentFrame, update, len, start, target };
     uint8_t data[Database::MAXPUTSIZE];//keep these in order
     memcpy(static_cast<void*>(data), in, len);
     push(&ele);
   }
 
-  void Database::put(Entry e, const uint8_t const * inRaw, uint64_t* starts, uint64_t* lens, size_t count) {
+  void Database::put(Entry e, const uint8_t * inRaw, uint64_t* starts, uint64_t* lens, size_t count) {
     //in starts at beginning of entry data
     constexpr const uint16_t MAX_GAP = sizeof(logEntry) + 64;
     //save overhead space if flushing many closely clustered tiny pieces
     //TUNEME: how much ram is worth one fewer log transactions to flush?
-    uint64_t start, end, nextEnd, i;
-    uint16_t len;
+    uint64_t start, end, i;
+    uint64_t len;
     for (i = 0;i < count;i++) {
       start = starts[i];
       len = lens[i];
@@ -162,7 +164,7 @@ namespace WITE {
 	end = starts[i] + lens[i];
 	len = end - start;
       }
-      put(e, inRaw + start, start, len);
+      put(e, inRaw + start, start, (uint16_t)len);
     }
   }
 
@@ -225,7 +227,7 @@ namespace WITE {
     size_t frame = currentFrame - 1, tlogPoint, start, end;
     union {
       logEntry log;
-      uint8_t rawLog[0];
+      uint8_t rawLog[1];
     };
     if (cache) {
       memcpy(out, &cache->e.data[offset], size);
@@ -279,7 +281,7 @@ namespace WITE {
     return ret;
   }
 
-  Entry Database::getChildEntryByIdx(const Entry root, const size_t idx) {
+  Database::Entry Database::getChildEntryByIdx(const Entry root, const size_t idx) {
     size_t leafAbs = idx, leafRel = leafAbs % MAXBLOCKPOINTERS,
       branchAbs = leafAbs / MAXBLOCKPOINTERS, branchRel = branchAbs % MAXBLOCKPOINTERS,
       trunkAbs = branchAbs / MAXBLOCKPOINTERS;
@@ -288,8 +290,8 @@ namespace WITE {
       current = getRaw<Entry>(current, offsetof(blocklistData, subblocks[MAXBLOCKPOINTERS - 1]));
       trunkAbs--;
     }
-    current = getRaw<Entry>(current, offsetof(blocklistData, subblocks[trunkAbs ? MAXBLOCKPOINTERS - 1 : branchRel]));
-    return getRaw<Entry>(current, offsetof(blocklistData, subblocks[leafRel]));
+    current = getRaw<Entry>(current, offsetof(blocklistData, subblocks) + sizeof(Entry) * (trunkAbs ? MAXBLOCKPOINTERS - 1 : branchRel));
+    return getRaw<Entry>(current, offsetof(blocklistData, subblocks) + sizeof(Entry) * leafRel);
   }
 
   Database::Entry Database::allocate(size_t size) {//allocation is handled by master thread, submit request and wait
@@ -319,7 +321,7 @@ namespace WITE {
 
   void Database::getEntriesWithUpdate(std::vector<Entry>* out) {
     type i, t, typeCount;
-    Entry selected, last;
+    Entry selected;
     typeCount = typesWithUpdates.size();
     for(i = 0;i < typeCount;i++) {
       t = typesWithUpdates[i];
@@ -353,11 +355,9 @@ namespace WITE {
     but get() needs tlog linked based on child Entry
   */
   void Database::primeThreadEntry() {//TODO start over, use shild functions
-    size_t i, count, size, j = 0;
+    size_t i, count, j = 0;
     bool didSomething;
     ThreadResource<threadResource_t>::Tentry* trs;
-    logEntry* le;
-    cacheEntry* cache;
     if (masterThreadState.exchange(1) != 0) CRASH("Attempted to launch second master db thread.");
   do_something:
     while (masterThreadState == 1) {
@@ -388,7 +388,7 @@ namespace WITE {
 
   void Database::pt_rethinkLayout(size_t requiredNewEntries) {
     size_t i, idealFree, newRecordCount, newCacheCount, newTlogSize;
-    union { size_t j; uint8_t jRaw[0]; };
+    union { size_t j; uint8_t jRaw[1]; };
     cacheEntry *ce, *newCache;
     logEntry* le;
     pt_flushTlog();//??
@@ -415,7 +415,7 @@ namespace WITE {
 	i = ce->entry;
 	if (ce->syncstate & CACHE_SYNC_STATE_OUTBOUND_WRITE_PENDING) {
 	  ce->syncstate &= ~CACHE_SYNC_STATE_OUTBOUND_WRITE_PENDING;
-	  FILE* dst = pt_targetF && allocTab[ce.entry].lastWriteFrame >= targetFrame ? pt_targetF : pt_activeF;
+	  FILE* dst = pt_targetF && allocTab[ce->entry].lastWrittenFrame >= targetFrame ? pt_targetF : pt_activeF;
 	  fseek(dst, sizeof(loadedEntry) * i, SEEK_SET);
 	  fwrite(static_cast<void*>(&ce->e), sizeof(loadedEntry), 1, dst);
 	}
@@ -437,9 +437,9 @@ namespace WITE {
     allocationTableEntry ate;
     cacheEntry ce;
     cacheIndex ci;
-    if (pt_flushLog()) return;//not now, something happened
+    if (pt_flushTlog()) return;//not now, something happened
     if (pt_cacheStagingSize < cacheCount) {
-      pt_cacheStagingSize = cacheCount + cacheCount >> 3;//+12.5% margin
+      pt_cacheStagingSize = cacheCount + (cacheCount >> 3);//+12.5% margin
       delete pt_cacheStaging;
       pt_cacheStaging = new cacheIndex[pt_cacheStagingSize];
       return;
@@ -478,8 +478,8 @@ namespace WITE {
       ci = pt_cacheStaging[j];
       if (ce.entry != ci.ent && ce.entry != -1 && allocTab[ce.entry].cacheLocation == &cache[j]) {//cache slot occupied
 	if (ce.syncstate & CACHE_SYNC_STATE_OUTBOUND_WRITE_PENDING) {//write before overwriting
-	  FILE* dst = pt_targetF && allocTab[ce.entry].lastWriteFrame >= targetFrame ? pt_targetF : pt_activeF;
-	  fseek(dst, ce.entry * sizeof(loadedEntry), SEEK_SET);
+	  FILE* dst = pt_targetF && allocTab[ce.entry].lastWrittenFrame >= targetFrame ? pt_targetF : pt_activeF;
+	  fseek(dst, (long)(ce.entry * sizeof(loadedEntry)), SEEK_SET);
 	  fwrite(&ce.e, sizeof(loadedEntry), 1, dst);
 	}
 	allocTab[ce.entry].cacheLocation = NULL;
@@ -488,8 +488,8 @@ namespace WITE {
 	if (allocTab[ci.ent].cacheLocation == &cache[j]) continue;//already cached here
 	memcpy(static_cast<void*>(&cache[j]), static_cast<void*>(allocTab[ci.ent].cacheLocation), sizeof(cacheEntry));
       } else {//read
-	FILE* src = pt_targetF && allocTab[ci.ent].lastWriteFrame >= targetFrame ? pt_targetF : pt_activeF;
-	fseek(src, ci.ent * sizeof(loadedEntry), SEEK_SET);
+	FILE* src = pt_targetF && allocTab[ci.ent].lastWrittenFrame >= targetFrame ? pt_targetF : pt_activeF;
+	fseek(src, (long)(ci.ent * sizeof(loadedEntry)), SEEK_SET);
 	fread(&ce.e, sizeof(loadedEntry), 1, src);
 	ce.lastUseFrame = currentFrame;
 	ce.entry = ci.ent;
@@ -521,7 +521,7 @@ namespace WITE {
     }
     pt_writenBytesThisFrame += le->size;
     if(allocTab[le->start].nextWriteFrame == -1) allocTab[le->start].nextWriteFrame = currentFrame;
-    allocTab[le->start].lastWriteFrame = currentFrame;
+    allocTab[le->start].lastWrittenFrame = currentFrame;
   }
 
   Database::Entry Database::pt_allocate(size_t size) {//evergreen model
@@ -537,7 +537,7 @@ namespace WITE {
     } statePutter;
     logEntry* le = &statePutter.le;
     Entry j;
-    if (numBlocks > sizeof(entries) / sizeof(entries[0])) CRASH("NYI object size requested too big.");//TODO loop with same array
+    if (numBlocks > sizeof(entries) / sizeof(entries[0])) { LOG("NYI object size requested too big."); CRASHRET(0); }//TODO loop with same array
     for (i = j = 0;i < numBlocks;i++) {
       while (allocTab[j].allocationState) {
 	j++;
@@ -548,7 +548,7 @@ namespace WITE {
       entries[i] = j;
       if (i < numDataEntries) {
 	allocTab[j].allocationState = data;
-	*le = { currentFrame, update, sizeof(state_t), offsetof(loadedEntry, header.state), -1, j };
+	*le = { currentFrame, update, sizeof(state_t), offsetof(loadedEntry, header.state), ~0u, j };
 	PUSH_LE;
       } else if(i < numBranches + numDataEntries) {
 	allocTab[j].allocationState = branch;
@@ -556,7 +556,7 @@ namespace WITE {
 	memcpy(statePutter.data.children.subblocks, &entries[numDataEntries - orphans], subblockCount * sizeof(Entry));
 	orphans -= subblockCount;
 	statePutter.data.header = { branch, 0 };
-	*le = { currentFrame, update, sizeof(_entry) + sizeof(blocklistData::subblockCount) + subblockCount * sizeof(Entry), 0, -1, j };
+	*le = { currentFrame, update, sizeof(_entry) + sizeof(blocklistData::subblockCount) + subblockCount * sizeof(Entry), 0, ~0u, j };
 	PUSH_LE;
       } else {
 	allocTab[j].allocationState = trunk;
@@ -565,7 +565,7 @@ namespace WITE {
 	       subblockCount * sizeof(Entry));
 	unboundBranches -= subblockCount;
 	statePutter.data.header = { trunk, 0 };
-	*le = { currentFrame, update, sizeof(_entry) + sizeof(blocklistData::subblockCount) + subblockCount * sizeof(Entry), 0, -1, j };
+	*le = { currentFrame, update, sizeof(_entry) + sizeof(blocklistData::subblockCount) + subblockCount * sizeof(Entry), 0, ~0u, j };
 	PUSH_LE;
       }
     }
@@ -594,13 +594,13 @@ namespace WITE {
 	  for (targetChild = 0;targetChild < MAXBLOCKPOINTERS;targetChild++) {
 	    leaf = getRaw<Entry>(branch, offsetof(loadedEntry, children.subblocks[targetChild]));
 	    if (!leaf) break;
-	    *le = { ele.frameIdx, del, 0, 0, -1, leaf };
+	    *le = { ele.frameIdx, del, 0, 0, ~0u, leaf };
 	    PUSH_LE;
 	  }
-	  *le = { ele.frameIdx, del, 0, 0, -1, branch };
+	  *le = { ele.frameIdx, del, 0, 0, ~0u, branch };
 	  PUSH_LE;
 	}
-	*le = { ele.frameIdx, del, 0, 0, -1, trunk };
+	*le = { ele.frameIdx, del, 0, 0, ~0u, trunk };
 	PUSH_LE;
 	trunk = branch;
       }
@@ -609,10 +609,10 @@ namespace WITE {
 	for (targetChild = 0;targetChild < MAXBLOCKPOINTERS;targetChild++) {
 	  leaf = getRaw<Entry>(branch, offsetof(loadedEntry, children.subblocks[targetChild]));
 	  if (!leaf) break;
-	  *le = { ele.frameIdx, del, 0, 0, -1, leaf };
+	  *le = { ele.frameIdx, del, 0, 0, ~0u, leaf };
 	  PUSH_LE;
 	}
-	*le = { ele.frameIdx, del, 0, 0, -1, branch };
+	*le = { ele.frameIdx, del, 0, 0, ~0u, branch };
 	PUSH_LE;
       }
     } else {
@@ -636,20 +636,13 @@ namespace WITE {
 	  CAPPED = true;
 	}
 	if (branchIdx != targetBranch) {
-	  branch = getRaw<Entry>(trunk, offsetof(loadedEntry, children.subblocks[targetBranch %
-										 (CAPPED ? MAXBLOCKPOINTERS : (MAXBLOCKPOINTERS - 1))]));
+	  branch = getRaw<Entry>(trunk, offsetof(loadedEntry, children.subblocks) + sizeof(Entry) *
+				 (targetBranch % (CAPPED ? MAXBLOCKPOINTERS : (MAXBLOCKPOINTERS - 1))));
 	  branchIdx = targetBranch;
 	}
 	leaf = getRaw<Entry>(branch, offsetof(loadedEntry, children.subblocks[targetLeaf]));
 	size = std::min(ele.size + ele.offset - offset, BLOCKSIZE);
-	*le = {
-	       ele.frameIdx,
-	       update,
-	       size,
-	       offset % BLOCKSIZE,
-	       -1,
-	       leaf
-	};
+	*le = { ele.frameIdx, update, size, offset % BLOCKSIZE, ~0u, leaf };
 	offset += size;
 	read += size;
 	PUSH_LE;
@@ -673,7 +666,7 @@ namespace WITE {
       if (ce) {
 	switch (le->type) {
 	case del: memset(static_cast<void*>(&ce->e), 0, sizeof(loadedEntry)); break;
-	case update: memcpy(static_cast<void*>(&ce->e) + le->offset, static_cast<void*>(le)+sizeof(logEntry), le->size); break;
+	case update: memcpy((void*)((uint8_t*)&ce->e + le->offset), (void*)((uint8_t*)le+sizeof(logEntry)), le->size); break;
 	}
 	ce->lastUseFrame = currentFrame;
 	ce->syncstate |= CACHE_SYNC_STATE_OUTBOUND_WRITE_PENDING;
@@ -701,12 +694,12 @@ namespace WITE {
     if (minFree && tlogManager.freeSpace() >= minFree) return false;
     if (minFree) {
       while (tlogManager.freeSpace() < minFree)
-	if (!commissionTlog())
-	  CRASH;
+	if (!pt_commissionTlog())
+	  CRASHRET(false);
       return true;
     } else {
-      ret = commissionTlog();
-      while (commissionTlog());
+      ret = pt_commissionTlog();
+      while (pt_commissionTlog());
       return ret;
     }
   }
@@ -714,7 +707,7 @@ namespace WITE {
   bool Database::pt_mindSplitBase() {
     size_t modsRemaining, i, len;
     if (!pt_targetF) return false;
-    if (commissionTlog()) return true;
+    if (pt_commissionTlog()) return true;
     for (i = 0, modsRemaining = 32, len = atCount;i < len;i++)
       if (!allocTab[i].cacheLocation && allocTab[i].lastWrittenFrame < currentFrame) {
 	fread(pt_buffer.raw, sizeof(loadedEntry), 1, pt_activeF);
@@ -731,210 +724,3 @@ namespace WITE {
   }
 
 }
-
-/*
-
-  template<class T> Database::Entry Database::allocate(type type) {//evergreen model
-  constexpr size_t static const& numDataEntries = (sizeof(T) - 1) / BLOCKDATASIZE + 1,
-  numBranches = numDataEntries <= 1 ? 0 : (numDataEntries - 1) / MAXBLOCKPOINTERS + 1,
-  numTrunks = numBranches <= 1 ? 0 : (numBranches - 2) / (MAXBLOCKPOINTERS - 1) + 1,
-  numBlocks = numDataEntries + numBranches + numTrunks;
-  Entry data[numDataEntries];
-  union {
-  struct {
-  Entry branch[numBranches], trunk[numTrunks];
-  };
-  Entry lists[0];
-  };
-  allocateBatch(numDataEntries, data, single);//FIXME single is already set by allocateBatch(3), should be outer
-  allocateBatch(numBranches + numTrunks, lists, blocklist);
-  if (numBranches) {//TODO audit this when thinking (more) clearly
-  struct blocklistData b, t;
-  b.subblockCount = t.subblockCount = 0;
-  for (size_t dIdx = 0, bIdx = 0, tIdx = 0;dIdx < numDataEntries;dIdx++) {
-  b.subblocks[b.subblockCount++] = data[dIdx];
-  if (b.subblockCount == MAXBLOCKPOINTERS) {
-  putState(branch[bIdx], &b, sizeof(uint8_t) + sizeof(Entry) * b.subblockCount);
-  memset(&b, 0, sizeof(b));
-  if (numTrunks) {
-  t.subblocks[t.subblockCount++) = branches[bIdx]];
-  if (t.subblockCount == MAXBLOCKPOINTERS - (tIdx == numTrunks - 1 ? 0 : 1)) {
-  putState(trunk[tIdx], &t, sizeof(uint8_t) + sizeof(Entry) * t.subblockCount);
-  memset(&t, 0, sizeof(t));
-  tIdx++;
-  }
-  }
-  bIdx++;
-  }
-  }
-  }
-  }
-
-  void Database::batchFlushLogs(size_t maxLogs, uint64_t targetFrame = 0) {
-  static const size_t maxBatchSize = 8192, maxLogBatch = 64;
-  uint8_t buffer[maxBatchSize];
-  logEntry *e;
-  size_t starts[maxLogBatch];
-  size_t size, i;
-  ScopeWriteLock sl(backing.getLock());
-  ScopeWriteLock tsl(&tlogLock);
-  ScopeWriteLock asl(&allocatedLock);
-  while (maxLogs > 0) {
-  auto popRes = transactionLog.pop(buffer, starts, maxBatchSize, min(maxLogBatch, maxLogs));
-  if (popRes == RB_BUFFER_UNDERFLOW) break;
-  if (popRes != RB_SUCCESS) CRASH;
-  for (i = 0;i == 0 || starts[i - 1];i++) {
-  size = starts[i - 1];
-  e = reinterpret_cast<logEntry*>(buffer + (i ? starts[i - 1] : 0));
-  entityLogIdx[e->start].drop();
-  switch (e->type) {
-  case LOG_ENTRY_T_CREATE:
-  {
-  auto t = getEntryType(e->start);
-  allocated.reserve(t);
-  for (size_t i = allocated.size();i <= t;i++) allocated.emplace_back();
-  auto bucket = &allocated[t];
-  //bucket->reserve(num + allocated[type].size());
-  bucket->push_back(e->start);
-  }//do not break. Use update pathway to set _entry (header) value
-  case LOG_ENTRY_T_UPDATE:
-  backing.doWrite(sizeof(loaded_entry) * e->start + sizeof(_entry) + e->offset,
-  size - sizeof(logEntry), reinterpret_cast<uint8_t*>(e+1));
-  break;
-  case LOG_ENTRY_T_DELETE://TODO free children
-  auto t = getEntryType(e->start);
-  backing.doMemset(sizeof(loaded_entry) * e->start + sizeof(_entry), sizeof(loadedEntry));
-  freeBlocks.push(reinterpret_cast<uint8_t*>(&e->start), sizeof(e->start));
-  vectorPurge(allocated[t], e->start);
-  break;
-  }
-  }
-  maxLogs -= i;
-  }
-  }
-
-  Database::Entry Database::allocate(type type) {
-  Entry n;
-  allocateBatch(1, &n, type);
-  //Benefit: encapsulate changes to allocate pipeline, cost: 1 function overhead, 1 pointless loop
-  return n;
-  }
-
-  void Database::allocateBatch(size_t num, Entry* out, type type) {
-  allocateBatch(num, out, type, single);
-  }
-
-  void Database::allocateBatch(size_t num, Entry* out, type type, state_t innerType) {
-  size_t neededSpace = num * sizeof(loadedEntry),
-  available = freeBlocks.used() / (sizeof(Entry) + RollingBuffer::overhead);
-  if (available < neededSpace) {
-  size_t delta = neededSpace - delta, increments = (delta - 1) / BLOCK_INCREMENT_COUNT + 1,
-  dCapacity = increments * BLOCK_INCREMENT_COUNT * sizeof(loadedEntry),
-  nCapacity = backing.size() + dCapacity,
-  oldEntries = backing.size(), newEntries = increments * BLOCK_INCREMENT_COUNT;
-  backing.grow(dCapacity);
-  entityLogIdx.reserve(nCapacity / sizeof(loadedEntry));
-  for (Entry j = oldEntries;j < newEntries;j++) {
-  freeBlocks.swallow(reinterpret_cast<uint8_t*>(&j), sizeof(j));
-  entityLogIdx.emplace_back(false, true, false,
-  DEFAULT_LOGSPACE_PER_ENTRY * (sizeof(uint64_t) + RollingBuffer::overhead));
-  }
-  }
-  freeBlocks.pop(reinterpret_cast<uint8_t*>(out), NULL, num * sizeof(out[0]), num);
-  union {
-  struct {
-  logEntry l;
-  _entry header;
-  } d;
-  uint8_t raw[0];
-  };
-  d.l = { LOG_ENTRY_T_CREATE, 0, 0 };
-  d.header = { innerType, type };
-  uint64_t handle;
-  ScopeWriteLock tsl(&tlogLock);
-  for (size_t i = 0;i < num;i++) {
-  d.l.start = out[i];
-  transactionLog.swallow(raw, sizeof(d), &handle);
-  entityLogIdx[out[i]].swallow(reinterpret_cast<uint8_t*>(&handle), sizeof(handle));
-  }
-  }
-
-  void Database::free(Entry e) {
-  uint64_t handle;
-  logEntry necronom = { LOG_ENTRY_T_DELETE, e };
-  ScopeWriteLock tsl(&tlogLock);
-  transactionLog.swallow(reinterpret_cast<uint8_t*>(&necronom), sizeof(necronom), &handle);//TODO non-default pad?
-  entityLogIdx[e].swallow(reinterpret_cast<uint8_t*>(&handle), sizeof(handle));
-  }
-
-  void Database::freeBatch(size_t num, const Entry* e) {
-  ScopeWriteLock tsl(&tlogLock);
-  for (size_t i = 0;i < num; i++) free(e[i]);
-  }
-
-  void Database::getState(Entry e, uint8_t* out, size_t len, size_t offset) {
-  getStateAtFrame(headF, e, out, len, offset + sizeof(_entry));
-  }
-
-  void Database::putState(Entry e, uint8_t* in, size_t len, size_t offset) {
-  uint64_t handle;
-  union {
-  struct {
-  struct Database::logEntry l;
-  uint8_t data[BLOCKDATASIZE];
-  };
-  uint8_t raw[0];
-  };
-  l = { LOG_ENTRY_T_UPDATE, e, offset + sizeof(_entry) };
-  memcpy(data, in, len);
-  ScopeWriteLock tsl(&tlogLock);
-  transactionLog.swallow(raw, len + sizeof(l), &handle);
-  entityLogIdx[e].swallow(reinterpret_cast<uint8_t*>(&handle), sizeof(handle));
-  }
-
-  void Database::advanceFrame() {
-  headF++;
-  }
-
-  size_t Database::getEntriesOfType(type type, Entry* out, size_t maxout) {
-  ScopeReadLock sl(&allocatedLock);
-  auto bucket = &allocated[type];
-  size_t ret = min(maxout, bucket->size());
-  memcpy(out, bucket->data(), ret * sizeof(Entry));
-  return ret;
-  }
-
-  Database::type Database::getEntryType(Entry e, uint64_t frame) {
-  type ret;
-  getStateAtFrame(frame == 0 ? headF : frame, e, reinterpret_cast<uint8_t*>(&ret),
-  sizeof(type), offsetof(_entry, type));
-  }
-
-  void Database::getStateAtFrame(uint64_t frame, Entry e, uint8_t* out, size_t len, size_t offset) {
-  if (frame > headF) CRASH;
-  union {
-  uint64_t handle;
-  uint8_t handleRaw[0];
-  };
-  union {
-  struct {
-  logEntry header;
-  uint8_t data[BLOCKDATASIZE];
-  };
-  uint8_t raw[0];
-  } transaction;
-  size_t rb, size, begin, end;
-  ScopeReadLock tsl(&tlogLock);//TODO audit RollingBuffer, try to gain concurrent read/write (atomic)
-  //TODO this might stand some optomization; case: subset of Tlog encompases the entire region of interest
-  RollingBuffer* tl = &entityLogIdx[e];
-  for (uint64_t i = tl->getHandle();
-  tl->get(handleRaw, sizeof(handle), i, &rb) == RB_SUCCESS && rb == sizeof(handle); i--) {
-  transactionLog.get(transaction.raw, sizeof(transaction), handle, &rb);
-  size = rb - sizeof(transaction.header);
-  begin = max(offset, transaction.header.offset);
-  end = min(offset + len, transaction.header.offset + size);
-  if (begin < end) {
-  memcpy(out + begin - offset, transaction.data + begin - transaction.header.offset, end - begin);
-  }
-  }
-  }*/

@@ -1,12 +1,9 @@
 #include "stdafx.h"
 #include "Object.h"
 
-
-Object::Object()
-{
+Transform getTrans() {
+  Transform ret;
+  activeTransform.get(&ret);
+  return ret;
 }
 
-
-Object::~Object()
-{
-}

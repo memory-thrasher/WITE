@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include "GPU.h"
 #include "Export.h"
+#include "Queue.h"
 
 GPU::GPU(VkPhysicalDevice pdevice, size_t idx, size_t neededQueueCount, const unsigned int* neededQueues) :
   idx(idx), phys(pdevice) {

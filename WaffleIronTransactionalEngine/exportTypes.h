@@ -6,11 +6,7 @@
 #include "Database.h"
 
 namespace WITE {
-
-  struct strcmp_t {
-    bool operator() (const std::string& a, const std::string& b) const { return a.compare(b); }
-  };
-
+  
   template<class RET, class... RArgs> class export_def Callback_t {
   public:
   virtual RET call(RArgs... rargs) = 0;
@@ -75,14 +71,14 @@ namespace WITE {
   class export_def IntBox3D {
   public:
   union {
-    uint64_t comp[];
+    uint64_t comp[1];
     struct { uint64_t minx, miny, minz, maxx, maxy, maxz, centerx, centery, centerz, width, height, depth; };
-  }
+  };
   IntBox3D(uint64_t minx = 0, uint64_t maxx = 0, uint64_t miny = 0, uint64_t maxy = 0, uint64_t minz = 0, uint64_t maxz = 0) :
   minx(minx), miny(miny), minz(minz), maxx(maxx), maxy(maxy), maxz(maxz),
   centerx((maxx+minx)/2), centery((maxy + miny) / 2), centerz((maxz + minz) / 2),
-  width(maxx - minx), height(maxy - miny), depth(maxz - minz) {}
-  inline bool operator==(IntBox3D& o) { return memcmp((void*)comp, (void*)o.comp); };
+  width(maxx - minx), height(maxy - miny), depth(maxz - minz) {};
+  inline bool operator==(IntBox3D& o) { return memcmp((void*)comp, (void*)o.comp, 6 * sizeof(minx)) == 0; };
   inline bool sameSize(IntBox3D& o) { return o.maxx - o.minx == maxx - minx && o.maxy - o.miny == maxy - miny && o.maxz - o.minz == maxz - minz; };
   };
 
@@ -95,7 +91,6 @@ namespace WITE {
   static Shader* make(const char* filepathWildcard, struct shaderResourceLayoutEntry*, size_t resources);//static collection contains all
   static Shader* make(const char** filepath, size_t files, struct shaderResourceLayoutEntry*, size_t resources);//static collection contains all
   virtual ~Shader() = default;
-  virtual void ensureResources(GPU*) = 0;
   };
 
   class export_def MeshSource {//mesh source can redirect to file load or cpu procedure, but should not store any mesh data. Mesh does that, per LOD.
@@ -106,6 +101,28 @@ namespace WITE {
   virtual ~MeshSource() = default;
   };
 
+  class StaticMesh : public MeshSource {//for debug or simple things only, don't waste host ram on large ones
+  public:
+    StaticMesh(BBox3D box, void* data, uint32_t size) : box(box), data(data), size(size) {}
+    uint32_t populateMeshCPU(void* out, uint32_t maxVerts, glm::vec3* viewOrigin) {
+      if (size <= maxVerts) {
+	memcpy(out, data, size * FLOAT_BYTES);
+	return size;
+      }
+      return 0;
+    };
+    BBox3D* getBbox(BBox3D* out) { return &box; };
+    //return newOrHere(out)BBox3D(box); };
+  private:
+    BBox3D box;
+    void* data;
+    uint32_t size;
+  };
+
+  class Window;
+  typedef uint8_t renderLayerIdx;
+  typedef uint64_t renderLayerMask;
+  
   class export_def Camera{
   public:
   static Camera* make(Window*, IntBox3D);//window owns camera object
@@ -113,44 +130,27 @@ namespace WITE {
   virtual void resize(IntBox3D) = 0;
   virtual float getPixelTangent() = 0;
   virtual float approxScreenArea(BBox3D*) = 0;
-  virtual glm::vec3* getLocation() = 0;
+  virtual glm::dvec3 getLocation() = 0;
+  virtual void setLocation(glm::dvec3) = 0;
   virtual Window* getWindow() = 0;
   virtual IntBox3D getScreenRect() = 0;
   virtual void setFov(double) = 0;
   virtual double getFov() = 0;
   virtual bool appliesOnLayer(renderLayerIdx i) = 0;
-  virtual GPU* getGPU() = 0;
   };
 
   class export_def Window {
   public:
   virtual ~Window() = default;
-  virtual std::vector<Camera*> iterateCameras(size_t &num) = 0;
+  virtual Camera* iterateCameras(size_t &num) = 0;
   virtual void setSize(uint32_t width, uint32_t height) = 0;
   virtual void setBounds(IntBox3D) = 0;
   virtual void setLocation(int32_t x, int32_t y, uint32_t w, uint32_t h) = 0;
   virtual Camera* addCamera(IntBox3D) = 0;
-  virtual Camerar* getCamera(size_t idx) = 0;
+  virtual Camera* getCamera(size_t idx) = 0;
   static std::unique_ptr<Window> make(size_t display = 0);
   protected:
   static std::vector<Window*> windows;
-  };
-
-  class export_def SyncLock {
-  public:
-  virtual ~SyncLock() = default;
-  virtual void WaitForLock() = 0;
-  virtual void ReleaseLock() = 0;
-  virtual uint64_t getId() = 0;
-  virtual bool isLocked() = 0;
-  virtual void yield() = 0;
-  static std::unique_ptr<USyncLock> make();
-  };
-  class export_def ScopeLock {
-  public:
-  static std::unique_ptr<ScopeLock> make(SyncLock * lock);
-  virtual ~ScopeLock() = default;
-  virtual void yield() = 0;
   };
   
 }

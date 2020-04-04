@@ -2,7 +2,8 @@
 
 #include "stdafx.h"
 #include "Globals.h"
-#include "Queue.h"
+
+class Queue;
 
 const float qPriorities[8] = { 0.9f, 0.3f, 0.8f, 0.2f, 0.7f, 0.1f, 0.85f, 0.65f };
 
@@ -10,7 +11,7 @@ class GPU {
 public:
   GPU(VkPhysicalDevice device, size_t idx, size_t neededQueueCount = 0, const unsigned int* neededQueues = NULL);
   ~GPU();
-  std::vector<VWindow*> windows;
+  std::vector<WITE::Window*> windows;
   size_t idx;
   VkPhysicalDevice phys;
   unsigned int queueFamilyCount;
@@ -29,14 +30,15 @@ public:
 private:
 };
 
-template<class T, class D = default_delete<T>> class GPUResource {
+template<class T, class D = std::default_delete<T>> class GPUResource {
 public:
-  typedef Callback_t<std::unique_ptr<T, D>, GPU*>* constructor;
+  typedef WITE::Callback_t<std::unique_ptr<T, D>, GPU*> constructor_v;
+  typedef constructor_v* constructor;
   T* get(GPU* g) {
     if (data.capacity() < g.idx || !data[g->idx]) {
       ScopeLock lock(&allocLock);
       data.reserve(g.idx + 1);
-      data[g->idx] = initer->call(g);
+      if(!data[g->idx]) data[g->idx] = initer->call(g);
     }
     return data[g->idx].get();
   }
@@ -44,7 +46,7 @@ public:
     if (data.capacity() < g.idx || !data[g->idx]) {
       ScopeLock lock(&allocLock);
       data.reserve(g.idx + 1);
-      data[g->idx] = initer->call(g);
+      if(!data[g->idx]) data[g->idx] = initer->call(g);
     }
     return *data[idx];//??
   }
@@ -53,6 +55,6 @@ public:
 private:
   std::vector<std::unique_ptr<T, D>> data;
   constructor initer;
-  static SyncLock allocLock;
+  static WITE::SyncLock allocLock;
 };
 

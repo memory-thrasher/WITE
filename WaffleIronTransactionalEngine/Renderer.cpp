@@ -1,59 +1,61 @@
 #include "stdafx.h"
 #include "Renderer.h"
+#include "RenderLayer.h"
+#include "Object.h"
+#include "Shader.h"
+#include "Mesh.h"
 
-
-Renderer::Renderer() : obj(NULL) {}
+Renderer::Renderer() : obj() {}
 
 Renderer::~Renderer() {}
 
 //o must not be null. call unbind to disable rendering on this layer
-void Renderer::bind(Object* o, Shader* s, Mesh* m, renderLayerIdx rlIdx) {
-  ScopeLock slo(&o->lock);//each renderer belongs to exactly one object, which owns exactly MAX_RENDER_LAYER renderers. Save mutexes by using the owning object's lock.
-  Renderer* r = o->renderLayer[rlIdx];
-  Object* obj = r->obj;
-  r->obj = o;
-  if(!obj) {
+void Renderer::bind(std::shared_ptr<Object> o, std::shared_ptr<Shader> s, std::shared_ptr<Mesh> m, WITE::renderLayerIdx rlIdx) {
+  WITE::ScopeLock slo(&o->lock);//each renderer belongs to exactly one object, which owns exactly MAX_RENDER_LAYER renderers. Save mutexes by using the owning object's lock.
+  Renderer* r = &o->renderLayer[rlIdx];
+  bool didExist = bool(r->obj.lock());
+  if(!didExist) {
+    r->obj = o;
     r->layer = &vkSingleton.renderLayers[rlIdx];
-    ScopeLock sl(&r->layer->memberLock);
+    WITE::ScopeLock sl(&r->layer->memberLock);
     r->layer->members.push_back(r);
   }
-  if(!obj || m != r->mesh) {
-    if (obj) {
-      ScopeLock sl(&r->mesh->lock);
-      vectorPurge(r->mesh->owners, r);
+  if(!didExist || m != r->mesh) {
+    if (didExist) {
+      WITE::ScopeLock sl(&r->mesh->lock);
+      vectorPurge(r->mesh->owners, r);//TODO atomic linked list
     }
     r->mesh = m;
-    ScopeLock sl(&m->lock);
+    WITE::ScopeLock sl(&m->lock);
     m->owners.push_back(r);
   }
-  if(!obj || s != r->shader) {
-    if (obj) {
-      ScopeLock sl(&r->shader->lock);
+  if(!didExist || s != r->shader) {
+    if (didExist) {
+      WITE::ScopeLock sl(&r->shader->lock);
       vectorPurge(r->shader->renderers[layer->idx], r);
     }
     r->shader = s;
-    ScopeLock sl(&s->lock);
+    WITE::ScopeLock sl(&s->lock);
     s->renderers.push_back(r);
   }
 }
 
-void Renderer::unbind(Object* o, renderLayerIdx rlIdx) {
-  ScopeLock slo(&o->lock);//each renderer belongs to exactly one object, which owns exactly MAX_RENDER_LAYER renderers. Save mutexes by using the owning object's lock.
+void Renderer::unbind(std::shared_ptr<Object> o, renderLayerIdx rlIdx) {
+  WITE::ScopeLock slo(&o->lock);//each renderer belongs to exactly one object, which owns exactly MAX_RENDER_LAYER renderers. Save mutexes by using the owning object's lock.
   Renderer* r = o->renderLayer[rlIdx];
-  Object* obj = r->obj;
-  if (!obj) return;
-  if (obj != o) CRASH;
-  r->obj = NULL;
+  bool didExist = r->obj.lock();
+  if (!didExist) return;
+  r->obj = std::weak_ptr<Object>();
   {
-    ScopeLock sl(&r->layer->memberLock);
+    WITE::ScopeLock sl(&r->layer->memberLock);
     vectorPurge(r->layer->members, r);
   }
   {
-    ScopeLock sl(&r->mesh->lock);
+    WITE::ScopeLock sl(&r->mesh->lock);
     vectorPurge(r->mesh->owners, r);
   }
   {
-    ScopeLock sl(&r->shader->lock);
+    WITE::ScopeLock sl(&r->shader->lock);
     vectorPurge(r->shader->renderers[layer->idx], r);
   }
 }

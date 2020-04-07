@@ -1,47 +1,38 @@
 #pragma once
 
 #include "SyncLock.h"
+#include "exportTypes.h"
 
 namespace WITE {
 
-  template<class RET, class... RArgs> class Callback_t;
-  
   class Thread;
   //for when each thread needs its own instance of something
   template<class T> class ThreadResource {
   public:
-    typedef struct {
-      bool exists;
-      T obj;
-    } Tentry;
-    typedef Callback_t<void, T*>* Initer;
-    ThreadResource(Initer typeInit = NULL, Initer destroyer = NULL) : typeInit(typeInit), typeDestroy(destroyer) {};
+    typedef std::shared_ptr<T> Tentry;
+    typedefCB(Initer, Tentry)
+    typedefCB(Destroyer, void, Tentry);
+    template<typename U = T, std::enable_if_t<std::is_default_constructible<U>::value, int> = 0>
+    ThreadResource() : ThreadResource(Initer_F::make(&std::make_shared)) {};
+    ThreadResource(Initer typeInit, Destroyer destroyer = NULL) : typeInit(typeInit), typeDestroy(destroyer) {};
     ~ThreadResource() {
       Tentry* list;
       size_t count, i;
       if (typeDestroy) {
-	count = listAll(&list)
-	  for (i = 0;i < count;i++)
-	    if (data[i].exists)
-	      typeDestroy(&data[i].obj);
+	count = listAll(&list);
+	for (i = 0;i < count;i++)
+	  if (data[i])
+	    typeDestroy->call(data[i]);
       }
     }
-    T* get(uint32_t tid = Thread::getCurrentTid()) {
-      size_t inited, count;
+    std::shared_ptr<T> get(uint32_t tid = Thread::getCurrentTid()) {
       if (data.size() <= tid) {
 	ScopeLock contextHold(&lock);
-	inited = data.size();
-	if (inited <= tid) {
-	  count = tid + 1;
-	  data.reserve(count);//TODO pad?
-	  memset(data.data() + inited * sizeof(Tentry), 0, (count - inited) * sizeof(Tentry));
-	}
+	if (data.size() <= tid)
+	  data.resize(tid + 1);
       }
-      if (!data[tid].exists) {
-	if(typeInit) typeInit(&data[tid].obj, arg);
-	data[tid].exists = true;
-      }
-      return &data[tid].obj;
+      if (!data[tid]) data[tid] = typeInit->call();
+      return data[tid];
     }
     size_t listAll(Tentry** pntr) {
       *pntr = data.data();
@@ -51,8 +42,9 @@ namespace WITE {
       return data.size();
     }
   private:
-    Initer typeInit, typeDestroy;
-    volatile std::vector<Tentry> data;
+    Initer typeInit;
+    Destroyer typeDestroy;
+    std::vector<Tentry> data;
     class SyncLock lock;
   };
 

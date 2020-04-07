@@ -2,48 +2,66 @@
 
 #include "stdafx.h"
 #include "constants.h"
-#include "AtomicLinkedList.h"
-#include "Database.h"
 
 namespace WITE {
   
-  template<class RET, class... RArgs> class export_def Callback_t {
+  template<class RET, class... RArgs> class Callback_t {
   public:
-  virtual RET call(RArgs... rargs) = 0;
-  virtual ~Callback_t() = default;
-  template<class U, class... CArgs> static Callback_t<RET, RArgs...>* make(U* owner, CArgs... cargs, RET(U::*func)(CArgs..., RArgs...));
+    virtual RET call(RArgs... rargs) = 0;
+    virtual ~Callback_t() = default;
   };
 
-  template<class RET, class... RArgs> class export_def CallbackFactory {
+  template<class RET, class... RArgs> class CallbackFactory {
   private:
-  template<class T, class... CArgs> class Callback : public Callback_t<RET, RArgs...> {
-  private:
-    T * owner;
-    RET(T::*x)(CArgs..., RArgs...);
-    std::tuple<CArgs...> cargs;
-    RET call(RArgs... rargs) {
-      return (*owner.*(x))(std::get<CArgs>(cargs)..., rargs...);
+    template<class T, class... CArgs> class Callback : public Callback_t<RET, RArgs...> {
+    private:
+      RET(T::*x)(CArgs..., RArgs...);
+      T * owner;
+      std::tuple<CArgs...> cargs;
+      RET call(RArgs... rargs) {
+	return (*owner.*(x))(std::get<CArgs>(cargs)..., rargs...);
+      };
+    public:
+      Callback(T* t, RET(T::*x)(CArgs..., RArgs...), CArgs... pda);
+      ~Callback() {};
+    };
+    template<class... CArgs> class StaticCallback : public Callback_t<RET, RArgs...> {
+    private:
+      RET(*x)(CArgs..., RArgs...);
+      std::tuple<CArgs...> cargs;
+      RET call(RArgs... rargs) {
+	return (*x)(std::get<CArgs>(cargs)..., rargs...);
+      };
+    public:
+      StaticCallback(RET(*x)(CArgs..., RArgs...), CArgs... pda);
+      ~StaticCallback() {};
     };
   public:
-    Callback(T* t, RET(T::*x)(CArgs..., RArgs...), CArgs... pda);
-    ~Callback() {};
-  };
-  public:
-  template<class U, class... CArgs> static Callback_t<RET, RArgs...>* make(U* owner, CArgs... cargs, RET(U::*func)(CArgs..., RArgs...));
+    typedef Callback_t<RET, RArgs...>* callback_t;
+    template<class U, class... CArgs> static callback_t make(U* owner, CArgs... cargs, RET(U::*func)(CArgs..., RArgs...));
+    template<class... CArgs> static callback_t make(CArgs... cargs, RET(*func)(CArgs..., RArgs...));//for non-members or static members
   };
   template<class RET2, class... RArgs2> template<class T2, class... CArgs2>
   CallbackFactory<RET2, RArgs2...>::Callback<T2, CArgs2...>::Callback(T2* t, RET2(T2::*x)(CArgs2..., RArgs2...), CArgs2... pda) :
     x(x), owner(t), cargs(std::forward<CArgs2>(pda)...) {}
-  template<class RET, class... RArgs> template<class U, class... CArgs>
-  Callback_t<RET, RArgs...>* CallbackFactory<RET, RArgs...>::make(U* owner, CArgs... cargs, RET(U::*func)(CArgs..., RArgs...)) {
-    return new wintypename CallbackFactory<RET, RArgs...>::Callback<U, CArgs...>(owner, func, std::forward<CArgs>(cargs)...);
-  }
-  template<class RET, class... RArgs> template<class U, class... CArgs>
-  Callback_t<RET, RArgs...>* Callback_t<RET, RArgs...>::make(U* owner, CArgs... cargs, RET(U::*func)(CArgs..., RArgs...)) {
-    return CallbackFactory<RET, RArgs...>::make<U, CArgs>(owner, cargs, func);
-  }//new alias so typedefs can be used to make objects without redundant signature declaration
 
-  typedef class Callback_t<int, unsigned char*, size_t>* rawDataSource;//size_t = maxsize for write, return error code or 0
+  template<class RET2, class... RArgs2> template<class... CArgs2>
+  CallbackFactory<RET2, RArgs2...>::StaticCallback<CArgs2...>::StaticCallback(RET2(*x)(CArgs2..., RArgs2...), CArgs2... pda) :
+    x(x), cargs(std::forward<CArgs2>(pda)...) {}
+
+  template<class RET, class... RArgs> template<class U, class... CArgs> Callback_t<RET, RArgs...>*
+  CallbackFactory<RET, RArgs...>::make(U* owner, CArgs... cargs, RET(U::*func)(CArgs..., RArgs...)) {
+    return new CallbackFactory<RET, RArgs...>::Callback<U, CArgs...>(owner, func, std::forward<CArgs>(cargs)...);
+  };
+
+  template<class RET, class... RArgs> template<class... CArgs> Callback_t<RET, RArgs...>*
+  CallbackFactory<RET, RArgs...>::make(CArgs... cargs, RET(*func)(CArgs..., RArgs...)) {
+    return new CallbackFactory<RET, RArgs...>::StaticCallback<CArgs...>(func, std::forward<CArgs>(cargs)...);
+  };
+  
+#define typedefCB(name, ...) typedef WITE::CallbackFactory<__VA_ARGS__> name## _F; typedef typename name## _F::callback_t name ;
+
+  typedefCB(rawDataSource, int, unsigned char*, size_t)
 
   class export_def ShaderResource {
   public:
@@ -95,7 +113,7 @@ namespace WITE {
 
   class export_def MeshSource {//mesh source can redirect to file load or cpu procedure, but should not store any mesh data. Mesh does that, per LOD.
   public:
-  virtual uint32_t populateMeshCPU(void*, uint32_t maxVerts, glm::vec3* viewOrigin) = 0;//returns number of verts used
+  virtual uint32_t populateMeshCPU(void*, uint64_t maxVerts, const glm::dvec3* viewOrigin) = 0;//returns number of verts used
   virtual Shader* getComputeMesh(void) { return NULL; };
   virtual BBox3D* getBbox(BBox3D* out = NULL) = 0;//not transformed
   virtual ~MeshSource() = default;
@@ -104,7 +122,7 @@ namespace WITE {
   class StaticMesh : public MeshSource {//for debug or simple things only, don't waste host ram on large ones
   public:
     StaticMesh(BBox3D box, void* data, uint32_t size) : box(box), data(data), size(size) {}
-    uint32_t populateMeshCPU(void* out, uint32_t maxVerts, glm::vec3* viewOrigin) {
+    uint32_t populateMeshCPU(void* out, uint64_t maxVerts, const glm::dvec3* viewOrigin) {
       if (size <= maxVerts) {
 	memcpy(out, data, size * FLOAT_BYTES);
 	return size;
@@ -142,7 +160,7 @@ namespace WITE {
   class export_def Window {
   public:
   virtual ~Window() = default;
-  virtual Camera* iterateCameras(size_t &num) = 0;
+  virtual size_t getCameraCount() = 0;
   virtual void setSize(uint32_t width, uint32_t height) = 0;
   virtual void setBounds(IntBox3D) = 0;
   virtual void setLocation(int32_t x, int32_t y, uint32_t w, uint32_t h) = 0;

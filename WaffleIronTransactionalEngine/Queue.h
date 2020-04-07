@@ -7,9 +7,9 @@ class GPU;
 
 class Queue {
 public:
-  const VkSemaphoreCreateInfo SEMAPHORE_CREATE_INFO = { VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO, 0, 0 };
-  const VkCommandBufferBeginInfo CMDBUFFER_BEGIN_INFO = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, NULL, 0, NULL};
-  class ExecutionPlan {//thread-specific resource: do *not* pass between threads. Locks queue once any begin is called, until isRunning has returned false.
+  static constexpr VkSemaphoreCreateInfo SEMAPHORE_CREATE_INFO = { VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO, 0, 0 };
+  static constexpr VkCommandBufferBeginInfo CMDBUFFER_BEGIN_INFO = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, NULL, 0, NULL};
+  class ExecutionPlan {//thread-specific resource: do *not* pass between threads. Locks queue once any begin is called, until isRunning has returned false
   public:
     ExecutionPlan(Queue* master) : queue(master) {};
     ~ExecutionPlan();
@@ -36,11 +36,11 @@ public:
     VkFence fence;
     bool activeRender;
     size_t beginInternal();
+    std::unique_ptr<WITE::ScopeLock> hold;
   };
   Queue(GPU* gpu, uint32_t family, uint32_t idx);
   ~Queue();
-  std::unique_ptr<WITE::ScopeLock> hold;
-  ExecutionPlan* getComplexPlan();//EP is a thread-specific resource
+  std::shared_ptr<ExecutionPlan> getComplexPlan();//EP is a thread-specific resource
   VkCommandBuffer makeCmd();
   VkQueue getQueue() { return queue; };
   void destroyCmd(VkCommandBuffer);
@@ -56,7 +56,7 @@ private:
   VkCommandPool cmdPool;//FIXME this could be moved to ExecutionPlan for better multi-threading (no more locks)
   VkCommandBufferAllocateInfo bufInfo;
   WITE::ThreadResource<ExecutionPlan> complexPlans;
-  void makeComplexPlan(ExecutionPlan* out);
+  std::shared_ptr<ExecutionPlan> makeComplexPlan();
   friend class ExecutionPlan;
 };
 

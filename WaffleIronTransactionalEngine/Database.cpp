@@ -295,7 +295,7 @@ namespace WITE {
   }
 
   Database::Entry Database::allocate(size_t size) {//allocation is handled by master thread, submit request and wait
-    auto* tr = threadResources.get();
+    auto tr = threadResources.get();
     tr->allocRet = -1;
     tr->allocSize = size;
     while (tr->allocRet == -1) sleep(50);//TUNEME sleep time
@@ -357,7 +357,7 @@ namespace WITE {
   void Database::primeThreadEntry() {//TODO start over, use shild functions
     size_t i, count, j = 0;
     bool didSomething;
-    ThreadResource<threadResource_t>::Tentry* trs;
+    decltype(threadResources)::Tentry* trs;
     if (masterThreadState.exchange(1) != 0) CRASH("Attempted to launch second master db thread.");
   do_something:
     while (masterThreadState == 1) {
@@ -366,15 +366,15 @@ namespace WITE {
       didSomething = false;
       count = threadResources.listAll(&trs);
       for (i = 0;i < count;i++)
-	if (trs[i].exists && trs[i].obj.allocSize) {
-	  trs[i].obj.allocRet = pt_allocate(trs[i].obj.allocSize);
-	  trs[i].obj.allocSize = 0;
+	if (trs[i] && trs[i]->allocSize) {
+	  trs[i]->allocRet = pt_allocate(trs[i]->allocSize);
+	  trs[i]->allocSize = 0;
 	  didSomething = true;
 	}
       if (didSomething) goto do_something;
       for (i = 0;i < count;i++)
-	if (trs[i].exists && trs[i].obj.transactionalBacklog.used())
-	  didSomething |= pt_adoptTlog(&trs[i].obj.transactionalBacklog);
+	if (trs[i] && trs[i]->transactionalBacklog.used())
+	  didSomething |= pt_adoptTlog(&trs[i]->transactionalBacklog);
       if (didSomething) goto do_something;
       if (pt_commissionTlog()) goto do_something;
       if (pt_mindSplitBase()) goto do_something;

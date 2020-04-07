@@ -7,7 +7,7 @@ class Mesh
 public:
   Mesh(std::shared_ptr<WITE::MeshSource> source);
   ~Mesh();
-  virtual uint32_t put(void*, uint32_t offset, uint32_t maxSize, GPU*) = 0;
+  virtual uint32_t put(void*, uint64_t offset, uint64_t maxSize, GPU*) = 0;
   static void proceduralMeshLoop(std::atomic_uint8_t* semaphore);
 private:
   static constexpr size_t VERTEX_BUFFERS = 2;
@@ -19,12 +19,14 @@ private:
     size_t len;
     ~VertexBuffer();
   } VertexBuffer;
-  static std::unique_ptr<VertexBuffer[VERTEX_BUFFERS]> makeBuffersFor(GPU*);
-  static GPUResource<VertexBuffer[VERTEX_BUFFERS]> vertexBuffers;
+  typedef GPUResource<Mesh::VertexBuffer[]> buffers_t;
+  static std::unique_ptr<VertexBuffer[]> makeBuffersFor(GPU*);
+  static GPUResource<VertexBuffer[]> vertexBuffers;
   static WITE::SyncLock allmeshes_lock;
   static AtomicLinkedList<Mesh> allMeshes;
   std::shared_ptr<WITE::MeshSource> source;
-  GPUResource<subbuf_t[VERTEX_BUFFERS]> subbuf;
+  GPUResource<subbuf_t[]> subbuf;
+  std::unique_ptr<subbuf_t[]> makeSubbuf(GPU*);
   AtomicLinkedList<Mesh> allMeshes_node;
   AtomicLinkedList<Renderer> owners;
   friend class Renderer;

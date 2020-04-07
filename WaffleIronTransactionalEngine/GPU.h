@@ -32,8 +32,7 @@ private:
 
 template<class T, class D = std::default_delete<T>> class GPUResource {
 public:
-  typedef WITE::Callback_t<std::unique_ptr<T, D>, GPU*> constructor_v;
-  typedef constructor_v* constructor;
+  typedefCB(constructor, std::unique_ptr<T, D>, GPU*)
   T* get(GPU* g) {
     if (data.capacity() < g.idx || !data[g->idx]) {
       ScopeLock lock(&allocLock);

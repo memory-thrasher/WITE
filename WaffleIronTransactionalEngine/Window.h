@@ -15,6 +15,7 @@ public:
   void setLocation(int32_t x, int32_t y, uint32_t w, uint32_t h);
   Camera* addCamera(WITE::IntBox3D);
   Camera* getCamera(size_t idx);
+  size_t getCameraCount();
 private:
   //static std::vector<Window*> windows;//already in super
   SDL_Window * sdlWindow;

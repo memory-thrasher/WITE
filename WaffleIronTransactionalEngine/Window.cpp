@@ -193,3 +193,7 @@ Camera* addCamera(IntBox3D box) {
 Camera* getCamera(size_t idx) {
   return cameras[idx];
 }
+
+size_t getCameraCount() {
+  return cameras.size();
+}

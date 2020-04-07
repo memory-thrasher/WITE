@@ -5,6 +5,7 @@
 template<class T> class AtomicLinkedList {
 public:
   AtomicLinkedList(std::weak_ptr<T> data);
+  AtomicLinkedList() : this(std::weak_ptr<T>()) {};
   ~AtomicLinkedList();
   inline std::shared_ptr<AtomicLinkedList<T>> nextLink();//for iterator
   inline void append(AtomicLinkedList<T>*);

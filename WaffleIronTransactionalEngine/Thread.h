@@ -11,6 +11,7 @@ namespace WITE {
   public:
     typedef std::shared_ptr<T> Tentry;
     typedefCB(Initer, Tentry)
+    //typedef WITE::CallbackFactory<__VA_ARGS__> Initer_F; typedef typename Initer_F::callback_t Initer ;
     typedefCB(Destroyer, void, Tentry);
     template<typename U = T, std::enable_if_t<std::is_default_constructible<U>::value, int> = 0>
     ThreadResource() : ThreadResource(Initer_F::make(&std::make_shared)) {};
@@ -60,10 +61,11 @@ namespace WITE {
     ~Thread();
   private:
     static std::atomic_uint32_t seed;
-    static ThreadResource<Thread*> threads;
+    static ThreadResource<Thread> threads;
     threadEntry_t entry;
     uint32_t tid;
     Thread(threadEntry_t entry, uint32_t id);
+    Thread();//dumby for allocation
   };
 
 }

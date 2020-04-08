@@ -15,16 +15,17 @@ namespace WITE {
     typedef std::atomic_uint64_t mutex_t;
     static mutex_t seed;
     uint64_t id, holds;
-    mutex_t holder, queueSeed, queueCurrent;
+    uint32_t holder;
+    mutex_t queueSeed, queueCurrent;
   };
 
   class ScopeLock {
   public:
     inline void yield();
-    ScopeLock(const SyncLock * lock);
+    ScopeLock(SyncLock * lock);
     ~ScopeLock();
   private:
-    const SyncLock *lock;
+    SyncLock *lock;
   };
 
 }

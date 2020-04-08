@@ -17,6 +17,7 @@ private:
   typedef struct VertexBuffer {
     BackedBuffer verts;
     size_t len;
+    VertexBuffer(GPU*);
     ~VertexBuffer();
   } VertexBuffer;
   typedef GPUResource<Mesh::VertexBuffer[]> buffers_t;

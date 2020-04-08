@@ -11,11 +11,13 @@ Mesh::Mesh(std::shared_ptr<WITE::MeshSource> source) :
 Mesh::~Mesh() {}
 
 std::unique_ptr<Mesh::VertexBuffer[]> Mesh::makeBuffersFor(GPU* gpu) {
-  auto ret = std::make_unique<VertexBuffer[]>(VERTEX_BUFFERS);
+  VertexBuffer* ret = reinterpret_cast<VertexBuffer*>(malloc(sizeof(VertexBuffer)*VERTEX_BUFFERS));
   for(size_t i = 0;i < VERTEX_BUFFERS;i++)
-    new(&ret[i].verts)BackedBuffer(gpu, vkSingleton.vramGrabSize/VERTEX_BUFFERS, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
-  return ret;
+    new(&ret[i])VertexBuffer(gpu);
+  return std::unique_ptr<VertexBuffer[]>(ret);
 }
+
+Mesh::VertexBuffer::VertexBuffer(GPU* gpu) : verts(gpu, vkSingleton.vramGrabSize/VERTEX_BUFFERS, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT) {};
 
 std::unique_ptr<Mesh::subbuf_t[]> Mesh::makeSubbuf(GPU* g) {
   return std::make_unique<subbuf_t[]>(Mesh::VERTEX_BUFFERS);
@@ -31,7 +33,9 @@ uint32_t Mesh::put(void* out, uint64_t offset, uint64_t maxSize, GPU* gpu) {
   for (auto window = gpu->windows.begin();window != end;window++) {
     for (camCount = (*window)->getCameraCount(), cam = (*window)->getCamera(camIdx = 0);camIdx < camCount;cam = (*window)->getCamera(++camIdx)) {
       //TODO cull if camera does not render this layer
-      for (auto obj = owners.nextLink();obj.get() != &owners;obj = obj->nextLink()) {
+    startovermesh:
+      for (auto obj = owners.nextLink();obj != &owners;obj = obj->nextLink()) {
+	if(!obj->linked()) goto startovermesh;
 	//camera tangent and distance comparison vs best
 	object = obj->getRef()->getObj();
 	relativeResolution = cam->approxScreenArea(object->getTrans().transform(source->getBbox(&tempBox1), &tempBox2));
@@ -52,7 +56,7 @@ uint32_t Mesh::put(void* out, uint64_t offset, uint64_t maxSize, GPU* gpu) {
 }
 
 void Mesh::proceduralMeshLoop(std::atomic_uint8_t* semaphore) {
-  std::shared_ptr<AtomicLinkedList<Mesh>> next;
+  AtomicLinkedList<Mesh>* next;
   std::shared_ptr<Mesh> mesh;
   size_t i = 0, gpuIdx;
   uint32_t tempOffset;
@@ -62,7 +66,7 @@ void Mesh::proceduralMeshLoop(std::atomic_uint8_t* semaphore) {
       map = vertexBuffers[gpuIdx][i].verts.map();
       vertexBuffers[gpuIdx][i].len = 0;
       next = allMeshes.nextLink();
-      while (next.get() != &allMeshes) {
+      while (next != &allMeshes) {
 	mesh = next->getRef();
 	if (!mesh) continue;
 	tempOffset = vertexBuffers[gpuIdx][i].len;

@@ -30,7 +30,7 @@ private:
   Queue* presentQ;
   WITE::IntBox3D screenbox;
   WITE::Window* window;
-  Transform renderTransform, worldTransform;
+  WITE::Transform renderTransform, worldTransform;
   void updateMaths();
   typedef struct {
     static constexpr VkFormat DEPTH_FORMAT = VK_FORMAT_D16_UNORM, COLOR_FORMAT = VK_FORMAT_B8G8R8A8_UNORM;

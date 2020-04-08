@@ -9,13 +9,13 @@ class Mesh;
 
 class Renderer {
 public:
-  typedef WITE::Callback_t<void, Renderer*, std::shared_ptr<class ShaderResource>*, GPU*>* packDataCB;//size = count(resources)
+  typedefCB(packDataCB, void, Renderer*, std::shared_ptr<class WITE::ShaderResource>*, GPU*)//array of shared pointers, one per descriptor
   static void bind(std::shared_ptr<Object> o, std::shared_ptr<Shader> s, std::shared_ptr<Mesh> m, WITE::renderLayerIdx rlIdx);
   static void unbind(std::shared_ptr<Object>, WITE::renderLayerIdx);
   Renderer();
   ~Renderer();
   //pipeline must be bound first, this should only be called by Shader::render
-  void render(glm::dmat4 projection, GPU* gpu);
+  void render(VkCommandBuffer cmd, glm::dmat4 projection, GPU* gpu);
   bool exists() { return bool(obj.lock()); };
   void setOnceCallback(packDataCB);
   void setPerFrameCallback(packDataCB);
@@ -30,6 +30,7 @@ private:
   std::shared_ptr<Mesh> mesh;
   std::weak_ptr<Object> obj;
   std::unique_ptr<GPUResource<Shader::Instance>> buffers;
+  AtomicLinkedList<Renderer> mesh_owners_node;
   packDataCB packPreRender, packInitial;
 };
 

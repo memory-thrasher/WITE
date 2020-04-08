@@ -106,8 +106,8 @@ namespace WITE {
     size_t type, stage, perInstance;
     void* moreData;
   };
-  static Shader* make(const char* filepathWildcard, struct shaderResourceLayoutEntry*, size_t resources);//static collection contains all
-  static Shader* make(const char** filepath, size_t files, struct shaderResourceLayoutEntry*, size_t resources);//static collection contains all
+  static Shader* make(const char* filepathWildcard, struct WITE::Shader::resourceLayoutEntry*, size_t resources);//static collection contains all
+  static Shader* make(const char** filepath, size_t files, struct WITE::Shader::resourceLayoutEntry*, size_t resources);
   virtual ~Shader() = default;
   };
 

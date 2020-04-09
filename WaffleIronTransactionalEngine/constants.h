@@ -53,7 +53,6 @@ const char* LAYERS[] = {};
 #define export_dec
 #define export_def __declspec(dllexport)
 #define wintypename typename
-typedef HANDLE FileHandle;
 #else
 //TODO
 #define wintypename

@@ -2,6 +2,7 @@
 
 #include "stdafx.h"
 #include "constants.h"
+#include "WMath.h"
 
 namespace WITE {
   
@@ -73,33 +74,6 @@ namespace WITE {
   virtual ~ShaderResource() = default;
   };
 
-  class export_def BBox3D {
-  public:
-  union {
-    struct { float minx, miny, minz, maxx, maxy, maxz, centerx, centery, centerz; };
-    struct { glm::vec3 min, max, center; };//sizeof glm::vec3 is not clear, may contain functions. TODO test this.
-  };
-  BBox3D(float minx = 0, float maxx = 0, float miny = 0, float maxy = 0, float minz = 0, float maxz = 0) :
-  BBox3D(glm::vec3(minx, miny, minz), glm::vec3(maxx, maxy, maxz)) {}
-  BBox3D(glm::vec3 min, glm::vec3 max) : min(min), max(max), center((min + max) * 0.5f) {}
-  inline float width2D() { return maxx - minx; };
-  inline float height2D() { return maxy - miny; };
-  };
-
-  class export_def IntBox3D {
-  public:
-  union {
-    uint64_t comp[1];
-    struct { uint64_t minx, miny, minz, maxx, maxy, maxz, centerx, centery, centerz, width, height, depth; };
-  };
-  IntBox3D(uint64_t minx = 0, uint64_t maxx = 0, uint64_t miny = 0, uint64_t maxy = 0, uint64_t minz = 0, uint64_t maxz = 0) :
-  minx(minx), miny(miny), minz(minz), maxx(maxx), maxy(maxy), maxz(maxz),
-  centerx((maxx+minx)/2), centery((maxy + miny) / 2), centerz((maxz + minz) / 2),
-  width(maxx - minx), height(maxy - miny), depth(maxz - minz) {};
-  inline bool operator==(IntBox3D& o) { return memcmp((void*)comp, (void*)o.comp, 6 * sizeof(minx)) == 0; };
-  inline bool sameSize(IntBox3D& o) { return o.maxx - o.minx == maxx - minx && o.maxy - o.miny == maxy - miny && o.maxz - o.minz == maxz - minz; };
-  };
-
   class export_def Shader {
   public:
   struct resourceLayoutEntry {
@@ -143,6 +117,7 @@ namespace WITE {
   
   class export_def Camera{
   public:
+  Camera(const Camera&) = delete;
   static Camera* make(Window*, IntBox3D);//window owns camera object
   virtual ~Camera() = default;
   virtual void resize(IntBox3D) = 0;
@@ -155,10 +130,13 @@ namespace WITE {
   virtual void setFov(double) = 0;
   virtual double getFov() = 0;
   virtual bool appliesOnLayer(renderLayerIdx i) = 0;
+  protected:
+  Camera() = default;
   };
 
   class export_def Window {
   public:
+  Window(const Window&) = delete;//no copy
   virtual ~Window() = default;
   virtual size_t getCameraCount() = 0;
   virtual void setSize(uint32_t width, uint32_t height) = 0;
@@ -167,8 +145,10 @@ namespace WITE {
   virtual Camera* addCamera(IntBox3D) = 0;
   virtual Camera* getCamera(size_t idx) = 0;
   static std::unique_ptr<Window> make(size_t display = 0);
+  static std::vector<Window*>::iterator Window::iterateWindows(size_t &num);
   protected:
   static std::vector<Window*> windows;
+  Window() = default;
   };
   
 }

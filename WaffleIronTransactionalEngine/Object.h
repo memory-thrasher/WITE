@@ -9,7 +9,7 @@ class Object
 public:
   Object(WITE::Database::Entry start, size_t transformOffset) : start(start), activeTransform(start, transformOffset) {};
   ~Object();
-  Transform getTrans();//frame batched internally by Transform
+  WITE::Transform& getTrans();//frame batched internally by Transform
   void pushTrans();//updates location record in db entry
 protected:
   void* objData;//??

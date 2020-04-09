@@ -1,9 +1,12 @@
 #include "stdafx.h"
 #include "Window.h"
 #include "Export.h"
+#include "GPU.h"
+#include "WMath.h"
 
-Window::Window(size_t display) : displayIdx(display) {
-  ScopeLock sl(&vkSingleton.lock, 30000);
+Window::Window(size_t display) : WITE::Window() {
+  displayIdx = display;
+  WITE::ScopeLock sl(&vkSingleton.lock);
   const char* extensions[MAX_EXTENSIONS];
   unsigned extensionCount;
   size_t i, j;
@@ -101,42 +104,36 @@ Window::~Window() {
 }
 
 uint32_t Window::render() {
-  const VkClearColorValue SWAP_CLEAR = {{1, 0.27f, 0.7f}, {}};
+  const VkClearColorValue SWAP_CLEAR = {{1, 0.27f, 0.7f}};
   VkImageMemoryBarrier discardAndReceive, transformToPresentable;
-  size_t i, len;
-  auto cam = iterateCameras(&len);
+  size_t i, len = cameras.size();
   auto ep = graphicsQ->getComplexPlan();
   uint32_t swapIdx;
   VkCommandBuffer cmd;
   vkAcquireNextImageKHR(graphicsQ->gpu->device, swapchain.chain, 10000000000ul, swapchain.semaphore, NULL, &swapIdx);//TODO determine if this blocks
   ep->queueWaitForSemaphore(swapchain.semaphore);
-  for(i = 0;i < len;i++, ++cam)
-    (*cam)->render(ep);
+  for(i = 0;i < len;i++)
+    cameras[i]->render(ep);
   cmd = ep->beginReduce();
   discardAndReceive = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER, NULL, 0, VK_ACCESS_TRANSFER_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED,
-			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED, swapchain.images[swapIdx].image,
+			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED, swapchain.images[swapIdx].getImage(),
 			{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 } };
-  vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE, 0, 0, NULL, 0, NULL, 1, &discardAndReceive);
+  vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, 0, NULL, 0, NULL, 1, &discardAndReceive);
 #ifdef DEBUG
   const VkImageSubresourceLayers subres0 = { VK_IMAGE_ASPECT_COLOR_BIT, 1, 0, 1 };
   vkCmdClearColorImage(cmd, swapchain.images[swapIdx].image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &SWAP_CLEAR, 1, &subres0);
 #endif
-  for(i = 0;i < len;i++, ++cam)
-    (*cam)->blitTo(cmd, swapchain.images[swapIdx].image);
+  for(i = 0;i < len;i++)
+    cameras[i]->blitTo(cmd, swapchain.images[swapIdx].getImage());
   transformToPresentable = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER, NULL, VK_ACCESS_TRANSFER_WRITE_BIT, 0, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-			     VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, graphicsQ->family, presentQ->family, swapchain.images[swapIdx].image,
+			     VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, graphicsQ->family, presentQ->family, swapchain.images[swapIdx].getImage(),
 			     { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 } };
-  vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE, 0, 0, NULL, 0, NULL, 1, &discardAndReceive);
+  vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, NULL, 0, NULL, 1, &discardAndReceive);
   return swapIdx;
 }
 
 bool Window::isRenderDone() {
-  return !graphicsQ->getComplexPlan().isRunning();
-}
-
-Camera* Window::iterateCameras(size_t &num) {
-  num = cameras.size();
-  return cameras.data();
+  return !graphicsQ->getComplexPlan()->isRunning();
 }
 
 std::vector<WITE::Window*>::iterator WITE::Window::iterateWindows(size_t &num) {
@@ -144,56 +141,60 @@ std::vector<WITE::Window*>::iterator WITE::Window::iterateWindows(size_t &num) {
   return windows.begin();
 }
 
-bool WITE::Window::areRendersDone() {
-  auto end = windows.end();
-  for(auto w = windows.start();w != end;++w)
-    if(!(*w)->isRenderDone()) return false;
+static std::vector<uint32_t> scIdxPerGpu[MAX_GPUS];//ONLY use from master thread
+
+bool Window::areRendersDone() {
+  for(size_t i = 0;i < vkSingleton.gpuCount;i++)
+    if(scIdxPerGpu[i].size() && vkSingleton.gpus[i]->graphicsQ->getComplexPlan()->isRunning()) return false;
   return true;
 }
 
-void WITE::Window::renderAll() {
-  static std::vector<VkSwapchain> swapchainsPerGpu[MAX_GPUS];
-  static std::vector<uint32_t> scIdxPerGpu[MAX_GPUS];
+void Window::renderAll() {
+  static std::vector<VkSwapchainKHR> swapchainsPerGpu[MAX_GPUS];
   auto end = windows.end();
   VkSemaphore renderDoneSem;
-  size_t doneSems = 1, i, gpu, count;
+  size_t doneSems = 1, i, count;
   GPU* gpu;
-  Queue::ExecutionPlan* ep;
-  for(i = 0;i < vulkan_singleton.gpuCount;i++) {
+  std::shared_ptr<Queue::ExecutionPlan> ep;
+  Window* w;
+  for(i = 0;i < vkSingleton.gpuCount;i++) {
     swapchainsPerGpu[i].clear();
     scIdxPerGpu[i].clear();
   }
-  for(auto w = windows.start();w != end;++w) {
-    i = (*w)->presentQ->gpu->idx;
-    swapchainsPerGpu[i].push_back((*w)->swapchain.chain);
-    scIdxPerGpu[i].push_back((*w)->render());//reder reduces its execution plan, so only one semaphore need be waited per gpu
+  for(auto ww = windows.begin();ww != end;++ww) {
+    w = (Window*)(*ww);
+    i = w->presentQ->gpu->idx;
+    swapchainsPerGpu[i].push_back(w->swapchain.chain);
+    scIdxPerGpu[i].push_back(w->render());//reder reduces its execution plan, so only one semaphore need be waited per gpu
   }
-  for(i = 0;i < vulkan_singleton.gpuCount;i++) {
-    count = scIdxPerGpu.size();
+  for(i = 0;i < vkSingleton.gpuCount;i++) {
+    count = scIdxPerGpu[i].size();
     if(!count) continue;
-    gpu = vulkan_singleton.gpus[i];
-    ep = gpu->graphicsQ;
-    eq->getStateSemaphores(&renderDoneSem, &doneSems);
+    gpu = vkSingleton.gpus[i];
+    ep = gpu->graphicsQ->getComplexPlan();
+    ep->getStateSemaphores(&renderDoneSem, &doneSems);
     if(doneSems != 1) CRASH;
     ep->submit();
-    VkPresentInfoKHR pi = { VK_STRUCTURE_TYPE_PRESENT_INFO_KHR, NULL, doneSems, &renderDoneSem,
-			    count, swapchainsPerGpu[i].data(), scIdxPerGpu[i].data(), NULL };
+    VkPresentInfoKHR pi = { VK_STRUCTURE_TYPE_PRESENT_INFO_KHR, NULL, (uint32_t)doneSems, &renderDoneSem,
+			    (uint32_t)count, swapchainsPerGpu[i].data(), scIdxPerGpu[i].data(), NULL };
     CRASHIFFAIL(vkQueuePresentKHR(gpu->presentQ->queue, &pi));
   }
 }
 
-std::unique_ptr<WITE::Window> Window::make(size_t display) {
-  return std::make_unique<Window>(display);
+std::unique_ptr<WITE::Window> WITE::Window::make(size_t display) {
+  return std::make_unique<::Window>(display);
 }
 
-Camera* addCamera(IntBox3D box) {
-  cameras.emplace_back(box, presentQ);
+Camera* Window::addCamera(WITE::IntBox3D box) {
+  Camera* ret = new Camera(box, presentQ);
+  cameras.emplace_back(ret);
+  return ret;
 }
 
-Camera* getCamera(size_t idx) {
-  return cameras[idx];
+Camera* Window::getCamera(size_t idx) {
+  return cameras[idx].get();
 }
 
-size_t getCameraCount() {
+size_t Window::getCameraCount() {
   return cameras.size();
 }

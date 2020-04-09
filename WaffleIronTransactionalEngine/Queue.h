@@ -49,9 +49,10 @@ public:
   bool supports(VkSurfaceKHR*);
   GPU* gpu;
   unsigned int family;
+  VkQueue queue;//TODO private and getters for these
 private:
+  Queue(Queue& other) = delete;//no copy construct
   VkQueueFamilyProperties* properties;
-  VkQueue queue;
   WITE::SyncLock lock;
   VkCommandPool cmdPool;//FIXME this could be moved to ExecutionPlan for better multi-threading (no more locks)
   VkCommandBufferAllocateInfo bufInfo;

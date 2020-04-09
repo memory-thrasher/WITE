@@ -51,7 +51,7 @@ namespace WITE {
 
   class Thread {
   public:
-    typedef Callback_t<void>* threadEntry_t;
+    typedefCB(threadEntry_t, void);
     static uint32_t getCurrentTid();//returns engine thread index, NOT system tid. Can be used to index.
     static void init();
     static void initThisThread(threadEntry_t entry = NULL);

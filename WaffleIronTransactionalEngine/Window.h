@@ -9,13 +9,14 @@ public:
   Window(size_t display = 0);
   ~Window();
   bool isRenderDone();
-  Camera* iterateCameras(size_t &num);
   void setSize(uint32_t width, uint32_t height);
   void setBounds(WITE::IntBox3D bounds);
   void setLocation(int32_t x, int32_t y, uint32_t w, uint32_t h);
   Camera* addCamera(WITE::IntBox3D);
   Camera* getCamera(size_t idx);
   size_t getCameraCount();
+  static bool areRendersDone();
+  static void renderAll();
 private:
   //static std::vector<Window*> windows;//already in super
   SDL_Window * sdlWindow;
@@ -35,7 +36,7 @@ private:
   } swapchain;
   BackedImage* depthBuffer;//TODO move to cam (and also store formate)
   VkRenderPass renderPass;//TODO move to shader
-  std::vector<Camera> cameras;
+  std::vector<std::unique_ptr<Camera>> cameras;
   typedef struct {
     VkSwapchainKHR swapchain;
     uint32_t imageIdx;

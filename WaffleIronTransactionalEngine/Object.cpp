@@ -1,8 +1,8 @@
 #include "stdafx.h"
 #include "Object.h"
 
-Transform Object::getTrans() {
-  Transform ret;
+WITE::Transform& Object::getTrans() {
+  WITE::Transform ret;
   activeTransform.get(&ret);
   return ret;
 }

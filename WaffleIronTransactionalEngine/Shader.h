@@ -20,9 +20,9 @@ public:
   Shader(const char* filepathWildcard, struct WITE::Shader::resourceLayoutEntry*, size_t resources);
   Shader(const char** filepath, size_t files, struct WITE::Shader::resourceLayoutEntry*, size_t resources);
   ~Shader();
-  void render(Queue::ExecutionPlan* ep, WITE::renderLayerMask layers, glm::dmat4 projection, GPU* gpu, VkRenderPass rp);
+  void render(std::shared_ptr<Queue::ExecutionPlan> ep, WITE::renderLayerMask layers, glm::dmat4 projection, GPU* gpu, VkRenderPass rp);
   void ensureResources(GPU*);
-  static void renderAll(Queue::ExecutionPlan* ep, WITE::renderLayerMask layers, glm::dmat4 projection, GPU* gpu, VkRenderPass rp);
+  static void renderAll(std::shared_ptr<Queue::ExecutionPlan> ep, WITE::renderLayerMask layers, glm::dmat4 projection, GPU* gpu, VkRenderPass rp);
 private:
   static constexpr VkVertexInputBindingDescription viBinding = { 0, FLOAT_BYTES, VK_VERTEX_INPUT_RATE_VERTEX };
   static constexpr VkVertexInputAttributeDescription viAttributes[2] =

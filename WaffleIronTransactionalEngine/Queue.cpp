@@ -101,6 +101,7 @@ VkCommandBuffer Queue::ExecutionPlan::beginReduce() {//Note: VkSemaphore is an o
   head = i;
   headSems.clear();
   headSems.push_back(sq->completionSemaphore);
+  return allocated[i].cmd;
 }
 
 void Queue::ExecutionPlan::queueWaitForSemaphore(VkSemaphore sem) {

@@ -9,8 +9,7 @@ namespace WITE {
     bool operator() (const std::string& a, const std::string& b) const { return a.compare(b) < 0; };
   };
 
-  class export_def Database
-    {
+  class export_def Database {
     public:
     typedef uint64_t Entry;
     typedef uint16_t type;
@@ -119,6 +118,7 @@ namespace WITE {
     uint64_t sendMessageToAll(const std::string, const type receivers, void* data);
     type getEntryType(Entry e);
     static typeHandles* getHandlesOfType(type t);
+    void getEntriesWithUpdate(std::vector<Entry>* out);
     private:
     static const uint8_t zero[0];
     Database(const Database&) = delete;//no. just no.
@@ -129,7 +129,6 @@ namespace WITE {
     void getRaw(Entry e, size_t offset, size_t size, uint8_t* out);//e contains offset, out starts at beginning of returned data
     //void getStateAtFrame(uint64_t frame, Entry, uint8_t* out, size_t len, size_t offset);//recurse starting at requested frame
     state_t getEntryState(Entry e) { return getRaw<state_t>(e, offsetof(loadedEntry, header.state)); }
-    void getEntriesWithUpdate(std::vector<Entry>* out);
     const char * filenamefmt;
     volatile uint64_t filenameIdx, fileIdx = 0;
     std::string active, target;

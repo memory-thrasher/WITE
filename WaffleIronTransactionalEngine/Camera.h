@@ -19,7 +19,7 @@ public:
   inline double getFov() { return fov; };
   inline bool appliesOnLayer(WITE::renderLayerIdx i) { return layerMask & (1ull << i); };
   GPU* getGPU() { return presentQ->gpu; };
-  void render(Queue::ExecutionPlan* ep);
+  void render(std::shared_ptr<Queue::ExecutionPlan> ep);
   void blitTo(VkCommandBuffer cmd, VkImage dst);
 private:
   void recreateResources();//not thread safe, call only from main thread

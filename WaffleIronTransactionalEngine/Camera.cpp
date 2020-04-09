@@ -2,7 +2,7 @@
 #include "Camera.h"
 #include "Shader.h"
 
-Camera::Camera(WITE::IntBox3D size, Queue* present) : presentQ(present) {
+Camera::Camera(WITE::IntBox3D size, Queue* present) : WITE::Camera(), presentQ(present) {
   resize(size);
 }
 
@@ -11,7 +11,7 @@ Camera::~Camera() {}
 float Camera::approxScreenArea(WITE::BBox3D* o) {
   WITE::BBox3D scrnAlloc, *scrn;
   scrn = renderTransform.getInv()->transform(o, &scrnAlloc);
-  return (scrn->maxx-scrn->minx)*(scrn->maxy-scrn->miny);
+  return (float)((scrn->maxx-scrn->minx)*(scrn->maxy-scrn->miny));
 }
 
 glm::dvec3 Camera::getLocation() {
@@ -23,7 +23,7 @@ void Camera::setLocation(glm::dvec3 l) {
   updateMaths();
 }
 
-void Camera::render(Queue::ExecutionPlan* ep) {
+void Camera::render(std::shared_ptr<Queue::ExecutionPlan> ep) {
   VkCommandBuffer cmd = ep->beginParallel();
   VkViewport viewport = { 0, 0, (float)screenbox.width, (float)screenbox.height, 0.01f, 100 };//TODO clipping plane as setting
   VkRect2D scissors = {{(int32_t)screenbox.minx, (int32_t)screenbox.miny}, {(uint32_t)screenbox.width, (uint32_t)screenbox.height}};
@@ -95,6 +95,6 @@ void Camera::recreateResources() {
 }
 
 WITE::Camera* WITE::Camera::make(WITE::Window* w, WITE::IntBox3D box) {
-  w->addCamera(box);
+  return w->addCamera(box);
 }
 

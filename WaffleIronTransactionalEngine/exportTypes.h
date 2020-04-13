@@ -1,6 +1,14 @@
 #pragma once
 
-#include "stdafx.h"
+#include <atomic>
+#include <stdint.h>
+#include <limits>
+#include <vector>
+#include <string>
+#include <map>
+#include <type_traits>
+#include <iterator>
+#include <memory>
 #include "constants.h"
 #include "WMath.h"
 
@@ -145,7 +153,7 @@ namespace WITE {
   virtual Camera* addCamera(IntBox3D) = 0;
   virtual Camera* getCamera(size_t idx) = 0;
   static std::unique_ptr<Window> make(size_t display = 0);
-  static std::vector<Window*>::iterator Window::iterateWindows(size_t &num);
+  static std::vector<Window*>::iterator iterateWindows(size_t &num);
   protected:
   static std::vector<Window*> windows;
   Window() = default;

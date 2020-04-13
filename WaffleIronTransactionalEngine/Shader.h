@@ -17,7 +17,7 @@ public:
     uint32_t width, height;
     uint64_t format;
   };
-  Shader(const char* filepathWildcard, struct WITE::Shader::resourceLayoutEntry*, size_t resources);
+  //Shader(const char* filepathWildcard, struct WITE::Shader::resourceLayoutEntry*, size_t resources);
   Shader(const char** filepath, size_t files, struct WITE::Shader::resourceLayoutEntry*, size_t resources);
   ~Shader();
   void render(std::shared_ptr<Queue::ExecutionPlan> ep, WITE::renderLayerMask layers, glm::dmat4 projection, GPU* gpu, VkRenderPass rp);
@@ -47,9 +47,10 @@ private:
     VkDescriptorPoolCreateInfo descPoolInfo;
     VkDescriptorSetAllocateInfo descAllocInfo;//qazi-template, set descPool before use
     VkDescriptorPool growDescPool(GPU*);
-    std::unique_ptr<std::map<VkRenderPass, std::shared_ptr<struct rpResources>>> rpRes;
+    //std::unique_ptr<std::map<VkRenderPass, std::shared_ptr<struct rpResources>>> rpRes;
+    std::vector<struct rpResources> perRP;
   };
-  void makePipeForRP(VkRenderPass rp, GPU* gpu, VkPipeline* out);
+  void makePipeForRP(VkRenderPass rp, size_t passIdx, GPU* gpu, VkPipeline* out);
   GPUResource<shaderGpuResources> resources;
   struct subshader_t* subshaders;
   size_t subshaderCount, resourcesPerInstance;

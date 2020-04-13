@@ -26,7 +26,8 @@ namespace WITE {
 	    typeDestroy->call(data[i]);
       }
     }
-    std::shared_ptr<T> get(uint32_t tid = Thread::getCurrentTid()) {
+    std::shared_ptr<T> get();
+    std::shared_ptr<T> get(uint32_t tid) {
       if (data.size() <= tid) {
 	ScopeLock contextHold(&lock);
 	if (data.size() <= tid)
@@ -60,7 +61,7 @@ namespace WITE {
     uint32_t getTid();
     ~Thread();
   private:
-    static std::atomic_uint32_t seed;
+    static std::atomic<uint32_t> seed;
     static ThreadResource<Thread> threads;
     threadEntry_t entry;
     uint32_t tid;
@@ -68,4 +69,9 @@ namespace WITE {
     Thread();//dumby for allocation
   };
 
-}
+  template<class T> inline std::shared_ptr<T> ThreadResource<T>::get() {
+    return get(Thread::getCurrentTid());
+  };
+
+};
+

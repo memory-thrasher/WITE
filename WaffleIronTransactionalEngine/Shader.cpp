@@ -25,8 +25,8 @@ Shader::Shader(const char** paths, size_t pathc, struct WITE::Shader::resourceLa
   memcpy(resourceLayout, res, sizeof(struct resourceLayoutEntry) * resc);
 }
 
-Shader::Shader(const char* filepathwildcard, struct WITE::Shader::resourceLayoutEntry* res, size_t resources) :
-  Shader(filepathwildcard, res, resources) {}//TODO actual wildcard
+// Shader::Shader(const char* filepathwildcard, struct WITE::Shader::resourceLayoutEntry* res, size_t resources) :
+//   Shader(filepathwildcard, res, resources) {}//TODO actual wildcard
 
 Shader::~Shader() {
 }
@@ -62,7 +62,7 @@ std::unique_ptr<struct Shader::shaderGpuResources> Shader::makeDescriptors(GPU* 
   ret->growDescPool(dev);
   if(!dev->pipeCache)
     CRASHIFFAIL(vkCreatePipelineCache(dev->device, &EMPTY_CACHE, NULL, &dev->pipeCache), NULL);//FIXME this -1 in GPU.cpp
-  ret->rpRes = std::make_unique<std::map<VkRenderPass, std::shared_ptr<struct rpResources>>>();
+  // ret->rpRes = std::make_unique<std::map<VkRenderPass, std::shared_ptr<struct rpResources>>>();
   return ret;
 }
 
@@ -109,7 +109,7 @@ std::unique_ptr<Shader::Instance> Shader::makeResources(GPU* device) {
   return ret;
 }
 
-void Shader::makePipeForRP(VkRenderPass rp, GPU* gpu, VkPipeline* out) {//TODO call this
+void Shader::makePipeForRP(VkRenderPass rp, size_t passIdx, GPU* gpu, VkPipeline* out) {
   struct shaderGpuResources* resources = this->resources.get(gpu);
   static VkDynamicState dynamicStateEnables[VK_DYNAMIC_STATE_RANGE_SIZE] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
   static VkPipelineDynamicStateCreateInfo dynamicState = { VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO, NULL, 0, 2, dynamicStateEnables };
@@ -133,7 +133,8 @@ void Shader::makePipeForRP(VkRenderPass rp, GPU* gpu, VkPipeline* out) {//TODO c
   pipeInfo.stageCount = subshaderCount;
   pipeInfo.pStages = resources->stageInfos.get();
   pipeInfo.renderPass = rp;
-  CRASHIFFAIL(vkCreateGraphicsPipelines(gpu->device, gpu->pipeCache, 1, &pipeInfo, NULL, &resources->rpRes.get()->at(rp)->pipeline));//yikes
+  CRASHIFFAIL(vkCreateGraphicsPipelines(gpu->device, gpu->pipeCache, 1, &pipeInfo, NULL, // &resources->rpRes.get()->at(rp)->pipeline
+					out));
   pipeInfo.stageCount = 0;//don't leak handle to thread stack
   pipeInfo.pStages = NULL;
   pipeInfo.renderPass = NULL;
@@ -142,16 +143,20 @@ void Shader::makePipeForRP(VkRenderPass rp, GPU* gpu, VkPipeline* out) {//TODO c
 void Shader::render(std::shared_ptr<Queue::ExecutionPlan> ep, WITE::renderLayerMask layers, glm::dmat4 projection, GPU* gpu, VkRenderPass rp) {
   VkCommandBuffer cmd;
   struct shaderGpuResources* resources = this->resources.get(gpu);
-  auto rpRes = &*resources->rpRes;//map*
-  auto rprIter = rpRes->find(rp);//iterator
-  std::shared_ptr<struct rpResources> rpr;
-  if(rprIter != resources->rpRes->end()) {
-    rpr = rprIter->second;
-  } else {
-    rpr = std::make_shared<struct rpResources>();
-    makePipeForRP(rp, gpu, &rpr->pipeline);
-    rpRes->insert(std::pair<VkRenderPass, std::shared_ptr<struct rpResources>>(rp, rpr));
-  }
+  // auto rpRes = &*resources->rpRes;//map*
+  // auto rprIter = rpRes->find(rp);//iterator
+  // std::shared_ptr<struct rpResources> rpr;
+  // if(rprIter != resources->rpRes->end()) {
+  //   rpr = rprIter->second;
+  // } else {
+  //   rpr = std::make_shared<struct rpResources>();
+  //   makePipeForRP(rp, gpu, &rpr->pipeline);
+  //   rpRes->insert(std::pair<VkRenderPass, std::shared_ptr<struct rpResources>>(rp, rpr));
+  // }
+  size_t rpIdx = 0;//TODO rp index, assume one pass for now
+  while(resources->perRP.size() <= rpIdx) resources->perRP.emplace_back();
+  auto rpr = &resources->perRP[rpIdx];
+  if(!rpr->pipeline) makePipeForRP(rp, rpIdx, gpu, &rpr->pipeline);
   cmd = ep->getActive();
   vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, rpr->pipeline);
   for(WITE::renderLayerIdx rl = 0;rl < MAX_RENDER_LAYERS;rl++) {
@@ -173,7 +178,7 @@ WITE::Shader* WITE::Shader::make(const char** filepath, size_t files, struct WIT
   return new ::Shader(filepath, files, srles, resources);
 }
 
-WITE::Shader* WITE::Shader::make(const char* filepathWildcard, struct WITE::Shader::resourceLayoutEntry* srles, size_t resources) {
-  return new ::Shader(filepathWildcard, srles, resources);
-}
+// WITE::Shader* WITE::Shader::make(const char* filepathWildcard, struct WITE::Shader::resourceLayoutEntry* srles, size_t resources) {
+//   return new ::Shader(filepathWildcard, srles, resources);
+// }
 

@@ -3,8 +3,10 @@
 
 namespace WITE {
 
-  Transform::Transform(glm::dmat4 mat) : matrix(mat), inverseValid(false) {
+  Transform::Transform(glm::dmat4 mat) : matrix(mat) {
   }
+
+  Transform::Transform(const Transform& other) : Transform(other.matrix) {}
 
   Transform::~Transform() {}
 
@@ -14,7 +16,7 @@ namespace WITE {
     in->allCornerSwizzle(corners);//read all inputs before writing to out, so in = out ( = spareRet) is allowed
     batchTransformPoints(corners, 8);
     if(!out) out = &spareRet;
-    *out = BBox3D(mangle<Mangle_MinVec<glm::dvec4>>(corners, 8), mangle<Mangle_MaxVec<glm::dvec4>>(corners, 8));
+    *out = BBox3D(mangle<Mangle_MinVec<glm::dvec3>>(corners, 8), mangle<Mangle_MaxVec<glm::dvec3>>(corners, 8));
     return out;
   }
   
@@ -31,7 +33,7 @@ namespace WITE {
   }
   
   glm::dmat4 Transform::getInvMat() const {
-    return getInv()->getMat();
+    return glm::inverse(matrix);
   }
   
   glm::vec3 Transform::getLocation() const {
@@ -40,32 +42,15 @@ namespace WITE {
   
   void Transform::setLocation(glm::vec3 nl) {
     matrix[3] = glm::dvec4(nl, 1);
-    inverseValid = false;
-  }
-  
-  const Transform* Transform::getInv() const {
-    if(!inverse)
-      inverse = std::make_unique<Transform>();
-    if(!inverseValid) {
-      inverseValid = true;
-      inverse->setFromInverse(this);
-    }
-    return inverse.get();
   }
   
   void Transform::setMat(glm::dmat4* in) {
     matrix = *in;
-    inverseValid = false;
   }
 
   Transform& Transform::operator=(glm::dmat4&& o) {
     setMat(&o);
     return *this;
   };
-
-  void Transform::setFromInverse(const Transform* other) {
-    matrix = glm::inverse(matrix);
-    inverseValid = true;
-  }
 
 };

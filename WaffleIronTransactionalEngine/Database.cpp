@@ -207,7 +207,7 @@ namespace WITE {
 	offsetOfChild = *offsetOfE + nextBlockIdx * BLOCKDATASIZE;
 	getRecurse(getRaw<Entry>(e, offsetof(loadedEntry, children.subblocks[nextBlockIdx])),
 		   out, starts, lens, count, &offsetOfChild, regionIdx);
-	nextBlockIdx = std::min<size_t>(nextBlockIdx+1, (starts[*regionIdx] - *offsetOfE) / BLOCKDATASIZE);
+	nextBlockIdx = min(nextBlockIdx+1, (starts[*regionIdx] - *offsetOfE) / BLOCKDATASIZE);
       }
       *offsetOfE += le.children.subblockCount * BLOCKDATASIZE;
       break;
@@ -263,8 +263,8 @@ namespace WITE {
 	default: CRASH("tlog illegal type; crashing to minimize save corruption.");
 	case del: memset(out, 0, size); break;
 	case update:
-	  start = std::max(offset, log.offset);
-	  end = std::min(offset + size, log.offset + log.size);
+	  start = max(offset, log.offset);
+	  end = min(offset + size, log.offset + log.size);
 	  tlogManager.readRaw(out + start - offset, tlogPoint + start, end - start);
 	}
 	tlogPoint = log.nextForObject;
@@ -302,9 +302,9 @@ namespace WITE {
     return tr->allocRet;
   }
 
-  void Database::registerReceiver(const std::string nom, receiver_t r) {
-    messageReceivers[nom] = r;
-  }
+  // void Database::registerReceiver(const std::string nom, receiver_t r) {
+  //   messageReceivers[nom] = r;
+  // }
 
   void Database::registerType(type t, typeHandles funcs) {
     typesStatic[t] = funcs;
@@ -333,17 +333,17 @@ namespace WITE {
     }
   }
 
-  uint64_t Database::sendMessage(const std::string message, const Entry receiver, void* data) {
-    messageReceivers[message]->call(receiver, data);
-  }
+  // uint64_t Database::sendMessage(const std::string message, const Entry receiver, void* data) {
+  //   messageReceivers[message]->call(receiver, data);
+  // }
 
-  uint64_t Database::sendMessageToAll(const std::string message, const type receivers, void* data) {
-    Entry next = types[receivers].firstOfType;
-    while (next != -1) {
-      sendMessage(message, next, data);
-      next = allocTab[next].typeListNext;
-    }
-  }
+  // uint64_t Database::sendMessageToAll(const std::string message, const type receivers, void* data) {
+  //   Entry next = types[receivers].firstOfType;
+  //   while (next != -1) {
+  //     sendMessage(message, next, data);
+  //     next = allocTab[next].typeListNext;
+  //   }
+  // }
 
   const uint8_t Database::zero[Database::BLOCKSIZE] = { 0 };
 
@@ -393,9 +393,9 @@ namespace WITE {
     logEntry* le;
     pt_flushTlog();//??
     idealFree = atCount * 2 / 10 + requiredNewEntries;
-    newRecordCount = std::min(idealFree + atCount - pt_freeSpace, atCount);
+    newRecordCount = min(idealFree + atCount - pt_freeSpace, atCount);
     newCacheCount = (primeRamSize - newRecordCount * sizeof(allocationTableEntry) -
-		     std::max(pt_writenBytesLastFrame, pt_writenBytesThisFrame, 65536)) / (2 * sizeof(cacheEntry));
+		     max(pt_writenBytesLastFrame, pt_writenBytesThisFrame, 65536)) / (2 * sizeof(cacheEntry));
     newTlogSize = primeRamSize - sizeof(cacheEntry) * newCacheCount - sizeof(allocationTableEntry) * newRecordCount;
     if (newTlogSize > primeRamSize || newCacheCount > primeRamSize / sizeof(cacheEntry) || newTlogSize > primeRamSize)
       CRASH("Out of prime ram");
@@ -447,7 +447,7 @@ namespace WITE {
     memset(pt_cacheStaging, 0, sizeof(cacheIndex) * pt_cacheStagingSize);
     for (i = len = 0;i < atCount;i++) {
       ate = allocTab[i];//faster ram read all at once because allocTab is volatile
-      score = std::max(ate.readsLastFrame, ate.readsThisFrame) +
+      score = max(ate.readsLastFrame, ate.readsThisFrame) +
 	(ate.cacheLocation ? 48>>(currentFrame - ate.cacheLocation->readsCachedLifetime) : 0) +
 	(ate.nextWriteFrame != -1 ? (ate.cacheLocation ? 512 : 16) :
 	 ate.lastWrittenFrame != -1 ? 48 >> (currentFrame - ate.lastWrittenFrame) : 0);
@@ -528,7 +528,7 @@ namespace WITE {
     size_t numDataEntries = (size - 1) / BLOCKDATASIZE + 1,
       numBranches = numDataEntries <= 1 ? 0 : (numDataEntries - 1) / MAXBLOCKPOINTERS + 1,
       numTrunks = numBranches <= 1 ? 0 : (numBranches - 2) / (MAXBLOCKPOINTERS - 1) + 1,
-      numBlocks = numDataEntries + numBranches + numTrunks, i, k, subblockCount, orphans = numDataEntries,
+      numBlocks = numDataEntries + numBranches + numTrunks, i, subblockCount, orphans = numDataEntries,
       unboundBranches = numTrunks;
     static Entry entries[MAXBLOCKPOINTERS*MAXBLOCKPOINTERS];//one trunk per loop
     static struct {
@@ -552,7 +552,7 @@ namespace WITE {
 	PUSH_LE;
       } else if(i < numBranches + numDataEntries) {
 	allocTab[j].allocationState = branch;
-	statePutter.data.children.subblockCount = subblockCount = std::min(orphans, MAXBLOCKPOINTERS);
+	statePutter.data.children.subblockCount = subblockCount = min(orphans, MAXBLOCKPOINTERS);
 	memcpy(statePutter.data.children.subblocks, &entries[numDataEntries - orphans], subblockCount * sizeof(Entry));
 	orphans -= subblockCount;
 	statePutter.data.header = { branch, 0 };
@@ -560,7 +560,7 @@ namespace WITE {
 	PUSH_LE;
       } else {
 	allocTab[j].allocationState = trunk;
-	statePutter.data.children.subblockCount = subblockCount = std::min(unboundBranches, MAXBLOCKPOINTERS - !(i == numBlocks-1));
+	statePutter.data.children.subblockCount = subblockCount = min(unboundBranches, MAXBLOCKPOINTERS - !(i == numBlocks-1));
 	memcpy(statePutter.data.children.subblocks, &entries[numBranches + numDataEntries - unboundBranches],
 	       subblockCount * sizeof(Entry));
 	unboundBranches -= subblockCount;
@@ -575,7 +575,6 @@ namespace WITE {
 
   bool Database::pt_adoptTlog(threadResource_t::transactionalBacklog_t* src) {
     size_t discard, read = 0, targetChild, offset, size, trunkIdx, branchIdx, targetTrunk, targetBranch, targetLeaf;
-    state_t rootType;
     Entry trunk, branch, leaf;
     bool CAPPED = false;
     union {
@@ -641,7 +640,7 @@ namespace WITE {
 	  branchIdx = targetBranch;
 	}
 	leaf = getRaw<Entry>(branch, offsetof(loadedEntry, children.subblocks[targetLeaf]));
-	size = std::min(ele.size + ele.offset - offset, BLOCKSIZE);
+	size = min(ele.size + ele.offset - offset, BLOCKSIZE);
 	*le = { ele.frameIdx, update, size, offset % BLOCKSIZE, ~0u, leaf };
 	offset += size;
 	read += size;

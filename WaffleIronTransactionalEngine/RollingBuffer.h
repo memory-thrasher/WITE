@@ -50,17 +50,18 @@ namespace WITE {
   void readRaw(uint8_t* out, SIZE_TYPE in, SIZE_TYPE size);//careful; only checked for wrap
   void writeRaw(SIZE_TYPE out, uint8_t* in, SIZE_TYPE size);//careful; only checked for wrap
   //NOT thread safe; ensure no threads are doing anything while this is executing
-  template<bool M = MOVABLE> typename std::enable_if_t<M, uint16_t> relocate(void* newhome, SIZE_TYPE newsize);
+  template<bool M = MOVABLE> typename std::enable_if_t<M, uint16_t> relocate(uint8_t* newhome, SIZE_TYPE newsize);
   template<bool R = RESIZABLE> typename std::enable_if_t<R, uint16_t> resize(SIZE_TYPE size);
   //grow if necessary, plus pad bytes
   template<bool R = RESIZABLE> typename std::enable_if_t<R, uint16_t> swallow(uint8_t* newData, size_t dataSize, uint64_t* handleOut = NULL, size_t pad = 0);
-  inline SIZE_TYPE sizeofnext(SIZE_TYPE = head);
+  inline SIZE_TYPE sizeofnext(SIZE_TYPE);
+  inline SIZE_TYPE sizeofnext() { return sizeofnext(head); };
   template<SIZE_TYPE cloneSize = DATA_SIZE, SIZE_TYPE cloneCount = 1 + cloneSize / ENTRY_SIZE>
   inline RBIterator<cloneSize, cloneCount> iter();
   private:
   RollingBuffer(const RollingBuffer&) = delete;
   volatile SIZE_TYPE head = 0, tail = 0, size, entries = 0;
-  uint8_t* buf;
+  volatile uint8_t* buf;
   bool outer = false;//when head = tail; true means buffer is full, false means empty, otherwise this should be false
   volatile uint8_t inline_data[DATA_SIZE ? DATA_SIZE : 1];
   inline bool wrapped() { return outer || head > tail; }
@@ -83,7 +84,7 @@ namespace WITE {
 	if (master->peek(data, starts, cloneSize, cloneCount, &readHead) == RB_BUFFER_UNDERFLOW) return NULL;
 	i = 0;
       }
-      ret = static_cast<HeadType*>(data + (i ? starts[i-1] : 0));
+      ret = static_cast<HeadType*>(static_cast<void*>(data + (i ? starts[i-1] : 0)));
       i++;
       return ret;
     }
@@ -95,16 +96,16 @@ namespace WITE {
 #define BOUND_INC_TAIL(amnt) {tail = tail+amnt >= size ? tail+amnt-size : head + amnt; outer = head == tail;}
 #define RB_PROTO(...) template<class HeadType, size_t DATA_SIZE, size_t ENTRY_SIZE, \
 			       typename SIZE_TYPE, SIZE_TYPE HeadType::*sizeField, bool ALLOW_REALLOC> \
-  ##__VA_ARGS__ RollingBuffer<HeadType, DATA_SIZE, ENTRY_SIZE, SIZE_TYPE, sizeField, ALLOW_REALLOC>
+  __VA_ARGS__ RollingBuffer<HeadType, DATA_SIZE, ENTRY_SIZE, SIZE_TYPE, sizeField, ALLOW_REALLOC>
 #define RB_FQN RollingBuffer<HeadType, DATA_SIZE, ENTRY_SIZE, SIZE_TYPE, sizeField, ALLOW_REALLOC>
 
   RB_PROTO(template<bool ID, typename std::enable_if_t<!ID, size_t> t>)::RollingBuffer(size_t size, uint8_t* data) :
     size(size), buf(data ? data : malloc(size)) {};
 
-  RB_PROTO()::RollingBuffer() : buf(DATA_SIZE ? inline_data, NULL), size(DATA_SIZE) {}
+  RB_PROTO()::RollingBuffer() : buf(DATA_SIZE ? inline_data : NULL), size(DATA_SIZE) {}
 
   RB_PROTO()::~RollingBuffer() {
-    constexpr if (ALLOW_REALLOC) free(buf);
+    if (ALLOW_REALLOC) free(buf);
   }
 
   RB_PROTO(template<SIZE_TYPE cloneSize, SIZE_TYPE cloneCount> RB_FQN::RBIterator<cloneSize, cloneCount>)::iter() {
@@ -148,8 +149,8 @@ namespace WITE {
 
   RB_PROTO(SIZE_TYPE)::sizeofnext(SIZE_TYPE h) {
     SIZE_TYPE offset;
-    constexpr if (ENTRY_SIZE) return ENTRY_SIZE;
-    offset = constexpr ADD_SIZE ? offsetof(HeadWithSizeType, size) : offsetof(HeadType, *sizeField);
+    if (ENTRY_SIZE) return ENTRY_SIZE;
+    offset = ADD_SIZE ? offsetof(HeadWithSizeType, size) : static_cast<size_t>(sizeField);
     union {
       SIZE_TYPE ret;
       uint8_t retRaw[1];
@@ -161,7 +162,7 @@ namespace WITE {
   RB_PROTO(uint16_t)::drop() {
     SIZE_TYPE sizeToDrop;
     if (!used()) return RB_BUFFER_UNDERFLOW;
-    sizeToDrop = sizeofnext() + sizeof(ADD_SIZE ? HeadWithSizeType : HeadType);
+    sizeToDrop = sizeofnext() + (ADD_SIZE ? sizeof(HeadWithSizeType) : sizeof(HeadType));
     entries--;
     BOUND_INC_HEAD(sizeToDrop);
     return RB_SUCCESS;
@@ -177,7 +178,7 @@ namespace WITE {
     return RB_SUCCESS;
   }
 
-  RB_PROTO(template<bool AS> typename std::enable_if_t<AS, uint16_t>)::pushBlocking(HeadType* newData, SIZE_TYPE size, size_t* handleOut) {
+  RB_PROTO(template<bool AS> typename std::enable_if_t<AS, uint16_t>)::pushBlocking(HeadType* newData, SIZE_TYPE dataSize, size_t* handleOut) {
     while(dataSize + sizeof(HeadWithSizeType) > freeSpace());//TODO yield?
     if (handleOut) *handleOut = tail;
     writeRaw(tail, dataSize, sizeof(SIZE_TYPE));
@@ -214,7 +215,7 @@ namespace WITE {
     ret = RB_SUCCESS;
     if (entries > max) ret = RB_READ_INCOMPLETE;
     else max = entries;
-    while (max && subsize = sizeofnext() + sizeof(HeadType) && subsize <= maxsize) {
+    while (max && (subsize = sizeofnext() + sizeof(HeadType)) && subsize <= maxsize) {
       readRaw(data, head, subsize);
       entries--;
       BOUND_INC_HEAD(subsize + sizeof(SIZE_TYPE));
@@ -240,7 +241,7 @@ namespace WITE {
       readRaw(data, *pos, subsize);
       entries--;
       *pos += subsize + sizeof(SIZE_TYPE);
-      if (*pos) >= size; *pos -= size;
+      if (*pos >= size) *pos -= size;
       max--;
       maxsize -= subsize;
       data += subsize;
@@ -252,14 +253,14 @@ namespace WITE {
   }
 
   //NOT thread safe; ensure no threads are doing anything while this is executing; also invalidates all handles
-  RB_PROTO(template<bool M> typename std::enable_if_t<M, uint16_t>)::relocate(void* newStart, SIZE_TYPE newSize) {
-    void* newEnd, oldStart, oldEnd;
-    size_t used = used(), leadingEmpty, trailingEmpty, mov;
+  RB_PROTO(template<bool M> typename std::enable_if_t<M, uint16_t>)::relocate(uint8_t* newStart, SIZE_TYPE newSize) {
+    uint8_t* newEnd, *oldStart, *oldEnd;
+    size_t used = this->used(), leadingEmpty, trailingEmpty, mov;
     int64_t oldHead, oldTail, startOffset, movRemaining;
     bool wasWrapped;
-    if (newsize < used) return RB_BUFFER_OVERFLOW;
+    if (newSize < used) return RB_BUFFER_OVERFLOW;
     newEnd = newStart + newSize;
-    oldStart = buf;
+    oldStart = static_cast<uint8_t*>(buf);
     oldEnd = oldStart + size;
     if (!used) {//nothing to move; ideal
       outer = head = tail = 0;
@@ -274,7 +275,7 @@ namespace WITE {
 	if (size - head > tail) {//move tail
 	  if (trailingEmpty) {//move tail to fill void
 	    movRemaining = tail;
-	    mov = std::min(movRemaining, trailingEmpty);
+	    mov = min(movRemaining, trailingEmpty);
 	    if (mov) memcpy(oldEnd, oldStart, mov);
 	    movRemaining -= mov;
 	    if (movRemaining > 0) {
@@ -293,7 +294,7 @@ namespace WITE {
 	} else {//move head
 	  if (leadingEmpty) {//move head back to fill void
 	    movRemaining = size - head;
-	    mov = std::min(movRemaining, leadingEmpty);
+	    mov = min<int64_t>(movRemaining, leadingEmpty);
 	    if (mov) memcpy(newStart - mov + leadingEmpty, oldEnd - mov, mov);
 	    movRemaining -= mov;
 	    if (movRemaining > 0) {

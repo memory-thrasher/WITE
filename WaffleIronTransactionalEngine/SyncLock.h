@@ -1,5 +1,7 @@
 #pragma once
 
+#include "exportTypes.h"
+
 namespace WITE {
 
   class SyncLock {
@@ -12,7 +14,8 @@ namespace WITE {
     bool isLocked();
     inline void yield();
   private:
-    typedef std::atomic_uint64_t mutex_t;
+    //typedef std::atomic_fast64_t mutex_t;
+    typedef std::atomic<uint64_t> mutex_t;//TODO change name
     static mutex_t seed;
     uint64_t id, holds;
     uint32_t holder;

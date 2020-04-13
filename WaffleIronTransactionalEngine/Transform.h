@@ -9,6 +9,7 @@ namespace WITE {
   class Transform {
   public:
     Transform(glm::dmat4 = glm::identity<glm::dmat4>());
+    Transform(const Transform& other);
     ~Transform();
     template<size_t components, class member>
     void batchTransformPoints(glm::vec<components, member, glm::defaultp>* inout, size_t len) const {
@@ -24,14 +25,11 @@ namespace WITE {
     glm::dmat4 getInvMat() const;
     glm::vec3 getLocation() const;
     void setLocation(glm::vec3 nl);
-    const Transform* getInv() const;
+    const std::shared_ptr<Transform> getInv() const;
     void setMat(glm::dmat4* in);
     Transform& operator=(glm::dmat4&& o);
   private:
-    void setFromInverse(const Transform* other);
     glm::dmat4 matrix;
-    mutable std::unique_ptr<Transform> inverse;
-    mutable bool inverseValid = false;
   };
 
 };

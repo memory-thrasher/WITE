@@ -112,10 +112,10 @@ namespace WITE {
     template<class T> void get(Entry, T* out ...);
     Entry getChildEntryByIdx(Entry root, size_t idx);
     //inter object communication bs
-    static void registerReceiver(const std::string, receiver_t);
+    //static void registerReceiver(const std::string, receiver_t);
     static void registerType(type t, typeHandles funcs);
-    uint64_t sendMessage(const std::string, const Entry receiver, void* data);
-    uint64_t sendMessageToAll(const std::string, const type receivers, void* data);
+    //uint64_t sendMessage(const std::string, const Entry receiver, void* data);
+    //uint64_t sendMessageToAll(const std::string, const type receivers, void* data);
     type getEntryType(Entry e);
     static typeHandles* getHandlesOfType(type t);
     void getEntriesWithUpdate(std::vector<Entry>* out);
@@ -140,12 +140,12 @@ namespace WITE {
     size_t primeRamSize, atCount, tlogSize, cacheCount;
     //??std::vector<std::vector<Entry>> allocated;//transient, one inner vector per object type
     uint64_t currentFrame, targetFrame = 0;//transient, resets on load
-    static std::map<std::string, receiver_t, strcmp_t> messageReceivers;
+    //static std::map<std::string, receiver_t, strcmp_t> messageReceivers;
     static std::vector<type> typesWithUpdates;//only edited on static init, pre multithread
     static std::map<type, perTypeStatic> typesStatic;
     std::map<type, perType> types;//on current frame
     RollingBuffer<logEntry, 0, 0, size_t, &logEntry::size, false> tlogManager;//TODO index of free?
-    std::atomic_uint8_t masterThreadState;
+    std::atomic<uint8_t> masterThreadState;
     ThreadResource<threadResource_t> threadResources;
     //prime thread only: (all transient)
     constexpr static size_t MAX_BATCH_FLUSH = 32;

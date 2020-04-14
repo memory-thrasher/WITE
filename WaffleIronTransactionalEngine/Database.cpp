@@ -17,7 +17,7 @@
 namespace WITE {
 
   Database::Database(const char * filenamefmt, size_t cachesize, int64_t loadidx) : 
-    filenamefmt(filenamefmt), filenameIdx(loadidx), masterThreadState(0),
+    filenamefmt(filenamefmt), filenameIdx(loadidx),
     allocTabRaw(malloc(cachesize)), primeRamSize(cachesize), pt_cacheStaging(NULL) {
     //TODO audit default allocation of prime ram
     size_t fileblocks, idealblocks;
@@ -70,17 +70,17 @@ namespace WITE {
       pt = types[header.type];
       if (!pt.firstOfType) {
 	pt.firstOfType = i;
-	allocTab[i].typeListLast = NULL;
+	allocTab[i].typeListLast = -1;
       } else {
 	allocTab[pt.lastOfType].typeListNext = i;
 	allocTab[i].typeListLast = pt.lastOfType;
       }
-      allocTab[i].typeListNext = NULL;
+      allocTab[i].typeListNext = -1;
       pt.lastOfType = i;
       types[header.type] = pt;
     }
     fclose(active);
-    tlogManager.relocate(allocTab + atCount, tlogSize);
+    tlogManager.relocate(allocTabByte + atCount, tlogSize);
     pt_cacheStaging = new cacheIndex[cacheCount];
     pt_cacheStagingSize = cacheCount;
   }
@@ -149,7 +149,7 @@ namespace WITE {
 
   void Database::put(Entry e, const uint8_t * inRaw, uint64_t* starts, uint64_t* lens, size_t count) {
     //in starts at beginning of entry data
-    constexpr const uint16_t MAX_GAP = sizeof(logEntry) + 64;
+    constexpr static uint16_t MAX_GAP = sizeof(logEntry) + 64;
     //save overhead space if flushing many closely clustered tiny pieces
     //TUNEME: how much ram is worth one fewer log transactions to flush?
     uint64_t start, end, i;
@@ -165,6 +165,24 @@ namespace WITE {
 	len = end - start;
       }
       put(e, inRaw + start, start, (uint16_t)len);
+    }
+  }
+
+  void Database::put(Entry t, const uint8_t * inRaw, const precompiledBatch_t* fields) {
+    constexpr static uint16_t MAX_GAP = sizeof(logEntry) + 64;
+    uint64_t start, end, i;
+    uint64_t len;
+    for (i = 0;i < fields->size;i++) {
+      start = fields->data[i].start;
+      len = fields->data[i].len;
+      end = start + len;
+      while (i < fields->size - 1 && fields->data[i+1].start <= end + MAX_GAP &&
+	     fields->data[i+1].start + fields->data[i + 1].len <= start + Database::BLOCKDATASIZE) {//TODO move this to precompile
+	i++;
+	end = fields->data[i].start + fields->data[i].len;
+	len = end - start;
+      }
+      put(t, inRaw + start, start, (uint16_t)len);
     }
   }
 

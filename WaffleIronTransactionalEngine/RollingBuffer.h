@@ -276,18 +276,18 @@ namespace WITE {
 	  if (trailingEmpty) {//move tail to fill void
 	    movRemaining = tail;
 	    mov = min(movRemaining, trailingEmpty);
-	    if (mov) memcpy(oldEnd, oldStart, mov);
+	    memcpy(oldEnd, oldStart, mov);
 	    movRemaining -= mov;
 	    if (movRemaining > 0) {
 	      memmove(newStart, oldStart + mov, movRemaining);
 	      tail = movRemaining;
-	    }
-	    else tail = offset + size + mov;
+	    } else
+	      tail = newSize + movRemaining;//movRemaining <= 0
 	    head = oldHead;
 	  } else {//case: newend < oldend: trailingEmpty = 0, must relocate segment of head at end to beginning
 	    mov = static_cast<size_t>(oldEnd - newEnd);
 	    if (mov != startOffset) memmove(newStart + mov, oldStart, tail);
-	    memcpy(newstart, newend, mov);
+	    memcpy(newStart, newEnd, mov);
 	    tail = newStart + mov + tail;
 	    head = oldHead;
 	  }
@@ -300,13 +300,13 @@ namespace WITE {
 	    if (movRemaining > 0) {
 	      memmove(newEnd - mov - 1, oldStart + head, movRemaining);
 	      head = oldHead + movRemaining;
-	    }
-	    else head = leadingEmpty - mov;
+	    } else
+	      head = leadingEmpty - mov;
 	    tail = oldTail;
 	  } else {//relocate segment of tail to head
 	    mov = size - head;
-	    if(mov != -startoffset) memmove(newend - mov, oldstart + head, mov);
-	    memcpy(newend - startoffset, oldstart, -startOffset);
+	    if(mov != -startOffset) memmove(newEnd - mov, oldStart + head, mov);
+	    memcpy(newEnd - startOffset, oldStart, -startOffset);
 	    tail = oldTail;
 	    head = size - mov;
 	  }

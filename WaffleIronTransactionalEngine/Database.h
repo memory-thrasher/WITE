@@ -18,8 +18,15 @@ namespace WITE {
     typedef struct {
       handle_t update, init, destroy;
     } typeHandles;
+    typedef struct {
+      size_t start, len;
+    } precompiledBatch_entry;
+    typedef struct {
+      std::unique_ptr<precompiledBatch_entry[]> data;
+      size_t size;
+    } precompiledBatch_t;
     private:
-    constexpr static size_t const& BLOCKSIZE = 4096;
+    constexpr static size_t BLOCKSIZE = 4096;
     enum state_t { unallocated = 0, data, branch, trunk };//branches contain references to datas, trunks contain references to branches or other trunks
     enum logEntryType_t { del = 0, update };
     typedef struct {
@@ -27,10 +34,10 @@ namespace WITE {
       type type;//global enum-esque maintained by consumer, used by getEntriesOfType. [0,127] reserved
     } _entry;
     public:
-    constexpr static size_t const& BLOCKDATASIZE = BLOCKSIZE - sizeof(_entry);
+    constexpr static size_t BLOCKDATASIZE = BLOCKSIZE - sizeof(_entry);
     private:
-    constexpr static size_t const& MAXPUTSIZE = BLOCKSIZE;//should be indexable by (enqueued)LogEntry::size
-    constexpr static size_t const& MAXBLOCKPOINTERS = (BLOCKDATASIZE - sizeof(uint32_t)) / sizeof(Entry);//510
+    constexpr static size_t MAXPUTSIZE = BLOCKSIZE;//should be indexable by (enqueued)LogEntry::size
+    constexpr static size_t MAXBLOCKPOINTERS = (BLOCKDATASIZE - sizeof(uint32_t)) / sizeof(Entry);//510
     typedef struct {
       uint32_t subblockCount;
       Entry subblocks[MAXBLOCKPOINTERS];
@@ -98,18 +105,21 @@ namespace WITE {
     void free(Entry);
     void advanceFrame();//only called by master thread between renders
     size_t getEntriesOfType(type type, Entry* out, size_t maxout);//returns number of entries
+    template<class T, class... Zs> constexpr static auto createPrecompiledBatch(Zs... z);
     //puts
     void put(Entry, const uint8_t * in, uint64_t start, uint16_t len);//out starts with the bit that is updated
     void put(Entry, const uint8_t * in, uint64_t* starts, uint64_t* lens, size_t count);//in starts at beginning of entry data
+    void put(Entry, const uint8_t * in, const precompiledBatch_t*);
     template<class T> void put(Entry, const T * in);//everything, avoid this
     template<class T, class U> void put(Entry, const T * in, U T::*field);
-    template<class T> void put(Entry, const T * in ...);
+    template<class T, class U, class... Zs> inline void put(Entry e, const T * in, U T::*u, Zs... z);//use precompiled batches instead
     //gets
     void get(Entry, uint8_t* out, uint64_t start, uint16_t len);//out starts with the bit that is fetched
     void get(Entry, uint8_t* out, uint64_t* starts, uint64_t* lens, size_t count);//out starts at beginning of entry data
+    // void get(Entry, uint8_t* out, const precompiledBatch_t*);//TODO//
     template<class T> void get(Entry, T* out);//everything, general use
     template<class T, class U> void get(Entry, T* out, U T::*field);
-    template<class T> void get(Entry, T* out ...);
+    template<class T, class U, class V, class... Zs> void get(Entry, T* out, U T::*u, V T::*v, Zs... z);
     Entry getChildEntryByIdx(Entry root, size_t idx);
     //inter object communication bs
     //static void registerReceiver(const std::string, receiver_t);
@@ -121,6 +131,9 @@ namespace WITE {
     void getEntriesWithUpdate(std::vector<Entry>* out);
     private:
     static const uint8_t zero[0];
+    template<size_t idx, class T, class U, class V, class... Zs>
+    constexpr static void createPrecompiledBatch(precompiledBatch_t& out, U T::*u, V T::*v, Zs... z);
+    template<size_t idx, class T, class U> constexpr static void createPrecompiledBatch(precompiledBatch_t& out, U T::*u);
     Database(const Database&) = delete;//no. just no.
     void push(enqueuedLogEntry*);
     Entry allocate(size_t size);
@@ -185,12 +198,31 @@ namespace WITE {
 
   template<class T> Database::Entry Database::allocate(type t) {
     Entry ret = allocate(sizeof(T));
-    put(ret, &t, offsetof(loadedEntry, header.type), sizeof(type));
+    put(ret, static_cast<uint8_t*>(&t), offsetof(loadedEntry, header.type), sizeof(type));
     allocTab[ret].typeListLast = types[t].lastOfType;
-    if (types[t].nextOfType == -1) types[t].nextOfType = ret;
+    if (types[t].firstOfType == -1) types[t].firstOfType = ret;
     else allocTab[types[t].lastOfType].typeListNext = ret;
     types[t].lastOfType = ret;
     allocTab[ret].typeListNext = -1;
+    return ret;
+  }
+
+  template<size_t idx, class T, class U, class V, class... Zs>
+  constexpr void Database::createPrecompiledBatch(precompiledBatch_t& out, U T::*u, V T::*v, Zs... z) {
+    createPrecompiledBatch<idx>(out, u);//to specialization
+    createPrecompiledBatch<idx+1>(out, v, std::forward<Zs>(z)...);//recurse or specilization
+  }
+
+  template<size_t idx, class T, class U>
+  constexpr void Database::createPrecompiledBatch(precompiledBatch_t& out, U T::*u) {
+    out.data[idx] = { (size_t)u, sizeof(U) };
+  }
+
+  template<class T, class... Zs>
+  constexpr auto Database::createPrecompiledBatch(Zs... z) {
+    size_t len = sizeof...(Zs);
+    precompiledBatch_t ret = { std::make_unique<precompiledBatch_entry[]>(len), len };
+    createPrecompiledBatch<len, 0, T, Zs...>(&ret, std::forward<Zs>(z)...);//populate
     return ret;
   }
 
@@ -200,25 +232,13 @@ namespace WITE {
   }
 
   template<class T, class U> void Database::put(Entry e , const T * in, U T::*field) {
-    uint64_t size = sizeof(U), offset = offsetof(T, *field);
+    uint64_t size = sizeof(U), offset = size_t(field);
     put(e, static_cast<uint8_t*>(in), &offset, &size, 1);
   }
 
-  template<class T> void Database::put(Entry e, const T * in ...) {
-    uint64_t starts[1024], lens[1024], i;
-    T::* field;
-    va_list fields;
-    va_start(fields, in);
-    field = va_arg(fields, T::*);
-    do {
-      for (i = 0;field && i < 1024;i++) {
-	starts[i] = offsetof(T, *field);
-	lens[i] = sizeof(*field);
-	field = va_arg(fields, T::*);
-      }
-      put(e, reinterpret_cast<const uint8_t *>(in), starts, lens, i);
-    } while (field);
-    va_end(fields);
+  template<class T, class U, class... Zs> void Database::put(Entry e, const T * in, U T::*u, Zs... z) {
+    put(e, in, u);
+    put(e, in, z...);//recurse
   }
 
   template<class T> void Database::get(Entry e, T* out) {
@@ -226,24 +246,12 @@ namespace WITE {
   }
 
   template<class T, class U> void Database::get(Entry e, T* out, U T::*field) {
-    get(e, reinterpret_cast<uin8_t*>(out), offsetof(T, *field), sizeof(U));
+    get(e, reinterpret_cast<uint8_t*>(out), size_t(field), sizeof(U));
   }
 
-  template<class T> void Database::get(Entry e, T* out ...) {
-    uint64_t starts[1024], lens[1024], i;
-    T::* field;
-    va_list fields;
-    va_start(fields, in);
-    field = va_arg(fields, T::*);
-    do {
-      for (i = 0;field && i < 1024;i++) {
-	starts[i] = offsetof(T, *field);
-	lens[i] = sizeof(*field);
-	field = va_arg(fields, T::*);
-      }
-      get(e, reinterpret_cast<uint8_t *>(in), starts, lens, i);
-    } while (field);
-    va_end(fields);
+  template<class T, class U, class V, class... Zs> void Database::get(Entry e, T* out, U T::*u, V T::*v, Zs... z) {
+    get<T, U>(e, out, u);
+    get<T, V, Zs...>(e, u, v, std::forward<Zs>(z)...);
   }
   
 }

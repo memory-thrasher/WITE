@@ -21,7 +21,7 @@ namespace WITE {
   export_dec bool strcmp_s(const std::string& a, const std::string& b);
   export_dec void enterMainLoop(class Database* db);//this call does not return. Set up type registration (with callbacks) first.
 
-  template <typename _T, typename _Alloc = allocator<_T>>
+  template <typename _T, typename _Alloc = std::allocator<_T>>
   void export_def vectorPurge(std::vector<_T, _Alloc>* v, _T o) {//Not thread safe. sync externally
     auto it = v->begin();
     while (it != v->end())

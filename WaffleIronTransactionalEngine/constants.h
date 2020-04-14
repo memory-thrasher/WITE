@@ -37,14 +37,13 @@ const char* LAYERS[] = {};
 //VkFormat
 
 #define ERRLOGFILE WITE::getERRLOGFILE()
-#define LOG(message, ...) { ::fprintf(ERRLOGFILE, "%s:%d: ", __FILE__, __LINE__);\
-							::fprintf(ERRLOGFILE, message, __VA_ARGS__); }
-#ifdef _DEBUG
+#define LOG(message, ...) { ::fprintf(ERRLOGFILE, "%s:%d: ", __FILE__, __LINE__); ::fprintf(ERRLOGFILE, message, ##__VA_ARGS__); }
+// #ifdef _DEBUG
 #define CRASHRET(...) { LOG("**CRASH**"); WITE::flush(ERRLOGFILE); exit(1); return __VA_ARGS__; }
-#else
-#define CRASHRET(...) { LOG("**CRASH IMMINENT**"); WITE::flush(ERRLOGFILE); return __VA_ARGS__; }
-#endif
-#define CRASH CRASHRET()
+// #else
+// #define CRASHRET(...) { LOG("**CRASH IMMINENT**"); WITE::flush(ERRLOGFILE); return __VA_ARGS__; }
+// #endif
+#define CRASH(message) { LOG(message); CRASHRET(); }
 #define CRASHIFFAIL(_cmd_, ...) {int64_t _res = (int64_t)_cmd_; if(_res) { LOG("Got result: %I64d\n", _res); CRASHRET(__VA_ARGS__) } }//for VkResult. VK_SUCCESS = 0
 
 #define newOrHere(_out) new(ensurePointer(_out))

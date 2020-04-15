@@ -65,17 +65,17 @@ namespace WITE {
 	allocTab[i].cacheLocation = NULL;
       }
       allocTab[i].lastWrittenFrame = allocTab[i].readsThisFrame = 0;
-      allocTab[i].tlogHeadForObject = allocTab[i].tlogTailForObject = -1;
+      allocTab[i].tlogHeadForObject = allocTab[i].tlogTailForObject = NULL_OFFSET;
       allocTab[i].allocationState = header.state;
       pt = types[header.type];
       if (!pt.firstOfType) {
 	pt.firstOfType = i;
-	allocTab[i].typeListLast = -1;
+	allocTab[i].typeListLast = NULL_ENTRY;
       } else {
 	allocTab[pt.lastOfType].typeListNext = i;
 	allocTab[i].typeListLast = pt.lastOfType;
       }
-      allocTab[i].typeListNext = -1;
+      allocTab[i].typeListNext = NULL_ENTRY;
       pt.lastOfType = i;
       types[header.type] = pt;
     }
@@ -213,7 +213,7 @@ namespace WITE {
 	  if (end > BLOCKDATASIZE)
 	    end = BLOCKDATASIZE;
 	  else
-	    *regionIdx++;
+	    (*regionIdx)++;
 	}
 	getRaw(e, start + offsetof(loadedEntry, data), end - start, out + *offsetOfE + start);
       }
@@ -223,7 +223,7 @@ namespace WITE {
       nextBlockIdx = (starts[*regionIdx] - *offsetOfE) / BLOCKDATASIZE;
       while (*regionIdx < count && nextBlockIdx < le.children.subblockCount) {
 	offsetOfChild = *offsetOfE + nextBlockIdx * BLOCKDATASIZE;
-	getRecurse(getRaw<Entry>(e, offsetof(loadedEntry, children.subblocks[nextBlockIdx])),
+	getRecurse(getRaw<Entry>(e, __offsetof_array(loadedEntry, children.subblocks, nextBlockIdx)),
 		   out, starts, lens, count, &offsetOfChild, regionIdx);
 	nextBlockIdx = min(nextBlockIdx+1, (starts[*regionIdx] - *offsetOfE) / BLOCKDATASIZE);
       }
@@ -273,7 +273,7 @@ namespace WITE {
     }
     if (allocTab[e].nextWriteFrame <= frame) {
       tlogPoint = allocTab[e].tlogHeadForObject;
-      while (tlogPoint != -1) {
+      while (tlogPoint != NULL_ENTRY) {
 	tlogManager.readRaw(rawLog, tlogPoint, sizeof(logEntry));
 	if (log.start != e) CRASH("tlog fault; crashing to minimize save corruption.");
 	if (log.frameIdx > frame) break;
@@ -314,9 +314,9 @@ namespace WITE {
 
   Database::Entry Database::allocate(size_t size) {//allocation is handled by master thread, submit request and wait
     auto tr = threadResources.get();
-    tr->allocRet = -1;
+    tr->allocRet = NULL_ENTRY;
     tr->allocSize = size;
-    while (tr->allocRet == -1) sleep(50);//TUNEME sleep time
+    while (tr->allocRet == NULL_ENTRY) sleep(50);//TUNEME sleep time
     return tr->allocRet;
   }
 
@@ -344,7 +344,7 @@ namespace WITE {
     for(i = 0;i < typeCount;i++) {
       t = typesWithUpdates[i];
       selected = types[t].firstOfType;
-      while(selected != -1) {
+      while(selected != NULL_ENTRY) {
 	out->push_back(selected);
 	selected = allocTab[selected].typeListNext;
       }
@@ -362,9 +362,6 @@ namespace WITE {
   //     next = allocTab[next].typeListNext;
   //   }
   // }
-
-  const uint8_t Database::zero[Database::BLOCKSIZE] = { 0 };
-
 
   /*
     notes to db prime thread:
@@ -417,13 +414,13 @@ namespace WITE {
     newTlogSize = primeRamSize - sizeof(cacheEntry) * newCacheCount - sizeof(allocationTableEntry) * newRecordCount;
     if (newTlogSize > primeRamSize || newCacheCount > primeRamSize / sizeof(cacheEntry) || newTlogSize > primeRamSize)
       CRASH("Out of prime ram");
-    CRASHIFFAIL(tlogManager.relocate(reinterpret_cast<void*>(allocTab + newRecordCount), newTlogSize));
-    for (i = 0;i < atCount;i++) allocTab[i].tlogHeadForObject = allocTab[i].tlogTailForObject = -1;
+    CRASHIFFAIL(tlogManager.relocate(allocTabByte + newRecordCount, newTlogSize));
+    for (i = 0;i < atCount;i++) allocTab[i].tlogHeadForObject = allocTab[i].tlogTailForObject = NULL_OFFSET;
     auto tlogIter = tlogManager.iter<BLOCKSIZE + sizeof(logEntry), 32>();
-    while (le = tlogIter.next()) {
+    while ((le = tlogIter.next())) {
       i = le->start;
       j = tlogIter.getHead();
-      if (allocTab[i].tlogHeadForObject == -1) allocTab[i].tlogHeadForObject = j;
+      if (allocTab[i].tlogHeadForObject == NULL_OFFSET) allocTab[i].tlogHeadForObject = j;
       else tlogManager.writeRaw(allocTab[i].tlogTailForObject + offsetof(logEntry, nextForObject), jRaw, sizeof(j));
       allocTab[i].tlogTailForObject = j;
     }
@@ -467,8 +464,8 @@ namespace WITE {
       ate = allocTab[i];//faster ram read all at once because allocTab is volatile
       score = max(ate.readsLastFrame, ate.readsThisFrame) +
 	(ate.cacheLocation ? 48>>(currentFrame - ate.cacheLocation->readsCachedLifetime) : 0) +
-	(ate.nextWriteFrame != -1 ? (ate.cacheLocation ? 512 : 16) :
-	 ate.lastWrittenFrame != -1 ? 48 >> (currentFrame - ate.lastWrittenFrame) : 0);
+	(ate.nextWriteFrame != NULL_FRAME ? (ate.cacheLocation ? 512 : 16) :
+	 ate.lastWrittenFrame != NULL_FRAME ? 48 >> (currentFrame - ate.lastWrittenFrame) : 0);
       if (score <= pt_cacheStaging[len - 1].score) continue;
       if (len) {
 	bot = 0;
@@ -494,7 +491,7 @@ namespace WITE {
     for (j = 0;j < cacheCount;j++) {
       ce = cache[j];
       ci = pt_cacheStaging[j];
-      if (ce.entry != ci.ent && ce.entry != -1 && allocTab[ce.entry].cacheLocation == &cache[j]) {//cache slot occupied
+      if (ce.entry != ci.ent && ce.entry != NULL_ENTRY && allocTab[ce.entry].cacheLocation == &cache[j]) {//cache slot occupied
 	if (ce.syncstate & CACHE_SYNC_STATE_OUTBOUND_WRITE_PENDING) {//write before overwriting
 	  FILE* dst = pt_targetF && allocTab[ce.entry].lastWrittenFrame >= targetFrame ? pt_targetF : pt_activeF;
 	  fseek(dst, (long)(ce.entry * sizeof(loadedEntry)), SEEK_SET);
@@ -538,7 +535,7 @@ namespace WITE {
       pt_lastWriteFrame = currentFrame;
     }
     pt_writenBytesThisFrame += le->size;
-    if(allocTab[le->start].nextWriteFrame == -1) allocTab[le->start].nextWriteFrame = currentFrame;
+    if(allocTab[le->start].nextWriteFrame == NULL_FRAME) allocTab[le->start].nextWriteFrame = currentFrame;
     allocTab[le->start].lastWrittenFrame = currentFrame;
   }
 
@@ -606,10 +603,10 @@ namespace WITE {
     if (ele.type == del) {
       while (getEntryState(trunk) == Database::state_t::trunk) {
 	for (branchIdx = 0;branchIdx < MAXBLOCKPOINTERS;branchIdx++) {
-	  branch = getRaw<Entry>(trunk, offsetof(loadedEntry, children.subblocks[branchIdx]));
+	  branch = getRaw<Entry>(trunk, __offsetof_array(loadedEntry, children, branchIdx));
 	  if (getEntryState(branch) == Database::state_t::trunk) break;
 	  for (targetChild = 0;targetChild < MAXBLOCKPOINTERS;targetChild++) {
-	    leaf = getRaw<Entry>(branch, offsetof(loadedEntry, children.subblocks[targetChild]));
+	    leaf = getRaw<Entry>(branch, __offsetof_array(loadedEntry, children, targetChild));
 	    if (!leaf) break;
 	    *le = { ele.frameIdx, del, 0, 0, ~0u, leaf };
 	    PUSH_LE;
@@ -624,7 +621,7 @@ namespace WITE {
       if(getEntryState(trunk) == Database::state_t::branch) {
 	branch = trunk;
 	for (targetChild = 0;targetChild < MAXBLOCKPOINTERS;targetChild++) {
-	  leaf = getRaw<Entry>(branch, offsetof(loadedEntry, children.subblocks[targetChild]));
+	  leaf = getRaw<Entry>(branch, __offsetof_array(loadedEntry, children.subblocks, targetChild));
 	  if (!leaf) break;
 	  *le = { ele.frameIdx, del, 0, 0, ~0u, leaf };
 	  PUSH_LE;
@@ -636,7 +633,7 @@ namespace WITE {
       offset = ele.offset;
       if (getEntryState(ele.start) == Database::state_t::branch) CAPPED = true;
       trunkIdx = 0;
-      branchIdx = -1;
+      branchIdx = NULL_OFFSET;
       do {
 	targetChild += offset / BLOCKSIZE;
 	targetLeaf = targetChild % MAXBLOCKPOINTERS;
@@ -645,7 +642,7 @@ namespace WITE {
 	while (trunkIdx <= targetTrunk) {
 	  trunk = getRaw<Entry>(trunk, offsetof(loadedEntry, children.subblocks[MAXBLOCKPOINTERS - 1]));
 	  trunkIdx++;
-	  branchIdx = -1;
+	  branchIdx = NULL_OFFSET;
 	}
 	if(trunkIdx > 0 && getEntryState(trunk) == Database::state_t::branch) {
 	  branchIdx = (trunkIdx - 1) * (MAXBLOCKPOINTERS - 1) + 1;
@@ -657,7 +654,7 @@ namespace WITE {
 				 (targetBranch % (CAPPED ? MAXBLOCKPOINTERS : (MAXBLOCKPOINTERS - 1))));
 	  branchIdx = targetBranch;
 	}
-	leaf = getRaw<Entry>(branch, offsetof(loadedEntry, children.subblocks[targetLeaf]));
+	leaf = getRaw<Entry>(branch, __offsetof_array(loadedEntry, children.subblocks, targetLeaf));
 	size = min(ele.size + ele.offset - offset, BLOCKSIZE);
 	*le = { ele.frameIdx, update, size, offset % BLOCKSIZE, ~0u, leaf };
 	offset += size;
@@ -698,7 +695,7 @@ namespace WITE {
       //TODO allocTab nextWriteFrame? (what is it for?)
       allocTab[le->start].lastWrittenFrame = le->frameIdx;
       allocTab[le->start].tlogHeadForObject = le->nextForObject;
-      if (le->nextForObject == -1) allocTab[le->start].tlogTailForObject = -1;
+      if (le->nextForObject == NULL_OFFSET) allocTab[le->start].tlogTailForObject = NULL_OFFSET;
       le = reinterpret_cast<logEntry*>(pt_buffer.raw + pt_starts[i]);
       i++;
       tlogManager.drop();

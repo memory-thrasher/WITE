@@ -36,6 +36,13 @@ const char* LAYERS[] = {};
 #define SHADER_STAGE_FRAG 16
 //VkFormat
 
+namespace WITE {
+  template<class T> struct remove_array { typedef T type; };
+  template<class T> struct remove_array<T[]> { typedef T type; };
+  template<class T, size_t N> struct remove_array<T[N]> { typedef T type; };
+}
+
+#define __offsetof_array(_type, _array, _idx) (offsetof(_type, _array) + sizeof(WITE::remove_array<decltype(_type::_array)>::type) * _idx)
 #define ERRLOGFILE WITE::getERRLOGFILE()
 #define LOG(message, ...) { ::fprintf(ERRLOGFILE, "%s:%d: ", __FILE__, __LINE__); ::fprintf(ERRLOGFILE, message, ##__VA_ARGS__); }
 // #ifdef _DEBUG

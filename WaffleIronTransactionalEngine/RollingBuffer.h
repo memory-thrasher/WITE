@@ -11,12 +11,12 @@ namespace WITE {
     >at most one thread pushes
     >at most one thread pops
     >realloc is disabled
-    >no threads are calling relocate
+    >no threads are calling relocate <<< TODO may need this
     Any number of threads can read concurrently, though may experience dirty reads on the head
-    if another thread is concurrently performing a pop or relocate.
+    if another thread is concurrently performing a push or relocate.
   */
-  template<class HeadType, size_t DATA_SIZE = 0, size_t ENTRY_SIZE = sizeof(HeadType),
-	   typename SIZE_TYPE = size_t, SIZE_TYPE HeadType::*sizeField = NULL, bool ALLOW_REALLOC = true>
+  template<class HeadType, typename SIZE_TYPE = size_t, SIZE_TYPE DATA_SIZE = 0, SIZE_TYPE ENTRY_SIZE = sizeof(HeadType),
+    SIZE_TYPE sizeFieldOffset = std::numeric_limits<size_t>::max(), bool ALLOW_REALLOC = true>
   class export_def RollingBuffer {
   private:
   typedef struct {
@@ -27,11 +27,11 @@ namespace WITE {
   template<SIZE_TYPE cloneSize = DATA_SIZE, SIZE_TYPE cloneCount = 1 + cloneSize / ENTRY_SIZE> class RBIterator;
   constexpr static bool INLINEDATA = bool(DATA_SIZE);
   constexpr static bool VARIABLE_RECORD_SIZE = !bool(ENTRY_SIZE);
-  constexpr static bool ADD_SIZE = ((NULL == sizeField) && VARIABLE_RECORD_SIZE);
+  constexpr static bool ADD_SIZE = ((std::numeric_limits<size_t>::max() == sizeFieldOffset) && VARIABLE_RECORD_SIZE);
   constexpr static bool RESIZABLE = (!INLINEDATA && ALLOW_REALLOC);
   constexpr static bool MOVABLE = (!INLINEDATA);
   //size in bytes
-  template<bool ID = INLINEDATA, typename std::enable_if_t<!ID, size_t> = 0> RollingBuffer(size_t size, uint8_t* data = NULL);
+  template<bool ID = INLINEDATA, typename std::enable_if_t<!ID, size_t> = 0> RollingBuffer(SIZE_TYPE size, uint8_t* data = NULL);
   RollingBuffer();
   ~RollingBuffer();
   template<bool AS = ADD_SIZE> typename std::enable_if_t<AS, uint16_t> push(HeadType* newData, SIZE_TYPE size, size_t* handleOut = NULL);
@@ -42,7 +42,7 @@ namespace WITE {
     First entry starts at data[0], second at data[starts[0]], data[starts[1]] ... until starts[n] = 0*/
   uint16_t pop(uint8_t* data, size_t* starts, size_t maxsize, size_t max);
   //Like pop but does not alter the stack, but does take an optional position tracker
-  uint16_t peek(uint8_t* data, size_t* starts, size_t maxsize, size_t max, size_t* pos);
+  uint16_t peek(uint8_t* data, size_t* starts, size_t maxsize, size_t max, SIZE_TYPE* pos);
   uint16_t drop();//remove the next element without reading it
   SIZE_TYPE used();
   SIZE_TYPE count();
@@ -55,32 +55,33 @@ namespace WITE {
   //grow if necessary, plus pad bytes
   template<bool R = RESIZABLE> typename std::enable_if_t<R, uint16_t> swallow(uint8_t* newData, size_t dataSize, uint64_t* handleOut = NULL, size_t pad = 0);
   inline SIZE_TYPE sizeofnext(SIZE_TYPE);
-  inline SIZE_TYPE sizeofnext() { return sizeofnext(head); };
+  inline SIZE_TYPE sizeofnext() { return sizeofnext(head.load(std::memory_order_consume)); };
   template<SIZE_TYPE cloneSize = DATA_SIZE, SIZE_TYPE cloneCount = 1 + cloneSize / ENTRY_SIZE>
   inline RBIterator<cloneSize, cloneCount> iter();
   private:
   RollingBuffer(const RollingBuffer&) = delete;
-  volatile SIZE_TYPE head = 0, tail = 0, size, entries = 0;
-  volatile uint8_t* buf;
+  std::atomic<SIZE_TYPE> head, tail;
+  SIZE_TYPE size, entries;//TODO non-atomic option
+  uint8_t * buf;
   bool outer = false;//when head = tail; true means buffer is full, false means empty, otherwise this should be false
-  volatile uint8_t inline_data[DATA_SIZE ? DATA_SIZE : 1];
-  inline bool wrapped() { return outer || head > tail; }
+  uint8_t inline_data[DATA_SIZE ? DATA_SIZE : 1];
+  inline bool wrapped() { return outer || head.load(std::memory_order_consume) > tail.load(std::memory_order_consume); };
   public:
   template<SIZE_TYPE cloneSize, SIZE_TYPE cloneCount>
   class RBIterator {//designed to be placed on the thread stack, used as a read buffer for batch reading
   public:
-    typedef RollingBuffer<HeadType, DATA_SIZE, ENTRY_SIZE, SIZE_TYPE, sizeField, ALLOW_REALLOC> master_t;
+    typedef RollingBuffer<HeadType, SIZE_TYPE, DATA_SIZE, ENTRY_SIZE, sizeFieldOffset, ALLOW_REALLOC> master_t;
   private:
-    SIZE_TYPE i, readHead;
     master_t* master;
+    SIZE_TYPE readHead, i;
     uint8_t data[cloneSize];
     size_t starts[cloneCount];
   public:
-    RBIterator(master_t* rb) : master(rb), readHead(rb->head), i(-1) {}
+    RBIterator(master_t* rb) : master(rb), readHead(rb->head), i(std::numeric_limits<SIZE_TYPE>::lowest()) {}
     SIZE_TYPE getHead() { return i ? starts[i - 1] : 0; }
     HeadType* next() {//returns null when out
       HeadType* ret;
-      if (i == -1 || !starts[i-1]) {
+      if (i == std::numeric_limits<SIZE_TYPE>::lowest() || !starts[i-1]) {
 	if (master->peek(data, starts, cloneSize, cloneCount, &readHead) == RB_BUFFER_UNDERFLOW) return NULL;
 	i = 0;
       }
@@ -91,21 +92,22 @@ namespace WITE {
   };
   };
 
-  //and this is why atomics would work, if they weren't so slow
-#define BOUND_INC_HEAD(amnt) {head = head+amnt >= size ? head+amnt-size : head + amnt; outer = false;}
-#define BOUND_INC_TAIL(amnt) {tail = tail+amnt >= size ? tail+amnt-size : head + amnt; outer = head == tail;}
-#define RB_PROTO(...) template<class HeadType, size_t DATA_SIZE, size_t ENTRY_SIZE, \
-			       typename SIZE_TYPE, SIZE_TYPE HeadType::*sizeField, bool ALLOW_REALLOC> \
-  __VA_ARGS__ RollingBuffer<HeadType, DATA_SIZE, ENTRY_SIZE, SIZE_TYPE, sizeField, ALLOW_REALLOC>
-#define RB_FQN RollingBuffer<HeadType, DATA_SIZE, ENTRY_SIZE, SIZE_TYPE, sizeField, ALLOW_REALLOC>
+#define BOUND_INC_HEAD(amnt) {SIZE_TYPE h = head.load(std::memory_order_acquire) + amnt; if(h >= size) h -= size; outer = false; \
+    head.store(std::memory_order_release); }
+#define BOUND_INC_TAIL(amnt) {SIZE_TYPE t = tail.load(std::memory_order_acquire) + amnt; if(t >= size) t -= size; \
+    outer = head.load(std::memory_order_consume) == t; tail.store(std::memory_order_release); }
+#define RB_PROTO(...) template<class HeadType, typename SIZE_TYPE, SIZE_TYPE DATA_SIZE, SIZE_TYPE ENTRY_SIZE, \
+			       SIZE_TYPE sizeFieldOffset, bool ALLOW_REALLOC> \
+  __VA_ARGS__ RollingBuffer<HeadType, SIZE_TYPE, DATA_SIZE, ENTRY_SIZE, sizeFieldOffset, ALLOW_REALLOC>
+#define RB_FQN RollingBuffer<HeadType, SIZE_TYPE, DATA_SIZE, ENTRY_SIZE, sizeFieldOffset, ALLOW_REALLOC>
 
-  RB_PROTO(template<bool ID, typename std::enable_if_t<!ID, size_t> t>)::RollingBuffer(size_t size, uint8_t* data) :
+  RB_PROTO(template<bool ID, typename std::enable_if_t<!ID, size_t>>)::RollingBuffer(SIZE_TYPE size, uint8_t* data) :
     size(size), buf(data ? data : malloc(size)) {};
 
-  RB_PROTO()::RollingBuffer() : buf(DATA_SIZE ? inline_data : NULL), size(DATA_SIZE) {}
+  RB_PROTO()::RollingBuffer() : head(0), tail(0), size(DATA_SIZE), buf(DATA_SIZE ? inline_data : NULL) {}
 
   RB_PROTO()::~RollingBuffer() {
-    if (ALLOW_REALLOC) free(buf);
+    if (ALLOW_REALLOC) std::free((void*)(buf));
   }
 
   RB_PROTO(template<SIZE_TYPE cloneSize, SIZE_TYPE cloneCount> RB_FQN::RBIterator<cloneSize, cloneCount>)::iter() {
@@ -115,6 +117,8 @@ namespace WITE {
 
   RB_PROTO(SIZE_TYPE)::used() {
     size_t ret;
+    SIZE_TYPE head = this->head.load(std::memory_order_consume),
+      tail = this->tail.load(std::memory_order_consume);
     ret = head == tail ? (outer ? size : 0) : head < tail ? tail - head : tail + size - head;
     return ret;
   }
@@ -130,27 +134,27 @@ namespace WITE {
   RB_PROTO(void)::readRaw(uint8_t* out, SIZE_TYPE offset, SIZE_TYPE readSize) {
     if (offset >= size) offset -= size;
     if (offset + readSize >= size) {//:(
-      memcpy(out, buf[offset], size - offset);
-      memcpy(out[size - offset], buf, readSize + offset - size);
+      memcpy(out, &buf[offset], size - offset);
+      memcpy(&out[size - offset], buf, readSize + offset - size);
     } else {
-      memcpy(out, buf[offset], readSize);
+      memcpy(out, &buf[offset], readSize);
     }
   }
 
   RB_PROTO(void)::writeRaw(SIZE_TYPE offset, uint8_t* in, SIZE_TYPE writeSize) {
     if (offset >= size) offset -= size;
     if (offset + writeSize >= size) {//:(
-      memcpy(buf[offset], in, size - offset);
-      memcpy(buf, in[size - offset], writeSize + offset - size);
+      memcpy(&buf[offset], in, size - offset);
+      memcpy(buf, &in[size - offset], writeSize + offset - size);
     } else {
-      memcpy(buf[offset], in, writeSize);
+      memcpy(&buf[offset], in, writeSize);
     }
   }
 
   RB_PROTO(SIZE_TYPE)::sizeofnext(SIZE_TYPE h) {
     SIZE_TYPE offset;
     if (ENTRY_SIZE) return ENTRY_SIZE;
-    offset = ADD_SIZE ? offsetof(HeadWithSizeType, size) : static_cast<size_t>(sizeField);
+    offset = ADD_SIZE ? offsetof(HeadWithSizeType, size) : sizeFieldOffset;
     union {
       SIZE_TYPE ret;
       uint8_t retRaw[1];
@@ -189,20 +193,24 @@ namespace WITE {
   }
 
   RB_PROTO(template<bool AS> typename std::enable_if_t<!AS, uint16_t>)::push(HeadType* newData, size_t* handleOut) {
-    SIZE_TYPE dataSize = sizeof(HeadType) + newData->*sizeField;
+    SIZE_TYPE dataSize;
+    memcpy(&dataSize, (uint8_t*)&newData + sizeFieldOffset, sizeof(SIZE_TYPE));
+    dataSize += sizeof(HeadType);
     if (dataSize + sizeof(HeadType) > freeSpace()) return RB_BUFFER_OVERFLOW;
     if (handleOut) *handleOut = tail;
-    writeRaw(tail, dataSize, dataSize);
+    writeRaw(tail, (uint8_t*)newData, dataSize);
     BOUND_INC_TAIL(dataSize);
     entries++;
     return RB_SUCCESS;
   }
 
   RB_PROTO(template<bool AS> typename std::enable_if_t<!AS, uint16_t>)::pushBlocking(HeadType* newData, size_t* handleOut) {
-    SIZE_TYPE dataSize = sizeof(HeadType) + newData->*sizeField;
+    SIZE_TYPE dataSize;
+    memcpy(&dataSize, (uint8_t*)&newData + sizeFieldOffset, sizeof(SIZE_TYPE));
+    dataSize += sizeof(HeadType);
     while(dataSize + sizeof(HeadType) > freeSpace());//TODO yield?
     if (handleOut) *handleOut = tail;
-    writeRaw(tail, dataSize, dataSize);
+    writeRaw(tail, (uint8_t*)newData, dataSize);
     BOUND_INC_TAIL(dataSize);
     entries++;
     return RB_SUCCESS;
@@ -216,7 +224,7 @@ namespace WITE {
     if (entries > max) ret = RB_READ_INCOMPLETE;
     else max = entries;
     while (max && (subsize = sizeofnext() + sizeof(HeadType)) && subsize <= maxsize) {
-      readRaw(data, head, subsize);
+      readRaw(data, head.load(std::memory_order_consume), subsize);
       entries--;
       BOUND_INC_HEAD(subsize + sizeof(SIZE_TYPE));
       max--;
@@ -229,15 +237,18 @@ namespace WITE {
     return ret;
   }
 
-  RB_PROTO(uint16_t)::peek(uint8_t* data, size_t* starts, size_t maxsize, size_t max, size_t* pos) {
-    SIZE_TYPE subsize, totalWrote = 0, subpos = head;
+  RB_PROTO(uint16_t)::peek(uint8_t* data, size_t* starts, size_t maxsize, size_t max, SIZE_TYPE* pos) {
+    SIZE_TYPE subsize, totalWrote = 0, subpos;
     uint16_t ret;
     if (!entries) return RB_BUFFER_UNDERFLOW;
-    if (!pos) pos = subpos;
+    if (!pos) {
+      subpos = head.load(std::memory_order_consume);
+      pos = &subpos;
+    }
     ret = RB_SUCCESS;
     if (entries > max) ret = RB_READ_INCOMPLETE;
     else max = entries;
-    while (max && subsize = sizeofnext() + sizeof(HeadType) && subsize <= maxsize) {
+    while (max && (subsize = sizeofnext(*pos) + sizeof(HeadType)) && subsize <= maxsize) {
       readRaw(data, *pos, subsize);
       entries--;
       *pos += subsize + sizeof(SIZE_TYPE);
@@ -252,18 +263,20 @@ namespace WITE {
     return ret;
   }
 
-  //NOT thread safe; ensure no threads are doing anything while this is executing; also invalidates all handles
+  //NOT thread safe; ensure no threads are doing anything while this is executing; also invalidates all handles (atomic seq_cst to impose possible fence)
   RB_PROTO(template<bool M> typename std::enable_if_t<M, uint16_t>)::relocate(uint8_t* newStart, SIZE_TYPE newSize) {
     uint8_t* newEnd, *oldStart, *oldEnd;
     size_t used = this->used(), leadingEmpty, trailingEmpty, mov;
     int64_t oldHead, oldTail, startOffset, movRemaining;
     bool wasWrapped;
     if (newSize < used) return RB_BUFFER_OVERFLOW;
+    SIZE_TYPE head = this->head.load(std::memory_order_seq_cst), tail = this->tail.load(std::memory_order_seq_cst);
     newEnd = newStart + newSize;
-    oldStart = static_cast<uint8_t*>(buf);
+    oldStart = (uint8_t*)buf;
     oldEnd = oldStart + size;
     if (!used) {//nothing to move; ideal
-      outer = head = tail = 0;
+      outer = false;
+      head = tail = 0;
     } else if(std::less<void*>()(newStart, oldEnd) && std::less<void*>()(oldStart, newEnd)) {//overlap, common
       wasWrapped = outer || tail < head;
       startOffset = static_cast<int64_t>(oldStart - newStart);
@@ -284,11 +297,11 @@ namespace WITE {
 	    } else
 	      tail = newSize + movRemaining;//movRemaining <= 0
 	    head = oldHead;
-	  } else {//case: newend < oldend: trailingEmpty = 0, must relocate segment of head at end to beginning
+	  } else {//case: newend <= oldend: trailingEmpty = 0, must relocate segment of head at end to beginning
 	    mov = static_cast<size_t>(oldEnd - newEnd);
 	    if (mov != startOffset) memmove(newStart + mov, oldStart, tail);
 	    memcpy(newStart, newEnd, mov);
-	    tail = newStart + mov + tail;
+	    tail = mov + tail;
 	    head = oldHead;
 	  }
 	} else {//move head
@@ -342,6 +355,8 @@ namespace WITE {
     }
     buf = static_cast<uint8_t*>(newStart);
     size = newSize;
+    this->head.store(head, std::memory_order_seq_cst);
+    this->tail.store(tail, std::memory_order_seq_cst);
     return RB_SUCCESS;
   }
 

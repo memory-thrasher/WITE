@@ -25,6 +25,9 @@ namespace WITE {
       std::unique_ptr<precompiledBatch_entry[]> data;
       size_t size;
     } precompiledBatch_t;
+    constexpr static Entry NULL_ENTRY = std::numeric_limits<Entry>::max();
+    constexpr static size_t NULL_OFFSET = std::numeric_limits<size_t>::max();
+    constexpr static uint64_t NULL_FRAME = std::numeric_limits<uint64_t>::max();
     private:
     constexpr static size_t BLOCKSIZE = 4096;
     enum state_t { unallocated = 0, data, branch, trunk };//branches contain references to datas, trunks contain references to branches or other trunks
@@ -84,11 +87,11 @@ namespace WITE {
       Entry typeListNext, typeListLast;//linked list of all objects of this type, rebuilt on reload
     } allocationTableEntry;
     typedef struct {
-      typedef RollingBuffer<enqueuedLogEntry, 65536, 0, uint16_t, &enqueuedLogEntry::size> transactionalBacklog_t;
+      typedef RollingBuffer<enqueuedLogEntry, uint16_t, 65535, 0, (uint16_t)offsetof(enqueuedLogEntry, size), false> transactionalBacklog_t;
       transactionalBacklog_t transactionalBacklog;
       uint64_t currentFileIdx;//target if it exists, active otherwise
       FILE *activeFile, *targetFile;
-      volatile Entry allocRet = -1;
+      volatile Entry allocRet = NULL_ENTRY;
       volatile size_t allocSize = 0;
     } threadResource_t;
     typedef typeHandles perTypeStatic;
@@ -130,7 +133,7 @@ namespace WITE {
     static typeHandles* getHandlesOfType(type t);
     void getEntriesWithUpdate(std::vector<Entry>* out);
     private:
-    static const uint8_t zero[0];
+    constexpr static uint8_t zero[BLOCKSIZE] = { 0 };
     template<size_t idx, class T, class U, class V, class... Zs>
     constexpr static void createPrecompiledBatch(precompiledBatch_t& out, U T::*u, V T::*v, Zs... z);
     template<size_t idx, class T, class U> constexpr static void createPrecompiledBatch(precompiledBatch_t& out, U T::*u);
@@ -157,7 +160,7 @@ namespace WITE {
     static std::vector<type> typesWithUpdates;//only edited on static init, pre multithread
     static std::map<type, perTypeStatic> typesStatic;
     std::map<type, perType> types;//on current frame
-    RollingBuffer<logEntry, 0, 0, size_t, &logEntry::size, false> tlogManager;//TODO index of free?
+    RollingBuffer<logEntry, size_t, 0, 0, offsetof(logEntry, size), false> tlogManager;//TODO index of free?
     std::atomic<uint8_t> masterThreadState;
     ThreadResource<threadResource_t> threadResources;
     //prime thread only: (all transient)
@@ -200,10 +203,10 @@ namespace WITE {
     Entry ret = allocate(sizeof(T));
     put(ret, static_cast<uint8_t*>(&t), offsetof(loadedEntry, header.type), sizeof(type));
     allocTab[ret].typeListLast = types[t].lastOfType;
-    if (types[t].firstOfType == -1) types[t].firstOfType = ret;
+    if (types[t].firstOfType == NULL_ENTRY) types[t].firstOfType = ret;
     else allocTab[types[t].lastOfType].typeListNext = ret;
     types[t].lastOfType = ret;
-    allocTab[ret].typeListNext = -1;
+    allocTab[ret].typeListNext = NULL_ENTRY;
     return ret;
   }
 

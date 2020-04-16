@@ -2,11 +2,11 @@
 #include "Mesh.h"
 #include "Window.h"
 
-Mesh::buffers_t Mesh::vertexBuffers(decltype(Mesh::vertexBuffers)::constructor_F::make(&Mesh::makeBuffersFor));
+decltype(Mesh::vertexBuffers) Mesh::vertexBuffers(decltype(Mesh::vertexBuffers)::constructor_F::make(&Mesh::makeBuffersFor));
 
-Mesh::Mesh(std::shared_ptr<WITE::MeshSource> source) :
-  source(source), allMeshes_node(std::shared_ptr<Mesh>(this)),
-  subbuf(decltype(subbuf)::constructor_F::make<Mesh>(this, &Mesh::makeSubbuf)) {}
+Mesh::Mesh(std::shared_ptr<WITE::MeshSource> source) : source(source),
+  subbuf(decltype(subbuf)::constructor_F::make<Mesh>(this, &Mesh::makeSubbuf)),
+  allMeshes_node(std::shared_ptr<Mesh>(this)) {}
 
 Mesh::~Mesh() {}
 
@@ -55,7 +55,7 @@ uint32_t Mesh::put(void* out, uint64_t offset, uint64_t maxSize, GPU* gpu) {
 				 glm::min<uint64_t>(maxSize / SIZEOF_VERTEX, (uint64_t)highestResolution), &camLoc);
 }
 
-void Mesh::proceduralMeshLoop(std::atomic_uint8_t* semaphore) {
+void Mesh::proceduralMeshLoop(std::atomic<uint8_t>* semaphore) {
   AtomicLinkedList<Mesh>* next;
   std::shared_ptr<Mesh> mesh;
   size_t i = 0, gpuIdx;

@@ -10,7 +10,7 @@ Camera::~Camera() {}
 
 float Camera::approxScreenArea(WITE::BBox3D* o) {
   WITE::BBox3D scrnAlloc, *scrn;
-  scrn = renderTransform.getInv()->transform(o, &scrnAlloc);
+  scrn = renderTransform.getInv().transform(o, &scrnAlloc);
   return (float)((scrn->maxx-scrn->minx)*(scrn->maxy-scrn->miny));
 }
 
@@ -64,32 +64,32 @@ void Camera::recreateResources() {
   for(size_t i = 0;i < passCount;i++) {
     BackedImage* img = new BackedImage
       (presentQ->gpu, {(uint32_t)size.width, (uint32_t)size.height},
-       { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO, NULL, 0, NULL, VK_IMAGE_VIEW_TYPE_2D, RenderPass::COLOR_FORMAT,
+       { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO, VK_NULL_HANDLE, 0, VK_NULL_HANDLE, VK_IMAGE_VIEW_TYPE_2D, RenderPass::COLOR_FORMAT,
 	 { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A }, { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 }
        }, {
-	   VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO, NULL, 0, VK_IMAGE_TYPE_2D, RenderPass::COLOR_FORMAT,
+	   VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO, VK_NULL_HANDLE, 0, VK_IMAGE_TYPE_2D, RenderPass::COLOR_FORMAT,
 	   { (uint32_t)size.width, (uint32_t)size.height, 1 }, 1, 1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_LINEAR,
-	   VK_IMAGE_USAGE_TRANSFER_SRC_BIT, VK_SHARING_MODE_EXCLUSIVE, 0, NULL, VK_IMAGE_LAYOUT_PREINITIALIZED
+	   VK_IMAGE_USAGE_TRANSFER_SRC_BIT, VK_SHARING_MODE_EXCLUSIVE, 0, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_PREINITIALIZED
        });
     passes[i].color = std::unique_ptr<BackedImage>(img);
     img = new BackedImage
       (presentQ->gpu, {(uint32_t)size.width, (uint32_t)size.height},
-       { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO, NULL, 0, NULL, VK_IMAGE_VIEW_TYPE_2D, RenderPass::DEPTH_FORMAT,
+       { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO, VK_NULL_HANDLE, 0, VK_NULL_HANDLE, VK_IMAGE_VIEW_TYPE_2D, RenderPass::DEPTH_FORMAT,
 	 { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A }, { VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1 }
        }, {
-	   VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO, NULL, 0, VK_IMAGE_TYPE_2D,
+	   VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO, VK_NULL_HANDLE, 0, VK_IMAGE_TYPE_2D,
 	   RenderPass::DEPTH_FORMAT, { (uint32_t)size.width, (uint32_t)size.height, 1 }, 1, 1, VK_SAMPLE_COUNT_1_BIT,
 	   (depthProps.linearTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) ? VK_IMAGE_TILING_LINEAR :
 	   (depthProps.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) ? VK_IMAGE_TILING_OPTIMAL : VK_IMAGE_TILING_BEGIN_RANGE,
-	   VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_SHARING_MODE_EXCLUSIVE, 0, NULL, VK_IMAGE_LAYOUT_UNDEFINED
+	   VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_SHARING_MODE_EXCLUSIVE, 0, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED
        });
     passes[i].depth = std::unique_ptr<BackedImage>(img);
-    CRASHIFFAIL(vkCreateRenderPass(presentQ->gpu->device, &RenderPass::rpInfo, NULL, &passes[i].rp));
+    CRASHIFFAIL(vkCreateRenderPass(presentQ->gpu->device, &RenderPass::rpInfo, VK_NULL_HANDLE, &passes[i].rp));
     VkImageView attachments[2] = { passes[i].color->getImageView(), passes[i].depth->getImageView() };
     VkFramebufferCreateInfo fbInfo =
-      { VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO, NULL, 0, passes[i].rp, 2, attachments, (uint32_t)size.width, (uint32_t)size.height, 1 };
-    CRASHIFFAIL(vkCreateFramebuffer(presentQ->gpu->device, &fbInfo, NULL, &passes[i].fb));
-    passes[i].beginInfo = { VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO, NULL, passes[i].rp, passes[i].fb,
+      { VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO, VK_NULL_HANDLE, 0, passes[i].rp, 2, attachments, (uint32_t)size.width, (uint32_t)size.height, 1 };
+    CRASHIFFAIL(vkCreateFramebuffer(presentQ->gpu->device, &fbInfo, VK_NULL_HANDLE, &passes[i].fb));
+    passes[i].beginInfo = { VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO, VK_NULL_HANDLE, passes[i].rp, passes[i].fb,
 			    {{(int32_t)size.minx, (int32_t)size.miny}, {(uint32_t)size.width, (uint32_t)size.height}}, 2, RenderPass::CLEAR};
   }
 }

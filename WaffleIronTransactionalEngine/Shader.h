@@ -51,10 +51,10 @@ private:
     std::vector<struct rpResources> perRP;
   };
   void makePipeForRP(VkRenderPass rp, size_t passIdx, GPU* gpu, VkPipeline* out);
-  GPUResource<shaderGpuResources> resources;
-  struct subshader_t* subshaders;
   size_t subshaderCount, resourcesPerInstance;
-  struct WITE::Shader::resourceLayoutEntry* resourceLayout;
+  GPUResource<shaderGpuResources> resources;
+  struct subshader_t* subshaders;//TODO free
+  struct WITE::Shader::resourceLayoutEntry* resourceLayout;//TODO free
   std::vector<class Renderer*> renderers[MAX_RENDER_LAYERS];
   WITE::SyncLock lock;
   std::unique_ptr<Instance> makeResources(GPU*);

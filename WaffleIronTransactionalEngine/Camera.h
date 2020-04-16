@@ -32,7 +32,7 @@ private:
   WITE::Window* window;
   WITE::Transform renderTransform, worldTransform;
   void updateMaths();
-  typedef struct {
+  typedef struct RenderPass_t {
     static constexpr VkFormat DEPTH_FORMAT = VK_FORMAT_D16_UNORM, COLOR_FORMAT = VK_FORMAT_B8G8R8A8_UNORM;
     static constexpr VkAttachmentDescription attachments[2] =
       {{0, COLOR_FORMAT, VK_SAMPLE_COUNT_1_BIT, VK_ATTACHMENT_LOAD_OP_CLEAR, VK_ATTACHMENT_STORE_OP_STORE,

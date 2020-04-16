@@ -39,7 +39,7 @@ const char* LAYERS[] = {};
 namespace WITE {
   template<class T> struct remove_array { typedef T type; };
   template<class T> struct remove_array<T[]> { typedef T type; };
-  template<class T, size_t N> struct remove_array<T[N]> { typedef T type; };
+  template<class T, std::size_t N> struct remove_array<T[N]> { typedef T type; };
 }
 
 #define __offsetof_array(_type, _array, _idx) (offsetof(_type, _array) + sizeof(WITE::remove_array<decltype(_type::_array)>::type) * _idx)
@@ -50,7 +50,7 @@ namespace WITE {
 // #else
 // #define CRASHRET(...) { LOG("**CRASH IMMINENT**"); WITE::flush(ERRLOGFILE); return __VA_ARGS__; }
 // #endif
-#define CRASH(message) { LOG(message); CRASHRET(); }
+#define CRASH(message, ...) { LOG(message, ##__VA_ARGS__); CRASHRET(); } //all crashes should explain themselves
 #define CRASHIFFAIL(_cmd_, ...) {int64_t _res = (int64_t)_cmd_; if(_res) { LOG("Got result: %I64d\n", _res); CRASHRET(__VA_ARGS__) } }//for VkResult. VK_SUCCESS = 0
 
 #define newOrHere(_out) new(ensurePointer(_out))

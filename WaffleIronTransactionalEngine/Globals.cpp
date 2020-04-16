@@ -3,6 +3,8 @@
 #include "Globals.h"
 #include "Thread.h"
 
+#include <sys/stat.h>
+
 #ifdef _WIN32
 
 export_def uint64_t timeNs() {
@@ -52,9 +54,9 @@ export_def void WITE_INIT(const char* gameName) {//TODO move this to mainLoop?
   errLogFile = file_open("out.log", "w");
   SDL_Window* window = SDL_CreateWindow("splash", 0, 0, 10, 10, SDL_WINDOW_VULKAN);
   //window is a dumb requirement, deprecated as of SDL 2.0.8, will be dropped
-  if (!SDL_Vulkan_GetInstanceExtensions(window, &extensionCount, NULL)) CRASH;
-  if (extensionCount > MAX_SDL_EXTENSIONS) CRASH;
-  if (!SDL_Vulkan_GetInstanceExtensions(window, &extensionCount, extensions)) CRASH;
+  if (!SDL_Vulkan_GetInstanceExtensions(window, &extensionCount, NULL)) CRASH("Failed to fetch VK extension count needed by gl\n");
+  if (extensionCount > MAX_SDL_EXTENSIONS) CRASH("Too many extensions\n");
+  if (!SDL_Vulkan_GetInstanceExtensions(window, &extensionCount, extensions)) CRASH("Failed to fetch VK extensions needed by gl\n");
   SDL_DestroyWindow(window);
   for (i = 0;i < ADDED_EXTENSION_COUNT;i++)
     extensions[extensionCount++] = ADDED_EXTENSIONS[i];

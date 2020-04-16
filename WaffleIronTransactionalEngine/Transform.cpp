@@ -53,4 +53,8 @@ namespace WITE {
     return *this;
   };
 
+  Transform Transform::getInv() const {
+    return Transform(getInvMat());
+  };
+
 };

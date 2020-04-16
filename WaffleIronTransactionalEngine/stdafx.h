@@ -7,7 +7,7 @@
 
 #ifdef _WIN32
 //#include "targetver.h"
-//already in cmake #define WIN32_LEAN_AND_MEAN             // Exclude rarely-used stuff from Windows headers
+#define WIN32_LEAN_AND_MEAN             // Exclude rarely-used stuff from Windows headers
 // Windows Header Files:
 #include <windows.h>
 #include <iostream>
@@ -21,12 +21,10 @@
 #include <fstream>
 //#include <algorithm>
 
-#if defined(__ANDROID__)
-#define VK_USE_PLATFORM_ANDROID_KHR
-#elif defined(__linux__)
+#if defined(__linux__)
 #define VK_USE_PLATFORM_XLIB_KHR
 #elif defined(_WIN32)
-//already in cmake #define VK_USE_PLATFORM_WIN32_KHR
+#define VK_USE_PLATFORM_WIN32_KHR
 #endif
 #define SDL_MAIN_HANDLED
 

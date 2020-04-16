@@ -22,10 +22,10 @@ namespace WITE {
   }
 
   void putThreadRef(Thread* ref) {
-    if (!TlsSetValue(dwTlsIndex, ref)) CRASH;
+    if (!TlsSetValue(dwTlsIndex, ref)) CRASH("Thread init failed: Failed to store thread id in thread storage (win32 kit)\n");
   }
 
-  DWORD WINAPI winThreadCallback(_In_ LPVOID lpParam) {
+  DWORD WINAPI winThreadCallback(LPVOID lpParam) {
     Thread::initThisThread(static_cast<Thread::threadEntry_t>(lpParam));
     return 0;
   }

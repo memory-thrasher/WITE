@@ -12,7 +12,7 @@
 class BackedImage : public WITE::ShaderResource {
 public:
   BackedImage(GPU*, VkExtent2D, VkImageViewCreateInfo = {}, VkImageCreateInfo = {});
-  BackedImage(GPU*, VkExtent2D, VkFormat, VkImage = NULL, uint32_t mipmap = 1);
+  BackedImage(GPU*, VkExtent2D, VkFormat, VkImage = VK_NULL_HANDLE, uint32_t mipmap = 1);
   ~BackedImage();
   void makeSampler();
   void load(BackedBuffer* src, size_t offset = 0, size_t srcBufWidth = -1, size_t srcBufHeight = -1,
@@ -38,7 +38,7 @@ private:
   BackedBuffer *backing = NULL, *staging = NULL;
   VkDescriptorImageInfo info;
   VkSamplerCreateInfo samplerInfo;
-  VkSampler sampler = NULL;
+  VkSampler sampler = VK_NULL_HANDLE;
   friend class Renderer;
 };
 

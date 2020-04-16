@@ -4,12 +4,12 @@
 #include "exportTypes.h"
 #include "RenderLayer.h"
 
-#define ADDED_EXTENSION_COUNT 0
-#define MAX_SDL_EXTENSIONS 20
+#define ADDED_EXTENSION_COUNT (0)
+#define MAX_SDL_EXTENSIONS (20)
 #define MAX_EXTENSIONS (MAX_SDL_EXTENSIONS+ADDED_EXTENSION_COUNT)
-#define MAX_GPUS 32
-#define MAX_QUEUES 32
-#define DEVICE_EXTENSIONS_LEN (1i16)
+#define MAX_GPUS (32)
+#define MAX_QUEUES (32)
+#define DEVICE_EXTENSIONS_LEN (1)
 
 struct vulkan_singleton {
   const char* extensions[MAX_EXTENSIONS];

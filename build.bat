@@ -1,4 +1,6 @@
 @echo off
+echo "VS sucks, use msys and build.sh"
+goto end
 rem *************++++++++++++++>>>>>>>>>> USE "Developer Command Prompt for VS 2017" <<<<<<<<<<<<+++++++++++++++++++*******************
 set cmake="C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe"
 set msbuild="C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\MSBuild\15.0\Bin\amd64\msbuild.exe"

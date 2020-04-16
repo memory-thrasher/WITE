@@ -2,6 +2,7 @@
 #include "GPU.h"
 #include "Export.h"
 #include "Queue.h"
+#include "constants.h"
 
 GPU::GPU(VkPhysicalDevice pdevice, size_t idx, size_t neededQueueCount, const unsigned int* neededQueues) :
   idx(idx), phys(pdevice) {
@@ -14,7 +15,8 @@ GPU::GPU(VkPhysicalDevice pdevice, size_t idx, size_t neededQueueCount, const un
     queueFamilyCount = MAX_QUEUES;
   vkGetPhysicalDeviceQueueFamilyProperties(phys, &queueFamilyCount, queueFamProps);
   //TODO make a queue for each type needed
-  unsigned int chosen[MAX_QUEUES], graphicsIdx = -1, computeIdx = -1, transferIdx = -1,
+  unsigned int chosen[MAX_QUEUES];
+  int graphicsIdx = -1, computeIdx = -1, transferIdx = -1,
     graphicsComputeIdx = -1, graphicsTransferIdx = -1, computeTransferIdx = -1, allIdx = -1;
   bool graphics, compute, transfer;
   for (i = 0;i < queueFamilyCount && allIdx == -1;i++) {
@@ -60,7 +62,7 @@ GPU::GPU(VkPhysicalDevice pdevice, size_t idx, size_t neededQueueCount, const un
   }
   VkDeviceQueueCreateInfo *queueInfos =
     static_cast<VkDeviceQueueCreateInfo*>(malloc(queueCount * sizeof(VkDeviceQueueCreateInfo)));
-  if (!queueInfos) CRASH;
+  if (!queueInfos) CRASH("Failed to malloc tiny buffer to stage queue parameters: \n");
   for(i = 0;i < queueCount;i++) {
     queueInfos[i] = { VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO, NULL, 0, chosen[i], 2,
 		      qPriorities + glm::min<size_t>(i, 3) * 2 };//TODO use min macro instead

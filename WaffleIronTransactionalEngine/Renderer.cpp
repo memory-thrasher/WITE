@@ -5,6 +5,7 @@
 #include "Shader.h"
 #include "Mesh.h"
 #include "BackedImage.h"
+#include "constants.h"
 
 Renderer::Renderer() : obj() {}
 
@@ -66,7 +67,7 @@ void Renderer::setPerFrameCallback(packDataCB d) {
 void Renderer::render(VkCommandBuffer cmd, glm::dmat4 projection, GPU* gpu) {
   //pipeline is already selected
   Shader::Instance* buffer = &buffers->get(gpu)[vertBuffer];
-  auto subbuf = mesh->subbuf.get(gpu);
+  auto subbuf = mesh->subbuf.get(gpu, vertBuffer);//copy
   if (!buffer->inited) {
     buffer->inited = true;
     if(packInitial) packInitial->call(this, buffer->resources.get(), gpu);
@@ -76,14 +77,13 @@ void Renderer::render(VkCommandBuffer cmd, glm::dmat4 projection, GPU* gpu) {
   updateInstanceData(0, gpu);
   if(packPreRender) packPreRender->call(this, buffer->resources.get(), gpu);
   vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shader->resources.get(gpu)->pipelineLayout, 0, 1, &buffer->descSet, 0, NULL);
-  vkCmdBindVertexBuffers(cmd, 0, 1, &Mesh::vertexBuffers.get(gpu)[vertBuffer].verts.buffer, &subbuf->vbStart);
-  //TODO move this to camera level, subdivide on draw
-  vkCmdDraw(cmd, subbuf->vbLength, 1, 0, 0);
+  vkCmdBindVertexBuffers(cmd, 0, 1, &Mesh::vertexBuffers.get(gpu, vertBuffer).verts.buffer, &subbuf.vbStart);
+  //TODO move bind to camera level, subdivide on draw
+  vkCmdDraw(cmd, subbuf.vbLength, 1, 0, 0);
 }
 
 void Renderer::updateInstanceData(size_t resource, GPU* gpu) {//TODO batchify?
   Shader::Instance* buffer = &buffers->get(gpu)[vertBuffer];
-  struct Shader::shaderGpuResources* shaderRes = shader->resources.get(gpu);
   VkWriteDescriptorSet write = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, NULL, buffer->descSet, (uint32_t)resource, 0,
 				 1, (VkDescriptorType)shader->resourceLayout[resource].type, NULL, NULL, NULL };
   switch(write.descriptorType) {
@@ -92,6 +92,9 @@ void Renderer::updateInstanceData(size_t resource, GPU* gpu) {//TODO batchify?
     break;
   case SHADER_RESOURCE_UNIFORM:
     write.pBufferInfo = &((BackedBuffer*)buffer->resources[resource].get())->info;
+    break;
+  default:
+    CRASH("Unsupported/unrecognized shader resource type: %d\n", write.descriptorType);
     break;
   }
   vkUpdateDescriptorSets(gpu->device, 1, &write, 0, NULL);

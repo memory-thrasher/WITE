@@ -4,6 +4,8 @@
 #include "Export.h"
 #include "Thread.h"
 
+#define HOLDER_NONE (std::numeric_limits<decltype(SyncLock::holder)>::max())
+
 namespace WITE {
 
   /*uint64_t timeNs() {
@@ -13,9 +15,9 @@ namespace WITE {
     //wraparound is ~June 2185;  64 bit uint in nanoseconds
     }*/
 
-  SyncLock::mutex_t SyncLock::seed = 0;
+  SyncLock::mutex_t SyncLock::seed(0);
 
-  SyncLock::SyncLock() : holds(0), id(seed.fetch_add(1, std::memory_order_relaxed)), holder(~0), queueSeed(0), queueCurrent(0) {}
+  SyncLock::SyncLock() : id(seed.fetch_add(1, std::memory_order_relaxed)) {}
 
   SyncLock::~SyncLock() {}
 
@@ -32,10 +34,10 @@ namespace WITE {
   }
 
   void SyncLock::ReleaseLock() {
-    if (holder != Thread::getCurrentTid()) CRASH;
+    if (holder != Thread::getCurrentTid()) CRASH("Failed to free synclock\n");
     holds--;
     if (!holds) {
-      holder = ~0;
+      holder = HOLDER_NONE;
       queueCurrent.fetch_add(1, std::memory_order_release);
     }
   }
@@ -45,7 +47,7 @@ namespace WITE {
     uint32_t tid = Thread::getCurrentTid();
     preHolds = holds;
     holds = 0;
-    holder = ~0;
+    holder = HOLDER_NONE;
     newSeed = queueSeed.fetch_add(1, std::memory_order_acq_rel);
     queueCurrent.fetch_add(1, std::memory_order_release);
     while (newSeed > queueCurrent.load(std::memory_order_consume)) sleep(1);
@@ -57,7 +59,7 @@ namespace WITE {
     return id;
   }
   bool SyncLock::isLocked() {
-    return holder == ~0;
+    return holder == HOLDER_NONE;
   }
 
   ScopeLock::ScopeLock(SyncLock * sl) {

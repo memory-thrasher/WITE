@@ -8,7 +8,7 @@ class GPU;
 class Queue {
 public:
   static constexpr VkSemaphoreCreateInfo SEMAPHORE_CREATE_INFO = { VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO, 0, 0 };
-  static constexpr VkCommandBufferBeginInfo CMDBUFFER_BEGIN_INFO = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, NULL, 0, NULL};
+  static constexpr VkCommandBufferBeginInfo CMDBUFFER_BEGIN_INFO = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, VK_NULL_HANDLE, 0, VK_NULL_HANDLE};
   class ExecutionPlan {//thread-specific resource: do *not* pass between threads. Locks queue once any begin is called, until isRunning has returned false
   public:
     ExecutionPlan(Queue* master) : queue(master) {};
@@ -44,8 +44,8 @@ public:
   VkCommandBuffer makeCmd();
   VkQueue getQueue() { return queue; };
   void destroyCmd(VkCommandBuffer);
-  void submit(VkCommandBuffer* cmds, size_t cmdLen, VkFence fence = NULL);
-  inline void submit(VkCommandBuffer cmd, VkFence fence = NULL) { submit(&cmd, 1, fence); };
+  void submit(VkCommandBuffer* cmds, size_t cmdLen, VkFence fence = VK_NULL_HANDLE);
+  inline void submit(VkCommandBuffer cmd, VkFence fence = VK_NULL_HANDLE) { submit(&cmd, 1, fence); };
   bool supports(VkSurfaceKHR*);
   GPU* gpu;
   unsigned int family;

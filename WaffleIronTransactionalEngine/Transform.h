@@ -11,10 +11,10 @@ namespace WITE {
     Transform(glm::dmat4 = glm::identity<glm::dmat4>());
     Transform(const Transform& other);
     ~Transform();
-    template<size_t components, class member>
-    void batchTransformPoints(glm::vec<components, member, glm::defaultp>* inout, size_t len) const {
+    template<class Point, class member = typename Point::value_type>
+    void batchTransformPoints(Point* inout, size_t len) const {
       for(size_t i = 0;i < len;i++)
-	inout[i] = glm::dvec3(glm::dvec4(inout[i], 1) * matrix);
+	inout[i] = Point(glm::vec<4, member, glm::defaultp>(inout[i], 1) * matrix);
     }
     BBox3D* transform(const BBox3D* in, BBox3D* out = NULL) const;
     glm::mat4 project(const glm::mat4& other) const;
@@ -24,8 +24,8 @@ namespace WITE {
     glm::dmat4 getMat() const;
     glm::dmat4 getInvMat() const;
     glm::vec3 getLocation() const;
+    Transform getInv() const;
     void setLocation(glm::vec3 nl);
-    const std::shared_ptr<Transform> getInv() const;
     void setMat(glm::dmat4* in);
     Transform& operator=(glm::dmat4&& o);
   private:

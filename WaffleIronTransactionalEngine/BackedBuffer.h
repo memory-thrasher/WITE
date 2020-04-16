@@ -19,7 +19,7 @@ public:
   BackedBuffer* getBuffer() { return this; };
 private:
   VkDescriptorBufferInfo info;
-  VkBuffer buffer = NULL;
+  VkBuffer buffer = VK_NULL_HANDLE;
   size_t size;
   VkDeviceMemory mem;
   GPU* dev;

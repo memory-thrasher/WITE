@@ -8,11 +8,11 @@ public:
   Mesh(std::shared_ptr<WITE::MeshSource> source);
   ~Mesh();
   virtual uint32_t put(void*, uint64_t offset, uint64_t maxSize, GPU*) = 0;
-  static void proceduralMeshLoop(std::atomic_uint8_t* semaphore);
+  static void proceduralMeshLoop(std::atomic<uint8_t>* semaphore);
 private:
   static constexpr size_t VERTEX_BUFFERS = 2;
   typedef struct {
-    size_t vbStart, vbLength;
+    VkDeviceSize vbStart, vbLength;//uint64
   } subbuf_t;
   typedef struct VertexBuffer {
     BackedBuffer verts;
@@ -20,7 +20,6 @@ private:
     VertexBuffer(GPU*);
     ~VertexBuffer();
   } VertexBuffer;
-  typedef GPUResource<Mesh::VertexBuffer[]> buffers_t;
   static std::unique_ptr<VertexBuffer[]> makeBuffersFor(GPU*);
   static GPUResource<VertexBuffer[]> vertexBuffers;
   static WITE::SyncLock allmeshes_lock;

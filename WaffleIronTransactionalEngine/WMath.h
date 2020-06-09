@@ -6,12 +6,14 @@ namespace WITE {
   
   class export_def BBox3D {
   public:
+  typedef glm::dvec3 v3;
   union {
     double component[1];
     struct { double minx, miny, minz, maxx, maxy, maxz, centerx, centery, centerz; };
   };
   BBox3D(double minx = 0, double maxx = 0, double miny = 0, double maxy = 0, double minz = 0, double maxz = 0) :
   minx(minx), miny(miny), minz(minz), maxx(maxx), maxy(maxy), maxz(maxz) {};
+  BBox3D(v3 min, v3 max) : BBox3D(min.x, max.x, min.y, max.y, min.z, max.z) {}
   inline glm::dvec3 min() { return glm::dvec3(minx, miny, minz); };
   inline glm::dvec3 max() { return glm::dvec3(maxx, maxy, maxz); };
   inline glm::dvec3 center() { return glm::dvec3(centerx, centery, centerz); };

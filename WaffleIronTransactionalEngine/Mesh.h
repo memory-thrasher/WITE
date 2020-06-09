@@ -8,7 +8,7 @@ public:
   Mesh(std::shared_ptr<WITE::MeshSource> source);
   ~Mesh();
   virtual uint32_t put(void*, uint64_t offset, uint64_t maxSize, GPU*) = 0;
-  static void proceduralMeshLoop(std::atomic<uint8_t>* semaphore);
+  static void proceduralMeshLoop(void* semaphore);//semaphore is type std::atomic<uint8_t>
 private:
   static constexpr size_t VERTEX_BUFFERS = 2;
   typedef struct {

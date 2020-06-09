@@ -11,10 +11,18 @@
 #define MAX_QUEUES (32)
 #define DEVICE_EXTENSIONS_LEN (1)
 
+#if defined(_DEBUG)
+#define LAYER_COUNT 1
+#define LAYERS { "VK_LAYER_LUNARG_standard_validation" }
+#else
+#define LAYER_COUNT 0
+#define LAYERS {}
+#endif
+
 struct vulkan_singleton {
   const char* extensions[MAX_EXTENSIONS];
   unsigned extensionCount, layerCount;
-  const char* layers[LAYER_COUNT];
+  const char* layers[LAYER_COUNT] = LAYERS;
   VkApplicationInfo appInfo;
   VkInstanceCreateInfo createInfo;
   VkInstance instance = NULL;
@@ -28,7 +36,7 @@ struct vulkan_singleton {
 extern struct vulkan_singleton vkSingleton;
 extern const char** ADDED_EXTENSIONS;
 extern const char* DEVICE_EXTENSIONS[DEVICE_EXTENSIONS_LEN];
-extern const VkAllocationCallbacks *vkAlloc;
+#define vkAlloc VK_NULL_HANDLE
 extern size_t threadCount;
 extern WITE::Database* database;
 extern uint8_t vertBuffer;

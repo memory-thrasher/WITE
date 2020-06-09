@@ -1,7 +1,24 @@
-#include "constants.h"
+#include "stdafx.h"
 #include "mainLoop.h"
 #include "Mesh.h"
 #include "Window.h"
+
+#define WORK_NONE (std::numeric_limits<size_t>::max())
+
+typedef struct {
+  std::atomic<size_t> start;
+  size_t len;
+} workerData_t;
+
+void initWorker(workerData_t* out) {
+  out->start.store(WORK_NONE, std::memory_order_relaxed);
+  out->len = 0;
+}
+
+static WITE::ThreadResource<workerData_t> workerData;
+static std::vector<WITE::Database::Entry> entitiesWithUpdate(1024*1024);
+size_t threadCount = 12;
+static size_t workerThreadCount = threadCount - 2, workunitIdx;//(how many threads? query number of cpu cores? user setting?)
 
 void enterWorker(void* unused) {
   WITE::Database::Entry target;
@@ -49,12 +66,12 @@ inline size_t dispatchWork() {//returns number of work units dispatched
 
 export_def void enterMainLoop(WITE::Database* db) {
   size_t i;
-  static std::atomic_uint8_t meshSemaphore;
+  static std::atomic<uint8_t> meshSemaphore;
   uint8_t tempu8;
   database = db;//global assign
   meshSemaphore.store(0, std::memory_order_relaxed);
-  WITE::Thread::spawnThread(WITE::Thread::threadEntry_t_F::make(&meshSemaphore, &Mesh::proceduralMeshLoop));
-  auto workerEntry = WITE::Thread::threadEntry_t_F::make(NULL, &enterWorker);
+  WITE::Thread::spawnThread(WITE::Thread::threadEntry_t_F::make<void*>(&meshSemaphore, &Mesh::proceduralMeshLoop));
+  auto workerEntry = WITE::Thread::threadEntry_t_F::make<void*>(NULL, &enterWorker);
   for(i = 0;i < workerThreadCount;i++) WITE::Thread::spawnThread(workerEntry);
   do {
     tempu8 = meshSemaphore.load(std::memory_order_consume);

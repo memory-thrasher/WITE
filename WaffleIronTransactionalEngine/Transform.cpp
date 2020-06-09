@@ -11,7 +11,7 @@ namespace WITE {
   Transform::~Transform() {}
 
   BBox3D* Transform::transform(const BBox3D* in, BBox3D* out) const {
-    static BBox3D spareRet;
+    static BBox3D spareRet;//TODO thread safety
     glm::dvec3 corners[8];
     in->allCornerSwizzle(corners);//read all inputs before writing to out, so in = out ( = spareRet) is allowed
     batchTransformPoints(corners, 8);

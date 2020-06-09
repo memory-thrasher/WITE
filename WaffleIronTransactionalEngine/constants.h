@@ -1,11 +1,7 @@
 #pragma once
 
-#if defined(_DEBUG)
-#define LAYER_COUNT 1
-static const char* LAYERS[] = { "VK_LAYER_LUNARG_standard_validation" };
-#else
-#define LAYER_COUNT 0
-const char* LAYERS[] = {};
+#if !(defined(_RELEASE) || defined(_DEBUG))
+#define _DEBUG
 #endif
 
 #define NS_PER_MS 1000000

@@ -55,7 +55,8 @@ uint32_t Mesh::put(void* out, uint64_t offset, uint64_t maxSize, GPU* gpu) {
 				 glm::min<uint64_t>(maxSize / SIZEOF_VERTEX, (uint64_t)highestResolution), &camLoc);
 }
 
-void Mesh::proceduralMeshLoop(std::atomic<uint8_t>* semaphore) {
+void Mesh::proceduralMeshLoop(void* semRaw) {
+  std::atomic<uint8_t>* semaphore = (std::atomic<uint8_t>*)semRaw;
   AtomicLinkedList<Mesh>* next;
   std::shared_ptr<Mesh> mesh;
   size_t i = 0, gpuIdx;

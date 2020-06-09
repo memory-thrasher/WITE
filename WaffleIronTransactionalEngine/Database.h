@@ -201,7 +201,7 @@ namespace WITE {
 
   template<class T> Database::Entry Database::allocate(type t) {
     Entry ret = allocate(sizeof(T));
-    put(ret, static_cast<uint8_t*>(&t), offsetof(loadedEntry, header.type), sizeof(type));
+    put(ret, reinterpret_cast<uint8_t*>(&t), offsetof(loadedEntry, header.type), sizeof(type));
     allocTab[ret].typeListLast = types[t].lastOfType;
     if (types[t].firstOfType == NULL_ENTRY) types[t].firstOfType = ret;
     else allocTab[types[t].lastOfType].typeListNext = ret;

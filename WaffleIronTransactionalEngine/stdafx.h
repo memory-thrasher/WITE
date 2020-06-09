@@ -34,3 +34,5 @@
 #include <SDL2/SDL_syswm.h>
 #include <SDL2/SDL_vulkan.h>
 #include <vulkan/vulkan.h>
+
+#include "constants.h"

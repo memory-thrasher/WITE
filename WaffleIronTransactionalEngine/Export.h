@@ -1,6 +1,5 @@
 #pragma once
 
-#include "stdafx.h"
 #include "constants.h"
 #include "exportTypes.h"
 #include "AtomicLinkedList.h"

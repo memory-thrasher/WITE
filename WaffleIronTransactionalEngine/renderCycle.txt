@@ -1,0 +1,22 @@
+per window:
+  queue
+  per camera:
+    swapchain target, overlay
+    semaphore sc, sco, draw
+    cmdbuffer
+    aquire swapchain, signal sc
+    per shader:
+      pipeline
+      per renderer:
+        if on camera's layer
+	  add render to cmdbuffer
+    create and return submitinfo for cmdbuffer, waiting on sc, signal draw
+    aquire overlay, signal sco, clear, store for later rendering
+  swapchain main, overlay
+  semaphore sc, sco
+  create buffer and submitinfo for main aquire main, signal sc
+  create buffer and submitinfo for blit, waiting on sc and camera submits, signal fence
+  execute all submitinfos
+  fence
+  aquire overlay, signal sco, clear, store for later rendering
+  wait for fence

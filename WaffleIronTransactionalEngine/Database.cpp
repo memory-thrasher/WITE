@@ -230,7 +230,7 @@ namespace WITE {
 	  else
 	    (*regionIdx)++;
 	}
-	getRaw(e, start + offsetof(loadedEntry, data), end - start, out + *offsetOfE + start);
+	getRaw(e, start + offsetof(loadedEntry, data), end - start, out + *offsetOfE + start, currentFrame - 1);
       }
       break;
     case branch:
@@ -248,24 +248,24 @@ namespace WITE {
       le.children.subblockCount = getRaw<uint32_t>(e, offsetof(loadedEntry, children.subblockCount));
       getRaw(e, offsetof(loadedEntry, children.subblocks),
 	     sizeof(le.children.subblocks[0]) * le.children.subblockCount,
-	     reinterpret_cast<uint8_t*>(le.children.subblocks));
+	     reinterpret_cast<uint8_t*>(le.children.subblocks), currentFrame - 1);
       for (i = 0;*regionIdx < count && i < le.children.subblockCount;i++)
 	getRecurse(le.children.subblocks[i], out, starts, lens, count, offsetOfE, regionIdx);
     }
   }
 
-  void Database::getRaw(Entry e, size_t offset, size_t size, uint8_t* out) {
+  void Database::getRaw(Entry e, size_t offset, size_t size, uint8_t* out, uint64_t frame) {
     cacheEntry* cache = allocTab[e].cacheLocation;
     FILE* active, *target;
-    size_t frame = currentFrame - 1, tlogPoint, start, end;
+    size_t tlogPoint, start, end;
     union {
       logEntry log;
       uint8_t rawLog[1];
     };
-    if(currentFrame == 0) {
+    if(currentFrame < frame) {
       //only read previous frames, so no reads on first frame
       //??memset(out, 0, size);
-      CRASH("Attempted read on frame 0. Shouldn't happen.");
+      CRASH("Attempted read the future. Shouldn't happen.");
     }
     if (cache) {
       memcpy(out, &cache->e.raw[offset], size);
@@ -295,10 +295,10 @@ namespace WITE {
       tlogPoint = allocTab[e].tlogHeadForObject;
       while (tlogPoint != NULL_ENTRY) {
 	tlogManager.readFromHandle(rawLog, tlogPoint, sizeof(logEntry));
-	if (log.start != e) CRASH("tlog fault; crashing to minimize save corruption.");
+	if (log.start != e) CRASH("tlog fault; crashing to minimize save corruption.\n");
 	if (log.frameIdx > frame) break;
 	switch (log.type) {
-	default: CRASH("tlog illegal type; crashing to minimize save corruption.");
+	default: CRASH("tlog illegal type; crashing to minimize save corruption.\n");
 	case del: memset(out, 0, size); break;
 	case update:
 	  start = max(offset, log.offset);
@@ -312,16 +312,20 @@ namespace WITE {
   }
 
   template<typename T> T Database::getRaw(Entry e, size_t offset) {
+    return getRaw<T>(e, offset, currentFrame - 1);
+  }
+
+  template<typename T> T Database::getRaw(Entry e, size_t offset, uint64_t frame) {
     union {
       T ret;
       uint8_t raw[0];
     };
-    getRaw(e, offset, sizeof(T), raw);
+    getRaw(e, offset, sizeof(T), raw, frame);
     return ret;
   }
 
   Database::state_t Database::getEntryState(Entry e) {
-	  return getRaw<state_t>(e, offsetof(loadedEntry, header.state));
+    return getRaw<state_t>(e, offsetof(loadedEntry, header.state), currentFrame);
   }
 
   Database::Entry Database::getChildEntryByIdx(const Entry root, const size_t idx) {
@@ -382,7 +386,7 @@ namespace WITE {
   }
 
   Object** Database::getObjectInstanceFor(Entry e) {
-	  return &allocTab[e].obj;
+    return &allocTab[e].obj;
   }
 
   // uint64_t Database::sendMessage(const std::string message, const Entry receiver, void* data) {
@@ -642,10 +646,10 @@ namespace WITE {
     if (ele.type == del) {
       while (getEntryState(trunk) == Database::state_t::trunk) {
 	for (branchIdx = 0;branchIdx < MAXBLOCKPOINTERS;branchIdx++) {
-	  branch = getRaw<Entry>(trunk, __offsetof_array(loadedEntry, children, branchIdx));
+	  branch = getRaw<Entry>(trunk, __offsetof_array(loadedEntry, children, branchIdx), currentFrame);
 	  if (getEntryState(branch) == Database::state_t::trunk) break;
 	  for (targetChild = 0;targetChild < MAXBLOCKPOINTERS;targetChild++) {
-	    leaf = getRaw<Entry>(branch, __offsetof_array(loadedEntry, children, targetChild));
+	    leaf = getRaw<Entry>(branch, __offsetof_array(loadedEntry, children, targetChild), currentFrame);
 	    if (!leaf) break;
 	    *le = { ele.frameIdx, del, 0, 0, allocationTableEntry::OBJECT_NULL, leaf };
 	    PUSH_LE;
@@ -660,7 +664,7 @@ namespace WITE {
       if(getEntryState(trunk) == Database::state_t::branch) {
 	branch = trunk;
 	for (targetChild = 0;targetChild < MAXBLOCKPOINTERS;targetChild++) {
-	  leaf = getRaw<Entry>(branch, __offsetof_array(loadedEntry, children.subblocks, targetChild));
+	  leaf = getRaw<Entry>(branch, __offsetof_array(loadedEntry, children.subblocks, targetChild), currentFrame);
 	  if (!leaf) break;
 	  *le = { ele.frameIdx, del, 0, 0, allocationTableEntry::OBJECT_NULL, leaf };
 	  PUSH_LE;
@@ -682,14 +686,14 @@ namespace WITE {
         switch(baseState) {//possibly the only valid use case for case passthrough to ever exist
         case state_t::trunk:
           while(trunkIdx < targetTrunk) {
-            trunk = getRaw<Entry>(trunk, offsetof(loadedEntry, children.subblocks[MAXBLOCKPOINTERS - 1]));
+            trunk = getRaw<Entry>(trunk, offsetof(loadedEntry, children.subblocks[MAXBLOCKPOINTERS - 1]), currentFrame);
             trunkIdx++;
             if(trunkIdx == targetTrunk - 1 && getEntryState(trunk) == Database::state_t::branch) targetTrunk--;
           }
           branchIdx = trunkIdx * MAXBLOCKPOINTERS;
-          branch = getRaw<Entry>(trunk, __offsetof_array(loadedEntry, children.subblocks, targetBranch - branchIdx));
+          branch = getRaw<Entry>(trunk, __offsetof_array(loadedEntry, children.subblocks, targetBranch - branchIdx), currentFrame);
         case state_t::branch:
-          leaf = getRaw<Entry>(branch, __offsetof_array(loadedEntry, children.subblocks, targetLeaf - branchIdx * MAXBLOCKPOINTERS));
+          leaf = getRaw<Entry>(branch, __offsetof_array(loadedEntry, children.subblocks, targetLeaf - branchIdx * MAXBLOCKPOINTERS), currentFrame);
         case state_t::data:
           size = min(ele.size + ele.offset - offset, BLOCKSIZE);
           *le = {ele.frameIdx, update, size, offset % BLOCKSIZE, allocationTableEntry::OBJECT_NULL, leaf};

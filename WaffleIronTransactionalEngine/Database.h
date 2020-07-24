@@ -158,8 +158,8 @@ namespace WITE {
     Entry allocate(size_t size, Entry* allocationMap = NULL);
     void getRecurse(Entry, uint8_t* out, uint64_t* starts, uint64_t* lens, size_t count, size_t* offsetOfE, size_t* regionIdx);
     template<typename T> T getRaw(Entry e, size_t offset);//e contains offset
-    void getRaw(Entry e, size_t offset, size_t size, uint8_t* out);//e contains offset, out starts at beginning of returned data
-    //void getStateAtFrame(uint64_t frame, Entry, uint8_t* out, size_t len, size_t offset);//recurse starting at requested frame
+    template<typename T> T getRaw(Entry e, size_t offset, uint64_t frame);//e contains offset
+    void getRaw(Entry e, size_t offset, size_t size, uint8_t* out, uint64_t frame);//e contains offset, out starts at beginning of returned data
     state_t getEntryState(Entry e);
     const char * filenamefmt;
     volatile uint64_t filenameIdx, fileIdx = 0;

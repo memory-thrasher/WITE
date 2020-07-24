@@ -11,7 +11,7 @@ public:
   static constexpr VkCommandBufferBeginInfo CMDBUFFER_BEGIN_INFO = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, VK_NULL_HANDLE, 0, VK_NULL_HANDLE};
   class ExecutionPlan {//thread-specific resource: do *not* pass between threads. Locks queue once any begin is called, until isRunning has returned false
   public:
-    ExecutionPlan(Queue* master) : queue(master) {};
+    ExecutionPlan(Queue* master);
     ~ExecutionPlan();
     VkCommandBuffer beginParallel();//returns an empty commandbuffer in the recording state with no pre-dependencies
     VkCommandBuffer beginSerial();//returns an empty commandbuffer in the recording state predependent on only the most recently returned commandbuffer
@@ -22,21 +22,22 @@ public:
     bool isRunning();
     void queueWaitForSemaphore(VkSemaphore sem);
   private:
+    constexpr static size_t MAX_QUEUE_REDUCE = 16;//use case atm, this is the max number of cameras per window
     typedef struct {
       VkCommandBuffer cmd;
       //VkSubmitInfo submitInfo;//Moved to parallel vector for easier enquement
       VkSemaphore completionSemaphore;
-      VkSemaphore* waitedSemaphores;//malloc, only used if this SerialQueue was created by beginReduce. Freed in EP destructor.
+      VkSemaphore waitedSemaphores[MAX_QUEUE_REDUCE];
+      VkPipelineStageFlags waitedSem_PipeStages[MAX_QUEUE_REDUCE];
     } SerialQueue;
-    std::vector<SerialQueue> allocated;
-    size_t head, allocIdx = 0;
+    std::vector<SerialQueue*> allocated;
+    size_t head = 0, allocIdx = 0;
     std::vector<VkSemaphore> headSems;
     std::vector<VkSubmitInfo> allSubmits;
     Queue* queue;
     VkFence fence;
     bool activeRender;
     size_t beginInternal();
-    std::unique_ptr<WITE::ScopeLock> hold;
   };
   Queue(GPU* gpu, uint32_t family, uint32_t idx);
   ~Queue();

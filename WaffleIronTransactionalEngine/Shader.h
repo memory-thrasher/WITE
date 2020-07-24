@@ -9,9 +9,9 @@
 class Shader : public WITE::Shader {
 public:
   typedef struct {
-    std::unique_ptr<std::shared_ptr<class WITE::ShaderResource>[]> resources;
+    std::unique_ptr<std::shared_ptr<class WITE::ShaderResource>[]> resources = std::nullptr_t();
     VkDescriptorSet descSet;
-    bool inited;
+    bool inited = false;
   } Instance;
   struct imageData {
     uint32_t width, height;
@@ -59,7 +59,7 @@ private:
   WITE::SyncLock lock;
   std::unique_ptr<Instance> makeResources(GPU*);
   std::unique_ptr<struct shaderGpuResources> makeDescriptors(GPU*);
-  static std::vector<std::shared_ptr<class Shader>> allShaders;
+  static std::vector<Shader*> allShaders;
   friend class Renderer;
 };
 

@@ -3,20 +3,23 @@
 
 namespace WITE {
 
-  Transform::Transform(glm::dmat4 mat) : matrix(mat) {
-  }
+  Transform::Transform(const glm::dmat4& mat) : matrix(mat) {}
+
+  Transform::Transform(const glm::dmat4* mat) : matrix(*mat) {}
+
+  Transform::Transform() : matrix(glm::identity<glm::dmat4>()) {}
 
   Transform::Transform(const Transform& other) : Transform(other.matrix) {}
 
   Transform::~Transform() {}
 
   BBox3D* Transform::transform(const BBox3D* in, BBox3D* out) const {
-    static BBox3D spareRet;
+    static BBox3D spareRet;//TODO thread safety
     glm::dvec3 corners[8];
     in->allCornerSwizzle(corners);//read all inputs before writing to out, so in = out ( = spareRet) is allowed
     batchTransformPoints(corners, 8);
     if(!out) out = &spareRet;
-    *out = BBox3D(mangle<Mangle_MinVec<glm::dvec3>>(corners, 8), mangle<Mangle_MaxVec<glm::dvec3>>(corners, 8));
+    *out = BBox3D(mangle<Mangle_MinVec<glm::dvec3>>(corners, 8), mangle<Mangle_MaxVec<glm::dvec3>, glm::dvec3>(corners, 8));
     return out;
   }
   

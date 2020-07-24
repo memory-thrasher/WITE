@@ -4,23 +4,23 @@
 
 template<class T> class AtomicLinkedList {
 public:
-  AtomicLinkedList(std::weak_ptr<T> data);
-  AtomicLinkedList() : AtomicLinkedList(std::weak_ptr<T>()) {};
+  AtomicLinkedList(T* data);
+  AtomicLinkedList() : AtomicLinkedList(NULL) {};
   ~AtomicLinkedList();
   inline AtomicLinkedList<T>* nextLink();//for iterator
   inline void append(AtomicLinkedList<T>*);//add given node after this one, given must not belong to any list
-  inline std::shared_ptr<T> getRef();
-  inline T* operator->();//discouraged, use getRef instead
+  inline T* getRef();
+  inline T* operator->();
   inline void drop();//remove this thing from the list, making the next and previous elements refer to each other
   inline bool linked();
 private:
   AtomicLinkedList(const AtomicLinkedList&) = delete;
   std::atomic<AtomicLinkedList<T>*> next;
   AtomicLinkedList<T>* prev;
-  std::weak_ptr<T> data;//null if this is root node
+  T* data;//null if this is root node
 };
 
-template<class T> AtomicLinkedList<T>::AtomicLinkedList(std::weak_ptr<T> data) : next(this), prev(this), data(data) {}
+template<class T> AtomicLinkedList<T>::AtomicLinkedList(T* data) : next(this), prev(this), data(data) {}
 
 template<class T> AtomicLinkedList<T>::~AtomicLinkedList() {
   drop();
@@ -56,11 +56,11 @@ template<class T> void AtomicLinkedList<T>::drop() {
   next.store(this, std::memory_order_release);
 }
 
-template<class T> std::shared_ptr<T> AtomicLinkedList<T>::getRef() {
-  return data.lock();
+template<class T> T* AtomicLinkedList<T>::getRef() {
+  return data;
 }
 
 template<class T> T* AtomicLinkedList<T>::operator->() {
-  return data.lock().get();
+  return data;
 }
 

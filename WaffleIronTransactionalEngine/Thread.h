@@ -26,21 +26,24 @@ namespace WITE {
 	    typeDestroy->call(data[i]);
       }
     }
+	static Tentry makeEmpty() {
+		return std::shared_ptr<T>(static_cast<T*>(malloc(sizeof(T))));
+	}
     std::shared_ptr<T> get();
     std::shared_ptr<T> get(uint32_t tid) {
-      if (data.size() <= tid) {
-	ScopeLock contextHold(&lock);
-	if (data.size() <= tid)
-	  data.resize(tid + 1);
-      }
+	  ScopeLock contextHold(&lock);
+	  while (data.size() <= tid)
+		data.emplace_back(std::nullptr_t());
       if (!data[tid]) data[tid] = typeInit->call();
       return data[tid];
     }
     size_t listAll(Tentry** pntr) {
+	  ScopeLock contextHold(&lock);//yes, this is necessary
       *pntr = data.data();
       return data.size();
     }
     size_t size() {
+	  ScopeLock contextHold(&lock);
       return data.size();
     }
   private:

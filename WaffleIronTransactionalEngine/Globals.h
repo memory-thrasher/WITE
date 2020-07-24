@@ -11,10 +11,18 @@
 #define MAX_QUEUES (32)
 #define DEVICE_EXTENSIONS_LEN (1)
 
-struct vulkan_singleton {
+#if defined(_DEBUG)
+#define LAYER_COUNT 1
+#define LAYERS { "VK_LAYER_LUNARG_standard_validation" }
+#else
+#define LAYER_COUNT 0
+#define LAYERS {}
+#endif
+
+typedef struct {
   const char* extensions[MAX_EXTENSIONS];
   unsigned extensionCount, layerCount;
-  const char* layers[LAYER_COUNT];
+  const char* layers[LAYER_COUNT] = LAYERS;
   VkApplicationInfo appInfo;
   VkInstanceCreateInfo createInfo;
   VkInstance instance = NULL;
@@ -23,15 +31,15 @@ struct vulkan_singleton {
   class GPU* gpus[MAX_GPUS];
   class RenderLayer renderLayers[MAX_RENDER_LAYERS];
   uint64_t vramGrabSize = (6ull*1024*1024*1024/SIZEOF_VERTEX);//TODO dynamic; total in verts, divide by Mesh.VERTEX_BUFFERS for per-buffer size
-};
+} vulkan_singleton_t;
 
-extern struct vulkan_singleton vkSingleton;
+#define vkSingleton (*get_vkSingleton())
+extern vulkan_singleton_t* get_vkSingleton();
 extern const char** ADDED_EXTENSIONS;
 extern const char* DEVICE_EXTENSIONS[DEVICE_EXTENSIONS_LEN];
-extern const VkAllocationCallbacks *vkAlloc;
-extern size_t threadCount;
-extern WITE::Database* database;
-extern uint8_t vertBuffer;
+#define vkAlloc VK_NULL_HANDLE
+size_t getThreadCount();
+uint8_t getVertBuffer();
 
 //helpers: (different header?)
 #ifdef _WIN32

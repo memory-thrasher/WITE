@@ -7,15 +7,19 @@
 #include "BackedImage.h"
 #include "constants.h"
 
-Renderer::Renderer() : obj() {}
+Renderer::Renderer() : obj(), packPreRender(NULL), packInitial(NULL) {}
 
 Renderer::~Renderer() {}
 
 //o must not be null. call unbind to disable rendering on this layer
-void Renderer::bind(std::shared_ptr<Object> o, std::shared_ptr<Shader> s, std::shared_ptr<Mesh> m, WITE::renderLayerIdx rlIdx) {
+void WITE::Renderer::bind(WITE::Object* o, WITE::Shader* s, std::shared_ptr<WITE::Mesh> m, WITE::renderLayerIdx rlIdx) {
+  ::Renderer::bind(static_cast<::Object*>(o), static_cast<::Shader*>(s), std::static_pointer_cast<::Mesh>(m), rlIdx);
+}
+
+void Renderer::bind(Object* o, Shader* s, std::shared_ptr<Mesh> m, WITE::renderLayerIdx rlIdx) {
   WITE::ScopeLock slo(&o->lock);//each renderer belongs to exactly one object. Save mutexes by using the owning object's lock.
   Renderer* r = &o->renderLayer[rlIdx];
-  bool didExist = bool(r->obj.lock());
+  bool didExist = bool(r->obj);
   if(!didExist) {
     r->obj = o;
     r->layer = &vkSingleton.renderLayers[rlIdx];
@@ -36,15 +40,21 @@ void Renderer::bind(std::shared_ptr<Object> o, std::shared_ptr<Shader> s, std::s
     r->shader = s;
     WITE::ScopeLock sl(&s->lock);
     s->renderers[rlIdx].push_back(r);
+    r->buffers = std::make_unique<GPUResource<Shader::Instance>>
+      (WITE::CallbackFactory<std::unique_ptr<Shader::Instance>, GPU*>::make<Shader>(s, &Shader::makeResources));
   }
 }
 
-void Renderer::unbind(std::shared_ptr<Object> o, WITE::renderLayerIdx rlIdx) {
+void WITE::Renderer::unbind(Object* o, WITE::renderLayerIdx rlIdx) {
+  ::Renderer::unbind(static_cast<::Object*>(o), rlIdx);
+}
+
+void Renderer::unbind(Object* o, WITE::renderLayerIdx rlIdx) {
   WITE::ScopeLock slo(&o->lock);//each renderer belongs to exactly one object, which owns exactly MAX_RENDER_LAYER renderers. Save mutexes by using the owning object's lock.
   Renderer* r = &o->renderLayer[rlIdx];
-  bool didExist = bool(r->obj.lock());
+  bool didExist = bool(r->obj);
   if (!didExist) return;
-  r->obj = std::weak_ptr<Object>();
+  r->obj = NULL;
   {
     WITE::ScopeLock sl(&r->layer->memberLock);
     WITE::vectorPurge(&r->layer->members, r);
@@ -53,6 +63,7 @@ void Renderer::unbind(std::shared_ptr<Object> o, WITE::renderLayerIdx rlIdx) {
   {
     WITE::ScopeLock sl(&r->shader->lock);
     WITE::vectorPurge(&r->shader->renderers[rlIdx], r);
+    r->buffers.release();
   }
 }
 
@@ -66,14 +77,23 @@ void Renderer::setPerFrameCallback(packDataCB d) {
 
 void Renderer::render(VkCommandBuffer cmd, glm::dmat4 projection, GPU* gpu) {
   //pipeline is already selected
-  Shader::Instance* buffer = &buffers->get(gpu)[vertBuffer];
+  uint8_t vertBuffer = getVertBuffer();
+  Shader::Instance* buffer = buffers->get(gpu);
   auto subbuf = mesh->subbuf.get(gpu, vertBuffer);//copy
   if (!buffer->inited) {
     buffer->inited = true;
     if(packInitial) packInitial->call(this, buffer->resources.get(), gpu);
   }
-  *reinterpret_cast<glm::dmat4*>(buffer->resources[0]->map()) = obj.lock()->getTrans().project(projection);
+  glm::dmat4 test = obj->getTrans().project(projection);
+  LOG("MVP:\n%f %f %f %f\n%f %f %f %f\n%f %f %f %f\n%f %f %f %f\n",
+    test[0][0], test[1][0], test[2][0], test[3][0],
+    test[0][1], test[1][1], test[2][1], test[3][1],
+    test[0][2], test[1][2], test[2][2], test[3][2],
+    test[0][3], test[1][3], test[2][3], test[3][3]);
+  //LOG("\nAddress of resource: %p\naddress of resources: %p\naddress of buffer: %p\n", (void*)buffer->resources.get(), (void*)&buffer->resources, (void*)buffer);//(outdated)first call: 0000000006905E78, second call: 00000000FDFDFDFD (crashed on next line)
+  *reinterpret_cast<glm::dmat4*>(buffer->resources[0]->map()) = test;
   buffer->resources[0]->unmap();
+  //LOG("Resource updated successfully\n");
   updateInstanceData(0, gpu);
   if(packPreRender) packPreRender->call(this, buffer->resources.get(), gpu);
   vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shader->resources.get(gpu)->pipelineLayout, 0, 1, &buffer->descSet, 0, NULL);
@@ -83,7 +103,7 @@ void Renderer::render(VkCommandBuffer cmd, glm::dmat4 projection, GPU* gpu) {
 }
 
 void Renderer::updateInstanceData(size_t resource, GPU* gpu) {//TODO batchify?
-  Shader::Instance* buffer = &buffers->get(gpu)[vertBuffer];
+  Shader::Instance* buffer = buffers->get(gpu);
   VkWriteDescriptorSet write = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, NULL, buffer->descSet, (uint32_t)resource, 0,
 				 1, (VkDescriptorType)shader->resourceLayout[resource].type, NULL, NULL, NULL };
   switch(write.descriptorType) {

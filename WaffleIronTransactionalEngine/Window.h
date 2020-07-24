@@ -12,11 +12,14 @@ public:
   void setSize(uint32_t width, uint32_t height);
   void setBounds(WITE::IntBox3D bounds);
   void setLocation(int32_t x, int32_t y, uint32_t w, uint32_t h);
-  Camera* addCamera(WITE::IntBox3D);
+  void setLocation(int32_t x, int32_t y);
+  WITE::IntBox3D getBounds();
+  Camera* addCamera(WITE::IntBox3D);//TODO full-window camera default
   Camera* getCamera(size_t idx);
   size_t getCameraCount();
   static bool areRendersDone();
   static void renderAll();
+  static void presentAll();
 private:
   //static std::vector<Window*> windows;//already in super
   SDL_Window * sdlWindow;
@@ -31,7 +34,7 @@ private:
     VkSwapchainCreateInfoKHR info;
     VkSwapchainKHR chain;
     BackedImage* images;
-    VkFramebuffer *framebuffers;
+    //VkFramebuffer *framebuffers;
     VkSemaphore semaphore;
   } swapchain;
   BackedImage* depthBuffer;//TODO move to cam (and also store formate)

@@ -8,6 +8,8 @@ const struct extensionMeaning {
   const VkShaderStageFlagBits stageBit;
 } SUFFIXES[]{ { "vert.spv", VK_SHADER_STAGE_VERTEX_BIT },{ "frag.spv", VK_SHADER_STAGE_FRAGMENT_BIT } };
 
+std::vector<Shader*> Shader::allShaders;
+
 Shader::Shader(const char** paths, size_t pathc, struct WITE::Shader::resourceLayoutEntry* res, size_t resc) :
   subshaderCount(pathc),
   resourcesPerInstance(resc),
@@ -24,6 +26,7 @@ Shader::Shader(const char** paths, size_t pathc, struct WITE::Shader::resourceLa
       CRASH("Failed to load shader file: %s\n", subshaders[i].filepath);
   }//TODO mmap shader file?
   memcpy(resourceLayout, res, sizeof(struct resourceLayoutEntry) * resc);
+  allShaders.push_back(this);
 }
 
 // Shader::Shader(const char* filepathwildcard, struct WITE::Shader::resourceLayoutEntry* res, size_t resources) :
@@ -81,10 +84,13 @@ std::unique_ptr<Shader::Instance> Shader::makeResources(GPU* device) {
   struct imageData* idata;
   ret->resources = std::make_unique<std::shared_ptr<class WITE::ShaderResource>[]>(resourcesPerInstance);
   for (size_t i = 0;i < resourcesPerInstance;i++) {
-    if (!resourceLayout[i].perInstance) continue;
+    if (!resourceLayout[i].perInstance) {
+      ret->resources[i] = std::nullptr_t();
+      continue;
+    }
     switch (resourceLayout[i].type) {
     case SHADER_RESOURCE_UNIFORM:
-      ret->resources[i] = std::make_shared<BackedBuffer>(device, *static_cast<uint64_t*>(resourceLayout[i].moreData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
+      ret->resources[i] = std::make_shared<BackedBuffer>(device, reinterpret_cast<size_t>(resourceLayout[i].moreData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
       break;
     case SHADER_RESOURCE_SAMPLED_IMAGE:
       idata = static_cast<struct imageData*>(resourceLayout[i].moreData);
@@ -116,25 +122,18 @@ void Shader::makePipeForRP(VkRenderPass rp, size_t passIdx, GPU* gpu, VkPipeline
   static VkPipelineVertexInputStateCreateInfo vi = { VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO, VK_NULL_HANDLE, 0, 1, &viBinding, 2, viAttributes };
   static VkPipelineInputAssemblyStateCreateInfo ia = { VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO, VK_NULL_HANDLE, 0,
 						       VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, VK_FALSE };
-  static VkPipelineRasterizationStateCreateInfo rs = { VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO, VK_NULL_HANDLE, 0, VK_FALSE, VK_FALSE,
-						       VK_POLYGON_MODE_FILL, VK_CULL_MODE_BACK_BIT, VK_FRONT_FACE_CLOCKWISE, VK_FALSE, 0, 0, 0, 1.0f };
-  static VkPipelineColorBlendAttachmentState attState = { 0, VK_BLEND_FACTOR_ZERO, VK_BLEND_FACTOR_ZERO,
-							  VK_BLEND_OP_ADD, VK_BLEND_FACTOR_ZERO, VK_BLEND_FACTOR_ZERO, VK_BLEND_OP_ADD, 0xF };
-  static VkPipelineColorBlendStateCreateInfo cb = { VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO, VK_NULL_HANDLE, 0,
-						    0, VK_LOGIC_OP_NO_OP, 1, &attState, {1, 1, 1, 1} };
+  static VkPipelineRasterizationStateCreateInfo rs = { VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO, VK_NULL_HANDLE, 0, VK_FALSE, VK_FALSE, VK_POLYGON_MODE_FILL, VK_CULL_MODE_BACK_BIT, VK_FRONT_FACE_CLOCKWISE, VK_FALSE, 0, 0, 0, 1.0f };
+  static VkPipelineColorBlendAttachmentState attState = { 0, VK_BLEND_FACTOR_ZERO, VK_BLEND_FACTOR_ZERO, VK_BLEND_OP_ADD, VK_BLEND_FACTOR_ZERO, VK_BLEND_FACTOR_ZERO, VK_BLEND_OP_ADD, 0xF };
+  static VkPipelineColorBlendStateCreateInfo cb = { VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO, VK_NULL_HANDLE, 0, 0, VK_LOGIC_OP_NO_OP, 1, &attState, {1, 1, 1, 1} };
   static VkPipelineViewportStateCreateInfo vp = { VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO, VK_NULL_HANDLE, 0, 1, VK_NULL_HANDLE, 1, VK_NULL_HANDLE };
   static VkStencilOpState stencilOp = { VK_STENCIL_OP_KEEP, VK_STENCIL_OP_KEEP, VK_STENCIL_OP_KEEP, VK_COMPARE_OP_ALWAYS, 0, 0, 0 };
-  static VkPipelineDepthStencilStateCreateInfo ds = { VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO, VK_NULL_HANDLE, 0,
-						      1, 1, VK_COMPARE_OP_LESS_OR_EQUAL, 0, 0, stencilOp, stencilOp, 0, 0 };
-  static VkPipelineMultisampleStateCreateInfo ms = { VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO, VK_NULL_HANDLE, 0,
-						     VK_SAMPLE_COUNT_1_BIT, 0, 0, VK_NULL_HANDLE, 0, 0 };
-  static VkGraphicsPipelineCreateInfo pipeInfo = { VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO, VK_NULL_HANDLE, 0, 2, VK_NULL_HANDLE,
-						   &vi, &ia, VK_NULL_HANDLE, &vp, &rs, &ms, &ds, &cb, &dynamicState, resources->pipelineLayout, VK_NULL_HANDLE, 0, VK_NULL_HANDLE, 0 };
+  static VkPipelineDepthStencilStateCreateInfo ds = { VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO, VK_NULL_HANDLE, 0, 1, 1, VK_COMPARE_OP_LESS_OR_EQUAL, 0, 0, stencilOp, stencilOp, 0, 0 };
+  static VkPipelineMultisampleStateCreateInfo ms = { VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO, VK_NULL_HANDLE, 0, VK_SAMPLE_COUNT_1_BIT, 0, 0, VK_NULL_HANDLE, 0, 0 };
+  static VkGraphicsPipelineCreateInfo pipeInfo = { VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO, VK_NULL_HANDLE, 0, 2, VK_NULL_HANDLE, &vi, &ia, VK_NULL_HANDLE, &vp, &rs, &ms, &ds, &cb, &dynamicState, resources->pipelineLayout, VK_NULL_HANDLE, 0, VK_NULL_HANDLE, 0 };
   pipeInfo.stageCount = subshaderCount;
   pipeInfo.pStages = resources->stageInfos.get();
   pipeInfo.renderPass = rp;
-  CRASHIFFAIL(vkCreateGraphicsPipelines(gpu->device, gpu->pipeCache, 1, &pipeInfo, VK_NULL_HANDLE, // &resources->rpRes.get()->at(rp)->pipeline
-					out));
+  CRASHIFFAIL(vkCreateGraphicsPipelines(gpu->device, gpu->pipeCache, 1, &pipeInfo, VK_NULL_HANDLE, out));// &resources->rpRes.get()->at(rp)->pipeline
   pipeInfo.stageCount = 0;//don't leak handle to thread stack
   pipeInfo.pStages = VK_NULL_HANDLE;
   pipeInfo.renderPass = VK_NULL_HANDLE;

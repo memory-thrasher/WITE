@@ -4,7 +4,7 @@
 #include "Queue.h"
 
 BackedImage::BackedImage(GPU* dev, VkExtent2D sizeParam, VkImageViewCreateInfo viewInfo,
-			 VkImageCreateInfo imgInfo) : viewInfo(viewInfo), format(viewInfo.format) {
+			 VkImageCreateInfo imgInfo) : viewInfo(viewInfo), format(viewInfo.format), dev(dev) {
   vkGetPhysicalDeviceFormatProperties(dev->phys, format, &props);
   if (!this->viewInfo.image) {
     bool staged = !(props.linearTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT);
@@ -29,6 +29,8 @@ BackedImage::BackedImage(GPU* dev, VkExtent2D sizeParam, VkImageViewCreateInfo v
     }
     backing->bindToImage(image);
     this->viewInfo.image = image;
+  } else {
+	  image = viewInfo.image;
   }
   this->size = sizeParam;
   vkCreateImageView(dev->device, &this->viewInfo, vkAlloc, &view);

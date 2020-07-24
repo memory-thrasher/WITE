@@ -2,8 +2,11 @@
 
 #include "Thread.h"
 #include "RollingBuffer.h"
+#include "Transform.h"
 
 namespace WITE {
+
+  class Object;
 
   struct strcmp_t {
     bool operator() (const std::string& a, const std::string& b) const { return a.compare(b) < 0; };
@@ -15,8 +18,11 @@ namespace WITE {
     typedef uint16_t type;
     typedef WITE::Callback_t<uint64_t, Entry, void*>* receiver_t;
     typedef Callback_t<void, Entry>* handle_t;
+    typedef Callback_t<void, Entry, Entry*>* initHandle_t;
     typedef struct {
-      handle_t update, init, destroy;
+      handle_t update;
+      initHandle_t init;
+      handle_t destroy;
     } typeHandles;
     typedef struct {
       size_t start, len;
@@ -28,10 +34,11 @@ namespace WITE {
     constexpr static Entry NULL_ENTRY = std::numeric_limits<Entry>::max();
     constexpr static size_t NULL_OFFSET = std::numeric_limits<size_t>::max();
     constexpr static uint64_t NULL_FRAME = std::numeric_limits<uint64_t>::max();
+    constexpr static size_t ALLOCATION_MAP_SIZE = 32;
     private:
     constexpr static size_t BLOCKSIZE = 4096;
-    enum state_t { unallocated = 0, data, branch, trunk };//branches contain references to datas, trunks contain references to branches or other trunks
-    enum logEntryType_t { del = 0, update };
+    enum state_t : uint16_t { unallocated = 0, data, branch, trunk };//branches contain references to datas, trunks contain references to branches or other trunks
+    enum logEntryType_t : uint8_t { del = 0, update };
     typedef struct {
       state_t state;
       type type;//global enum-esque maintained by consumer, used by getEntriesOfType. [0,127] reserved
@@ -46,7 +53,10 @@ namespace WITE {
       Entry subblocks[MAXBLOCKPOINTERS];
     } blocklistData;
     typedef struct {
-      _entry header;
+      union {
+        uint8_t raw[sizeof(_entry)];
+        _entry header;
+      };
       union {
 	uint8_t data[BLOCKDATASIZE];
 	blocklistData children;
@@ -58,7 +68,7 @@ namespace WITE {
       uint16_t size;
       uint64_t offset;//offset into entity or its children that will be overwritten when this log is applied
       Entry start;
-    } enqueuedLogEntry;
+    } enqueuedLogEntry;//size=0x20 (8+?+2+8+8=20)
     typedef struct {
       uint64_t frameIdx;
       logEntryType_t type;
@@ -79,13 +89,16 @@ namespace WITE {
       loadedEntry e;
     } cacheEntry;
     typedef struct {
+      constexpr static size_t OBJECT_NULL = ((size_t)0)-1;
       cacheEntry* cacheLocation;//can be null
       uint64_t lastWrittenFrame, nextWriteFrame;
       size_t tlogHeadForObject, tlogTailForObject;//can be -1 for none
       state_t allocationState;//as of now, used for allocate/free, which might happen on the same frame but that's ok because they're managed by prime thread
+      //empty space 6 bytes
       uint32_t readsThisFrame, readsLastFrame;//reset to 0 by master allocator, read to decide if it should be cached, dirty increment by other threads upon *disk* read
       Entry typeListNext, typeListLast;//linked list of all objects of this type, rebuilt on reload
-    } allocationTableEntry;
+      class Object* obj;//passed to all functions, only meaningful in root Entrys
+    } allocationTableEntry;//size: 80 bytes
     typedef struct {
       typedef RollingBuffer<enqueuedLogEntry, uint16_t, 65535, 0, (uint16_t)offsetof(enqueuedLogEntry, size), false> transactionalBacklog_t;
       transactionalBacklog_t transactionalBacklog;
@@ -93,6 +106,7 @@ namespace WITE {
       FILE *activeFile, *targetFile;
       volatile Entry allocRet = NULL_ENTRY;
       volatile size_t allocSize = 0;
+      Entry * volatile map;
     } threadResource_t;
     typedef typeHandles perTypeStatic;
     typedef struct {
@@ -131,7 +145,9 @@ namespace WITE {
     //uint64_t sendMessageToAll(const std::string, const type receivers, void* data);
     type getEntryType(Entry e);
     static typeHandles* getHandlesOfType(type t);
-    void getEntriesWithUpdate(std::vector<Entry>* out);
+    inline void getEntriesWithUpdate(std::vector<Entry>* out);//pulled by entry in update
+    Object** getObjectInstanceFor(Entry e);
+    uint64_t getCurrentFrame();
     private:
     constexpr static uint8_t zero[BLOCKSIZE] = { 0 };
     template<size_t idx, class T, class U, class V, class... Zs>
@@ -139,12 +155,12 @@ namespace WITE {
     template<size_t idx, class T, class U> constexpr static void createPrecompiledBatch(precompiledBatch_t& out, U T::*u);
     Database(const Database&) = delete;//no. just no.
     void push(enqueuedLogEntry*);
-    Entry allocate(size_t size);
+    Entry allocate(size_t size, Entry* allocationMap = NULL);
     void getRecurse(Entry, uint8_t* out, uint64_t* starts, uint64_t* lens, size_t count, size_t* offsetOfE, size_t* regionIdx);
     template<typename T> T getRaw(Entry e, size_t offset);//e contains offset
     void getRaw(Entry e, size_t offset, size_t size, uint8_t* out);//e contains offset, out starts at beginning of returned data
     //void getStateAtFrame(uint64_t frame, Entry, uint8_t* out, size_t len, size_t offset);//recurse starting at requested frame
-    state_t getEntryState(Entry e) { return getRaw<state_t>(e, offsetof(loadedEntry, header.state)); }
+    state_t getEntryState(Entry e);
     const char * filenamefmt;
     volatile uint64_t filenameIdx, fileIdx = 0;
     std::string active, target;
@@ -161,7 +177,8 @@ namespace WITE {
     static std::map<type, perTypeStatic> typesStatic;
     std::map<type, perType> types;//on current frame
     RollingBuffer<logEntry, size_t, 0, 0, offsetof(logEntry, size), false> tlogManager;//TODO index of free?
-    std::atomic<uint8_t> masterThreadState;
+    std::atomic_uint8_t masterThreadState;
+    std::atomic_uint8_t dbStatus;
     ThreadResource<threadResource_t> threadResources;
     //prime thread only: (all transient)
     constexpr static size_t MAX_BATCH_FLUSH = 32;
@@ -189,10 +206,10 @@ namespace WITE {
     cacheIndex* pt_cacheStaging;
     size_t pt_cacheStagingSize;
     void primeThreadEntry();
-    Entry pt_allocate(size_t size);
+    Entry pt_allocate(size_t size, Entry* map);
     bool pt_adoptTlog(threadResource_t::transactionalBacklog_t* src);
-    bool pt_commissionTlog();
-    bool pt_flushTlog(uint64_t minimumFreeSpace = 0);//commission from previous frames, until has specified free space (flush all if given 0)
+    bool pt_commitTlog();
+    bool pt_flushTlog(uint64_t minimumFreeSpace = 0);//commit from previous frames, until has specified free space (flush all if given 0)
     bool pt_mindSplitBase();
     void pt_rethinkLayout(size_t requiredNewEntries = 0);
     void pt_rethinkCache();
@@ -200,13 +217,17 @@ namespace WITE {
     };
 
   template<class T> Database::Entry Database::allocate(type t) {
-    Entry ret = allocate(sizeof(T));
-    put(ret, static_cast<uint8_t*>(&t), offsetof(loadedEntry, header.type), sizeof(type));
-    allocTab[ret].typeListLast = types[t].lastOfType;
-    if (types[t].firstOfType == NULL_ENTRY) types[t].firstOfType = ret;
-    else allocTab[types[t].lastOfType].typeListNext = ret;
-    types[t].lastOfType = ret;
+    //TODO create and return allocation map, pass to init and then object::make to locate applicable data subsets (including transform)
+    Entry allocationMap[ALLOCATION_MAP_SIZE];
+    Entry ret = allocate(sizeof(T), allocationMap);
+    put(ret, reinterpret_cast<uint8_t*>(&t), offsetof(loadedEntry, header.type) - sizeof(loadedEntry), sizeof(type));
+    allocTab[ret].typeListLast = types.at(t).lastOfType;
+    if (types.at(t).firstOfType == NULL_ENTRY) types.at(t).firstOfType = ret;
+    else allocTab[types.at(t).lastOfType].typeListNext = ret;
+    types.at(t).lastOfType = ret;
     allocTab[ret].typeListNext = NULL_ENTRY;
+    auto h = getHandlesOfType(t);
+    if (h->init) h->init->call(ret, allocationMap);
     return ret;
   }
 
@@ -256,5 +277,15 @@ namespace WITE {
     get<T, U>(e, out, u);
     get<T, V, Zs...>(e, u, v, std::forward<Zs>(z)...);
   }
+
+  class export_def Object {
+  public:
+	  Object() = default;
+	  Object(const Object&) = delete;
+	  ~Object() = default;
+	  virtual Transform getTrans() = 0;
+	  virtual void pushTrans(Transform*) = 0;
+	  static Object* make(Database::Entry start, size_t transformOffset, WITE::Database::Entry* map);//
+  };
   
 }

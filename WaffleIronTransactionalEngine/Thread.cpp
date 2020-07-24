@@ -36,6 +36,9 @@ namespace WITE {
 
 #endif
 
+  std::atomic<uint32_t> Thread::seed;
+  ThreadResource<Thread> Thread::threads(ThreadResource<Thread>::Initer_F::make(&ThreadResource<Thread>::makeEmpty));
+
   void Thread::initThisThread(threadEntry_t entry) {//static  entry defaults to null
     uint32_t tid = seed.fetch_add(1, std::memory_order_relaxed);
     auto storage = threads.get(tid);

@@ -5,7 +5,7 @@
 #include "constants.h"
 
 GPU::GPU(VkPhysicalDevice pdevice, size_t idx, size_t neededQueueCount, const unsigned int* neededQueues) :
-  idx(idx), phys(pdevice) {
+  idx(idx), phys(pdevice), pipeCache(NULL) {
   unsigned int i, j;
   bool found;
   vkGetPhysicalDeviceProperties(phys, &props);
@@ -31,7 +31,7 @@ GPU::GPU(VkPhysicalDevice pdevice, size_t idx, size_t neededQueueCount, const un
     if (compute && transfer) computeTransferIdx = i;
     if (graphics && compute && transfer) allIdx = i;
   }
-  queueCount = 3;
+  uint32_t queueCount = 3;
   if (allIdx != -1) {
     queueCount = 1;
     chosen[0] = graphicsIdx = computeIdx = transferIdx = allIdx;

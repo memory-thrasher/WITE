@@ -13,6 +13,9 @@
 #include "WMath.h"
 
 namespace WITE {
+
+  typedef uint8_t renderLayerIdx;
+  typedef uint64_t renderLayerMask;
   
   template<class RET, class... RArgs> class Callback_t {
   public:
@@ -39,7 +42,7 @@ namespace WITE {
       RET(*x)(CArgs..., RArgs...);
       std::tuple<CArgs...> cargs;
       RET call(RArgs... rargs) {
-	return (*x)(std::get<CArgs>(cargs)..., rargs...);
+		return (*x)(std::get<CArgs>(cargs)..., rargs...);
       };
     public:
       StaticCallback(RET(*x)(CArgs..., RArgs...), CArgs... pda);
@@ -60,12 +63,12 @@ namespace WITE {
 
   template<class RET, class... RArgs> template<class U, class... CArgs> Callback_t<RET, RArgs...>*
   CallbackFactory<RET, RArgs...>::make(U* owner, CArgs... cargs, RET(U::*func)(CArgs..., RArgs...)) {
-    return new CallbackFactory<RET, RArgs...>::Callback<U, CArgs...>(owner, func, std::forward<CArgs>(cargs)...);
+    return new wintypename CallbackFactory<RET, RArgs...>::Callback<U, CArgs...>(owner, func, std::forward<CArgs>(cargs)...);
   };
 
   template<class RET, class... RArgs> template<class... CArgs> Callback_t<RET, RArgs...>*
   CallbackFactory<RET, RArgs...>::make(CArgs... cargs, RET(*func)(CArgs..., RArgs...)) {
-    return new CallbackFactory<RET, RArgs...>::StaticCallback<CArgs...>(func, std::forward<CArgs>(cargs)...);
+    return new wintypename CallbackFactory<RET, RArgs...>::StaticCallback<CArgs...>(func, std::forward<CArgs>(cargs)...);
   };
   
 #define typedefCB(name, ...) typedef WITE::CallbackFactory<__VA_ARGS__> name## _F; typedef typename name## _F::callback_t name ;
@@ -82,7 +85,7 @@ namespace WITE {
   virtual ~ShaderResource() = default;
   };
 
-  class export_def Shader {
+  class export_def Shader {//not shared ptrs because these should be global in the game somewhere.
   public:
   struct resourceLayoutEntry {
     size_t type, stage, perInstance;
@@ -101,7 +104,7 @@ namespace WITE {
   virtual ~MeshSource() = default;
   };
 
-  class StaticMesh : public MeshSource {//for debug or simple things only, don't waste host ram on large ones
+  class export_def StaticMesh : public MeshSource {//for debug or simple things only, don't waste host ram on large ones
   public:
     StaticMesh(BBox3D box, void* data, uint32_t size) : box(box), data(data), size(size) {}
     uint32_t populateMeshCPU(void* out, uint64_t maxVerts, const glm::dvec3* viewOrigin) {
@@ -119,11 +122,26 @@ namespace WITE {
     uint32_t size;
   };
 
+  class export_def Mesh {
+  public:
+    static std::shared_ptr<Mesh> make(MeshSource* source);
+    Mesh(const Mesh&) = delete;
+    virtual ~Mesh() = default;
+  protected:
+    Mesh() = default;
+  };
+
+  class Object;//defined in Database.h
+
+  class export_def Renderer {
+  public:
+    static void bind(Object* o, Shader* s, std::shared_ptr<Mesh> m, WITE::renderLayerIdx rlIdx);
+    static void unbind(Object*, WITE::renderLayerIdx);
+  };
+
   class Window;
-  typedef uint8_t renderLayerIdx;
-  typedef uint64_t renderLayerMask;
   
-  class export_def Camera{
+  class export_def Camera {
   public:
   Camera(const Camera&) = delete;
   static Camera* make(Window*, IntBox3D);//window owns camera object
@@ -133,11 +151,14 @@ namespace WITE {
   virtual float approxScreenArea(BBox3D*) = 0;
   virtual glm::dvec3 getLocation() = 0;
   virtual void setLocation(glm::dvec3) = 0;
+  virtual void setMatrix(glm::dmat4&) = 0;
+  virtual void setMatrix(glm::dmat4*) = 0;
   virtual Window* getWindow() = 0;
   virtual IntBox3D getScreenRect() = 0;
   virtual void setFov(double) = 0;
   virtual double getFov() = 0;
   virtual bool appliesOnLayer(renderLayerIdx i) = 0;
+  virtual void setLayermaks(WITE::renderLayerMask newMask) = 0;
   protected:
   Camera() = default;
   };
@@ -147,6 +168,7 @@ namespace WITE {
   Window(const Window&) = delete;//no copy
   virtual ~Window() = default;
   virtual size_t getCameraCount() = 0;
+  virtual WITE::IntBox3D getBounds() = 0;
   virtual void setSize(uint32_t width, uint32_t height) = 0;
   virtual void setBounds(IntBox3D) = 0;
   virtual void setLocation(int32_t x, int32_t y, uint32_t w, uint32_t h) = 0;
@@ -157,6 +179,18 @@ namespace WITE {
   protected:
   static std::vector<Window*> windows;
   Window() = default;
+  };
+
+  class export_def Time {
+  public:
+	  static uint64_t frame();
+	  static uint64_t delta();
+	  static uint64_t lastFrame();
+	  static uint64_t launchTime();
+	  static uint64_t nowNs();
+	  static uint64_t nowMs();
+  private:
+	  Time() = delete;
   };
   
 }

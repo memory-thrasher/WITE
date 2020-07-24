@@ -1,11 +1,7 @@
 #pragma once
 
-#if defined(_DEBUG)
-#define LAYER_COUNT 1
-static const char* LAYERS[] = { "VK_LAYER_LUNARG_standard_validation" };
-#else
-#define LAYER_COUNT 0
-const char* LAYERS[] = {};
+#if !(defined(_RELEASE) || defined(_DEBUG))
+#define _DEBUG
 #endif
 
 #define NS_PER_MS 1000000
@@ -36,33 +32,36 @@ const char* LAYERS[] = {};
 #define SHADER_STAGE_FRAG 16
 //VkFormat
 
-namespace WITE {
-  template<class T> struct remove_array { typedef T type; };
-  template<class T> struct remove_array<T[]> { typedef T type; };
-  template<class T, std::size_t N> struct remove_array<T[N]> { typedef T type; };
-}
-
 #define __offsetof_array(_type, _array, _idx) (offsetof(_type, _array) + sizeof(WITE::remove_array<decltype(_type::_array)>::type) * _idx)
 #define ERRLOGFILE WITE::getERRLOGFILE()
-#define LOG(message, ...) { ::fprintf(ERRLOGFILE, "%s:%d: ", __FILE__, __LINE__); ::fprintf(ERRLOGFILE, message, ##__VA_ARGS__); }
-// #ifdef _DEBUG
-#define CRASHRET(...) { LOG("**CRASH**"); WITE::flush(ERRLOGFILE); exit(1); return __VA_ARGS__; }
-// #else
-// #define CRASHRET(...) { LOG("**CRASH IMMINENT**"); WITE::flush(ERRLOGFILE); return __VA_ARGS__; }
-// #endif
+#define LOG(message, ...) { ::fprintf(ERRLOGFILE, "%s:%d: ", __FILE__, __LINE__); ::fprintf(ERRLOGFILE, message, ##__VA_ARGS__); WITE::flush(ERRLOGFILE); }
+#ifdef _DEBUG
+#define CRASHRET(...) { LOG("**CRASH**"); abort(); exit(1); return __VA_ARGS__; }
+#else
+#define CRASHRET(...) { LOG("**CRASH**"); exit(1); return __VA_ARGS__; }
+#endif
 #define CRASH(message, ...) { LOG(message, ##__VA_ARGS__); CRASHRET(); } //all crashes should explain themselves
 #define CRASHIFFAIL(_cmd_, ...) {int64_t _res = (int64_t)_cmd_; if(_res) { LOG("Got result: %I64d\n", _res); CRASHRET(__VA_ARGS__) } }//for VkResult. VK_SUCCESS = 0
 
-#define newOrHere(_out) new(ensurePointer(_out))
+#define TIME(cmd, level, ...) if(DO_TIMING_ANALYSIS >= level) {uint64_t _time = WITE::Time::nowNs(); cmd; _time = WITE::Time::nowNs() - _time; LOG(__VA_ARGS__, _time);}
 
 #ifdef _WIN32
-#define export_dec
+#define export_dec __declspec(dllexport)
 #define export_def __declspec(dllexport)
 #define wintypename typename
 #else
 //TODO
 #define wintypename
 #endif
+
+namespace WITE {
+  template<class T> struct remove_array { typedef T type; };
+  template<class T> struct remove_array<T[]> { typedef T type; };
+  template<class T, size_t N> struct remove_array<T[N]> { typedef T type; };
+  template<class T> struct remove_array_deep { typedef T type; };
+  template<class T> struct remove_array_deep<T[]> { typedef wintypename remove_array_deep<T>::type type; };
+  template<class T, size_t N> struct remove_array_deep<T[N]> { typedef wintypename remove_array_deep<T>::type type; };
+}
 
 template<class _T> inline _T* ensurePointer(_T* out) {
 	if (!out) out = static_cast<_T*>(malloc(sizeof(_T)));

@@ -26,17 +26,28 @@ public:
     struct { Queue *graphicsQ, *computeQ, *transferQ; };//Use compute for raytracing (if any)
     Queue* queues[MAX_QUEUES];
   };
-  Queue* presentQ;//populated by the first window that finds one, tried by future windows before exploring other queue options
+  Queue* presentQ = NULL;//populated by the first window that finds one, tried by future windows before exploring other queue options
 private:
 };
 
 template<class T, class D = std::default_delete<T>> class GPUResource {//mostly thread safe, dirty read possible, most gpu stuff is kept on main thread
 private:
   void inline ensureExists(GPU* g) {
-    if (data.capacity() < g->idx || !data[g->idx]) {
+    size_t idx = g->idx;
+    if (data.capacity() < idx || !data[idx]) {
       WITE::ScopeLock lock(&allocLock);
-      data.reserve(g->idx + 1);
-      if(!data[g->idx]) data[g->idx] = initer->call(g);
+      //data.reserve(idx + 1);
+      while(data.size() < idx) data[data.size()] = std::nullptr_t();
+      if(!data[idx]) data[idx] = initer->call(g);
+    }
+  };
+  void inline ensureExists(size_t idx) {
+    GPU* g = vkSingleton.gpus[idx];
+    if(data.capacity() < idx || !data[idx]) {
+      WITE::ScopeLock lock(&allocLock);
+      //data.reserve(idx + 1);
+      while(data.size() < idx) data[data.size()] = std::nullptr_t();
+      if(!data[idx]) data[idx] = initer->call(g);
     }
   };
 public:
@@ -47,7 +58,7 @@ public:
     return data[g->idx].get();
   }
   T* get(size_t idx) {
-    ensureExists(vkSingleton.gpus[idx]);
+    ensureExists(idx);
     return data[idx].get();
   }
   template<class U = T>
@@ -56,14 +67,31 @@ public:
     ensureExists(gpu);
     return data[gpu->idx][idx];
   }
-  UniqPtr& operator[](size_t idx) {
-    ensureExists(vkSingleton.gpus[idx]);
-    return data[idx];
+  template<class U = T>
+  typename std::enable_if<std::is_array<U>::value, typename WITE::remove_array<U>::type>::type&
+    get(size_t gpu, size_t idx) {
+    ensureExists(gpu);
+    return data[gpu][idx];
+  }
+  T* operator[](size_t idx) {
+    ensureExists(idx);
+    return data[idx].get();
   }
   //template<class U = T> std::enable_if_t<std::is_copy_constructible<U>::value, T> inline operator[](size_t idx) { return *get(idx); };
   //template<class U = T> std::enable_if_t<std::is_array<U>::value, U> inline operator[](size_t idx) { return *get(idx); };
   GPUResource(constructor c) : data(3), initer(c) {}
-  ~GPUResource() = default;
+  ~GPUResource() {
+    WITE::ScopeLock lock(&allocLock);
+    for(size_t i = 0;i < data.size();i++) {
+      if(data[i]) {
+        auto old = data[i].release();
+        delete old;
+      }
+    }
+    data.~vector();
+    delete initer;
+    //allocLock.~SyncLock();//does nothing
+  };
 private:
   std::vector<UniqPtr> data;
   constructor initer;

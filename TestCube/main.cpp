@@ -1,42 +1,78 @@
+#include <glm/glm.hpp>
+
 #include "../WaffleIronTransactionalEngine/Export.h"
+#include "cube_data.h"
 
-static WITE::Database mainmenu(NULL, 65536);
+struct cube {
+  constexpr static WITE::Database::type type = 12;
+  static WITE::StaticMesh mesh;
+  WITE::Transform trans;
+};
 
-static class Cube {
-  struct savedData {
-    glm::dmat4x4 transform;
-  };
-  auto shader = WITE::Shader::make();//TODO
-  class CubeMesh : WITE::MeshSource {
-    
-    uint32_t populateMeshCPU(void* out, uint32_t maxVerts, glm::vec3* viewOrigin_unused) {
-    };
-    BBox3D* getBbox(BBox3D* out) { return &box; };
-  };
-  auto mesh = WITE::Mesh::make(std::make_shared<WITE::MeshSource>(CubeMesh));//TODO
-  void update(WITE::Database::Entry e) {
-    //TODO
-  };
-  void init(WITE::Database::Entry e) {
-    //TODO export interface
-    auto obj = WITE::Object::make();
-    WITE::Renderer::bind(obj, shader, mesh, 0);
-  };
-  void destroy(WITE::Database::Entry e) {
-  };
-  WITE::Database::type type = 1;
-  WITE::Database::typeHandles = { &update, &init, &destroy };
+#define cubeMesh g_vb_solid_face_colors_Data
+WITE::StaticMesh cube::mesh(WITE::BBox3D(), (uint8_t*)cubeMesh, sizeof(cubeMesh)/sizeof(cubeMesh[0]));
+
+typedef struct {
+  WITE::Shader* flat;
+} shaders_t;
+
+static shaders_t shaders;
+
+static uint64_t frameIdx = 0;
+
+void cubeUpdate(WITE::Database::Entry e) {
+  frameIdx++;
+  if(frameIdx % 1000 == 0) {
+    LOG("living time: %llu\n", WITE::Time::frame());
+  }
+  if(WITE::Time::launchTime() + 10000000000 <= WITE::Time::frame()) {
+    //if(frameIdx > 1000) {
+    LOG("Delta nano: %llu\nFPS: %llu\nlife: %llu\n", WITE::Time::delta(), frameIdx/10, WITE::Time::frame() - WITE::Time::launchTime());
+    WITE::gracefulExit();
+  }
 }
 
-void registerTypes() {
-  WITE::Database::registerType(Cube::type, Cube::typeHandles);
+void cubeInit(WITE::Database::Entry e, WITE::Database::Entry* map) {
+  auto o = (*database->getObjectInstanceFor(e)) = WITE::Object::make(e, offsetof(struct cube, trans), map);
+  WITE::Renderer::bind(o, shaders.flat, WITE::Mesh::make(&cube::mesh), 0);
+  WITE::Transform initialTrans(glm::dmat4(1));
+  o->pushTrans(&initialTrans);
 }
+
+void cubeDestroy(WITE::Database::Entry e) {
+  delete (*database->getObjectInstanceFor(e));
+  (*database->getObjectInstanceFor(e)) = NULL;
+}
+
+const inline static WITE::Database::typeHandles cube_functions = {
+  WITE::CallbackFactory<void, WITE::Database::Entry>::make(&cubeUpdate),
+  WITE::CallbackFactory<void, WITE::Database::Entry, WITE::Database::Entry*>::make(&cubeInit),
+  WITE::CallbackFactory<void, WITE::Database::Entry>::make(&cubeDestroy)
+};
 
 int main(int argc, char** argv) {
-  WITE::WITE_INIT();
-  auto window = WITE::Window::make();
-  registerTypes();
-  WITE::create(Cube::type);//TODO
-  //TODO make object
-  WITE::enterMainLoop(&mainmenu);
+  WITE::WITE_INIT("WITE test cube");
+  struct WITE::Shader::resourceLayoutEntry flatLayout = { SHADER_RESOURCE_UNIFORM, 0, 1, reinterpret_cast<void*>(sizeof(glm::dmat4)) };
+  const char* flatFiles[2] = {"shaders/flat.vert.spv", "shaders/flat.frag.spv"};
+  shaders.flat = WITE::Shader::make(flatFiles, 2, &flatLayout, 1);
+  WITE::Database::registerType(cube::type, cube_functions);
+  auto win1 = WITE::Window::make(0);
+  //WITE::IntBox3D bounds(100, 500, 100, 500);
+  //win1->setBounds(bounds);
+  WITE::IntBox3D bounds = win1->getBounds();
+  bounds.maxx -= bounds.minx;
+  bounds.maxy -= bounds.miny;
+  bounds.minx = bounds.miny = 0;
+  //test
+  bounds.minx += bounds.width = (bounds.maxx>>1);
+  //endtest
+  auto cam = win1->addCamera(bounds);
+  glm::dvec3 camLoc(1, 1, 1);
+  cam->setMatrix(&glm::lookAt(glm::dvec3(-5, 3, -10), glm::dvec3(0, 0, 0), glm::dvec3(0, -1, 0)));
+  cam->setLayermaks(~0);
+  //cam->setFov(M_PI*0.25);
+  WITE::Database db(1024 * 1024 * 1024);
+  database = &db;
+  db.allocate<cube>(cube::type);
+  WITE::enterMainLoop();
 }

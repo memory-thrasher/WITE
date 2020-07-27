@@ -26,9 +26,9 @@ namespace WITE {
 	    typeDestroy->call(data[i]);
       }
     }
-	static Tentry makeEmpty() {
-		return std::shared_ptr<T>(static_cast<T*>(malloc(sizeof(T))));
-	}
+    static Tentry makeEmpty() {
+	    return std::shared_ptr<T>(static_cast<T*>(malloc(sizeof(T))));
+    }
     std::shared_ptr<T> get();
     std::shared_ptr<T> get(uint32_t tid) {
 	  ScopeLock contextHold(&lock);

@@ -42,6 +42,12 @@
 #endif
 #define CRASH(message, ...) { LOG(message, ##__VA_ARGS__); CRASHRET(); } //all crashes should explain themselves
 #define CRASHIFFAIL(_cmd_, ...) {int64_t _res = (int64_t)_cmd_; if(_res) { LOG("Got result: %I64d\n", _res); CRASHRET(__VA_ARGS__) } }//for VkResult. VK_SUCCESS = 0
+#define CRASHIFWITHERRNO(_cmd_, ...) { if(_cmd_) { auto _en = errno; LOG("Got errno: %d\n", _en); CRASHRET(__VA_ARGS__) } }
+#define LOGMAT(mat, name) LOG("%s:\n%f %f %f %f\n%f %f %f %f\n%f %f %f %f\n%f %f %f %f\n", name,\
+                  mat [0][0], mat [1][0], mat [2][0], mat [3][0],\
+                  mat [0][1], mat [1][1], mat [2][1], mat [3][1],\
+                  mat [0][2], mat [1][2], mat [2][2], mat [3][2],\
+                  mat [0][3], mat [1][3], mat [2][3], mat [3][3])
 
 #define TIME(cmd, level, ...) if(DO_TIMING_ANALYSIS >= level) {uint64_t _time = WITE::Time::nowNs(); cmd; _time = WITE::Time::nowNs() - _time; LOG(__VA_ARGS__, _time);}
 
@@ -64,6 +70,6 @@ namespace WITE {
 }
 
 template<class _T> inline _T* ensurePointer(_T* out) {
-	if (!out) out = static_cast<_T*>(malloc(sizeof(_T)));
-	return out;
+  if (!out) out = static_cast<_T*>(malloc(sizeof(_T)));
+  return out;
 }

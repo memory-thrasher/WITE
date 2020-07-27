@@ -8,9 +8,9 @@ WITE::Transform Object::getTrans() {
 }
 
 void Object::pushTrans(WITE::Transform* t) {
-	activeTransform.put(t);
+  activeTransform.put(t);
 }
 
 WITE::Object* WITE::Object::make(WITE::Database::Entry start, size_t transformOffset, WITE::Database::Entry* map) {
-	return new ::Object(start, transformOffset, map);
+  return new ::Object(start, transformOffset, map);
 }

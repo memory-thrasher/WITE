@@ -102,6 +102,50 @@ Window::Window(size_t display) : WITE::Window() {
 
 Window::~Window() {
   //delete sdlWindow;
+  //TODO
+}
+
+void Window::recreateSwapchain() {
+  size_t i;
+  for(i = 0;i < swapchain.imageCount;i++)
+    delete &swapchain.images[i];
+  free(swapchain.images);
+  vkDestroySwapchainKHR(presentQ->gpu->device, swapchain.chain, NULL);
+  //copied from constructor:
+  CRASHIFFAIL(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(presentQ->gpu->phys, surface, &surfaceCaps));
+  if(!(surfaceCaps.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_DST_BIT))
+    CRASH("Surfface swapchain image does not support transfer dst\n");
+  size.width = glm::clamp<uint32_t>(surfaceCaps.currentExtent.width, surfaceCaps.minImageExtent.width,
+    surfaceCaps.maxImageExtent.width);
+  size.height = glm::clamp<uint32_t>(surfaceCaps.currentExtent.height, surfaceCaps.minImageExtent.height,
+    surfaceCaps.maxImageExtent.height);
+  swapchain.imageCount = glm::clamp<uint32_t>(2, surfaceCaps.minImageCount, surfaceCaps.maxImageCount);
+  VkSurfaceTransformFlagBitsKHR preTransform =
+    (surfaceCaps.supportedTransforms & VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR) ?
+    VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR : surfaceCaps.currentTransform;
+  static const VkCompositeAlphaFlagBitsKHR preferred[] =
+  {VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR, VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR, VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR};
+  VkCompositeAlphaFlagBitsKHR target = VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR;
+  for(i = 0;i < sizeof(VkCompositeAlphaFlagsKHR);i++)
+    if(surfaceCaps.supportedCompositeAlpha & preferred[i]) {
+      target = preferred[i];
+      break;
+    }
+  if(graphicsQ == presentQ) {//TODO use imageusageflags if sampled or transfered
+    swapchain.info = {VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR, VK_NULL_HANDLE, 0, surface,
+      swapchain.imageCount, surfaceFormat, VK_COLORSPACE_SRGB_NONLINEAR_KHR, size, 1, VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_SHARING_MODE_EXCLUSIVE, 0, VK_NULL_HANDLE, preTransform, target, VK_PRESENT_MODE_FIFO_KHR, false, VK_NULL_HANDLE};
+  } else if(graphicsQ->gpu == presentQ->gpu) {
+    uint32_t qfs[2] = {graphicsQ->family, presentQ->family};
+    swapchain.info = {VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR, VK_NULL_HANDLE, 0, surface,
+      swapchain.imageCount, surfaceFormat, VK_COLORSPACE_SRGB_NONLINEAR_KHR, size, 1, VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_SHARING_MODE_CONCURRENT, 2, qfs, preTransform, target, VK_PRESENT_MODE_FIFO_KHR, false, VK_NULL_HANDLE};
+  } else CRASH("Not Yet Implemented: gpu that does render cannot present\n");
+  CRASHIFFAIL(vkCreateSwapchainKHR(presentQ->gpu->device, &swapchain.info, vkAlloc, &swapchain.chain));
+  VkImage* images = new VkImage[swapchain.imageCount];
+  CRASHIFFAIL(vkGetSwapchainImagesKHR(presentQ->gpu->device, swapchain.chain, &swapchain.imageCount, images));
+  swapchain.images = (BackedImage*)malloc(swapchain.imageCount * sizeof(BackedImage));
+  for(i = 0;i < swapchain.imageCount;i++)
+    new(&swapchain.images[i])BackedImage(presentQ->gpu, size, surfaceFormat, images[i]);//TODO make semaphore?
+  delete[] images;
 }
 
 uint32_t Window::render() {
@@ -176,14 +220,27 @@ void Window::renderAll() {
 void Window::presentAll() {
   size_t i, count;
   GPU* gpu;
+  decltype(windows)::iterator end;
   for(i = 0;i < vkSingleton.gpuCount;i++) {
     count = scIdxPerGpu[i].size();
     if(!count) continue;
     gpu = vkSingleton.gpus[i];
     VkPresentInfoKHR pi = { VK_STRUCTURE_TYPE_PRESENT_INFO_KHR, NULL, 0, NULL,
 			    (uint32_t)count, swapchainsPerGpu[i].data(), scIdxPerGpu[i].data(), NULL };
-    TIME(CRASHIFFAIL(vkQueuePresentKHR(gpu->presentQ->queue, &pi)), 2, "\tPresent: %llu\n");
-    //TODO handle VK_ERROR_OUT_OF_DATE_KHR by recreating swapchain
+    VkResult res;
+    TIME(res = vkQueuePresentKHR(gpu->presentQ->queue, &pi), 2, "\tPresent: %llu\n");
+    switch(res) {
+    case VK_SUCCESS: break;
+    case VK_SUBOPTIMAL_KHR://docs say recreating the swapchain is the right answer
+    case VK_ERROR_OUT_OF_DATE_KHR:
+      end = windows.end();
+      for(auto ww = windows.begin();ww != end;++ww) {
+        ((::Window*)*ww)->recreateSwapchain();
+      }
+      break;
+    default:
+      CRASH("Present failed with return code: %I64d\n", res);
+    }
   }
 }
 
@@ -225,5 +282,4 @@ void Window::setLocation(int32_t x, int32_t y) {
 
 void Window::setSize(uint32_t width, uint32_t height) {
 	SDL_SetWindowSize(sdlWindow, width, height);
-	//TODO update swapchain
 }

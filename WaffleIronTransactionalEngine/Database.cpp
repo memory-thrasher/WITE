@@ -156,7 +156,7 @@ namespace WITE {
       enqueuedLogEntry ele;
       uint8_t data[Database::MAXPUTSIZE];//keep these in order
     } loaded;
-    len += sizeof(logEntry);
+    start += offsetof(loadedEntry, data);
     loaded.ele = {this->currentFrame, update, len, start, target};
     memcpy(static_cast<void*>(loaded.data), in, len);
     push(&loaded.ele);
@@ -272,23 +272,25 @@ namespace WITE {
       cache->lastUseFrame = currentFrame;
       cache->readsCachedLifetime++;
     } else {
-      active = threadResources.get()->activeFile;
-      target = threadResources.get()->targetFile;
-      if (threadResources.get()->currentFileIdx != fileIdx) {
+      auto threadResource = threadResources.get();
+      active = threadResource->activeFile;
+      target = threadResource->targetFile;
+      if (threadResource->currentFileIdx != fileIdx) {
 	if (active) fclose(active);
-	if (threadResources.get()->currentFileIdx != fileIdx - 1) {
+	if (threadResource->currentFileIdx != fileIdx - 1) {
 	  if (target) fclose(target);
 	  active = NULL;
 	} else
 	  active = target;
-	target = fopen(&this->target.front(), "rb");
-	threadResources.get()->currentFileIdx = fileIdx;
+	if(this->target[0])
+          target = fopen(&this->target.front(), "rb");
+	threadResource->currentFileIdx = fileIdx;
       }
-      if(!active) active = threadResources.get()->activeFile = fopen(&this->active.front(), "rb");
-      threadResources.get()->activeFile = active;
-      threadResources.get()->targetFile = target;
-      fseek(active, offset + e * BLOCKSIZE, SEEK_SET);
-      fread(out, size, 1, active);
+      if(!active) active = threadResource->activeFile = fopen(&this->active.front(), "rb");
+      threadResource->activeFile = active;
+      threadResource->targetFile = target;
+      CRASHIFWITHERRNO(fseek(active, offset + e * BLOCKSIZE, SEEK_SET));
+      CRASHIFWITHERRNO(fread(out, size, 1, active) != 1);
       allocTab[e].readsThisFrame++;
     }
     if (allocTab[e].nextWriteFrame <= frame) {
@@ -325,6 +327,10 @@ namespace WITE {
   }
 
   Database::state_t Database::getEntryState(Entry e) {
+    return getRaw<state_t>(e, offsetof(loadedEntry, header.state), currentFrame-1);
+  }
+
+  Database::state_t Database::pt_getEntryState_live(Entry e) {
     return getRaw<state_t>(e, offsetof(loadedEntry, header.state), currentFrame);
   }
 
@@ -482,6 +488,7 @@ namespace WITE {
   }
 
   void Database::pt_rethinkCache() {//called when prime thread has time to burn, but don't take too long; return to yield
+    //TODO yield more, this takes way too long
     Entry i;
     size_t j, len, score, top, bot, mid;
     allocationTableEntry ate;
@@ -626,7 +633,7 @@ namespace WITE {
 	PUSH_LE;
       }
     }
-    if(map) memcpy(map, entries, min(ALLOCATION_MAP_SIZE, numDataEntries));
+    if(map) memcpy(map, entries, min(ALLOCATION_MAP_SIZE, numDataEntries * sizeof(entries[0])));
     j = entries[0];
     return j;
   }
@@ -644,10 +651,10 @@ namespace WITE {
     if (src->pop(pt_buffer.enqueuedLog.raw, &discard, sizeof(pt_buffer.raw), 1) == RB_BUFFER_UNDERFLOW) return false;
     ele = pt_buffer.enqueuedLog.header;
     if (ele.type == del) {
-      while (getEntryState(trunk) == Database::state_t::trunk) {
+      while (pt_getEntryState_live(trunk) == Database::state_t::trunk) {
 	for (branchIdx = 0;branchIdx < MAXBLOCKPOINTERS;branchIdx++) {
 	  branch = getRaw<Entry>(trunk, __offsetof_array(loadedEntry, children, branchIdx), currentFrame);
-	  if (getEntryState(branch) == Database::state_t::trunk) break;
+	  if (pt_getEntryState_live(branch) == Database::state_t::trunk) break;
 	  for (targetChild = 0;targetChild < MAXBLOCKPOINTERS;targetChild++) {
 	    leaf = getRaw<Entry>(branch, __offsetof_array(loadedEntry, children, targetChild), currentFrame);
 	    if (!leaf) break;
@@ -661,7 +668,7 @@ namespace WITE {
 	PUSH_LE;
 	trunk = branch;
       }
-      if(getEntryState(trunk) == Database::state_t::branch) {
+      if(pt_getEntryState_live(trunk) == Database::state_t::branch) {
 	branch = trunk;
 	for (targetChild = 0;targetChild < MAXBLOCKPOINTERS;targetChild++) {
 	  leaf = getRaw<Entry>(branch, __offsetof_array(loadedEntry, children.subblocks, targetChild), currentFrame);
@@ -677,7 +684,7 @@ namespace WITE {
       trunkIdx = 0;
       branchIdx = NULL_OFFSET;
       leaf = branch = trunk = ele.start;
-      baseState = getEntryState(ele.start);
+      baseState = pt_getEntryState_live(ele.start);
       do {
 	targetChild = offset / BLOCKSIZE;
 	targetLeaf = targetChild % MAXBLOCKPOINTERS;
@@ -688,7 +695,7 @@ namespace WITE {
           while(trunkIdx < targetTrunk) {
             trunk = getRaw<Entry>(trunk, offsetof(loadedEntry, children.subblocks[MAXBLOCKPOINTERS - 1]), currentFrame);
             trunkIdx++;
-            if(trunkIdx == targetTrunk - 1 && getEntryState(trunk) == Database::state_t::branch) targetTrunk--;
+            if(trunkIdx == targetTrunk - 1 && pt_getEntryState_live(trunk) == Database::state_t::branch) targetTrunk--;
           }
           branchIdx = trunkIdx * MAXBLOCKPOINTERS;
           branch = getRaw<Entry>(trunk, __offsetof_array(loadedEntry, children.subblocks, targetBranch - branchIdx), currentFrame);

@@ -284,7 +284,7 @@ namespace WITE {
     else max = entries;
     while (max && (subsize = sizeofnext(*pos) + sizeof(HeadType)) && subsize <= maxsize) {
       readRaw(data, *pos, subsize);
-      *pos += subsize + sizeof(SIZE_TYPE);
+      *pos += subsize;//TODO if ADD_SIZE, add size here?
       if (*pos >= size) *pos -= size;
       max--;
       maxsize -= subsize;

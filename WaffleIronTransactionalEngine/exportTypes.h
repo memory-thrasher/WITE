@@ -42,7 +42,7 @@ namespace WITE {
       RET(*x)(CArgs..., RArgs...);
       std::tuple<CArgs...> cargs;
       RET call(RArgs... rargs) {
-		return (*x)(std::get<CArgs>(cargs)..., rargs...);
+	return (*x)(std::get<CArgs>(cargs)..., rargs...);
       };
     public:
       StaticCallback(RET(*x)(CArgs..., RArgs...), CArgs... pda);

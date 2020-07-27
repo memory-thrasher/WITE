@@ -21,6 +21,7 @@ public:
   static void renderAll();
   static void presentAll();
 private:
+  void recreateSwapchain();
   //static std::vector<Window*> windows;//already in super
   SDL_Window * sdlWindow;
   size_t displayIdx;

@@ -102,7 +102,7 @@ namespace WITE {
     typedef struct {
       typedef RollingBuffer<enqueuedLogEntry, uint16_t, 65535, 0, (uint16_t)offsetof(enqueuedLogEntry, size), false> transactionalBacklog_t;
       transactionalBacklog_t transactionalBacklog;
-      uint64_t currentFileIdx;//target if it exists, active otherwise
+      uint64_t currentFileIdx = -1;//target if it exists, active otherwise
       FILE *activeFile, *targetFile;
       volatile Entry allocRet = NULL_ENTRY;
       volatile size_t allocSize = 0;
@@ -161,6 +161,7 @@ namespace WITE {
     template<typename T> T getRaw(Entry e, size_t offset, uint64_t frame);//e contains offset
     void getRaw(Entry e, size_t offset, size_t size, uint8_t* out, uint64_t frame);//e contains offset, out starts at beginning of returned data
     state_t getEntryState(Entry e);
+    state_t pt_getEntryState_live(Entry e);//pt only to prevent collision with tlogManager.relocate during pt_rethinkLayout
     const char * filenamefmt;
     volatile uint64_t filenameIdx, fileIdx = 0;
     std::string active, target;
@@ -220,7 +221,7 @@ namespace WITE {
     //TODO create and return allocation map, pass to init and then object::make to locate applicable data subsets (including transform)
     Entry allocationMap[ALLOCATION_MAP_SIZE];
     Entry ret = allocate(sizeof(T), allocationMap);
-    put(ret, reinterpret_cast<uint8_t*>(&t), offsetof(loadedEntry, header.type) - sizeof(loadedEntry), sizeof(type));
+    put(ret, reinterpret_cast<uint8_t*>(&t), offsetof(loadedEntry, header.type) - offsetof(loadedEntry, data), sizeof(type));
     allocTab[ret].typeListLast = types.at(t).lastOfType;
     if (types.at(t).firstOfType == NULL_ENTRY) types.at(t).firstOfType = ret;
     else allocTab[types.at(t).lastOfType].typeListNext = ret;

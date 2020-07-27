@@ -47,9 +47,18 @@ void Camera::render(std::shared_ptr<Queue::ExecutionPlan> ep) {
 }
 
 void Camera::updateMaths() {
-  renderTransform = glm::dmat4(1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 1) * //clip
-    glm::perspective(fov, (double)(screenbox.width) / screenbox.height, 0.1, 100.0) * //projection
-    worldTransform.getMat();//view
+  //renderTransform = glm::dmat4(1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 1) * //clip
+  //  glm::perspective(fov, (double)(screenbox.width) / screenbox.height, 0.1, 100.0) * //projection
+  //  worldTransform.getMat();//view
+  auto clip = glm::dmat4(1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 1),
+    proj = glm::perspective(fov, (double)(screenbox.width) / screenbox.height, 0.1, 100.0),
+    view = worldTransform.getMat(),
+    rt = clip * proj * view;
+  renderTransform = rt;
+  LOGMAT(clip, "clip");
+  LOGMAT(proj, "proj");
+  LOGMAT(view, "view");
+  LOGMAT(rt, "renderTransform");
 }
 
 void Camera::resize(WITE::IntBox3D newsize) {

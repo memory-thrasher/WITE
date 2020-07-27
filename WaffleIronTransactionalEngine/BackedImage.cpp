@@ -42,7 +42,14 @@ BackedImage::BackedImage(GPU* dev, VkExtent2D size, VkFormat format, VkImage ima
 							    VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A },
 			   { VK_IMAGE_ASPECT_COLOR_BIT, 0, mipmap, 0, 1 } }) {}
 
-BackedImage::~BackedImage() {}
+BackedImage::~BackedImage() {
+  VkDevice dev = this->dev->device;
+  if(backing) delete backing;
+  if(staging) delete staging;
+  if(view) vkDestroyImageView(dev, view, NULL);
+  if(image) vkDestroyImage(dev, image, NULL);
+  if(sampler) vkDestroySampler(dev, sampler, NULL);
+}
 
 //If an image is being loaded from the cpu, I'm just going to assume that a shader will want to read it.
 void BackedImage::load(WITE::rawDataSource push) {

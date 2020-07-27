@@ -84,14 +84,14 @@ void Renderer::render(VkCommandBuffer cmd, glm::dmat4 projection, GPU* gpu) {
     buffer->inited = true;
     if(packInitial) packInitial->call(this, buffer->resources.get(), gpu);
   }
-  glm::dmat4 test = obj->getTrans().project(projection);
-  LOG("MVP:\n%f %f %f %f\n%f %f %f %f\n%f %f %f %f\n%f %f %f %f\n",
-    test[0][0], test[1][0], test[2][0], test[3][0],
-    test[0][1], test[1][1], test[2][1], test[3][1],
-    test[0][2], test[1][2], test[2][2], test[3][2],
-    test[0][3], test[1][3], test[2][3], test[3][3]);
+  auto obj_trans = obj->getTrans();
+  auto right = obj_trans.getMat();
+  auto mvp = obj_trans.project(projection);
+  LOGMAT(projection, "left");
+  LOGMAT(right, "right");
+  LOGMAT(mvp, "mvp");
   //LOG("\nAddress of resource: %p\naddress of resources: %p\naddress of buffer: %p\n", (void*)buffer->resources.get(), (void*)&buffer->resources, (void*)buffer);//(outdated)first call: 0000000006905E78, second call: 00000000FDFDFDFD (crashed on next line)
-  *reinterpret_cast<glm::dmat4*>(buffer->resources[0]->map()) = test;
+  *reinterpret_cast<glm::dmat4*>(buffer->resources[0]->map()) = mvp;
   buffer->resources[0]->unmap();
   //LOG("Resource updated successfully\n");
   updateInstanceData(0, gpu);

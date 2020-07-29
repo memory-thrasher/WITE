@@ -21,9 +21,7 @@ std::unique_ptr<Mesh::VertexBuffer[]> Mesh::makeBuffersFor(GPU* gpu) {
 Mesh::VertexBuffer::VertexBuffer(GPU* gpu) : len(0),
   verts(gpu, vkSingleton.vramGrabSize/VERTEX_BUFFERS, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT) {};
 
-Mesh::VertexBuffer::~VertexBuffer() {
-  verts.~BackedBuffer();
-}
+Mesh::VertexBuffer::~VertexBuffer() = default;
 
 std::unique_ptr<Mesh::subbuf_t[]> Mesh::makeSubbuf(GPU* g) {
   return std::make_unique<subbuf_t[]>(Mesh::VERTEX_BUFFERS);
@@ -70,19 +68,19 @@ void Mesh::proceduralMeshLoop(void* semRaw) {
   unsigned char* map;
   while (true) {//FIXME death condition?
     for (gpuIdx = 0;gpuIdx < vkSingleton.gpuCount;gpuIdx++) {
-      auto vb = vertexBuffers.get(gpuIdx, i);
-      map = vb.verts.map();
-      vb.len = 0;
+      auto vb = vertexBuffers.getPtr(gpuIdx, i);
+      map = vb->verts.map();
+      vb->len = 0;
       next = allMeshes.nextLink();
       while (next != &allMeshes) {
 	mesh = next->getRef();
 	if (!mesh) continue;
-	tempOffset = vb.len;
+	tempOffset = vb->len;
 	tempOffset += mesh->put(static_cast<void*>(map), tempOffset, vkSingleton.vramGrabSize - tempOffset, vkSingleton.gpus[gpuIdx]);
-	vb.len = tempOffset;
+	vb->len = tempOffset;
 	next = next->nextLink();
       }
-      vb.verts.unmap();
+      vb->verts.unmap();
     }
     semaphore->store(i+1, std::memory_order_release);
     while (semaphore->load(std::memory_order_consume) != 0) WITE::sleep(1);

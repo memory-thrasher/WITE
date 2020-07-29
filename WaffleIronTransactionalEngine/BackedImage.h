@@ -31,6 +31,7 @@ private:
   VkImageViewCreateInfo viewInfo;
   VkFormat format;
   GPU* dev;
+  bool cleanupImage = true;
   //the previous are all that are required for swapchain images, move to non-backed image base class?
   VkImageCreateInfo imageInfo;
   VkFormatProperties props;

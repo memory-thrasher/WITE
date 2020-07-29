@@ -57,17 +57,14 @@ int main(int argc, char** argv) {
   shaders.flat = WITE::Shader::make(flatFiles, 2, &flatLayout, 1);
   WITE::Database::registerType(cube::type, cube_functions);
   auto win1 = WITE::Window::make(0);
-  WITE::IntBox3D bounds(100, 500, 100, 500);
+  WITE::IntBox3D bounds(100, 600, 100, 600);
   win1->setBounds(bounds);
-  bounds = win1->getBounds();
   bounds.maxx -= bounds.minx;
   bounds.maxy -= bounds.miny;
   bounds.minx = bounds.miny = 0;
-  //test
-  bounds.minx += bounds.width = (bounds.maxx>>1);
   //endtest
   auto cam = win1->addCamera(bounds);
-  cam->setFov(glm::radians(45.0f));
+  cam->setFov(glm::radians(45.0f) * bounds.height() / bounds.width());
   cam->setMatrix(&glm::lookAt(glm::dvec3(-5, 3, -10), glm::dvec3(0, 0, 0), glm::dvec3(0, -1, 0)));
   cam->setLayermaks(~0);
   //cam->setFov(M_PI*0.25);

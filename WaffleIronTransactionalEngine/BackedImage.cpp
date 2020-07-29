@@ -40,15 +40,19 @@ BackedImage::BackedImage(GPU* dev, VkExtent2D size, VkFormat format, VkImage ima
   BackedImage(dev, size, { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO, NULL, 0, image,
 			   VK_IMAGE_VIEW_TYPE_2D, format, { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G,
 							    VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A },
-			   { VK_IMAGE_ASPECT_COLOR_BIT, 0, mipmap, 0, 1 } }) {}
+			   { VK_IMAGE_ASPECT_COLOR_BIT, 0, mipmap, 0, 1 } }) {
+  //when image is provided, the caller is responsible for destroying it
+  //general use case is swapchain images, in which case they are destroyed by vkDestroySwapchain
+  cleanupImage = false;
+}
 
 BackedImage::~BackedImage() {
   VkDevice dev = this->dev->device;
+  if(sampler) vkDestroySampler(dev, sampler, NULL);
+  if(view) vkDestroyImageView(dev, view, NULL);
+  if(cleanupImage && image) vkDestroyImage(dev, image, NULL);
   if(backing) delete backing;
   if(staging) delete staging;
-  if(view) vkDestroyImageView(dev, view, NULL);
-  if(image) vkDestroyImage(dev, image, NULL);
-  if(sampler) vkDestroySampler(dev, sampler, NULL);
 }
 
 //If an image is being loaded from the cpu, I'm just going to assume that a shader will want to read it.

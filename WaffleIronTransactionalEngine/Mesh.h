@@ -6,7 +6,7 @@ class Mesh : public WITE::Mesh {
 public:
   Mesh(WITE::MeshSource* source);
   ~Mesh();
-  uint32_t put(void*, uint64_t offset, uint64_t maxSize, GPU*);
+  uint32_t put(WITE::Vertex*, uint64_t offset, uint64_t maxSize, GPU*);
   static void proceduralMeshLoop(void* semaphore);//semaphore is type std::atomic<uint8_t>
 private:
   static constexpr size_t VERTEX_BUFFERS = 2;

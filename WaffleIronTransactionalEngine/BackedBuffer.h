@@ -12,7 +12,7 @@ public:
   BackedBuffer(GPU* dev, size_t size, VkBufferUsageFlags usage);
   ~BackedBuffer();
   void bindToImage(VkImage);
-  unsigned char* map();
+  void* map();
   void unmap();
   size_t getSize();
   void load(WITE::rawDataSource);

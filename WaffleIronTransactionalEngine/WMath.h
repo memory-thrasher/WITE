@@ -12,14 +12,15 @@ namespace WITE {
   typedef glm::dvec3 v3;
   union {
     double component[1];
-    struct { double minx, miny, minz, maxx, maxy, maxz, centerx, centery, centerz; };
+    struct { double minx, miny, minz, maxx, maxy, maxz; };
   };
   BBox3D(double minx = 0, double maxx = 0, double miny = 0, double maxy = 0, double minz = 0, double maxz = 0) :
   minx(minx), miny(miny), minz(minz), maxx(maxx), maxy(maxy), maxz(maxz) {};
   BBox3D(v3 min, v3 max) : BBox3D(min.x, max.x, min.y, max.y, min.z, max.z) {}
+  BBox3D(glm::vec3 min, glm::vec3 max) : BBox3D(v3(min), v3(max)) {}//promote from float
   inline glm::dvec3 min() { return glm::dvec3(minx, miny, minz); };
   inline glm::dvec3 max() { return glm::dvec3(maxx, maxy, maxz); };
-  inline glm::dvec3 center() { return glm::dvec3(centerx, centery, centerz); };
+  inline glm::dvec3 center() { return (min() + max())*0.5; };
   void allCornerSwizzle(glm::dvec3* out) const {
     size_t i = 0;
     for(size_t x = 0;x < 2;x++) for(size_t y = 0;y < 2;y++) for(size_t z = 0;z < 2;z++, i++) out[i] = glm::dvec3(component[x*3], component[y*3+1], component[z*3+2]);
@@ -63,7 +64,7 @@ namespace WITE {
 
   template<size_t components, class T> class Mangle_ComponentwiseMax {
   public:
-    inline T operator()(T* a, T* b) const {
+    inline T operator()(const T* a, const T* b) const {
       T ret;
       for(size_t i = 0;i < components;i++)
 	ret[i] = max((*a)[i], (*b)[i]);
@@ -75,7 +76,7 @@ namespace WITE {
 
   template<size_t components, typename T> class Mangle_ComponentwiseMin {
   public:
-    inline T operator()(T* a, T* b) const {
+    inline T operator()(const T* a, const T* b) const {
       T ret;
       for(size_t i = 0;i < components;i++)
 	ret[i] = min((*a)[i], (*b)[i]);
@@ -85,23 +86,23 @@ namespace WITE {
 
   template<class V> using Mangle_MinVec = Mangle_ComponentwiseMin<V::length(), typename V::type>;
 
-  template<class Mangler, class T, class U> inline T mangle(T* a, U* b) {
+  template<class Mangler, class T, class U> inline T mangle(const T* a, const U* b) {
     return Mangler()(a, b);
   };
 
-  template<class Mangler, class T, class U, class V, class... WX> T mangle(T* a, U* b, V* c, WX... more) {
+  template<class Mangler, class T, class U, class V, class... WX> T mangle(const T* a, const U* b, const V* c, const WX... more) {
     U bx = mangle<Mangler>(b, c, std::forward<WX>(more)...);
     return mangle<Mangler>(a, bx);
   };
 
-  template<class Mangler, class T> void mangle(T* in, size_t count, T* ret) {
+  template<class Mangler, class T> void mangle(const T* in, size_t count, T* ret) {
     *ret = in[0];//copy constructable
     Mangler m;
     for(size_t i = 1;i < count;i++)
       *ret = m(ret, &in[i]);
   };
 
-  template<class Mangler, class T> T mangle(T* in, size_t count) {
+  template<class Mangler, class T> T mangle(const T* in, size_t count) {
     T ret;
     mangle<Mangler, T>(in, count, &ret);
     return ret;

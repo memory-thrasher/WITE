@@ -98,9 +98,11 @@ Window::Window(size_t display) : WITE::Window() {
   delete[] images;
   VkSemaphoreCreateInfo semInfo = { VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO, NULL, 0 };
   vkCreateSemaphore(presentQ->gpu->device, &semInfo, vkAlloc, &swapchain.semaphore);
+  graphicsQ->gpu->windows.push_back(this);
 }
 
 Window::~Window() {
+  //TODO remove from windows list
   //delete sdlWindow;
   //TODO
 }

@@ -10,7 +10,7 @@ struct cube {
 };
 
 #define cubeMesh g_vb_solid_face_colors_Data
-WITE::StaticMesh cube::mesh(WITE::BBox3D(), (uint8_t*)cubeMesh, sizeof(cubeMesh)/sizeof(cubeMesh[0]));
+WITE::StaticMesh cube::mesh(cubeMesh, sizeof(cubeMesh)/sizeof(cubeMesh[0]));
 
 typedef struct {
   WITE::Shader* flat;
@@ -25,9 +25,9 @@ void cubeUpdate(WITE::Database::Entry e) {
   if(frameIdx % 1000 == 0) {
     LOG("living time: %llu\n", WITE::Time::frame());
   }
-  if(WITE::Time::launchTime() + 10000000000 <= WITE::Time::frame()) {
+  if(WITE::Time::launchTime() + 100000000000 <= WITE::Time::frame()) {
     //if(frameIdx > 1000) {
-    LOG("Delta nano: %llu\nFPS: %llu\nlife: %llu\n", WITE::Time::delta(), frameIdx/10, WITE::Time::frame() - WITE::Time::launchTime());
+    LOG("Delta nano: %llu\nFPS: %llu\nlife: %llu\n", WITE::Time::delta(), frameIdx/100, WITE::Time::frame() - WITE::Time::launchTime());
     WITE::gracefulExit();
   }
 }
@@ -52,7 +52,7 @@ const inline static WITE::Database::typeHandles cube_functions = {
 
 int main(int argc, char** argv) {
   WITE::WITE_INIT("WITE test cube");
-  struct WITE::Shader::resourceLayoutEntry flatLayout = { SHADER_RESOURCE_UNIFORM, 0, 1, reinterpret_cast<void*>(sizeof(glm::dmat4)) };
+  struct WITE::Shader::resourceLayoutEntry flatLayout = { SHADER_RESOURCE_UNIFORM, SHADER_STAGE_VERT, 1, reinterpret_cast<void*>(sizeof(glm::dmat4)) };
   const char* flatFiles[2] = {"shaders/flat.vert.spv", "shaders/flat.frag.spv"};
   shaders.flat = WITE::Shader::make(flatFiles, 2, &flatLayout, 1);
   WITE::Database::registerType(cube::type, cube_functions);

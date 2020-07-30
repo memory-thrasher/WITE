@@ -7,7 +7,7 @@
 #include "BackedImage.h"
 #include "constants.h"
 
-Renderer::Renderer() : obj(), packPreRender(NULL), packInitial(NULL) {}
+Renderer::Renderer() : obj(), packPreRender(NULL), packInitial(NULL), mesh_owners_node(this) {}
 
 Renderer::~Renderer() {}
 
@@ -112,6 +112,7 @@ void Renderer::updateInstanceData(size_t resource, GPU* gpu) {//TODO batchify?
     break;
   case SHADER_RESOURCE_UNIFORM:
     write.pBufferInfo = &((BackedBuffer*)buffer->resources[resource].get())->info;
+    //TODO sampler type in write?
     break;
   default:
     CRASH("Unsupported/unrecognized shader resource type: %d\n", write.descriptorType);

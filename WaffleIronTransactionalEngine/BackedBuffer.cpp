@@ -49,10 +49,10 @@ void BackedBuffer::bindToImage(VkImage image) {
   CRASHIFFAIL(vkBindImageMemory(dev->device, image, mem, 0));
 }
 
-unsigned char* BackedBuffer::map() {
+void* BackedBuffer::map() {
   if(!cachedMap)
     CRASHIFFAIL(vkMapMemory(dev->device, mem, 0, size, 0, &cachedMap), NULL);
-  return static_cast<unsigned char*>(cachedMap);
+  return cachedMap;
 }
 
 void BackedBuffer::unmap() {

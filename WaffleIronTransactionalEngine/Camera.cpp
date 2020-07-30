@@ -10,8 +10,9 @@ Camera::~Camera() {}
 
 float Camera::approxScreenArea(WITE::BBox3D* o) {
   WITE::BBox3D scrnAlloc, *scrn;
-  scrn = renderTransform.getInv().transform(o, &scrnAlloc);
-  return (float)((scrn->maxx-scrn->minx)*(scrn->maxy-scrn->miny));
+  scrn = renderTransform.transform(o, &scrnAlloc);
+  return (float)((scrn->maxx-scrn->minx)*(scrn->maxy-scrn->miny))*180;
+  //TODO this needs work
 }
 
 glm::dvec3 Camera::getLocation() {

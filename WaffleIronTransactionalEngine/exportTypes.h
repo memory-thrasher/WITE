@@ -73,12 +73,12 @@ namespace WITE {
   
 #define typedefCB(name, ...) typedef WITE::CallbackFactory<__VA_ARGS__> name## _F; typedef typename name## _F::callback_t name ;
 
-  typedefCB(rawDataSource, int, unsigned char*, size_t)
+  typedefCB(rawDataSource, int, void*, size_t)
 
   class export_def ShaderResource {
   public:
   virtual void load(rawDataSource) = 0;
-  virtual unsigned char* map() = 0;
+  virtual void* map() = 0;
   virtual void unmap() = 0;
   virtual size_t getSize() = 0;
   //virtual BackedBuffer* getBuffer() = 0;
@@ -96,9 +96,30 @@ namespace WITE {
   virtual ~Shader() = default;
   };
 
+  typedef union Vertex {
+    float floats[0];
+    struct {
+      glm::vec3 pos, data;
+    };
+    struct {
+      float x, y, z, r, g, b;
+    };
+    Vertex(float x, float y, float z, float r, float g, float b) : pos(x, y, z), data(r, g, b) {}
+    Vertex() : pos(), data() {}
+    inline operator void*() {//for memcpy
+      return static_cast<void*>(this);
+    };
+    inline float& operator[](size_t idx) {
+      return floats[idx];
+    };
+    inline const float& operator[](size_t idx) const {
+      return floats[idx];
+    };
+  } Vertex;
+
   class export_def MeshSource {//mesh source can redirect to file load or cpu procedure, but should not store any mesh data. Mesh does that, per LOD.
   public:
-  virtual uint32_t populateMeshCPU(void*, uint64_t maxVerts, const glm::dvec3* viewOrigin) = 0;//returns number of verts used
+  virtual uint32_t populateMeshCPU(Vertex*, uint64_t maxVerts, const glm::dvec3* viewOrigin) = 0;//returns number of verts used
   virtual Shader* getComputeMesh(void) { return NULL; };
   virtual BBox3D* getBbox(BBox3D* out = NULL) = 0;//not transformed
   virtual ~MeshSource() = default;
@@ -106,8 +127,10 @@ namespace WITE {
 
   class export_def StaticMesh : public MeshSource {//for debug or simple things only, don't waste host ram on large ones
   public:
-    StaticMesh(BBox3D box, void* data, uint32_t size) : box(box), data(data), size(size) {}
-    uint32_t populateMeshCPU(void* out, uint64_t maxVerts, const glm::dvec3* viewOrigin) {
+    StaticMesh(const Vertex* data, uint32_t size) : data(data), size(size),
+      box(mangle<Mangle_ComponentwiseMin<6, Vertex>, Vertex>(data, size).pos,
+      mangle<Mangle_ComponentwiseMax<6, Vertex>, Vertex>(data, size).pos) {}
+    uint32_t populateMeshCPU(Vertex* out, uint64_t maxVerts, const glm::dvec3* viewOrigin) {
       if (size <= maxVerts) {
 	memcpy(out, data, size * FLOAT_BYTES);
 	return size;
@@ -118,7 +141,7 @@ namespace WITE {
     //return newOrHere(out)BBox3D(box); };
   private:
     BBox3D box;
-    void* data;
+    const void* data;
     uint32_t size;
   };
 

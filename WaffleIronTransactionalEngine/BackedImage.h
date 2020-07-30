@@ -22,7 +22,7 @@ public:
   VkImageView getImageView() { return view; };
   size_t getSize() { return backing->getSize(); };
   void unmap() { (staging ? staging : backing)->unmap(); };
-  unsigned char* map() { return (staging ? staging : backing)->map(); };
+  void* map() { return (staging ? staging : backing)->map(); };
   VkImage getImage() { return image; };
 private:
   VkImage image;

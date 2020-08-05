@@ -48,8 +48,8 @@ private:
     static constexpr VkRenderPassCreateInfo rpInfo = {VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO, NULL, 0, 2, attachments, 1, &subpass, 0, NULL};
     static constexpr VkClearValue CLEAR[2] = {{{{0.2f, 0.2f, 0.2f, 0.2f}}}, {{1.0, 0}}};
     static constexpr VkClearAttachment CLEAR_ATTACHMENTS[2] = {
-      { VK_IMAGE_ASPECT_COLOR_BIT, 0, {{{0.2f, 0.2f, 0.2f, 0.2f}}} },
-      { VK_IMAGE_ASPECT_DEPTH_BIT, 0, {{10.0, 0}} }
+      { VK_IMAGE_ASPECT_COLOR_BIT, 0, {{{0.5f, 0.5f, 0.5f, 0.5f}}} },
+      { VK_IMAGE_ASPECT_DEPTH_BIT, 1, {{1.0, 0}} }
     };
     std::unique_ptr<BackedImage> color, depth;
     VkRenderPass rp;

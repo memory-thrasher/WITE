@@ -18,8 +18,10 @@ Queue::Queue(GPU* gpu, uint32_t family, uint32_t idx) :
 Queue::~Queue() {}
 
 VkCommandBuffer Queue::makeCmd() {
+  static size_t cmdIdx;
   VkCommandBuffer ret;
   WITE::ScopeLock hold(&lock);
+  LOG("Creating %d-th vkCmd\n", cmdIdx++);
   CRASHIFFAIL(vkAllocateCommandBuffers(gpu->device, &bufInfo, &ret), NULL);
   return ret;
 }
@@ -70,7 +72,7 @@ size_t Queue::ExecutionPlan::beginInternal() {
     sq = allocated[allocIdx];
   allSubmits[allocIdx] = { VK_STRUCTURE_TYPE_SUBMIT_INFO, NULL, 0, NULL, NULL, 1, &sq->cmd, 1, &sq->completionSemaphore };
   vkBeginCommandBuffer(sq->cmd, &CMDBUFFER_BEGIN_INFO);
-  //??  vkResetCommandBuffer(&sq->cmd, 0);
+  //??  vkResetCommandBuffer(&sq->cmd, 0); (if so, cmd buffer info can be one time submit flag)
   return allocIdx++;
 }
 

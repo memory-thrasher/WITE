@@ -97,9 +97,11 @@ void Renderer::render(VkCommandBuffer cmd, glm::dmat4 projection, GPU* gpu) {
   updateInstanceData(0, gpu);
   if(packPreRender) packPreRender->call(this, buffer->resources.get(), gpu);
   vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shader->resources.get(gpu)->pipelineLayout, 0, 1, &buffer->descSet, 0, NULL);
+  //TODO vkCmdPushDescriptorSet? Test ordering of bind just before draw, without any transitions?
   vkCmdBindVertexBuffers(cmd, 0, 1, &Mesh::vertexBuffers.get(gpu, vertBuffer).verts.buffer, &subbuf.vbStart);
   //TODO move bind to camera level, subdivide on draw
   vkCmdDraw(cmd, subbuf.vbLength, 1, 0, 0);
+  //TODO test that cmd writes are still good here. vkCmdFillBuffer?
 }
 
 void Renderer::updateInstanceData(size_t resource, GPU* gpu) {//TODO batchify?
@@ -109,10 +111,10 @@ void Renderer::updateInstanceData(size_t resource, GPU* gpu) {//TODO batchify?
   switch(write.descriptorType) {
   case SHADER_RESOURCE_SAMPLED_IMAGE:
     write.pImageInfo = &((BackedImage*)buffer->resources[resource].get())->info;
+    //TODO sampler type in write?
     break;
   case SHADER_RESOURCE_UNIFORM:
     write.pBufferInfo = &((BackedBuffer*)buffer->resources[resource].get())->info;
-    //TODO sampler type in write?
     break;
   default:
     CRASH("Unsupported/unrecognized shader resource type: %d\n", write.descriptorType);

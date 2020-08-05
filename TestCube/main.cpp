@@ -52,7 +52,7 @@ const inline static WITE::Database::typeHandles cube_functions = {
 
 int main(int argc, char** argv) {
   WITE::WITE_INIT("WITE test cube");
-  struct WITE::Shader::resourceLayoutEntry flatLayout = { SHADER_RESOURCE_UNIFORM, SHADER_STAGE_VERT, 1, reinterpret_cast<void*>(sizeof(glm::dmat4)) };
+  struct WITE::Shader::resourceLayoutEntry flatLayout = { SHADER_RESOURCE_UNIFORM, SHADER_STAGE_VERT, 1, reinterpret_cast<void*>(sizeof(glm::dmat4)) };//TODO this is assumed so should be implied, the provided resources should be in addition to trans
   const char* flatFiles[2] = {"shaders/flat.vert.spv", "shaders/flat.frag.spv"};
   shaders.flat = WITE::Shader::make(flatFiles, 2, &flatLayout, 1);
   WITE::Database::registerType(cube::type, cube_functions);

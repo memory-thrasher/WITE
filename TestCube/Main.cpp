@@ -10,7 +10,7 @@ struct cube {
 };
 
 #define cubeMesh g_vb_solid_face_colors_Data
-WITE::StaticMesh cube::mesh(WITE::BBox3D(), (uint8_t*)cubeMesh, sizeof(cubeMesh)/sizeof(cubeMesh[0]));
+WITE::StaticMesh cube::mesh(cubeMesh, sizeof(cubeMesh)/sizeof(cubeMesh[0]));
 
 typedef struct {
   WITE::Shader* flat;
@@ -51,23 +51,19 @@ const inline static WITE::Database::typeHandles cube_functions = {
 };
 
 int main(int argc, char** argv) {
-  WITE::WITE_INIT("WITE test cube");
-  struct WITE::Shader::resourceLayoutEntry flatLayout = { SHADER_RESOURCE_UNIFORM, 0, 1, reinterpret_cast<void*>(sizeof(glm::dmat4)) };
+  WITE::WITE_INIT("WITE test cube", DEBUG_MASK_VULKAN);
+  struct WITE::Shader::resourceLayoutEntry flatLayout = { SHADER_RESOURCE_UNIFORM, SHADER_STAGE_VERT, 1, reinterpret_cast<void*>(sizeof(glm::dmat4)) };//TODO this is assumed so should be implied, the provided resources should be in addition to trans
   const char* flatFiles[2] = {"shaders/flat.vert.spv", "shaders/flat.frag.spv"};
   shaders.flat = WITE::Shader::make(flatFiles, 2, &flatLayout, 1);
   WITE::Database::registerType(cube::type, cube_functions);
   auto win1 = WITE::Window::make(0);
-  //WITE::IntBox3D bounds(100, 500, 100, 500);
-  //win1->setBounds(bounds);
-  WITE::IntBox3D bounds = win1->getBounds();
+  WITE::IntBox3D bounds(100, 600, 100, 600);
+  win1->setBounds(bounds);
   bounds.maxx -= bounds.minx;
   bounds.maxy -= bounds.miny;
   bounds.minx = bounds.miny = 0;
-  //test
-  bounds.minx += bounds.width = (bounds.maxx>>1);
-  //endtest
   auto cam = win1->addCamera(bounds);
-  glm::dvec3 camLoc(1, 1, 1);
+  cam->setFov(glm::radians(45.0f) * bounds.height() / bounds.width());
   cam->setMatrix(&glm::lookAt(glm::dvec3(-5, 3, -10), glm::dvec3(0, 0, 0), glm::dvec3(0, -1, 0)));
   cam->setLayermaks(~0);
   //cam->setFov(M_PI*0.25);

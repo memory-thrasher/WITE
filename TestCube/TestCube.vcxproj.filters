@@ -34,5 +34,8 @@
     <None Include="shaders\flat.vert">
       <Filter>Source Files\shaders</Filter>
     </None>
+    <None Include="compileShaders.bat">
+      <Filter>Source Files\shaders</Filter>
+    </None>
   </ItemGroup>
 </Project>

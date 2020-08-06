@@ -3,17 +3,18 @@
 #include "Globals.h"
 #include "Thread.h"
 #include "Database.h"
-
+#include "Debugger.h"
 
 #include <sys/stat.h>
 
 FILE* errLogFile;
-const char** ADDED_EXTENSIONS;
+uint64_t _debugMode;
+const char* VALIDATION_EXTENSIONS[] { VK_EXT_DEBUG_REPORT_EXTENSION_NAME, VK_EXT_DEBUG_UTILS_EXTENSION_NAME };
 const char* DEVICE_EXTENSIONS[DEVICE_EXTENSIONS_LEN] = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
 //const VkAllocationCallbacks *vkAlloc = NULL;//now a define in Globals.h; TODO like errno and errLogFile
 vulkan_singleton_t* get_vkSingleton() {
-	static vulkan_singleton_t vulkankSingleton;
-	return &vulkankSingleton;
+  static vulkan_singleton_t vulkankSingleton;
+  return &vulkankSingleton;
 }
 
 namespace WITE {
@@ -59,35 +60,43 @@ namespace WITE {
     return errLogFile;
   }
 
-  export_def void WITE_INIT(const char* gameName) {//TODO move this to mainLoop?
-    unsigned int extensionCount;
-    const char* extensions[MAX_EXTENSIONS];
+  export_def uint64_t getDebugMode() {
+    return _debugMode;
+  }
+
+  export_def void WITE_INIT(const char* gameName, uint64_t debugMask) {//TODO move this to mainLoop?
+    auto vk = get_vkSingleton();
+    const void* instanceNext = NULL;
+    _debugMode = debugMask;
     WITE::Thread::init();
     VkPhysicalDevice devices[MAX_GPUS];
     size_t i;
     errLogFile = file_open("out.log", "w");
     SDL_Window* window = SDL_CreateWindow("splash", 0, 0, 10, 10, SDL_WINDOW_VULKAN);
     //window is a dumb requirement, deprecated as of SDL 2.0.8, will be dropped
-    if (!SDL_Vulkan_GetInstanceExtensions(window, &extensionCount, NULL)) CRASH("Failed to fetch VK extension count needed by gl\n");
-    if (extensionCount > MAX_SDL_EXTENSIONS) CRASH("Too many extensions\n");
-    if (!SDL_Vulkan_GetInstanceExtensions(window, &extensionCount, extensions)) CRASH("Failed to fetch VK extensions needed by gl\n");
+    if (!SDL_Vulkan_GetInstanceExtensions(window, &vk->extensionCount, NULL)) CRASH("Failed to fetch VK extension count needed by gl\n");
+    if (vk->extensionCount > MAX_SDL_EXTENSIONS) CRASH("Too many extensions\n");
+    if (!SDL_Vulkan_GetInstanceExtensions(window, &vk->extensionCount, vk->extensions)) CRASH("Failed to fetch VK extensions needed by gl\n");
     SDL_DestroyWindow(window);
-    for (i = 0;i < ADDED_EXTENSION_COUNT;i++)
-      extensions[extensionCount++] = ADDED_EXTENSIONS[i];
-    vkSingleton.extensionCount = extensionCount;
-    memcpy(vkSingleton.extensions, extensions, sizeof(char*) * extensionCount);
-    vkSingleton.appInfo = { VK_STRUCTURE_TYPE_APPLICATION_INFO, NULL, gameName,
-			    0, "Waffle Iron Transactional Engine (WITE)", 0, VK_API_VERSION_1_1 };
-    vkSingleton.createInfo = { VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO, NULL,
-			       0, &vkSingleton.appInfo, 0, NULL, vkSingleton.extensionCount, vkSingleton.extensions };
-    CRASHIFFAIL(vkCreateInstance(&vkSingleton.createInfo, vkAlloc, &vkSingleton.instance));
-    CRASHIFFAIL(vkEnumeratePhysicalDevices(vkSingleton.instance, &vkSingleton.gpuCount, NULL));
-    if (vkSingleton.gpuCount > MAX_GPUS) vkSingleton.gpuCount = MAX_GPUS;//unlikely
-    CRASHIFFAIL(vkEnumeratePhysicalDevices(vkSingleton.instance, &vkSingleton.gpuCount, devices));
-    for (i = 0;i < vkSingleton.gpuCount;i++) {
-      vkSingleton.gpus[i] = new GPU(devices[i], i);
+    if(debugMode & DEBUG_MASK_VULKAN) {
+      for (i = 0;i < VALIDATION_EXTENSION_COUNT;i++)
+        vk->extensions[vk->extensionCount++] = VALIDATION_EXTENSIONS[i];
+      vk->layers[vk->layerCount++] = "VK_LAYER_KHRONOS_validation";
+      instanceNext = &Debugger::messengerInfo;
     }
-    for (i = 0;i < MAX_RENDER_LAYERS;i++) vkSingleton.renderLayers[i].idx = i;
+    //TODO check all layers/extensions
+    vk->appInfo = { VK_STRUCTURE_TYPE_APPLICATION_INFO, NULL, gameName, 0, "Waffle Iron Transactional Engine (WITE)", 0, VK_API_VERSION_1_1 };
+    vk->createInfo = { VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO, instanceNext, 0, &vk->appInfo, vk->layerCount, vk->layers, vk->extensionCount, vk->extensions };
+    CRASHIFFAIL(vkCreateInstance(&vk->createInfo, vkAlloc, &vk->instance));
+    if(debugMode & DEBUG_MASK_VULKAN)
+      Debugger::doInit();
+    CRASHIFFAIL(vkEnumeratePhysicalDevices(vk->instance, &vk->gpuCount, NULL));
+    if (vk->gpuCount > MAX_GPUS) vk->gpuCount = MAX_GPUS;//unlikely
+    CRASHIFFAIL(vkEnumeratePhysicalDevices(vk->instance, &vk->gpuCount, devices));
+    for (i = 0;i < vk->gpuCount;i++) {
+      vk->gpus[i] = new GPU(devices[i], i);
+    }
+    for (i = 0;i < MAX_RENDER_LAYERS;i++) vk->renderLayers[i].idx = i;
   }
 
   export_def size_t getFileSize(const char* filename) {

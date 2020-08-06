@@ -60,7 +60,7 @@ std::unique_ptr<struct Shader::shaderGpuResources> Shader::makeDescriptors(GPU* 
   CRASHIFFAIL(vkCreateDescriptorSetLayout(dev->device, &ret->descLayoutInfo, vkAlloc, &ret->descLayout), VK_NULL_HANDLE);
   ret->pipelineLayoutInfo = { VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO, VK_NULL_HANDLE, 0, 1, &ret->descLayout, 0, VK_NULL_HANDLE };
   CRASHIFFAIL(vkCreatePipelineLayout(dev->device, &ret->pipelineLayoutInfo, vkAlloc, &ret->pipelineLayout), VK_NULL_HANDLE);
-  ret->descPoolInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO, VK_NULL_HANDLE, 0, 1, 2, ret->descPoolSizes.get() };
+  ret->descPoolInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO, VK_NULL_HANDLE, 0, 1, (uint32_t)resourcesPerInstance, ret->descPoolSizes.get() };
   ret->descAllocInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO, VK_NULL_HANDLE, VK_NULL_HANDLE, 1, &ret->descLayout };
   ret->growDescPool(dev);
   if(!dev->pipeCache)

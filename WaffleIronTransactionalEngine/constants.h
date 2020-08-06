@@ -4,6 +4,10 @@
 #define _DEBUG
 #endif
 
+#ifndef DO_TIMING_ANALYSIS
+#define DO_TIMING_ANALYSIS 0
+#endif
+
 #define NS_PER_MS 1000000
 #define BASIC_LOCK_TIMEOUT 100000
 #define STATELOCK_TIMEOUT 10000
@@ -31,6 +35,8 @@
 #define SHADER_STAGE_VERT 1
 #define SHADER_STAGE_FRAG 16
 //VkFormat
+#define DEBUG_MASK_VULKAN 1
+//more debug options, like timing, logging, per-frame db rebase or log dumping, allocation (vkAlloc)
 
 #define __offsetof_array(_type, _array, _idx) (offsetof(_type, _array) + sizeof(WITE::remove_array<decltype(_type::_array)>::type) * _idx)
 #define ERRLOGFILE WITE::getERRLOGFILE()
@@ -50,6 +56,7 @@
                   mat [0][3], mat [1][3], mat [2][3], mat [3][3])
 
 #define TIME(cmd, level, ...) if(DO_TIMING_ANALYSIS >= level) {uint64_t _time = WITE::Time::nowNs(); cmd; _time = WITE::Time::nowNs() - _time; LOG(__VA_ARGS__, _time);}
+#define debugMode (WITE::getDebugMode())
 
 #ifdef _WIN32
 #define export_dec __declspec(dllexport)

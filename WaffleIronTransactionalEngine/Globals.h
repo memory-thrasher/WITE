@@ -4,25 +4,18 @@
 #include "exportTypes.h"
 #include "RenderLayer.h"
 
-#define ADDED_EXTENSION_COUNT (0)
+#define VALIDATION_EXTENSION_COUNT (2)
 #define MAX_SDL_EXTENSIONS (20)
-#define MAX_EXTENSIONS (MAX_SDL_EXTENSIONS+ADDED_EXTENSION_COUNT)
+#define MAX_EXTENSIONS (MAX_SDL_EXTENSIONS+VALIDATION_EXTENSION_COUNT)
+#define MAX_LAYERS (4)
 #define MAX_GPUS (32)
 #define MAX_QUEUES (32)
 #define DEVICE_EXTENSIONS_LEN (1)
 
-#if defined(_DEBUG)
-#define LAYER_COUNT 1
-#define LAYERS { "VK_LAYER_LUNARG_standard_validation" }
-#else
-#define LAYER_COUNT 0
-#define LAYERS {}
-#endif
-
 typedef struct {
   const char* extensions[MAX_EXTENSIONS];
-  unsigned extensionCount, layerCount;
-  const char* layers[LAYER_COUNT] = LAYERS;
+  const char* layers[MAX_LAYERS];
+  unsigned int extensionCount, layerCount;
   VkApplicationInfo appInfo;
   VkInstanceCreateInfo createInfo;
   VkInstance instance = NULL;
@@ -35,7 +28,7 @@ typedef struct {
 
 #define vkSingleton (*get_vkSingleton())
 extern vulkan_singleton_t* get_vkSingleton();
-extern const char** ADDED_EXTENSIONS;
+extern const char* VALIDATION_EXTENSIONS[];
 extern const char* DEVICE_EXTENSIONS[DEVICE_EXTENSIONS_LEN];
 #define vkAlloc VK_NULL_HANDLE
 size_t getThreadCount();

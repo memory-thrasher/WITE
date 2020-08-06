@@ -36,7 +36,7 @@ void Camera::setMatrix(glm::dmat4* n) {
 
 void Camera::render(std::shared_ptr<Queue::ExecutionPlan> ep) {
   VkCommandBuffer cmd = ep->beginParallel();//cmd 0
-  VkViewport viewport = { 0, 0, (float)screenbox.width(), (float)screenbox.height(), 0.01f, 100.0f };//TODO clipping plane as setting
+  VkViewport viewport = { 0, 0, (float)screenbox.width(), (float)screenbox.height(), 0.01f, 1.0f };//TODO clipping plane as setting
   /*VkRect2D scissors = {{(int32_t)screenbox.minx, (int32_t)screenbox.miny}, {(uint32_t)screenbox.width(), (uint32_t)screenbox.height()}};*/
   vkCmdSetViewport(cmd, 0, 1, &viewport);
   //vkCmdSetScissor(cmd, 0, 1, &scissors);
@@ -58,11 +58,11 @@ void Camera::updateMaths() {
     view = worldTransform.getMat(),
     rt = clip * proj * view;
   renderTransform = rt;
-  LOG("Size: %d,%d\n", screenbox.width(), screenbox.height());
-  LOGMAT(clip, "clip");
-  LOGMAT(proj, "proj");
-  LOGMAT(view, "view");
-  LOGMAT(rt, "renderTransform");
+  //LOG("Size: %d,%d\n", screenbox.width(), screenbox.height());
+  //LOGMAT(clip, "clip");
+  //LOGMAT(proj, "proj");
+  //LOGMAT(view, "view");
+  //LOGMAT(rt, "renderTransform");
 }
 
 void Camera::resize(WITE::IntBox3D newsize) {
@@ -91,7 +91,7 @@ void Camera::recreateResources() {
        { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO, VK_NULL_HANDLE, 0, VK_NULL_HANDLE, VK_IMAGE_VIEW_TYPE_2D, RenderPass::COLOR_FORMAT,
 	 { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A }, { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 }
        }, {
-	   VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO, VK_NULL_HANDLE, 0, VK_IMAGE_TYPE_2D, RenderPass::COLOR_FORMAT, { (uint32_t)size.width(), (uint32_t)size.height(), 1 }, 1, 1, VK_SAMPLE_COUNT_1_BIT, (colorProps.linearTilingFeatures & VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT) ? VK_IMAGE_TILING_LINEAR : (colorProps.optimalTilingFeatures & VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT) ? VK_IMAGE_TILING_OPTIMAL : VK_IMAGE_TILING_BEGIN_RANGE, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, VK_SHARING_MODE_EXCLUSIVE, 0, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+	   VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO, VK_NULL_HANDLE, 0, VK_IMAGE_TYPE_2D, RenderPass::COLOR_FORMAT, { (uint32_t)size.width(), (uint32_t)size.height(), 1 }, 1, 1, VK_SAMPLE_COUNT_1_BIT, (colorProps.linearTilingFeatures & VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT) ? VK_IMAGE_TILING_LINEAR : (colorProps.optimalTilingFeatures & VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT) ? VK_IMAGE_TILING_OPTIMAL : VK_IMAGE_TILING_BEGIN_RANGE, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, VK_SHARING_MODE_EXCLUSIVE, 0, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED
        });
     passes[i].color = std::unique_ptr<BackedImage>(img);
     img = new BackedImage
@@ -100,7 +100,7 @@ void Camera::recreateResources() {
 	 { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A }, { VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1 }
        }, {
 	   VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO, VK_NULL_HANDLE, 0, VK_IMAGE_TYPE_2D,
-	   RenderPass::DEPTH_FORMAT, { (uint32_t)size.width(), (uint32_t)size.height(), 1 }, 1, 1, VK_SAMPLE_COUNT_1_BIT, (depthProps.linearTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) ? VK_IMAGE_TILING_LINEAR : (depthProps.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) ? VK_IMAGE_TILING_OPTIMAL : VK_IMAGE_TILING_BEGIN_RANGE, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_SHARING_MODE_EXCLUSIVE, 0, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+	   RenderPass::DEPTH_FORMAT, { (uint32_t)size.width(), (uint32_t)size.height(), 1 }, 1, 1, VK_SAMPLE_COUNT_1_BIT, (depthProps.linearTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) ? VK_IMAGE_TILING_LINEAR : (depthProps.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) ? VK_IMAGE_TILING_OPTIMAL : VK_IMAGE_TILING_BEGIN_RANGE, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_SHARING_MODE_EXCLUSIVE, 0, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED
        });
     passes[i].depth = std::unique_ptr<BackedImage>(img);
     CRASHIFFAIL(vkCreateRenderPass(presentQ->gpu->device, &RenderPass::rpInfo, VK_NULL_HANDLE, &passes[i].rp));

@@ -7,7 +7,7 @@
 
 namespace WITE {
 
-  export_dec void WITE_INIT(const char* gameName);
+  export_dec void WITE_INIT(const char* gameName, uint64_t debugFlags);
   export_dec FILE* file_open(const char* path, const char* mode);
   export_dec uint64_t timeNs();
   export_dec void flush(FILE* file);

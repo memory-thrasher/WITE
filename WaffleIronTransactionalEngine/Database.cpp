@@ -417,7 +417,7 @@ namespace WITE {
     size_t i, count, j = 0;
     bool didSomething;
     decltype(threadResources)::Tentry* trs;
-    if (masterThreadState.exchange(1) != 0) CRASH("Attempted to launch second master db thread.");
+    if (masterThreadState.exchange(1) != 0) CRASH("Attempted to launch second master db thread.\n");
     pt_activeF = fopen(&active.front(), "a+b");
   do_something:
     while (masterThreadState == 1) {
@@ -463,7 +463,7 @@ namespace WITE {
 		     max(pt_writenBytesLastFrame, pt_writenBytesThisFrame, 65536)) / (2 * sizeof(cacheEntry));
     newTlogSize = primeRamSize - sizeof(cacheEntry) * newCacheCount - sizeof(allocationTableEntry) * newRecordCount;
     if (newTlogSize > primeRamSize || newCacheCount > primeRamSize / sizeof(cacheEntry) || newTlogSize > primeRamSize)
-      CRASH("Out of prime ram");
+      CRASH("Out of prime ram\n");
     CRASHIFFAIL(tlogManager.relocate(allocTabByte + newRecordCount * sizeof(allocationTableEntry), newTlogSize));
     newCache = cache + newCacheCount - cacheCount;
     if(newCacheCount < cacheCount) {//flushs some things

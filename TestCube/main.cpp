@@ -25,9 +25,9 @@ void cubeUpdate(WITE::Database::Entry e) {
   if(frameIdx % 1000 == 0) {
     LOG("living time: %llu\n", WITE::Time::frame());
   }
-  if(WITE::Time::launchTime() + 100000000000 <= WITE::Time::frame()) {
+  if(WITE::Time::launchTime() + 10000000000 <= WITE::Time::frame()) {
     //if(frameIdx > 1000) {
-    LOG("Delta nano: %llu\nFPS: %llu\nlife: %llu\n", WITE::Time::delta(), frameIdx/100, WITE::Time::frame() - WITE::Time::launchTime());
+    LOG("Delta nano: %llu\nFPS: %llu\nlife: %llu\n", WITE::Time::delta(), frameIdx/10, WITE::Time::frame() - WITE::Time::launchTime());
     WITE::gracefulExit();
   }
 }
@@ -51,7 +51,7 @@ const inline static WITE::Database::typeHandles cube_functions = {
 };
 
 int main(int argc, char** argv) {
-  WITE::WITE_INIT("WITE test cube");
+  WITE::WITE_INIT("WITE test cube", DEBUG_MASK_VULKAN);
   struct WITE::Shader::resourceLayoutEntry flatLayout = { SHADER_RESOURCE_UNIFORM, SHADER_STAGE_VERT, 1, reinterpret_cast<void*>(sizeof(glm::dmat4)) };//TODO this is assumed so should be implied, the provided resources should be in addition to trans
   const char* flatFiles[2] = {"shaders/flat.vert.spv", "shaders/flat.frag.spv"};
   shaders.flat = WITE::Shader::make(flatFiles, 2, &flatLayout, 1);

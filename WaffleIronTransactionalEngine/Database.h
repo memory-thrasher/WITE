@@ -178,13 +178,13 @@ namespace WITE {
     static std::map<type, perTypeStatic> typesStatic;
     std::map<type, perType> types;//on current frame
     RollingBuffer<logEntry, size_t, 0, 0, offsetof(logEntry, size), false> tlogManager;//TODO index of free?
-    std::atomic_uint8_t masterThreadState;
+    std::atomic_uint8_t masterThreadState = 0;
     std::atomic_uint8_t dbStatus;
     ThreadResource<threadResource_t> threadResources;
     //prime thread only: (all transient)
     constexpr static size_t MAX_BATCH_FLUSH = 32;
     constexpr static size_t BUFFER_SIZE = 65536;
-    size_t pt_starts[MAX_BATCH_FLUSH], pt_writenBytesThisFrame, pt_writenBytesLastFrame, pt_freeSpace;
+    size_t pt_starts[MAX_BATCH_FLUSH], pt_writenBytesThisFrame = 0, pt_writenBytesLastFrame = 0, pt_freeSpace = 0;
     uint64_t pt_lastWriteFrame;
     FILE* pt_activeF, *pt_targetF;
     union {

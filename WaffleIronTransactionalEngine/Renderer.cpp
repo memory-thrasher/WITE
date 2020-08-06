@@ -87,9 +87,9 @@ void Renderer::render(VkCommandBuffer cmd, glm::dmat4 projection, GPU* gpu) {
   auto obj_trans = obj->getTrans();
   auto right = obj_trans.getMat();
   auto mvp = obj_trans.project(projection);
-  LOGMAT(projection, "left");
-  LOGMAT(right, "right");
-  LOGMAT(mvp, "mvp");
+  //LOGMAT(projection, "left");
+  //LOGMAT(right, "right");
+  //LOGMAT(mvp, "mvp");
   //LOG("\nAddress of resource: %p\naddress of resources: %p\naddress of buffer: %p\n", (void*)buffer->resources.get(), (void*)&buffer->resources, (void*)buffer);//(outdated)first call: 0000000006905E78, second call: 00000000FDFDFDFD (crashed on next line)
   *reinterpret_cast<glm::dmat4*>(buffer->resources[0]->map()) = mvp;
   buffer->resources[0]->unmap();

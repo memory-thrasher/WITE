@@ -1,4 +1,7 @@
 #include "Debugger.h"
+#include "GPU.h"
+
+static constexpr float defColor[4] = {0, 0, 0, 0};
 
 VkDebugUtilsMessengerEXT Debugger::messenger;
 bool Debugger::inited = false;
@@ -11,7 +14,16 @@ PFN_vkCmdInsertDebugUtilsLabelEXT Debugger::insertDebugUtilsLabel;
 PFN_vkSetDebugUtilsObjectNameEXT Debugger::setDebugUtilsObjectName;
 
 VkBool32 logValidationIssue(VkDebugUtilsMessageSeverityFlagBitsEXT sev, VkDebugUtilsMessageTypeFlagsEXT types, const VkDebugUtilsMessengerCallbackDataEXT* callbackData, void* userData) {
-  LOG("Khronos validation says: severity: %x, type: %x, message: %s\n", sev, types, callbackData->pMessage);
+  LOG("Khronos validation says: severity: %x, type: %x, message (%d): %s\n", sev, types, callbackData->messageIdNumber, callbackData->pMessage);
+  if(callbackData->queueLabelCount + callbackData->cmdBufLabelCount + callbackData->objectCount)
+    LOG("Involving the following named objects:\n");
+  size_t i;
+  for(i = 0;i < callbackData->queueLabelCount;i++)
+    LOG("\tQueue: %s\n", callbackData->pQueueLabels[i].pLabelName);
+  for(i = 0;i < callbackData->cmdBufLabelCount;i++)
+    LOG("\tcmd: %s\n", callbackData->pCmdBufLabels[i].pLabelName);
+  for(i = 0;i < callbackData->objectCount;i++)
+    LOG("\tother (type %d): %s\n", callbackData->pObjects[i].objectType, callbackData->pObjects[i].pObjectName);
   return true;
 }
 
@@ -30,8 +42,9 @@ const void Debugger::doInit() {
   inited = true;
 }
 
-const void Debugger::beginLabel(VkCommandBuffer cmd, const char* label, float color[4]) {
+const void Debugger::beginLabel(VkCommandBuffer cmd, const char* label, const float color[4]) {
   if(!inited) return;
+  if(!color) color = defColor;
   VkDebugUtilsLabelEXT info = { VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT, NULL, label, { color[0], color[1], color[2], color[3] } };
   beginDebugUtilsLabel(cmd, &info);
 }
@@ -41,14 +54,24 @@ const void Debugger::endLabel(VkCommandBuffer cmd) {
   endDebugUtilsLabel(cmd);
 }
 
-const void Debugger::insertLabel(VkCommandBuffer cmd, const char* label, float color[4]) {
+const void Debugger::insertLabel(VkCommandBuffer cmd, const char* label, const float color[4]) {
   if(!inited) return;
+  if(!color) color = defColor;
   VkDebugUtilsLabelEXT info = {VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT, NULL, label, {color[0], color[1], color[2], color[3]}};
   insertDebugUtilsLabel(cmd, &info);
 }
 
-const void Debugger::setObjectName(GPU* device, VkObjectType type, void* objectHandle, const char* objectName) {
+const void Debugger::setObjectName(GPU* device, VkObjectType type, void* objectHandle, const char* objectName, ...) {
   if(!inited) return;
-  VkDebugUtilsObjectNameInfoEXT info = { VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT, NULL, type, reinterpret_cast<uint64_t>(objectHandle), objectName };
+  va_list args;
+  va_start(args, objectName);
+  int sizeofString = vsnprintf(NULL, 0, objectName, args);
+  va_end(args);
+  char* name = static_cast<char*>(malloc(sizeofString+1));//FIXME memory leak
+  va_start(args, objectName);
+  vsprintf(name, objectName, args);
+  va_end(args);
+  VkDebugUtilsObjectNameInfoEXT info = { VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT, NULL, type, reinterpret_cast<uint64_t>(objectHandle), name};
+  CRASHIFFAIL(setDebugUtilsObjectName(device->device, &info));
 }
 

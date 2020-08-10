@@ -12,9 +12,13 @@ public:
   ~Object();
   WITE::Transform getTrans();//frame batched internally by Transform
   void pushTrans(WITE::Transform*);//updates location record in db entry
+  void setName(const char*);
+  void setNameF(const char*, ...);
+  const char* getName();
 protected:
   void* objData;//??
 private:
+  char* name = 0;
   template<typename T = void> class Subresource {//TODO make this export?
   public:
     Subresource(WITE::Database::Entry start, size_t offsetFromStart, size_t size, WITE::Database::Entry* map) {//see WITE::Database read, but recursive

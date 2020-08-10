@@ -97,8 +97,24 @@ namespace WITE {
   Database::Database(size_t cachesize) : Database(NULL, cachesize) {}
 
   Database::~Database() {
-    masterThreadState = 2;
-    while (masterThreadState != 3);
+    LOG("DB destructor called\n");
+    gracefulStop();
+    LOG("DB destructor finished\n");
+  }
+
+  void Database::gracefulStop() {
+    LOG("Shutting down db\n");
+    uint8_t was = 1;
+    masterThreadState.compare_exchange_strong(was, 2);
+    if(Thread::getCurrentTid() == pt_tid) {
+      if(was == 1) {
+        pt_syncToDisk();
+        LOG("db synced\n");
+      } //else cleanup was in progress when this was called, so dirty crash
+    } else {
+      while(masterThreadState != 3);
+      LOG("db reports closeout\n");
+    }
   }
 
   void Database::rebase() {
@@ -418,7 +434,9 @@ namespace WITE {
     bool didSomething;
     decltype(threadResources)::Tentry* trs;
     if (masterThreadState.exchange(1) != 0) CRASH("Attempted to launch second master db thread.\n");
+    pt_tid = Thread::getCurrentTid();
     pt_activeF = fopen(&active.front(), "a+b");
+    pt_targetF = NULL;
   do_something:
     while (masterThreadState == 1) {
       if (target[0] && !pt_targetF)
@@ -446,9 +464,14 @@ namespace WITE {
       default: j = 0; break;
       }
     }
+    pt_syncToDisk();
+    masterThreadState = 3;
+  }
+
+  void Database::pt_syncToDisk() {
     while(pt_mindSplitBase());
     while(pt_commitTlog());
-    masterThreadState = 3;
+    //TODO flush cache?
   }
 
   void Database::pt_rethinkLayout(size_t requiredNewEntries) {
@@ -550,6 +573,8 @@ namespace WITE {
 	memcpy(static_cast<void*>(&cache[j]), static_cast<void*>(allocTab[ci.ent].cacheLocation), sizeof(cacheEntry));
       } else {//read
 	FILE* src = pt_targetF && allocTab[ci.ent].lastWrittenFrame >= targetFrame ? pt_targetF : pt_activeF;
+        if(reinterpret_cast<size_t>(src) == ~0)
+          CRASH("Bad file pointer, db is in cleanup but master thread is still running... this shouldn't be happening\n");
 	fseek(src, (long)(ci.ent * sizeof(loadedEntry)), SEEK_SET);
 	fread(&ce.e, sizeof(loadedEntry), 1, src);
 	ce.lastUseFrame = currentFrame;

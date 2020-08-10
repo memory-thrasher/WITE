@@ -116,6 +116,7 @@ namespace WITE {
     Database(const char * filenamefmt, size_t cachesize, int64_t loadidx = -1);//filenamefmt must contain %d
     Database(size_t cachesize);//temp db, no file backing, for static content like the main menu or splash
     ~Database();
+    void gracefulStop();
     void rebase();//advance index on current template
     void rebase(const char *, int64_t startidx);//save
     template<class T> Entry allocate(type);
@@ -186,6 +187,7 @@ namespace WITE {
     constexpr static size_t BUFFER_SIZE = 65536;
     size_t pt_starts[MAX_BATCH_FLUSH], pt_writenBytesThisFrame = 0, pt_writenBytesLastFrame = 0, pt_freeSpace = 0;
     uint64_t pt_lastWriteFrame;
+    uint32_t pt_tid;
     FILE* pt_activeF, *pt_targetF;
     union {
       uint8_t raw[BUFFER_SIZE];
@@ -196,6 +198,7 @@ namespace WITE {
 	  uint8_t raw[1];
 	  struct {
 	    enqueuedLogEntry header;
+            //uint8_t data[1];
 	  };
 	};
       } enqueuedLog;
@@ -215,6 +218,7 @@ namespace WITE {
     void pt_rethinkLayout(size_t requiredNewEntries = 0);
     void pt_rethinkCache();
     void pt_push(logEntry*);
+    void pt_syncToDisk();
     };
 
   template<class T> Database::Entry Database::allocate(type t) {
@@ -281,12 +285,15 @@ namespace WITE {
 
   class export_def Object {
   public:
-	  Object() = default;
-	  Object(const Object&) = delete;
-	  ~Object() = default;
-	  virtual Transform getTrans() = 0;
-	  virtual void pushTrans(Transform*) = 0;
-	  static Object* make(Database::Entry start, size_t transformOffset, WITE::Database::Entry* map);//
+    Object() = default;
+    Object(const Object&) = delete;
+    ~Object() = default;
+    virtual Transform getTrans() = 0;
+    virtual void pushTrans(Transform*) = 0;
+    virtual void setName(const char*) = 0;
+    virtual void setNameF(const char*, ...) = 0;
+    virtual const char* getName() = 0;
+    static Object* make(Database::Entry start, size_t transformOffset, WITE::Database::Entry* map);
   };
   
 }

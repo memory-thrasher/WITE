@@ -6,6 +6,7 @@
 #include "Mesh.h"
 #include "BackedImage.h"
 #include "constants.h"
+#include "Debugger.h"
 
 Renderer::Renderer() : obj(), packPreRender(NULL), packInitial(NULL), mesh_owners_node(this) {}
 
@@ -80,6 +81,7 @@ void Renderer::render(VkCommandBuffer cmd, glm::dmat4 projection, GPU* gpu) {
   uint8_t vertBuffer = getVertBuffer();
   Shader::Instance* buffer = buffers->get(gpu);
   auto subbuf = mesh->subbuf.get(gpu, vertBuffer);//copy
+  if(!subbuf.vbLength) return;
   if (!buffer->inited) {
     buffer->inited = true;
     if(packInitial) packInitial->call(this, buffer->resources.get(), gpu);
@@ -91,16 +93,19 @@ void Renderer::render(VkCommandBuffer cmd, glm::dmat4 projection, GPU* gpu) {
   //LOGMAT(right, "right");
   //LOGMAT(mvp, "mvp");
   //LOG("\nAddress of resource: %p\naddress of resources: %p\naddress of buffer: %p\n", (void*)buffer->resources.get(), (void*)&buffer->resources, (void*)buffer);//(outdated)first call: 0000000006905E78, second call: 00000000FDFDFDFD (crashed on next line)
-  *reinterpret_cast<glm::dmat4*>(buffer->resources[0]->map()) = mvp;
+  *reinterpret_cast<glm::mat4*>(buffer->resources[0]->map()) = mvp;
   buffer->resources[0]->unmap();
   //LOG("Resource updated successfully\n");
   updateInstanceData(0, gpu);
   if(packPreRender) packPreRender->call(this, buffer->resources.get(), gpu);
+  const char* objName = obj->getName();
+  if(objName) Debugger::beginLabel(cmd, objName);
   vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shader->resources.get(gpu)->pipelineLayout, 0, 1, &buffer->descSet, 0, NULL);
   //TODO vkCmdPushDescriptorSet? Test ordering of bind just before draw, without any transitions?
   vkCmdBindVertexBuffers(cmd, 0, 1, &Mesh::vertexBuffers.get(gpu, vertBuffer).verts.buffer, &subbuf.vbStart);
   //TODO move bind to camera level, subdivide on draw
   vkCmdDraw(cmd, subbuf.vbLength, 1, 0, 0);
+  if(objName) Debugger::endLabel(cmd);
   //TODO test that cmd writes are still good here. vkCmdFillBuffer?
 }
 

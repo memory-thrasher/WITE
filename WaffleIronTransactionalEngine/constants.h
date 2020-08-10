@@ -42,10 +42,11 @@
 #define ERRLOGFILE WITE::getERRLOGFILE()
 #define LOG(message, ...) { ::fprintf(ERRLOGFILE, "%s:%d: ", __FILE__, __LINE__); ::fprintf(ERRLOGFILE, message, ##__VA_ARGS__); WITE::flush(ERRLOGFILE); }
 #ifdef _DEBUG
-#define CRASHRET(...) { LOG("**CRASH**"); abort(); exit(1); return __VA_ARGS__; }
+#define CRASHRET(...) { LOG("**CRASH**\n"); database->gracefulStop(); abort(); exit(1); return __VA_ARGS__; }
 #else
-#define CRASHRET(...) { LOG("**CRASH**"); exit(1); return __VA_ARGS__; }
+#define CRASHRET(...) { LOG("**CRASH**\n"); database->gracefulStop(); exit(1); return __VA_ARGS__; }
 #endif
+#define CRASHRETLOG(ret, ...) { LOG(__VA_ARGS__); CRASHRET(ret); }
 #define CRASH(message, ...) { LOG(message, ##__VA_ARGS__); CRASHRET(); } //all crashes should explain themselves
 #define CRASHIFFAIL(_cmd_, ...) {int64_t _res = (int64_t)_cmd_; if(_res) { LOG("Got result: %I64d\n", _res); CRASHRET(__VA_ARGS__) } }//for VkResult. VK_SUCCESS = 0
 #define CRASHIFWITHERRNO(_cmd_, ...) { if(_cmd_) { auto _en = errno; LOG("Got errno: %d\n", _en); CRASHRET(__VA_ARGS__) } }
@@ -55,7 +56,7 @@
                   mat [0][2], mat [1][2], mat [2][2], mat [3][2],\
                   mat [0][3], mat [1][3], mat [2][3], mat [3][3])
 
-#define TIME(cmd, level, ...) if(DO_TIMING_ANALYSIS >= level) {uint64_t _time = WITE::Time::nowNs(); cmd; _time = WITE::Time::nowNs() - _time; LOG(__VA_ARGS__, _time);}
+#define TIME(cmd, level, ...) if(DO_TIMING_ANALYSIS >= level) {uint64_t _time = WITE::Time::nowNs(); cmd; _time = WITE::Time::nowNs() - _time; LOG(__VA_ARGS__, _time);} else {cmd;}
 #define debugMode (WITE::getDebugMode())
 
 #ifdef _WIN32

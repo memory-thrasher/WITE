@@ -34,6 +34,7 @@ void cubeUpdate(WITE::Database::Entry e) {
 
 void cubeInit(WITE::Database::Entry e, WITE::Database::Entry* map) {
   auto o = (*database->getObjectInstanceFor(e)) = WITE::Object::make(e, offsetof(struct cube, trans), map);
+  o->setName("Protea");
   WITE::Renderer::bind(o, shaders.flat, WITE::Mesh::make(&cube::mesh), 0);
   WITE::Transform initialTrans(glm::dmat4(1));
   o->pushTrans(&initialTrans);
@@ -52,7 +53,7 @@ const inline static WITE::Database::typeHandles cube_functions = {
 
 int main(int argc, char** argv) {
   WITE::WITE_INIT("WITE test cube", DEBUG_MASK_VULKAN);
-  struct WITE::Shader::resourceLayoutEntry flatLayout = { SHADER_RESOURCE_UNIFORM, SHADER_STAGE_VERT, 1, reinterpret_cast<void*>(sizeof(glm::dmat4)) };//TODO this is assumed so should be implied, the provided resources should be in addition to trans
+  struct WITE::Shader::resourceLayoutEntry flatLayout = { SHADER_RESOURCE_UNIFORM, SHADER_STAGE_VERT, 1, reinterpret_cast<void*>(sizeof(glm::mat4)) };//TODO this is assumed so should be implied, the provided resources should be in addition to trans
   const char* flatFiles[2] = {"shaders/flat.vert.spv", "shaders/flat.frag.spv"};
   shaders.flat = WITE::Shader::make(flatFiles, 2, &flatLayout, 1);
   WITE::Database::registerType(cube::type, cube_functions);

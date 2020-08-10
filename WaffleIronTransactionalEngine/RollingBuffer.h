@@ -65,7 +65,7 @@ namespace WITE {
   inline void BOUND_INC_HEAD(SIZE_TYPE amnt);
   inline void BOUND_INC_TAIL(SIZE_TYPE amnt);
   std::atomic<SIZE_TYPE> head, tail, handleOffset;//TODO non-atomic option
-  SIZE_TYPE size, entries;
+  SIZE_TYPE size = 0, entries = 0;
   uint8_t * buf;
   bool outer = false;//when head = tail; true means buffer is full, false means empty, otherwise this should be false
   uint8_t inline_data[DATA_SIZE ? DATA_SIZE : 1];

@@ -37,8 +37,8 @@ BackedBuffer::BackedBuffer(GPU* dev, size_t size, VkBufferUsageFlags usage) : si
 }
 
 BackedBuffer::~BackedBuffer() {
-  vkDestroyBuffer(dev->device, buffer, NULL);
-  vkFreeMemory(dev->device, mem, NULL);
+  //vkDestroyBuffer(dev->device, buffer, NULL);
+  //vkFreeMemory(dev->device, mem, NULL);
 }
 
 size_t BackedBuffer::getSize() {

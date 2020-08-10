@@ -122,6 +122,7 @@ void Window::recreateSwapchain() {
   swapchain.info.imageExtent = size;
   swapchain.info.oldSwapchain = swapchain.chain;
   CRASHIFFAIL(vkCreateSwapchainKHR(presentQ->gpu->device, &swapchain.info, vkAlloc, &swapchain.chain));
+  CRASHIFFAIL(vkGetSwapchainImagesKHR(presentQ->gpu->device, swapchain.chain, &swapchain.imageCount, NULL));
   VkImage* images = new VkImage[swapchain.imageCount];
   CRASHIFFAIL(vkGetSwapchainImagesKHR(presentQ->gpu->device, swapchain.chain, &swapchain.imageCount, images));
   swapchain.images = (BackedImage*)malloc(swapchain.imageCount * sizeof(BackedImage));
@@ -138,14 +139,17 @@ uint32_t Window::render() {
   auto ep = graphicsQ->getComplexPlan();
   uint32_t swapIdx;
   VkCommandBuffer cmd;
+#ifdef _DEBUG
+  if(ep->isRunning())
+    CRASHRETLOG(0, "NYI: synchronous executions from the same EP attempted, but only enough resources for a single execution are allocated presently\n");
+#endif
   CRASHIFFAIL(vkAcquireNextImageKHR(graphicsQ->gpu->device, swapchain.chain, 10000000000ul, swapchain.semaphore, VK_NULL_HANDLE, &swapIdx), 0);//if there is not one available, it blocks on present, apparently... and that's the problem?
   ep->queueWaitForSemaphore(swapchain.semaphore);
   for(i = 0;i < len;i++)
     cameras[i]->render(ep);
-  //cmd = ep->beginReduce();//cmd 1
-  cmd = ep->getActive();//debug temp, only use 1 window and camera!
+  cmd = ep->beginReduce();//cmd 1
   discardAndReceive = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER, NULL, 0, VK_ACCESS_TRANSFER_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED, swapchain.images[swapIdx].getImage(), { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 } };
-  vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, NULL, 0, NULL, 1, &discardAndReceive);
+  vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 0, NULL, 1, &discardAndReceive);
 #ifdef _DEBUG
   const VkImageSubresourceRange subres0 = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
   vkCmdClearColorImage(cmd, swapchain.images[swapIdx].getImage(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &SWAP_CLEAR, 1, &subres0);
@@ -153,7 +157,7 @@ uint32_t Window::render() {
   for(i = 0;i < len;i++)
     cameras[i]->blitTo(cmd, swapchain.images[swapIdx].getImage());
   transformToPresentable = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER, NULL, VK_ACCESS_TRANSFER_WRITE_BIT, 0, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, graphicsQ->family, presentQ->family, swapchain.images[swapIdx].getImage(), { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 } };
-  vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, NULL, 0, NULL, 1, &transformToPresentable);//Also works top of pipe
+  vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 0, NULL, 1, &transformToPresentable);
   return swapIdx;
 }
 
@@ -202,21 +206,25 @@ void Window::renderAll() {
 }
 
 void Window::presentAll() {
+  static std::vector<VkSemaphore> sems;
   size_t i, count;
+  std::shared_ptr<Queue::ExecutionPlan> ep;
   GPU* gpu;
   decltype(windows)::iterator end;
   for(i = 0;i < vkSingleton.gpuCount;i++) {
     count = scIdxPerGpu[i].size();
     if(!count) continue;
     gpu = vkSingleton.gpus[i];
-    VkPresentInfoKHR pi = { VK_STRUCTURE_TYPE_PRESENT_INFO_KHR, NULL, 0, NULL, (uint32_t)count, swapchainsPerGpu[i].data(), scIdxPerGpu[i].data(), NULL };
+    ep = gpu->graphicsQ->getComplexPlan();
+    ep->popStateSemaphores(&sems);
+    VkPresentInfoKHR pi = { VK_STRUCTURE_TYPE_PRESENT_INFO_KHR, NULL, sems.size(), sems.data(), (uint32_t)count, swapchainsPerGpu[i].data(), scIdxPerGpu[i].data(), NULL };
     VkResult res;
     TIME(res = vkQueuePresentKHR(gpu->presentQ->queue, &pi), 2, "\tPresent: %llu\n");
     switch(res) {
     case VK_SUCCESS: break;
     case VK_SUBOPTIMAL_KHR://docs say recreating the swapchain is the right answer
     case VK_ERROR_OUT_OF_DATE_KHR:
-      LOG("Recreating swapchains becuase present returned: %I64d\n", res);
+      LOG("Recreating swapchains becuase present returned: %I32d\n", res);
       end = windows.end();
       for(auto ww = windows.begin();ww != end;++ww) {
         ((::Window*)*ww)->recreateSwapchain();

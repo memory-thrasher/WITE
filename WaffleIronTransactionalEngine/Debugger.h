@@ -10,10 +10,10 @@ public:
   ~Debugger() = delete;
   static const VkDebugUtilsMessengerCreateInfoEXT messengerInfo;
   static const void doInit();
-  static const void beginLabel(VkCommandBuffer cmd, const char* label, float color[4] = NULL);
+  static const void beginLabel(VkCommandBuffer cmd, const char* label, const float color[4] = NULL);
   static const void endLabel(VkCommandBuffer cmd);
-  static const void insertLabel(VkCommandBuffer cmd, const char* label, float color[4] = NULL);
-  static const void setObjectName(GPU* device, VkObjectType, void* objectHandle, const char* objectName);
+  static const void insertLabel(VkCommandBuffer cmd, const char* label, const float color[4] = NULL);
+  static const void setObjectName(GPU* device, VkObjectType, void* objectHandle, const char* objectName, ...);
   //TODO hook more of this up
 private:
   static VkDebugUtilsMessengerEXT messenger;

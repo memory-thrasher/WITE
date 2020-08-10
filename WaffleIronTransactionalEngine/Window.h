@@ -45,6 +45,6 @@ private:
     VkSwapchainKHR swapchain;
     uint32_t imageIdx;
   } PresentInfoSegment;
-  uint32_t render();//returns which gpu it uses
+  uint32_t render();//returns which swapchain image it uses
 };
 

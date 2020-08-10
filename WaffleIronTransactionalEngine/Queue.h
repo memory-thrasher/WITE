@@ -17,10 +17,12 @@ public:
     VkCommandBuffer beginSerial();//returns an empty commandbuffer in the recording state predependent on only the most recently returned commandbuffer
     VkCommandBuffer beginReduce();//returns an empty commandbuffer in the recording state predependent on all previously returned commandbuffers.
     VkCommandBuffer getActive();
-    void getStateSemaphores(VkSemaphore* outSems, size_t* outSemLen);
+    void popStateSemaphores(std::vector<VkSemaphore>*);
     void submit();//submit the plan for execution
     bool isRunning();
     void queueWaitForSemaphore(VkSemaphore sem);
+    //void present(uint32_t count, const VkSwapchainKHR* chains, const uint32_t* indexes);
+    //^^TODO, but allow for graphics queue to be a different queue
   private:
     constexpr static size_t MAX_QUEUE_REDUCE = 16;//use case atm, this is the max number of cameras per window
     typedef struct {
@@ -36,7 +38,7 @@ public:
     std::vector<VkSubmitInfo> allSubmits;
     Queue* queue;
     VkFence fence;
-    bool activeRender;
+    bool activeRender = false;
     size_t beginInternal();
   };
   Queue(GPU* gpu, uint32_t family, uint32_t idx);
@@ -59,6 +61,7 @@ private:
   VkCommandBufferAllocateInfo bufInfo;
   WITE::ThreadResource<ExecutionPlan> complexPlans;
   std::shared_ptr<ExecutionPlan> makeComplexPlan();
+  size_t cmdCount = 0;
   friend class ExecutionPlan;
 };
 

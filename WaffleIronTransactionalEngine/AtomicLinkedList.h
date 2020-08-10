@@ -18,6 +18,7 @@ private:
   std::atomic<AtomicLinkedList<T>*> next;
   AtomicLinkedList<T>* prev;
   T* data;//null if this is root node
+  inline void sanityCheck();
 };
 
 template<class T> AtomicLinkedList<T>::AtomicLinkedList(T* data) : next(this), prev(this), data(data) {}
@@ -41,6 +42,7 @@ template<class T> void AtomicLinkedList<T>::append(AtomicLinkedList<T>* n) {//n 
   n->prev = this;
   oldNext->prev = n;
   next.store(n, std::memory_order_release);
+  sanityCheck();
 }
 
 template<class T> void AtomicLinkedList<T>::drop() {
@@ -54,6 +56,7 @@ template<class T> void AtomicLinkedList<T>::drop() {
   } while(!tempPrev->next.compare_exchange_strong(tempThis, oldNext, std::memory_order_acq_rel, std::memory_order_relaxed));
   prev = this;
   next.store(this, std::memory_order_release);
+  sanityCheck();
 }
 
 template<class T> T* AtomicLinkedList<T>::getRef() {
@@ -64,3 +67,14 @@ template<class T> T* AtomicLinkedList<T>::operator->() {
   return data;
 }
 
+template<class T> inline void AtomicLinkedList<T>::sanityCheck() {
+#ifdef _DEBUG
+  AtomicLinkedList<T>* n = next.load(std::memory_order_consume);
+  size_t i = 0;
+  while(n != this) {
+    if(!n) CRASH("Corrupted linked list (type: %s) at depth: %d\n", typeid(T).name(), i);
+    n = n->next.load(std::memory_order_consume);//if n is not a valid pointer, this will probably break because atomics are picky
+    i++;
+  }
+#endif
+}

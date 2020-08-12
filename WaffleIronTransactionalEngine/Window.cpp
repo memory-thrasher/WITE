@@ -112,7 +112,7 @@ void Window::recreateSwapchain() {
   size_t i;
   delete[] swapchain.images;
   //copied from constructor:
-  CRASHIFFAIL(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(presentQ->gpu->phys, surface, &surfaceCaps));//read violation here; vert low address
+  CRASHIFFAIL(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(presentQ->gpu->phys, surface, &surfaceCaps));
   if(!(surfaceCaps.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_DST_BIT))
     CRASH("Surfface swapchain image does not support transfer dst\n");
   size.width = glm::clamp<uint32_t>(surfaceCaps.currentExtent.width, surfaceCaps.minImageExtent.width,
@@ -147,7 +147,8 @@ uint32_t Window::render() {
   ep->queueWaitForSemaphore(swapchain.semaphore);
   for(i = 0;i < len;i++)
     cameras[i]->render(ep);
-  cmd = ep->beginReduce();//cmd 1
+  //cmd = ep->beginReduce();//cmd 1
+  cmd = ep->getActive();
   discardAndReceive = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER, NULL, 0, VK_ACCESS_TRANSFER_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED, swapchain.images[swapIdx].getImage(), { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 } };
   vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 0, NULL, 1, &discardAndReceive);
 #ifdef _DEBUG

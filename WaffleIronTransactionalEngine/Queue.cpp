@@ -59,7 +59,7 @@ Queue::ExecutionPlan::ExecutionPlan(Queue* master) : queue(master) {
   fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
   fenceInfo.pNext = NULL;
   fenceInfo.flags = 0;
-  vkCreateFence(master->gpu->device, &fenceInfo, NULL, &fence);
+  CRASHIFFAIL(vkCreateFence(master->gpu->device, &fenceInfo, NULL, &fence));
   Debugger::setObjectName(master->gpu, VK_OBJECT_TYPE_FENCE, fence, "Fence for thread %d of queue of family %d of gpu %d", WITE::Thread::getCurrentTid(), master->family, master->gpu->idx);
 };
 
@@ -76,7 +76,7 @@ size_t Queue::ExecutionPlan::beginInternal() {
   } else
     sq = allocated[allocIdx];
   allSubmits[allocIdx] = { VK_STRUCTURE_TYPE_SUBMIT_INFO, NULL, 0, NULL, NULL, 1, &sq->cmd, 1, &sq->completionSemaphore };
-  vkBeginCommandBuffer(sq->cmd, &CMDBUFFER_BEGIN_INFO);
+  CRASHIFFAIL(vkBeginCommandBuffer(sq->cmd, &CMDBUFFER_BEGIN_INFO), 0);
   //??  vkResetCommandBuffer(&sq->cmd, 0); (if so, cmd buffer info can be one time submit flag)
   return allocIdx++;
 }
@@ -118,7 +118,7 @@ VkCommandBuffer Queue::ExecutionPlan::beginReduce() {//Note: VkSemaphore is an o
   if (h > MAX_QUEUE_REDUCE) CRASHRET(NULL);//TODO reduction tree
   memcpy((void*)sq->waitedSemaphores, (void*)headSems.data(), h * sizeof(VkSemaphore));
   for(size_t i = 0;i < h;i++)
-	  sq->waitedSem_PipeStages[i] = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;//TODO more specific/flexible?
+    sq->waitedSem_PipeStages[i] = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;//TODO more specific/flexible?
   si->pWaitSemaphores = sq->waitedSemaphores;
   si->pWaitDstStageMask = sq->waitedSem_PipeStages;
   head = i;

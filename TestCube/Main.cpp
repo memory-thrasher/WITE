@@ -58,8 +58,9 @@ int main(int argc, char** argv) {
   shaders.flat = WITE::Shader::make(flatFiles, 2, &flatLayout, 1);
   WITE::Database::registerType(cube::type, cube_functions);
   auto win1 = WITE::Window::make(0);
-  WITE::IntBox3D bounds(100, 600, 100, 600);
-  win1->setBounds(bounds);
+  //WITE::IntBox3D bounds(100, 600, 100, 600);
+  //win1->setBounds(bounds);
+  auto bounds = win1->getBounds();
   bounds.maxx -= bounds.minx;
   bounds.maxy -= bounds.miny;
   bounds.minx = bounds.miny = 0;
@@ -67,7 +68,6 @@ int main(int argc, char** argv) {
   cam->setFov(glm::radians(45.0f) * bounds.height() / bounds.width());
   cam->setMatrix(&glm::lookAt(glm::dvec3(-5, 3, -10), glm::dvec3(0, 0, 0), glm::dvec3(0, -1, 0)));
   cam->setLayermaks(~0);
-  //cam->setFov(M_PI*0.25);
   WITE::Database db(1024 * 1024 * 1024);
   database = &db;
   db.allocate<cube>(cube::type);

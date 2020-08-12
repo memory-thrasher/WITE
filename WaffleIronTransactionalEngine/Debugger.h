@@ -8,7 +8,7 @@ static class Debugger {
 public:
   Debugger() = delete;
   ~Debugger() = delete;
-  static const VkDebugUtilsMessengerCreateInfoEXT messengerInfo;
+  static const void* preInit();//call before creating instance
   static const void doInit();
   static const void beginLabel(VkCommandBuffer cmd, const char* label, const float color[4] = NULL);
   static const void endLabel(VkCommandBuffer cmd);
@@ -17,6 +17,7 @@ public:
   //TODO hook more of this up
 private:
   static VkDebugUtilsMessengerEXT messenger;
+  static VkDebugUtilsMessengerCreateInfoEXT messengerInfo;
   static bool inited;
   //function points from vk
   static PFN_vkCreateDebugUtilsMessengerEXT createDebugUtilMessenger;

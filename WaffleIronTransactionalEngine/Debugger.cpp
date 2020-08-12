@@ -1,5 +1,6 @@
 #include "Debugger.h"
 #include "GPU.h"
+#include "Globals.h"
 
 static constexpr float defColor[4] = {0, 0, 0, 0};
 
@@ -27,10 +28,20 @@ VkBool32 logValidationIssue(VkDebugUtilsMessageSeverityFlagBitsEXT sev, VkDebugU
   return true;
 }
 
-const VkDebugUtilsMessengerCreateInfoEXT Debugger::messengerInfo = {VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT, NULL, 0, VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT, VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT, &logValidationIssue, NULL};
+VkDebugUtilsMessengerCreateInfoEXT Debugger::messengerInfo = {VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT, NULL, 0, VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT, VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT, &logValidationIssue, NULL};
+
+const void* Debugger::preInit() {
+  auto vk = get_vkSingleton();
+  for(size_t i = 0;i < VALIDATION_EXTENSION_COUNT;i++)
+    vk->extensions[vk->extensionCount++] = VALIDATION_EXTENSIONS[i];
+  vk->layers[vk->layerCount++] = "VK_LAYER_KHRONOS_validation";
+  return &messengerInfo;
+}
 
 const void Debugger::doInit() {
   auto vk = get_vkSingleton();
+  if(debugMode & DEBUG_MASK_VULKAN_VERBOSE)
+    messengerInfo.messageSeverity |= VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT;
   createDebugUtilMessenger = (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(vk->instance, "vkCreateDebugUtilsMessengerEXT");
   destroyDebugUtilMessenger = (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(vk->instance, "vkDestroyDebugUtilsMessengerEXT");
   submitDebugUtilsMessage = (PFN_vkSubmitDebugUtilsMessageEXT)vkGetInstanceProcAddr(vk->instance, "vkSubmitDebugUtilsMessageEXT");

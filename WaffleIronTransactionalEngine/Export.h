@@ -22,6 +22,7 @@ namespace WITE {
   export_dec void enterMainLoop();//this call does not return. Set up type registration (with callbacks) first.
 #define database (*WITE::get_database())
   export_dec WITE::Database** get_database();
+  export_dec uint64_t getDebugMode();
   export_dec void gracefulExit();//returns quickly, stops app gracefully after frame completion and db sync.
 
   template <typename _T, typename _Alloc = std::allocator<_T>>

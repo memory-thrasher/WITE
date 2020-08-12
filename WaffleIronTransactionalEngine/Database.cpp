@@ -97,23 +97,23 @@ namespace WITE {
   Database::Database(size_t cachesize) : Database(NULL, cachesize) {}
 
   Database::~Database() {
-    LOG("DB destructor called\n");
+    //LOG("DB destructor called\n");
     gracefulStop();
-    LOG("DB destructor finished\n");
+    //LOG("DB destructor finished\n");
   }
 
   void Database::gracefulStop() {
-    LOG("Shutting down db\n");
+    //LOG("Shutting down db\n");
     uint8_t was = 1;
     masterThreadState.compare_exchange_strong(was, 2);
     if(Thread::getCurrentTid() == pt_tid) {
       if(was == 1) {
         pt_syncToDisk();
-        LOG("db synced\n");
+        //LOG("db synced\n");
       } //else cleanup was in progress when this was called, so dirty crash
     } else {
       while(masterThreadState != 3);
-      LOG("db reports closeout\n");
+      //LOG("db reports closeout\n");
     }
   }
 

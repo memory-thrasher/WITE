@@ -78,14 +78,10 @@ namespace WITE {
     if (vk->extensionCount > MAX_SDL_EXTENSIONS) CRASH("Too many extensions\n");
     if (!SDL_Vulkan_GetInstanceExtensions(window, &vk->extensionCount, vk->extensions)) CRASH("Failed to fetch VK extensions needed by gl\n");
     SDL_DestroyWindow(window);
-    if(debugMode & DEBUG_MASK_VULKAN) {
-      for (i = 0;i < VALIDATION_EXTENSION_COUNT;i++)
-        vk->extensions[vk->extensionCount++] = VALIDATION_EXTENSIONS[i];
-      vk->layers[vk->layerCount++] = "VK_LAYER_KHRONOS_validation";
-      instanceNext = &Debugger::messengerInfo;
-    }
+    if(debugMode & DEBUG_MASK_VULKAN)
+      instanceNext = Debugger::preInit();
     //TODO check all layers/extensions
-    vk->appInfo = { VK_STRUCTURE_TYPE_APPLICATION_INFO, NULL, gameName, 0, "Waffle Iron Transactional Engine (WITE)", 0, VK_API_VERSION_1_1 };
+    vk->appInfo = { VK_STRUCTURE_TYPE_APPLICATION_INFO, NULL, gameName, 0, "Waffle Iron Transactional Engine (WITE)", 0, VK_API_VERSION_1_0 };
     vk->createInfo = { VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO, instanceNext, 0, &vk->appInfo, vk->layerCount, vk->layers, vk->extensionCount, vk->extensions };
     CRASHIFFAIL(vkCreateInstance(&vk->createInfo, vkAlloc, &vk->instance));
     if(debugMode & DEBUG_MASK_VULKAN)

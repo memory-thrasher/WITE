@@ -36,13 +36,14 @@
 #define SHADER_STAGE_FRAG 16
 //VkFormat
 #define DEBUG_MASK_VULKAN 1
+#define DEBUG_MASK_VULKAN_VERBOSE 2
 //more debug options, like timing, logging, per-frame db rebase or log dumping, allocation (vkAlloc)
 
 #define __offsetof_array(_type, _array, _idx) (offsetof(_type, _array) + sizeof(WITE::remove_array<decltype(_type::_array)>::type) * _idx)
 #define ERRLOGFILE WITE::getERRLOGFILE()
 #define LOG(message, ...) { ::fprintf(ERRLOGFILE, "%s:%d: ", __FILE__, __LINE__); ::fprintf(ERRLOGFILE, message, ##__VA_ARGS__); WITE::flush(ERRLOGFILE); }
 #ifdef _DEBUG
-#define CRASHRET(...) { LOG("**CRASH**\n"); database->gracefulStop(); abort(); exit(1); return __VA_ARGS__; }
+#define CRASHRET(...) { LOG("**CRASH**\n"); auto db = database; if(db) db->gracefulStop(); abort(); exit(1); return __VA_ARGS__; }
 #else
 #define CRASHRET(...) { LOG("**CRASH**\n"); database->gracefulStop(); exit(1); return __VA_ARGS__; }
 #endif

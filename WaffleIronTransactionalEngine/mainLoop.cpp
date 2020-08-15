@@ -89,7 +89,6 @@ void enterMainLoop() {
   uint8_t tempu8;
   initTime();
   meshSemaphore.store(0, std::memory_order_relaxed);
-  workerData.get(workerThreadCount + 2);//workerThreadCount + number of non-worker threads, for side effect prealloc
   WITE::Thread::spawnThread(WITE::Thread::threadEntry_t_F::make<void*>(&meshSemaphore, &Mesh::proceduralMeshLoop));
   auto workerEntry = WITE::Thread::threadEntry_t_F::make<void*>(NULL, &enterWorker);
   for(i = 0;i < workerThreadCount;i++) WITE::Thread::spawnThread(workerEntry);

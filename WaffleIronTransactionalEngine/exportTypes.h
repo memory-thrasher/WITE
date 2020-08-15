@@ -132,7 +132,7 @@ namespace WITE {
       mangle<Mangle_ComponentwiseMax<6, Vertex>, Vertex>(data, size).pos) {}
     uint32_t populateMeshCPU(Vertex* out, uint64_t maxVerts, const glm::dvec3* viewOrigin) {
       if (size <= maxVerts) {
-	memcpy(out, data, size * FLOAT_BYTES);
+	memcpy(out, data, size * FLOAT_BYTES * 6);
 	return size;
       }
       return 0;

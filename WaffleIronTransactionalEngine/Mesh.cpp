@@ -46,7 +46,7 @@ uint32_t Mesh::put(WITE::Vertex* out, uint64_t offset, uint64_t maxSize, GPU* gp
       for (auto obj = owners.nextLink();obj != &owners;obj = obj->nextLink()) {
 	if(!obj->linked()) goto startovermesh;
 	//camera tangent and distance comparison vs best
-	object = obj->getRef()->getObj();
+	object = obj->getRef()->getObj_intern();
 	relativeResolution = database->getCurrentFrame() == 0 ? 100 : cam->approxScreenArea(object->getTrans().transform(source->getBbox(&tempBox1), &tempBox2));
 	if (relativeResolution > highestResolution) {
 	  highestResolution = relativeResolution;

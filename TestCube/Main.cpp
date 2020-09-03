@@ -11,6 +11,7 @@ struct cube {
 
 #define cubeMesh g_vb_solid_face_colors_Data
 WITE::StaticMesh cube::mesh(cubeMesh, sizeof(cubeMesh)/sizeof(cubeMesh[0]));
+WITE::StaticMesh* monkeyMesh;
 
 typedef struct {
   WITE::Shader* flat;
@@ -32,12 +33,19 @@ void cubeUpdate(WITE::Database::Entry e) {
   }
 }
 
+void cubeInitRenderer(WITE::Renderer* renderer, std::shared_ptr<class WITE::ShaderResource>* resources, WITE::GPU* gpu) {
+  *reinterpret_cast<glm::mat4*>(resources[1]->map()) = renderer->getObj()->getTrans().getMat();
+  resources[1]->unmap();
+  renderer->updateInstanceData(1, gpu);
+}
+
 void cubeInit(WITE::Database::Entry e, WITE::Database::Entry* map) {
   auto o = (*database->getObjectInstanceFor(e)) = WITE::Object::make(e, offsetof(struct cube, trans), map);
   o->setName("Protea");
-  WITE::Renderer::bind(o, shaders.flat, WITE::Mesh::make(&cube::mesh), 0);
+  WITE::Renderer::bind(o, shaders.flat, WITE::Mesh::make(monkeyMesh), 0);
   WITE::Transform initialTrans(glm::dmat4(1));
   o->pushTrans(&initialTrans);
+  o->getRenderer(0)->setOnceCallback(WITE::Renderer::packDataCB_F::make(&cubeInitRenderer));
 }
 
 void cubeDestroy(WITE::Database::Entry e) {
@@ -52,10 +60,20 @@ const inline static WITE::Database::typeHandles cube_functions = {
 };
 
 int main(int argc, char** argv) {
+  //start test monkey
+  std::vector<WITE::Vertex> monkeyVerts;
+  FILE* monkeyFile = fopen("models/test_monkey.obj", "r");
+  WITE::StaticMesh::ImportObj(monkeyFile, &monkeyVerts);
+  monkeyMesh = new WITE::StaticMesh(monkeyVerts.data(), monkeyVerts.size());
+  fclose(monkeyFile);
+  //end test monkey
   WITE::WITE_INIT("WITE test cube", DEBUG_MASK_VULKAN);
-  struct WITE::Shader::resourceLayoutEntry flatLayout = { SHADER_RESOURCE_UNIFORM, SHADER_STAGE_VERT, 1, reinterpret_cast<void*>(sizeof(glm::mat4)) };//TODO this is assumed so should be implied, the provided resources should be in addition to trans
+  struct WITE::Shader::resourceLayoutEntry flatLayout[] = {
+    { SHADER_RESOURCE_UNIFORM, SHADER_STAGE_VERT, 1, reinterpret_cast<void*>(sizeof(glm::mat4)) },//TODO this is assumed so should be implied, the provided resources should be in addition to trans
+    { SHADER_RESOURCE_UNIFORM, SHADER_STAGE_FRAG, 1, reinterpret_cast<void*>(sizeof(glm::mat4)) }
+  };
   const char* flatFiles[2] = {"shaders/flat.vert.spv", "shaders/flat.frag.spv"};
-  shaders.flat = WITE::Shader::make(flatFiles, 2, &flatLayout, 1);
+  shaders.flat = WITE::Shader::make(flatFiles, 2, flatLayout, 2);
   WITE::Database::registerType(cube::type, cube_functions);
   auto win1 = WITE::Window::make(0);
   //WITE::IntBox3D bounds(100, 600, 100, 600);
@@ -66,7 +84,7 @@ int main(int argc, char** argv) {
   bounds.minx = bounds.miny = 0;
   auto cam = win1->addCamera(bounds);
   cam->setFov(glm::radians(45.0f) * bounds.height() / bounds.width());
-  cam->setMatrix(&glm::lookAt(glm::dvec3(-5, 3, -10), glm::dvec3(0, 0, 0), glm::dvec3(0, -1, 0)));
+  cam->setMatrix(&glm::lookAt(glm::dvec3(5, 10, 3), glm::dvec3(0, 0, 0), glm::dvec3(0, 0, 1)));
   cam->setLayermaks(~0);
   WITE::Database db(1024 * 1024 * 1024);
   database = &db;

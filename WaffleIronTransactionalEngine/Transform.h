@@ -6,7 +6,7 @@ namespace WITE {
   
   class BBox3D;
 
-  export_dec class Transform {
+  class Transform {
   public:
     export_dec Transform();
     export_dec Transform(const glm::dmat4&);

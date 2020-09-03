@@ -4,7 +4,7 @@
 #include "Globals.h"
 #include "Export.h"
 
-static class Debugger {
+class Debugger {
 public:
   Debugger() = delete;
   ~Debugger() = delete;

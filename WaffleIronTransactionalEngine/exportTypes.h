@@ -99,13 +99,13 @@ namespace WITE {
   typedef union Vertex {
     float floats[0];
     struct {
-      glm::vec3 pos, data;
+      glm::vec3 pos, norm, data;
     };
     struct {
-      float x, y, z, r, g, b;
+      float x, y, z, nx, ny, nz, r, g, b;
     };
-    Vertex(float x, float y, float z, float r, float g, float b) : pos(x, y, z), data(r, g, b) {}
-    Vertex() : pos(), data() {}
+    Vertex(float x, float y, float z, float nx, float ny, float nz, float r, float g, float b) : pos(x, y, z), norm(nx, ny, nz), data(r, g, b) {}
+    Vertex() : pos(), norm(), data() {}
     inline operator void*() {//for memcpy
       return static_cast<void*>(this);
     };
@@ -132,13 +132,13 @@ namespace WITE {
       mangle<Mangle_ComponentwiseMax<6, Vertex>, Vertex>(data, size).pos) {}
     uint32_t populateMeshCPU(Vertex* out, uint64_t maxVerts, const glm::dvec3* viewOrigin) {
       if (size <= maxVerts) {
-	memcpy(out, data, size * FLOAT_BYTES * 6);
+	memcpy(out, data, size * SIZEOF_VERTEX);
 	return size;
       }
       return 0;
     };
     BBox3D* getBbox(BBox3D* out) { return &box; };
-    //return newOrHere(out)BBox3D(box); };
+    static void ImportObj(FILE* in, std::vector<Vertex>* out);
   private:
     BBox3D box;
     const void* data;
@@ -156,10 +156,31 @@ namespace WITE {
 
   class Object;//defined in Database.h
 
-  class export_def Renderer {
+  class export_def GPU {//these are created by init and may be present as args in callbacks
   public:
+    ~GPU() = default;
+    GPU(const GPU&) = delete;
+  protected:
+    GPU() = default;
+  };
+
+  class export_def Renderer {//these are created by objects
+  public:
+    typedefCB(packDataCB, void, Renderer*, std::shared_ptr<class WITE::ShaderResource>*, WITE::GPU*)//array of shared pointers, one per descriptor
     static void bind(Object* o, Shader* s, std::shared_ptr<Mesh> m, WITE::renderLayerIdx rlIdx);
     static void unbind(Object*, WITE::renderLayerIdx);
+    ~Renderer() = default;
+    Renderer(const Renderer&) = delete;
+    virtual void setOnceCallback(packDataCB) = 0;
+    virtual void setPerFrameCallback(packDataCB) = 0;
+    virtual void updateInstanceData(size_t resource, GPU* gpu) = 0;
+    virtual Object* getObj()  = 0;
+    virtual Shader* getShader() = 0;
+    virtual std::shared_ptr<Mesh> getMesh() = 0;
+    //virtual RenderLayer* getLayer() = 0;//maybe just return WITE::renderLayerIdx
+    inline bool exists() { return bool(getObj()); };
+  protected:
+    Renderer() = default;
   };
 
   class Window;

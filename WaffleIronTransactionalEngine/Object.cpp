@@ -33,3 +33,7 @@ void Object::setName(const char* n) {
 const char* Object::getName() {
   return name;
 }
+
+WITE::Renderer* Object::getRenderer(WITE::renderLayerIdx i) {
+  return &renderLayer[i];
+}

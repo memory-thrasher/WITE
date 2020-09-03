@@ -72,7 +72,7 @@ template<class T> inline void AtomicLinkedList<T>::sanityCheck() {
   AtomicLinkedList<T>* n = next.load(std::memory_order_consume);
   size_t i = 0;
   while(n != this) {
-    if(!n) CRASH("Corrupted linked list (type: %s) at depth: %d\n", typeid(T).name(), i);
+    if(!n) CRASH("Corrupted linked list (type: %s) at depth: %I64d\n", typeid(T).name(), i);
     n = n->next.load(std::memory_order_consume);//if n is not a valid pointer, this will probably break because atomics are picky
     i++;
   }

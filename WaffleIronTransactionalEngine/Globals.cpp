@@ -90,7 +90,7 @@ namespace WITE {
     if (vk->gpuCount > MAX_GPUS) vk->gpuCount = MAX_GPUS;//unlikely
     CRASHIFFAIL(vkEnumeratePhysicalDevices(vk->instance, &vk->gpuCount, devices));
     for (i = 0;i < vk->gpuCount;i++) {
-      vk->gpus[i] = new GPU(devices[i], i);
+      vk->gpus[i] = new ::GPU(devices[i], i);
     }
     for (i = 0;i < MAX_RENDER_LAYERS;i++) vk->renderLayers[i].idx = i;
   }

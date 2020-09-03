@@ -48,7 +48,7 @@ void enterWorker(void* unused) {
       if(!handles || type != lastType) {
         handles = WITE::Database::getHandlesOfType(type);
         if(!handles || !handles->update)
-          CRASH("Illegal entry type in typesWithUpdate, entry: %d of type %d, frame: %d\n", start, type, database->getCurrentFrame());
+          CRASH("Illegal entry type in typesWithUpdate, entry: %I64d of type %d, frame: %I64d\n", start, type, database->getCurrentFrame());
         //FIXME this is still happening sometimes, start: 0, type: 0, frame: 11, 273
         lastType = type;
       }

@@ -15,6 +15,7 @@ public:
   void setName(const char*);
   void setNameF(const char*, ...);
   const char* getName();
+  WITE::Renderer* getRenderer(WITE::renderLayerIdx);
 protected:
   void* objData;//??
 private:
@@ -58,8 +59,8 @@ private:
   };
   WITE::Database::Entry start;
   class Subresource<glm::dmat4x4> activeTransform;
-  class Renderer renderLayer[MAX_RENDER_LAYERS];//change only via Renderer::bind; transient
+  ::Renderer renderLayer[MAX_RENDER_LAYERS];//change only via Renderer::bind; transient
   WITE::SyncLock lock;//for Renderer
-  friend class Renderer;
+  friend class ::Renderer;
 };
 

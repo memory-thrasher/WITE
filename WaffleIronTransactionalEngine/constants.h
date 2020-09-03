@@ -24,8 +24,7 @@
 #define RB_NOMAP 7
 #define WARM_THREADS 8
 #define MAX_THREADS 256
-#define FLOAT_BYTES 4//gpu
-#define SIZEOF_VERTEX (6 * FLOAT_BYTES)//6 floats, 3d vert + either 2d uv or 3d alg coords
+#define SIZEOF_VERTEX sizeof(WITE::Vertex)
 #define MAX_RENDER_LAYERS 8
 #define MAX_SUBSHADERS 4
 //these must match the corrosponding vk_descriptor_type_*

@@ -109,7 +109,8 @@ void Renderer::render(VkCommandBuffer cmd, glm::dmat4 projection, GPU* gpu) {
   //TODO test that cmd writes are still good here. vkCmdFillBuffer?
 }
 
-void Renderer::updateInstanceData(size_t resource, GPU* gpu) {//TODO batchify?
+void Renderer::updateInstanceData(size_t resource, WITE::GPU* gpuE) {//TODO batchify?
+  ::GPU* gpu = (::GPU*)gpuE;
   Shader::Instance* buffer = buffers->get(gpu);
   VkWriteDescriptorSet write = { VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, NULL, buffer->descSet, (uint32_t)resource, 0,
 				 1, (VkDescriptorType)shader->resourceLayout[resource].type, NULL, NULL, NULL };
@@ -128,3 +129,26 @@ void Renderer::updateInstanceData(size_t resource, GPU* gpu) {//TODO batchify?
   vkUpdateDescriptorSets(gpu->device, 1, &write, 0, NULL);
 }
 
+WITE::Object* Renderer::getObj() {
+  return obj;
+}
+
+WITE::Shader* Renderer::getShader() {
+  return shader;
+}
+
+std::shared_ptr<WITE::Mesh> Renderer::getMesh() {
+  return mesh;
+}
+
+Object* Renderer::getObj_intern() {
+  return obj;
+}
+
+Shader* Renderer::getShader_intern() {
+  return shader;
+}
+
+std::shared_ptr<Mesh> Renderer::getMesh_intern() {
+  return mesh;
+}

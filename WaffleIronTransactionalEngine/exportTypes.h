@@ -106,6 +106,9 @@ namespace WITE {
     };
     Vertex(float x, float y, float z, float nx, float ny, float nz, float r, float g, float b) : pos(x, y, z), norm(nx, ny, nz), data(r, g, b) {}
     Vertex() : pos(), norm(), data() {}
+    Vertex(glm::vec3 p, glm::vec3 n, glm::vec3) : pos(p), norm(n), data(d) {}
+    Vertex(glm::vec3 p, glm::vec3 n) : pos(p), norm(n), data() {}
+    Vertex(glm::vec3 p) : pos(p), norm(), data() {}
     inline operator void*() {//for memcpy
       return static_cast<void*>(this);
     };

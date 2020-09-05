@@ -180,6 +180,7 @@
     <ClCompile Include="dllmain.cpp" />
     <ClCompile Include="Globals.cpp" />
     <ClCompile Include="GPU.cpp" />
+    <ClCompile Include="ImportObj.cpp" />
     <ClCompile Include="mainLoop.cpp" />
     <ClCompile Include="Mesh.cpp" />
     <ClCompile Include="Object.cpp" />

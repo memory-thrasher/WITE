@@ -93,7 +93,10 @@ void Renderer::render(VkCommandBuffer cmd, glm::dmat4 projection, GPU* gpu) {
   //LOGMAT(right, "right");
   //LOGMAT(mvp, "mvp");
   //LOG("\nAddress of resource: %p\naddress of resources: %p\naddress of buffer: %p\n", (void*)buffer->resources.get(), (void*)&buffer->resources, (void*)buffer);//(outdated)first call: 0000000006905E78, second call: 00000000FDFDFDFD (crashed on next line)
-  *reinterpret_cast<glm::mat4*>(buffer->resources[0]->map()) = mvp;
+  glm::mat4* transOut = reinterpret_cast<glm::mat4*>(buffer->resources[0]->map());
+  transOut[0] = mvp;
+  mvp[3] = glm::vec4();
+  transOut[1] = mvp;//direction only without offset, for normals
   buffer->resources[0]->unmap();
   //LOG("Resource updated successfully\n");
   updateInstanceData(0, gpu);

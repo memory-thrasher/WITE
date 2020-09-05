@@ -14,19 +14,20 @@ namespace WITE {
     double component[1];
     struct { double minx, miny, minz, maxx, maxy, maxz; };
   };
-  BBox3D(double minx = 0, double maxx = 0, double miny = 0, double maxy = 0, double minz = 0, double maxz = 0) :
-  minx(minx), miny(miny), minz(minz), maxx(maxx), maxy(maxy), maxz(maxz) {};
-  BBox3D(v3 min, v3 max) : BBox3D(min.x, max.x, min.y, max.y, min.z, max.z) {}
-  BBox3D(glm::vec3 min, glm::vec3 max) : BBox3D(v3(min), v3(max)) {}//promote from float
-  inline glm::dvec3 min() { return glm::dvec3(minx, miny, minz); };
-  inline glm::dvec3 max() { return glm::dvec3(maxx, maxy, maxz); };
-  inline glm::dvec3 center() { return (min() + max())*0.5; };
-  void allCornerSwizzle(glm::dvec3* out) const {
+  constexpr BBox3D(double minx = 0, double maxx = 0, double miny = 0, double maxy = 0, double minz = 0, double maxz = 0) :
+    minx(minx), miny(miny), minz(minz), maxx(maxx), maxy(maxy), maxz(maxz) {};
+  constexpr BBox3D(v3 min, v3 max) : BBox3D(min.x, max.x, min.y, max.y, min.z, max.z) {}
+  constexpr BBox3D(glm::vec3 min, glm::vec3 max) : BBox3D(v3(min), v3(max)) {}//promote from float
+  constexpr inline glm::dvec3 min() const { return glm::dvec3(minx, miny, minz); };
+  constexpr inline glm::dvec3 max() const { return glm::dvec3(maxx, maxy, maxz); };
+  constexpr inline glm::dvec3 center() const { return (min() + max())*0.5; };
+  constexpr inline void allCornerSwizzle(glm::dvec3* out) const {
     size_t i = 0;
-    for(size_t x = 0;x < 2;x++) for(size_t y = 0;y < 2;y++) for(size_t z = 0;z < 2;z++, i++) out[i] = glm::dvec3(component[x*3], component[y*3+1], component[z*3+2]);
+    for(size_t x = 0;x < 2;x++) for(size_t y = 0;y < 2;y++) for(size_t z = 0;z < 2;z++, i++)
+      out[i] = glm::dvec3(component[x*3], component[y*3+1], component[z*3+2]);
   };
-  inline double width2D() { return maxx - minx; };
-  inline double height2D() { return maxy - miny; };
+  constexpr inline double width2D() const { return maxx - minx; };
+  constexpr inline double height2D() const { return maxy - miny; };
   };
 
   class export_def IntBox3D {
@@ -73,6 +74,9 @@ namespace WITE {
   };
 
   template<class V> using Mangle_MaxVec = Mangle_ComponentwiseMax<V::length(), typename V::type>;
+  typedef Mangle_MaxVec<glm::vec4> Mangle_MaxVec4;
+  typedef Mangle_MaxVec<glm::vec3> Mangle_MaxVec3;
+  typedef Mangle_MaxVec<glm::vec2> Mangle_MaxVec2;
 
   template<size_t components, typename T> class Mangle_ComponentwiseMin {
   public:
@@ -85,6 +89,9 @@ namespace WITE {
   };
 
   template<class V> using Mangle_MinVec = Mangle_ComponentwiseMin<V::length(), typename V::type>;
+  typedef Mangle_MinVec<glm::vec4> Mangle_MinVec4;
+  typedef Mangle_MinVec<glm::vec3> Mangle_MinVec3;
+  typedef Mangle_MinVec<glm::vec2> Mangle_MinVec2;
 
   template<class Mangler, class T, class U> inline T mangle(const T* a, const U* b) {
     return Mangler()(a, b);
@@ -96,6 +103,7 @@ namespace WITE {
   };
 
   template<class Mangler, class T> void mangle(const T* in, size_t count, T* ret) {
+    if(!count) return;
     *ret = in[0];//copy constructable
     Mangler m;
     for(size_t i = 1;i < count;i++)

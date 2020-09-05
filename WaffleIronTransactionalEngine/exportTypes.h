@@ -106,7 +106,7 @@ namespace WITE {
     };
     Vertex(float x, float y, float z, float nx, float ny, float nz, float r, float g, float b) : pos(x, y, z), norm(nx, ny, nz), data(r, g, b) {}
     Vertex() : pos(), norm(), data() {}
-    Vertex(glm::vec3 p, glm::vec3 n, glm::vec3) : pos(p), norm(n), data(d) {}
+    Vertex(glm::vec3 p, glm::vec3 n, glm::vec3 d) : pos(p), norm(n), data(d) {}
     Vertex(glm::vec3 p, glm::vec3 n) : pos(p), norm(n), data() {}
     Vertex(glm::vec3 p) : pos(p), norm(), data() {}
     inline operator void*() {//for memcpy
@@ -132,7 +132,8 @@ namespace WITE {
   public:
     StaticMesh(const Vertex* data, uint32_t size) : data(data), size(size),
       box(mangle<Mangle_ComponentwiseMin<6, Vertex>, Vertex>(data, size).pos,
-      mangle<Mangle_ComponentwiseMax<6, Vertex>, Vertex>(data, size).pos) {}
+      mangle<Mangle_ComponentwiseMax<6, Vertex>, Vertex>(data, size).pos) {};
+    StaticMesh() : StaticMesh(NULL, 0) {}
     uint32_t populateMeshCPU(Vertex* out, uint64_t maxVerts, const glm::dvec3* viewOrigin) {
       if (size <= maxVerts) {
 	memcpy(out, data, size * SIZEOF_VERTEX);

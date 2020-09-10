@@ -255,7 +255,7 @@ namespace WITE {
     uint16_t ret;
     if (!entries) return RB_BUFFER_UNDERFLOW;
     ret = RB_SUCCESS;
-    if (entries > max) ret = RB_READ_INCOMPLETE;
+    if (entries >= max) ret = RB_READ_INCOMPLETE;
     else max = entries;
     while (max && (subsize = sizeofnext() + sizeof(HeadType)) && subsize <= maxsize) {
       readRaw(data, head.load(/*std::memory_order_consume*/), subsize);
@@ -268,6 +268,7 @@ namespace WITE {
       starts++;
     }
     if (max) ret = RB_READ_INCOMPLETE;
+    starts[-1] = 0;
     return ret;
   }
 
@@ -280,7 +281,7 @@ namespace WITE {
       pos = &subpos;
     }
     ret = RB_SUCCESS;
-    if (entries > max) ret = RB_READ_INCOMPLETE;
+    if (entries >= max) ret = RB_READ_INCOMPLETE;
     else max = entries;
     while (max && (subsize = sizeofnext(*pos) + sizeof(HeadType)) && subsize <= maxsize) {
       readRaw(data, *pos, subsize);
@@ -293,6 +294,7 @@ namespace WITE {
       starts++;
     }
     if (max) ret = RB_READ_INCOMPLETE;
+    starts[-1] = 0;
     return ret;
   }
 

@@ -207,8 +207,12 @@ namespace WITE {
 	uint8_t data[1];
       } log;
     } pt_buffer;
-    cacheIndex* pt_cacheStaging;
-    size_t pt_cacheStagingSize;
+    struct {
+      cacheIndex* pt_cacheStaging;
+      size_t pt_cacheStagingSize, pt_cacheStagingLen;
+      Entry entryScanIdx;
+      size_t cacheScanIdx;
+    } pt_rethinkCache_asyncVars;
     void primeThreadEntry();
     Entry pt_allocate(size_t size, Entry* map);
     bool pt_adoptTlog(threadResource_t::transactionalBacklog_t* src);

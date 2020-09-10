@@ -27,7 +27,6 @@
 #define VK_USE_PLATFORM_WIN32_KHR
 #endif
 #define SDL_MAIN_HANDLED
-#define GLM_CONFIG_SWIZZLE 1 //operator
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>

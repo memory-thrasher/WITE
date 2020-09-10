@@ -11,6 +11,13 @@ namespace WITE {
 
   constexpr Transform::Transform(const Transform& other) : Transform(other.matrix) {}
 
+  Transform::Transform(const glm::dvec3 pos, const glm::dvec3 rot, const glm::dvec3 scale) : matrix(getEulerAngleMatrix(rot)) {
+    for(size_t i = 0;i < 3;i++) {
+      matrix[i] *= scale[i];
+      matrix[3][i] = pos[i];
+    }
+  }
+
   constexpr BBox3D* Transform::transform(const BBox3D* in, BBox3D* out) const {
     static BBox3D spareRet;//TODO thread safety
     glm::dvec3 corners[8];
@@ -75,33 +82,45 @@ namespace WITE {
   };
 
   constexpr glm::dvec3 Transform::forward() const {
-    return matrix[1];
+    return glm::normalize(matrix[1]);
   }
 
   constexpr glm::dvec3 Transform::right() const {
-    return matrix[0];
+    return glm::normalize(matrix[0]);
   }
 
   constexpr glm::dvec3 Transform::up() const {
-    return matrix[2];
+    return glm::normalize(matrix[2]);
   }
 
-  constexpr glm::dvec3 Transform::getAxisAngle() const {
-    glm::dvec3 u, r, f;
-    u = up();
-    r = right();
-    f = forward();
-    return glm::dvec3(0, 0, 0);//TODO
+  constexpr glm::dvec3 Transform::getEulerAngle() const {
+    glm::dvec3 lu, lr, lf, gu, gr, gf, temp;
+    lu = up();
+    lr = right();
+    lf = forward();
+    gu = ident().up();
+    gr = ident().right();
+    gf = ident().forward();
+    return glm::dvec3(
+      asin(glm::dot(lf, gu)),//inclination
+      acos(glm::dot(glm::normalize(glm::cross(lf, gu)), lr)),//roll
+      acos(glm::dot(temp = glm::normalize(lf - gu * glm::dot(lf, gu)), gf)) * (temp.x < 0 ? -1 : 1) //azimuth
+    );
   }
 
-  Transform& Transform::setAxisAngle(glm::dvec3 nl) {
+  glm::dmat4 Transform::getEulerAngleMatrix(glm::dvec3 nl) {
     glm::dmat4 n = rotate(
       rotate(
-        rotate(glm::identity<glm::dmat4>(), nl.y, ident().forward()),
+        rotate(glm::identity<glm::dmat4>(), nl.z, ident().up()),
       nl.x, ident().right()),
-    nl.z, ident().up());
+      nl.y, ident().forward());
+    return n;
+  }
+
+  Transform& Transform::setEulerAngle(glm::dvec3 nl) {
+    glm::dmat4 n = Transform::getEulerAngleMatrix(nl);
     for(size_t i = 0;i < 3;i++)
-      matrix[i].xyz = n[i].xyz;
+      matrix[i].xyz() = n[i].xyz();
     return *this;
   }
 

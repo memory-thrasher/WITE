@@ -23,7 +23,7 @@ namespace WITE {
 
   Database::Database(const char * filenamefmt, size_t cachesize, int64_t loadidx) : 
     filenamefmt(filenamefmt), filenameIdx(loadidx),
-    allocTabRaw(malloc(cachesize)), primeRamSize(cachesize), pt_cacheStaging(NULL) {
+    allocTabRaw(malloc(cachesize)), primeRamSize(cachesize) {
     //TODO audit default allocation of prime ram
     size_t fileblocks, idealblocks;
     Entry i;
@@ -89,8 +89,8 @@ namespace WITE {
     }
     fclose(active);
     tlogManager.relocate(allocTabByte + atCount * sizeof(allocationTableEntry), tlogSize);
-    pt_cacheStaging = new cacheIndex[cacheCount];
-    pt_cacheStagingSize = cacheCount;
+    pt_rethinkCache_asyncVars.pt_cacheStaging = NULL;//will be auto allocated on first rethink
+    pt_rethinkCache_asyncVars.pt_cacheStagingSize = 0;
     Thread::spawnThread(WITE::CallbackFactory<void>::make<Database>(this, &Database::primeThreadEntry));
   }
 
@@ -233,8 +233,8 @@ namespace WITE {
     loadedEntry le;
     le.header.state = getEntryState(e);
     switch (le.header.state) {
-    default: LOG("Warn: invalid state of block linked in compound tree. Something is wrong."); break;
-    case unallocated: LOG("Warn: unallocated block linked in compound tree. Something is wrong."); break;
+    default: CRASH("invalid state of block linked in compound tree. Something is wrong.\n"); break;
+    case unallocated: CRASH("unallocated block linked in compound tree. Something is wrong.\n"); break;
     case data:
       if(starts[*regionIdx] <= *offsetOfE + BLOCKDATASIZE) {
 	//NOTE may be partial; region may span many Entries; select appropriate sub region
@@ -299,10 +299,10 @@ namespace WITE {
 	} else
 	  active = target;
 	if(this->target[0])
-          target = fopen(&this->target.front(), "rb");
+          target = fopen(&this->target.front(), "r+b");
 	threadResource->currentFileIdx = fileIdx;
       }
-      if(!active) active = threadResource->activeFile = fopen(&this->active.front(), "rb");
+      if(!active) active = threadResource->activeFile = fopen(&this->active.front(), "r+b");
       threadResource->activeFile = active;
       threadResource->targetFile = target;
       CRASHIFWITHERRNO(fseek(active, offset + e * BLOCKSIZE, SEEK_SET));
@@ -435,7 +435,7 @@ namespace WITE {
     decltype(threadResources)::Tentry* trs;
     if (masterThreadState.exchange(1) != 0) CRASH("Attempted to launch second master db thread.\n");
     pt_tid = Thread::getCurrentTid();
-    pt_activeF = fopen(&active.front(), "a+b");
+    pt_activeF = fopen(&active.front(), "r+b");
     pt_targetF = NULL;
   do_something:
     while (masterThreadState == 1) {
@@ -502,6 +502,8 @@ namespace WITE {
       }
     }
     if (newRecordCount > atCount) {
+      pt_rethinkCache_asyncVars.entryScanIdx = 0;
+      pt_rethinkCache_asyncVars.cacheScanIdx = 0;//discard pending cache decision state
       memset(allocTab + atCount, 0, (newRecordCount - atCount) * sizeof(allocationTableEntry));
       FILE* dst = pt_targetF ? pt_targetF : pt_activeF;
       fseek(dst, sizeof(loadedEntry) * atCount, SEEK_SET);
@@ -511,22 +513,29 @@ namespace WITE {
   }
 
   void Database::pt_rethinkCache() {//called when prime thread has time to burn, but don't take too long; return to yield
-    //TODO yield more, this takes way too long
-    Entry i;
-    size_t j, len, score, top, bot, mid;
+    size_t score, top, bot, mid;
     allocationTableEntry ate;
     cacheEntry ce;
     cacheIndex ci;
     if (pt_flushTlog()) return;//not now, something happened
-    if (pt_cacheStagingSize < cacheCount) {
-      pt_cacheStagingSize = cacheCount + (cacheCount >> 3);//+12.5% margin
-      delete[] pt_cacheStaging;
-      pt_cacheStaging = new cacheIndex[pt_cacheStagingSize];
+    if (pt_rethinkCache_asyncVars.pt_cacheStagingSize < cacheCount) {
+      pt_rethinkCache_asyncVars.pt_cacheStagingSize = cacheCount + (cacheCount >> 3);//+12.5% margin
+      delete[] pt_rethinkCache_asyncVars.pt_cacheStaging;
+      pt_rethinkCache_asyncVars.pt_cacheStaging = new cacheIndex[pt_rethinkCache_asyncVars.pt_cacheStagingSize];
+      pt_rethinkCache_asyncVars.entryScanIdx = 0;
+      pt_rethinkCache_asyncVars.cacheScanIdx = 0;
       return;
     }
-    memset(pt_cacheStaging, 0, sizeof(cacheIndex) * pt_cacheStagingSize);
-    for (i = len = 0;i < atCount;i++) {
-      ate = allocTab[i];//faster ram read all at once because allocTab is volatile
+    uint64_t opExpiration = Time::nowNs() + 2000000;//FIXME tune-able
+#define DB_RETHINK_SHOULD_YIELD (Time::nowNs() >= opExpiration)
+    if(pt_rethinkCache_asyncVars.entryScanIdx == 0) {
+      TIME(memset(pt_rethinkCache_asyncVars.pt_cacheStaging, 0, sizeof(cacheIndex) * pt_rethinkCache_asyncVars.pt_cacheStagingSize), 3, "db: rethink cache: memset cache staging: %I64d\n");
+      pt_rethinkCache_asyncVars.pt_cacheStagingLen = 0;
+    }
+    TIME(
+    for (;pt_rethinkCache_asyncVars.entryScanIdx < atCount;pt_rethinkCache_asyncVars.entryScanIdx++) {
+      if(!(pt_rethinkCache_asyncVars.entryScanIdx & 0x3F) && DB_RETHINK_SHOULD_YIELD) return;
+      ate = allocTab[pt_rethinkCache_asyncVars.entryScanIdx];//faster ram read all at once because allocTab is volatile
       if(ate.allocationState == unallocated)
         score = 1;
       else
@@ -534,33 +543,40 @@ namespace WITE {
 	  (ate.cacheLocation ? 48>>(currentFrame - ate.cacheLocation->readsCachedLifetime) : 0) +
 	  (ate.nextWriteFrame != NULL_FRAME ? (ate.cacheLocation ? 512 : 16) :
 	   ate.lastWrittenFrame != NULL_FRAME ? 48 >> (currentFrame - ate.lastWrittenFrame) : 0);
-      if (len) {
-        if(cacheCount == len && score <= pt_cacheStaging[len - 1].score) continue;
+      if (pt_rethinkCache_asyncVars.pt_cacheStagingLen) {
+        if(cacheCount == pt_rethinkCache_asyncVars.pt_cacheStagingLen &&
+          score <= pt_rethinkCache_asyncVars.pt_cacheStaging[pt_rethinkCache_asyncVars.pt_cacheStagingLen - 1].score) continue;
 	bot = 0;
-	top = len - 1;
+	top = pt_rethinkCache_asyncVars.pt_cacheStagingLen - 1;
 	mid = (bot + top) >> 1;
-	while (bot != top && pt_cacheStaging[mid].score != score) {
-	  if (score < pt_cacheStaging[mid].score) bot = mid;
+	while (bot != top && pt_rethinkCache_asyncVars.pt_cacheStaging[mid].score != score) {
+	  if (score < pt_rethinkCache_asyncVars.pt_cacheStaging[mid].score) bot = mid;
 	  else top = mid;
 	  mid = (bot + top) >> 1;
 	}
       } else mid = 0;
       if (mid < atCount) {
-	if (len < atCount) {//insert, grow list
-	  if (mid < len) memmove(&pt_cacheStaging[mid + 1], &pt_cacheStaging[mid], sizeof(cacheIndex) * (len - mid));
-	  len++;
+	if (pt_rethinkCache_asyncVars.pt_cacheStagingLen < atCount) {//insert, grow list
+	  if (mid < pt_rethinkCache_asyncVars.pt_cacheStagingLen)
+            memmove(&pt_rethinkCache_asyncVars.pt_cacheStaging[mid + 1], &pt_rethinkCache_asyncVars.pt_cacheStaging[mid], sizeof(cacheIndex) * (pt_rethinkCache_asyncVars.pt_cacheStagingLen - mid));
+          pt_rethinkCache_asyncVars.pt_cacheStagingLen++;
 	} else {//insert, drop lowest
-	  if (mid < len - 1) memmove(&pt_cacheStaging[mid + 1], &pt_cacheStaging[mid], sizeof(cacheIndex) * (len - mid - 1));
+	  if (mid < pt_rethinkCache_asyncVars.pt_cacheStagingLen - 1)
+            memmove(&pt_rethinkCache_asyncVars.pt_cacheStaging[mid + 1], &pt_rethinkCache_asyncVars.pt_cacheStaging[mid], sizeof(cacheIndex) * (pt_rethinkCache_asyncVars.pt_cacheStagingLen - mid - 1));
 	}
-	pt_cacheStaging[mid].score = score;
-	pt_cacheStaging[mid].ent = ate.allocationState == unallocated ? NULL_ENTRY : i;
+        pt_rethinkCache_asyncVars.pt_cacheStaging[mid].score = score;
+        pt_rethinkCache_asyncVars.pt_cacheStaging[mid].ent = ate.allocationState == unallocated ? NULL_ENTRY : pt_rethinkCache_asyncVars.entryScanIdx;
       }
-    }
-    for (j = 0;j < cacheCount;j++) {
-      ce = cache[j];
-      ci = pt_cacheStaging[j];
+    }, 3, "db: rethink cache: entry scan: %I64d\n");
+    if(DB_RETHINK_SHOULD_YIELD) return;
+    TIME(
+    for (;pt_rethinkCache_asyncVars.cacheScanIdx < cacheCount;pt_rethinkCache_asyncVars.cacheScanIdx++) {
+      if(!(pt_rethinkCache_asyncVars.cacheScanIdx & 0x3F) && DB_RETHINK_SHOULD_YIELD) return;
+      ce = cache[pt_rethinkCache_asyncVars.cacheScanIdx];
+      ci = pt_rethinkCache_asyncVars.pt_cacheStaging[pt_rethinkCache_asyncVars.cacheScanIdx];
       if(ci.ent == NULL_ENTRY) continue;
-      if (ce.entry != ci.ent && ce.entry != NULL_ENTRY && allocTab[ce.entry].cacheLocation == &cache[j]) {//cache slot occupied
+      if (ce.entry != ci.ent && ce.entry != NULL_ENTRY && allocTab[ce.entry].cacheLocation == &cache[pt_rethinkCache_asyncVars.cacheScanIdx]) {
+        //cache slot occupied
 	if (ce.syncstate & CACHE_SYNC_STATE_OUTBOUND_WRITE_PENDING) {//write before overwriting
 	  FILE* dst = pt_targetF && allocTab[ce.entry].lastWrittenFrame >= targetFrame ? pt_targetF : pt_activeF;
 	  fseek(dst, (long)(ce.entry * sizeof(loadedEntry)), SEEK_SET);
@@ -569,8 +585,8 @@ namespace WITE {
 	allocTab[ce.entry].cacheLocation = NULL;
       }
       if (allocTab[ci.ent].cacheLocation) {
-	if (allocTab[ci.ent].cacheLocation == &cache[j]) continue;//already cached here
-	memcpy(static_cast<void*>(&cache[j]), static_cast<void*>(allocTab[ci.ent].cacheLocation), sizeof(cacheEntry));
+	if (allocTab[ci.ent].cacheLocation == &cache[pt_rethinkCache_asyncVars.cacheScanIdx]) continue;//already cached here
+	memcpy(static_cast<void*>(&cache[pt_rethinkCache_asyncVars.cacheScanIdx]), static_cast<void*>(allocTab[ci.ent].cacheLocation), sizeof(cacheEntry));
       } else {//read
 	FILE* src = pt_targetF && allocTab[ci.ent].lastWrittenFrame >= targetFrame ? pt_targetF : pt_activeF;
         if(reinterpret_cast<size_t>(src) == ~0)
@@ -581,12 +597,15 @@ namespace WITE {
 	ce.entry = ci.ent;
 	ce.syncstate = 0;
 	ce.readsCachedLifetime = 0;
-	cache[j] = ce;//ce is on thread stack, which is cached, while cache is not cached
+	cache[pt_rethinkCache_asyncVars.cacheScanIdx] = ce;//ce is on thread stack, which is cached, while cache is not cached
       }
-      allocTab[ci.ent].cacheLocation = &cache[j];
-    }
+      allocTab[ci.ent].cacheLocation = &cache[pt_rethinkCache_asyncVars.cacheScanIdx];
+    }, 3, "db: rethink cache: cache scan: %I64d\n");
+    pt_rethinkCache_asyncVars.entryScanIdx = 0;
+    pt_rethinkCache_asyncVars.cacheScanIdx = 0;
   }
 
+#undef DB_RETHINK_SHOULD_YIELD
 #define PUSH_LE pt_push(le)
   //TODO skip flush/rethink if enough space
   void Database::pt_push(logEntry* le) {

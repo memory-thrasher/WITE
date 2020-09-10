@@ -23,12 +23,15 @@ static uint64_t frameIdx = 0;
 
 void cubeUpdate(WITE::Database::Entry e) {
   frameIdx++;
+  auto o = (*database->getObjectInstanceFor(e));
+  WITE::Transform trans(glm::dvec3(0, 0, 0), glm::dvec3(0, -glm::half_pi<double>(), frameIdx * glm::pi<double>() / 60.0 - glm::half_pi<double>()));
+  o->pushTrans(&trans);
   if(frameIdx % 1000 == 0) {
     LOG("living time: %llu\n", WITE::Time::frame());
   }
-  if(WITE::Time::launchTime() + 10000000000 <= WITE::Time::frame()) {
+  if(WITE::Time::launchTime() + 100000000000 <= WITE::Time::frame()) {
     //if(frameIdx > 1000) {
-    LOG("Delta nano: %llu\nFPS: %llu\nlife: %llu\n", WITE::Time::delta(), frameIdx/10, WITE::Time::frame() - WITE::Time::launchTime());
+    LOG("Delta nano: %llu\nFPS: %llu\nlife: %llu\nframes: %llu\n", WITE::Time::delta(), frameIdx/100, WITE::Time::frame() - WITE::Time::launchTime(), frameIdx);
     WITE::gracefulExit();
   }
 }
@@ -43,7 +46,7 @@ void cubeInit(WITE::Database::Entry e, WITE::Database::Entry* map) {
   auto o = (*database->getObjectInstanceFor(e)) = WITE::Object::make(e, offsetof(struct cube, trans), map);
   o->setName("Protea");
   WITE::Renderer::bind(o, shaders.flat, WITE::Mesh::make(monkeyMesh), 0);
-  WITE::Transform initialTrans(glm::rotate(glm::rotate(glm::dmat4(1), -glm::half_pi<double>(), glm::dvec3(0, 1, 0)), -glm::half_pi<double>(), glm::dvec3(1, 0, 0)));
+  WITE::Transform initialTrans(glm::dvec3(0, 0, 0), glm::dvec3(0, -glm::half_pi<double>(), -glm::half_pi<double>()));
   o->pushTrans(&initialTrans);
   o->getRenderer(0)->setOnceCallback(WITE::Renderer::packDataCB_F::make(&cubeInitRenderer));
 }

@@ -1,11 +1,5 @@
 #pragma once
 
-#include "stdafx.h"
-#include "Export.h"
-#include "BackedBuffer.h"
-#include "GPU.h"
-#include "Queue.h"
-
 class Shader : public WITE::Shader {
 public:
   typedef struct {

@@ -1,9 +1,5 @@
 #pragma once
 
-#include "stdafx.h"
-#include "BackedImage.h"
-#include "Camera.h"
-
 class Window : public WITE::Window {
 public:
   Window(size_t display = 0);
@@ -20,7 +16,9 @@ public:
   static bool areRendersDone();
   static void renderAll();
   static void presentAll();
+  static inline WITE::Window** iterateWindows(size_t &num);
 private:
+  static std::vector<WITE::Window*> windows;
   void recreateSwapchain();
   //static std::vector<Window*> windows;//already in super
   SDL_Window * sdlWindow;

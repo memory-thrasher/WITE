@@ -1,8 +1,4 @@
-#include "stdafx.h"
-#include "GPU.h"
-#include "Export.h"
-#include "Queue.h"
-#include "constants.h"
+#include "Internal.h"
 
 GPU::GPU(VkPhysicalDevice pdevice, size_t idx, size_t neededQueueCount, const unsigned int* neededQueues) :
   idx(idx), phys(pdevice), pipeCache(NULL) {

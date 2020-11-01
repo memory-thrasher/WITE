@@ -1,9 +1,4 @@
-#include "stdafx.h"
-#include "Queue.h"
-#include "GPU.h"
-#include "Export.h"
-#include "Debugger.h"
-#include "Thread.h"
+#include "Internal.h"
 
 const VkCommandBufferBeginInfo begin_info = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, NULL, 0, NULL };
 

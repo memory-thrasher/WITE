@@ -1,5 +1,4 @@
-#include "stdafx.h"
-#include "Transform.h"
+#include "Internal.h"
 
 namespace WITE {
 
@@ -27,7 +26,7 @@ namespace WITE {
     *out = BBox3D(mangle<Mangle_MinVec<glm::dvec3>>(corners, 8), mangle<Mangle_MaxVec<glm::dvec3>, glm::dvec3>(corners, 8));
     return out;
   }
-  
+
   constexpr glm::dmat4 Transform::project(const glm::dmat4& other) const {
     glm::dmat4 ret;
     for(size_t col = 0; col < 4;col++)
@@ -53,20 +52,20 @@ namespace WITE {
   constexpr glm::dmat4 Transform::getMat() const {
     return glm::dmat4(matrix);//copy
   }
-  
+
   glm::dmat4 Transform::getInvMat() const {//TODO constexpr
     return glm::inverse(matrix);
   }
-  
+
   constexpr glm::dvec3 Transform::getLocation() const {
     return glm::dvec3(matrix[3]);
   }
-  
+
   Transform& Transform::setLocation(glm::dvec3 nl) {
     matrix[3] = glm::dvec4(nl, 1);
     return *this;
   }
-  
+
   Transform& Transform::setMat(glm::dmat4* in) {
     matrix = *in;
     return *this;
@@ -77,7 +76,7 @@ namespace WITE {
     return *this;
   };
 
-  Transform& Transform::getInv() const {
+  Transform Transform::getInv() const {
     return Transform(getInvMat());
   };
 
@@ -111,7 +110,7 @@ namespace WITE {
   glm::dmat4 Transform::getEulerAngleMatrix(glm::dvec3 nl) {
     glm::dmat4 n = rotate(
       rotate(
-        rotate(glm::identity<glm::dmat4>(), nl.z, ident().up()),
+      rotate(glm::identity<glm::dmat4>(), nl.z, ident().up()),
       nl.x, ident().right()),
       nl.y, ident().forward());
     return n;

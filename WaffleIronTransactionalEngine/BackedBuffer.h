@@ -1,8 +1,5 @@
 #pragma once
 
-#include "stdafx.h"
-#include "GPU.h"
-
 class BackedImage;
 
 class BackedBuffer : public WITE::ShaderResource

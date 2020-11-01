@@ -1,10 +1,6 @@
-#include "stdafx.h"
-#include "Window.h"
-#include "Export.h"
-#include "GPU.h"
-#include "WMath.h"
+#include "Internal.h"
 
-std::vector<WITE::Window*> WITE::Window::windows;
+std::vector<WITE::Window*> Window::windows;
 
 Window::Window(size_t display) : WITE::Window() {
   displayIdx = display;
@@ -166,9 +162,13 @@ bool Window::isRenderDone() {
   return !graphicsQ->getComplexPlan()->isRunning();
 }
 
-std::vector<WITE::Window*>::iterator WITE::Window::iterateWindows(size_t &num) {
+WITE::Window** WITE::Window::iterateWindows(size_t &num) {
+  return ::Window::iterateWindows(num);
+}
+
+WITE::Window** Window::iterateWindows(size_t &num) {
   num = windows.size();
-  return windows.begin();
+  return windows.data();
 }
 
 static std::vector<uint32_t> scIdxPerGpu[MAX_GPUS];//ONLY use from master thread
@@ -202,7 +202,7 @@ void Window::renderAll() {
     if(!count) continue;
     gpu = vkSingleton.gpus[i];
     ep = gpu->graphicsQ->getComplexPlan();
-    TIME(ep->submit(), 2, "\tSubmit for gpu %d: %llu\n", i);
+    TIME(ep->submit(), 2, "\tSubmit for gpu %I64u: %llu\n", i);
   }
 }
 
@@ -218,7 +218,7 @@ void Window::presentAll() {
     gpu = vkSingleton.gpus[i];
     ep = gpu->graphicsQ->getComplexPlan();
     ep->popStateSemaphores(&sems);
-    VkPresentInfoKHR pi = { VK_STRUCTURE_TYPE_PRESENT_INFO_KHR, NULL, sems.size(), sems.data(), (uint32_t)count, swapchainsPerGpu[i].data(), scIdxPerGpu[i].data(), NULL };
+    VkPresentInfoKHR pi = { VK_STRUCTURE_TYPE_PRESENT_INFO_KHR, NULL, (uint32_t)sems.size(), sems.data(), (uint32_t)count, swapchainsPerGpu[i].data(), scIdxPerGpu[i].data(), NULL };
     VkResult res;
     TIME(res = vkQueuePresentKHR(gpu->presentQ->queue, &pi), 2, "\tPresent: %llu\n");
     switch(res) {
@@ -232,7 +232,7 @@ void Window::presentAll() {
       }
       break;
     default:
-      CRASH("Present failed with return code: %I64d\n", res);
+      CRASH("Present failed with return code: %d\n", res);
     }
   }
 }

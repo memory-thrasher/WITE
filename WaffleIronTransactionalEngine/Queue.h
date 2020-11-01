@@ -1,10 +1,5 @@
 #pragma once
 
-#include "stdafx.h"
-#include "Thread.h"
-
-class GPU;
-
 class Queue {
 public:
   static constexpr VkSemaphoreCreateInfo SEMAPHORE_CREATE_INFO = { VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO, 0, 0 };

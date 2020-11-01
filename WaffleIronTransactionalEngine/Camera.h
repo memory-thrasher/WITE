@@ -1,8 +1,5 @@
 #pragma once
 
-#include "Transform.h"
-#include "Queue.h"
-#include "BackedImage.h"
 
 class Camera : public WITE::Camera {
 public:

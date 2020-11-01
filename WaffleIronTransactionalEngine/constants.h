@@ -1,13 +1,5 @@
 #pragma once
 
-#if !(defined(_RELEASE) || defined(_DEBUG))
-#define _DEBUG
-#endif
-
-#ifndef DO_TIMING_ANALYSIS
-#define DO_TIMING_ANALYSIS 0
-#endif
-
 #define NS_PER_MS 1000000
 #define BASIC_LOCK_TIMEOUT 100000
 #define STATELOCK_TIMEOUT 10000
@@ -37,47 +29,3 @@
 #define DEBUG_MASK_VULKAN 1
 #define DEBUG_MASK_VULKAN_VERBOSE 2
 //more debug options, like timing, logging, per-frame db rebase or log dumping, allocation (vkAlloc)
-
-#define __offsetof_array(_type, _array, _idx) (offsetof(_type, _array) + sizeof(WITE::remove_array<decltype(_type::_array)>::type) * _idx)
-#define ERRLOGFILE WITE::getERRLOGFILE()
-#define LOG(message, ...) { ::fprintf(ERRLOGFILE, "%s:%d: ", __FILE__, __LINE__); ::fprintf(ERRLOGFILE, message, ##__VA_ARGS__); WITE::flush(ERRLOGFILE); }
-#ifdef _DEBUG
-#define CRASHRET(...) { LOG("**CRASH**\n"); auto db = database; if(db) db->gracefulStop(); abort(); exit(1); return __VA_ARGS__; }
-#else
-#define CRASHRET(...) { LOG("**CRASH**\n"); database->gracefulStop(); exit(1); return __VA_ARGS__; }
-#endif
-#define CRASHRETLOG(ret, ...) { LOG(__VA_ARGS__); CRASHRET(ret); }
-#define CRASH(message, ...) { LOG(message, ##__VA_ARGS__); CRASHRET(); } //all crashes should explain themselves
-#define CRASHIFFAIL(_cmd_, ...) {int64_t _res = (int64_t)_cmd_; if(_res) { LOG("Got result: %I64d\n", _res); CRASHRET(__VA_ARGS__) } }//for VkResult. VK_SUCCESS = 0
-#define CRASHIFWITHERRNO(_cmd_, ...) { if(_cmd_) { auto _en = errno; LOG("Got errno: %d\n", _en); CRASHRET(__VA_ARGS__) } }
-#define LOGMAT(mat, name) LOG("%s:\n%f %f %f %f\n%f %f %f %f\n%f %f %f %f\n%f %f %f %f\n", name,\
-                  mat [0][0], mat [1][0], mat [2][0], mat [3][0],\
-                  mat [0][1], mat [1][1], mat [2][1], mat [3][1],\
-                  mat [0][2], mat [1][2], mat [2][2], mat [3][2],\
-                  mat [0][3], mat [1][3], mat [2][3], mat [3][3])
-
-#define TIME(cmd, level, ...) if(DO_TIMING_ANALYSIS >= level) {uint64_t _time = WITE::Time::nowNs(); cmd; _time = WITE::Time::nowNs() - _time; LOG(__VA_ARGS__, _time);} else {cmd;}
-#define debugMode (WITE::getDebugMode())
-
-#ifdef _WIN32
-#define export_dec __declspec(dllexport)
-#define export_def __declspec(dllexport)
-#define wintypename typename
-#else
-//TODO
-#define wintypename
-#endif
-
-namespace WITE {
-  template<class T> struct remove_array { typedef T type; };
-  template<class T> struct remove_array<T[]> { typedef T type; };
-  template<class T, size_t N> struct remove_array<T[N]> { typedef T type; };
-  template<class T> struct remove_array_deep { typedef T type; };
-  template<class T> struct remove_array_deep<T[]> { typedef wintypename remove_array_deep<T>::type type; };
-  template<class T, size_t N> struct remove_array_deep<T[N]> { typedef wintypename remove_array_deep<T>::type type; };
-}
-
-template<class _T> inline _T* ensurePointer(_T* out) {
-  if (!out) out = static_cast<_T*>(malloc(sizeof(_T)));
-  return out;
-}

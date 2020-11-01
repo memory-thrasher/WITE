@@ -1,6 +1,4 @@
-#include "stdafx.h"
-#include "Mesh.h"
-#include "Window.h"
+#include "Internal.h"
 
 decltype(Mesh::vertexBuffers) Mesh::vertexBuffers(decltype(Mesh::vertexBuffers)::constructor_F::make(&Mesh::makeBuffersFor));
 AtomicLinkedList<Mesh> Mesh::allMeshes;
@@ -39,7 +37,9 @@ uint32_t Mesh::put(WITE::Vertex* out, uint64_t offset, uint64_t maxSize, GPU* gp
   WITE::BBox3D tempBox1, tempBox2;
   auto end = gpu->windows.end();
   for (auto window = gpu->windows.begin();window != end;window++) {
-    for (camCount = (*window)->getCameraCount(), camIdx = 0;camIdx < camCount;++camIdx) {
+    camCount = (*window)->getCameraCount();
+    if(!camCount) continue;
+    for (camIdx = 0;camIdx < camCount;++camIdx) {
       cam = (*window)->getCamera(camIdx);
       //TODO cull if camera does not render this layer
     startovermesh:
@@ -64,13 +64,14 @@ uint32_t Mesh::put(WITE::Vertex* out, uint64_t offset, uint64_t maxSize, GPU* gp
 }
 
 void Mesh::proceduralMeshLoop(void* semRaw) {
-  std::atomic<uint8_t>* semaphore = (std::atomic<uint8_t>*)semRaw;
+  std::atomic<int8_t>* semaphore = (std::atomic<int8_t>*)semRaw;
   AtomicLinkedList<Mesh>* next;
   Mesh* mesh;
   size_t i = 0, gpuIdx, len;
   uint32_t tempOffset;
+  int8_t semaphoreRead;
   void* map;
-  while (true) {//FIXME death condition?
+  while (true) {
     for (gpuIdx = 0;gpuIdx < vkSingleton.gpuCount;gpuIdx++) {
       auto vb = vertexBuffers.getPtr(gpuIdx, i);
       map = vb->verts.map();
@@ -90,9 +91,15 @@ void Mesh::proceduralMeshLoop(void* semRaw) {
       vb->verts.unmap();
     }
     semaphore->store(i+1, std::memory_order_release);
-    while (semaphore->load(std::memory_order_consume) != 0) WITE::sleep(1);
+    do {
+      WITE::sleep(1);
+      semaphoreRead = semaphore->load(std::memory_order_consume);
+      if(semaphoreRead < 0) goto exit;
+    } while (semaphoreRead != 0);
     if (++i >= VERTEX_BUFFERS) i = 0;
   }
+exit:
+  semaphore->store(-2, std::memory_order_release);
 }
 
 std::shared_ptr<WITE::Mesh> WITE::Mesh::make(WITE::MeshSource* source) {

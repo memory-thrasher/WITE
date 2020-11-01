@@ -1,5 +1,4 @@
-#include "stdafx.h"
-#include "RenderLayer.h"
+#include "Internal.h"
 
 
 RenderLayer::RenderLayer()

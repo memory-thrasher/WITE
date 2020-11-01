@@ -1,9 +1,5 @@
 #pragma once
 
-#include "BackedBuffer.h"
-#include "Shader.h"
-#include "AtomicLinkedList.h"
-
 class Object;
 class RenderLayer;
 class Mesh;

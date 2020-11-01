@@ -27,7 +27,7 @@ void cubeUpdate(WITE::Database::Entry e) {
   WITE::Transform trans(glm::dvec3(0, 0, 0), glm::dvec3(0, -glm::half_pi<double>(), frameIdx * glm::pi<double>() / 60.0 - glm::half_pi<double>()));
   o->pushTrans(&trans);
   if(frameIdx % 1000 == 0) {
-    LOG("living time: %llu\n", WITE::Time::frame());
+    LOG("living time: %llu\n", WITE::Time::frame() - WITE::Time::launchTime());
   }
   if(WITE::Time::launchTime() + 100000000000 <= WITE::Time::frame()) {
     //if(frameIdx > 1000) {
@@ -36,10 +36,11 @@ void cubeUpdate(WITE::Database::Entry e) {
   }
 }
 
-void cubeInitRenderer(WITE::Renderer* renderer, std::shared_ptr<class WITE::ShaderResource>* resources, WITE::GPU* gpu) {
+void cubeEveryRenderer(WITE::Renderer* renderer, std::shared_ptr<class WITE::ShaderResource>* resources, WITE::GPU* gpu) {
   *reinterpret_cast<glm::mat4*>(resources[1]->map()) = renderer->getObj()->getTrans().getInvMat();
   resources[1]->unmap();
   renderer->updateInstanceData(1, gpu);
+  //LOGMAT(renderer->getObj()->getTrans().getInvMat(), "inverse monkey");
 }
 
 void cubeInit(WITE::Database::Entry e, WITE::Database::Entry* map) {
@@ -48,7 +49,8 @@ void cubeInit(WITE::Database::Entry e, WITE::Database::Entry* map) {
   WITE::Renderer::bind(o, shaders.flat, WITE::Mesh::make(monkeyMesh), 0);
   WITE::Transform initialTrans(glm::dvec3(0, 0, 0), glm::dvec3(0, -glm::half_pi<double>(), -glm::half_pi<double>()));
   o->pushTrans(&initialTrans);
-  o->getRenderer(0)->setOnceCallback(WITE::Renderer::packDataCB_F::make(&cubeInitRenderer));
+  o->getRenderer(0)->setOnceCallback(WITE::Renderer::packDataCB_F::make(&cubeEveryRenderer));
+  o->getRenderer(0)->setPerFrameCallback(WITE::Renderer::packDataCB_F::make(&cubeEveryRenderer));
 }
 
 void cubeDestroy(WITE::Database::Entry e) {
@@ -67,12 +69,12 @@ int main(int argc, char** argv) {
   std::vector<WITE::Vertex> monkeyVerts;
   FILE* monkeyFile = fopen("models/test_monkey.obj", "rb");
   WITE::StaticMesh::ImportObj(monkeyFile, &monkeyVerts);
-  monkeyMesh = new WITE::StaticMesh(monkeyVerts.data(), monkeyVerts.size());
+  monkeyMesh = new WITE::StaticMesh(monkeyVerts.data(), (uint32_t)monkeyVerts.size());
   fclose(monkeyFile);
   //end test monkey
   WITE::WITE_INIT("WITE test cube", DEBUG_MASK_VULKAN);
   struct WITE::Shader::resourceLayoutEntry flatLayout[] = {
-    { SHADER_RESOURCE_UNIFORM, SHADER_STAGE_VERT, 1, reinterpret_cast<void*>(sizeof(glm::mat4) * 2) },//TODO this is assumed so should be implied, the provided resources should be in addition to trans
+    { SHADER_RESOURCE_UNIFORM, SHADER_STAGE_VERT, 1, reinterpret_cast<void*>(sizeof(glm::mat4)) },//TODO this is assumed so should be implied, the provided resources should be in addition to trans
     { SHADER_RESOURCE_UNIFORM, SHADER_STAGE_FRAG, 1, reinterpret_cast<void*>(sizeof(glm::mat4)) }
   };
   const char* flatFiles[2] = {"shaders/flat.vert.spv", "shaders/flat.frag.spv"};
@@ -87,10 +89,10 @@ int main(int argc, char** argv) {
   bounds.minx = bounds.miny = 0;
   auto cam = win1->addCamera(bounds);
   cam->setFov(glm::radians(45.0f) * bounds.height() / bounds.width());
-  cam->setMatrix(&glm::lookAtRH(glm::dvec3(5, 10, 3), glm::dvec3(0, 0, 0), glm::dvec3(0, 0, 1)));
+  cam->setMatrix(&glm::lookAtRH(glm::dvec3(20, 0, 12), glm::dvec3(0, 0, 0), glm::dvec3(0, 0, 1)));
   cam->setLayermaks(~0);
-  WITE::Database db(1024 * 1024 * 1024);
-  database = &db;
-  db.allocate<cube>(cube::type);
+  auto db = WITE::Database::makeDatabase(1024 * 1024 * 1024);
+  database = db.get();
+  db->allocate<cube>(cube::type);
   WITE::enterMainLoop();
 }

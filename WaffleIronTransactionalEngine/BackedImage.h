@@ -1,8 +1,5 @@
 #pragma once
 
-#include "stdafx.h"
-#include "BackedBuffer.h"
-
 /*
   TODO
   provide simplified usage on creation, determines VK_ACCESS_*_BIT usages

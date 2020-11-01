@@ -1,5 +1,4 @@
-#include "stdafx.h"
-#include "Object.h"
+#include "Internal.h"
 
 WITE::Transform Object::getTrans() {
   WITE::Transform ret;

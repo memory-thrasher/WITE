@@ -1,7 +1,4 @@
-#include "stdafx.h"
-#include "mainLoop.h"
-#include "Mesh.h"
-#include "Window.h"
+#include "Internal.h"
 
 #define WORK_NONE (std::numeric_limits<size_t>::max())
 
@@ -40,6 +37,7 @@ void enterWorker(void* unused) {
     do {
       start = sync->start.load(std::memory_order_seq_cst);
       if(masterState.load(std::memory_order_relaxed) == 2) return;
+      WITE::sleep(100);
     } while(start == WORK_NONE);
     end = sync->len + start;
     while(start < end) {
@@ -85,8 +83,8 @@ extern void initTime();
 void enterMainLoop() {
   masterState = 1;
   size_t i;
-  static std::atomic<uint8_t> meshSemaphore;
-  uint8_t tempu8;
+  static std::atomic<int8_t> meshSemaphore;
+  int8_t tempu8;
   initTime();
   meshSemaphore.store(0, std::memory_order_relaxed);
   WITE::Thread::spawnThread(WITE::Thread::threadEntry_t_F::make<void*>(&meshSemaphore, &Mesh::proceduralMeshLoop));
@@ -115,6 +113,8 @@ void enterMainLoop() {
       meshSemaphore.store(0, std::memory_order_release);
     }
   }
+  meshSemaphore.store(-1, std::memory_order_release);
+  while(meshSemaphore.load(std::memory_order_consume) != -2);
 }
 
 export_def void WITE::enterMainLoop() {

@@ -1,7 +1,5 @@
 #pragma once
 
-#include "Export.h"
-
 class Renderer;
 
 class RenderLayer {

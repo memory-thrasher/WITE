@@ -1,11 +1,7 @@
 #pragma once
 
-#include "WMath.h"
-
 namespace WITE {
   
-  class BBox3D;
-
   class Transform {
   public:
     static inline constexpr class Transform ident() noexcept {
@@ -33,7 +29,7 @@ namespace WITE {
     export_dec constexpr glm::dvec3 forward() const;
     export_dec constexpr glm::dvec3 right() const;
     export_dec constexpr glm::dvec3 up() const;
-    export_dec Transform& getInv() const;
+    export_dec inline Transform getInv() const;
     export_dec Transform& setLocation(glm::dvec3 nl);
     export_dec Transform& setEulerAngle(glm::dvec3 nl);
     export_dec Transform& setMat(glm::dmat4* in);

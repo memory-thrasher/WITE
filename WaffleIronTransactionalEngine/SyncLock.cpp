@@ -1,8 +1,4 @@
-#include "stdafx.h"
-#include "SyncLock.h"
-#include "Globals.h"
-#include "Export.h"
-#include "Thread.h"
+#include "Internal.h"
 
 #define HOLDER_NONE (std::numeric_limits<decltype(SyncLock::holder)>::max())
 

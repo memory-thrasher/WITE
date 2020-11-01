@@ -1,9 +1,5 @@
 #pragma once
 
-#include "Export.h"
-#include "Transform.h"
-#include "Renderer.h"
-
 class Object : public WITE::Object
 {
 public:

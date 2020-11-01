@@ -1,6 +1,4 @@
-#include "stdafx.h"
-#include "BackedBuffer.h"
-#include "Export.h"
+#include "Internal.h"
 
 constexpr static uint32_t PICK_MEMORY_FAILED = std::numeric_limits<uint32_t>::max();
 

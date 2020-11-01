@@ -1,9 +1,5 @@
 #pragma once
 
-#include "stdafx.h"
-#include "Globals.h"
-#include "Export.h"
-
 class Debugger {
 public:
   Debugger() = delete;

@@ -1,7 +1,4 @@
-#include "stdafx.h"
-#include "BackedImage.h"
-#include "Export.h"
-#include "Queue.h"
+#include "Internal.h"
 
 BackedImage::BackedImage(GPU* dev, VkExtent2D sizeParam, VkImageViewCreateInfo viewInfo,
 			 VkImageCreateInfo imgInfo) : viewInfo(viewInfo), format(viewInfo.format), dev(dev) {

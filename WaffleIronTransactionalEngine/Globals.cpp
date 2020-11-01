@@ -1,9 +1,4 @@
-#include "stdafx.h"
-#include "GPU.h"
-#include "Globals.h"
-#include "Thread.h"
-#include "Database.h"
-#include "Debugger.h"
+#include "Internal.h"
 
 #include <sys/stat.h>
 

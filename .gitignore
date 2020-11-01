@@ -10,3 +10,7 @@ Release
 *.dll
 *.exe
 *.spv
+TestCube/apidump*
+TestCube/models/
+TestCube/testcube.vktrace
+TestCube/vkvia.html

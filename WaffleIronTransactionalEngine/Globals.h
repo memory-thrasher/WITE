@@ -1,9 +1,5 @@
 #pragma once
 
-#include "stdafx.h"
-#include "exportTypes.h"
-#include "RenderLayer.h"
-
 #define VALIDATION_EXTENSION_COUNT (2)
 #define MAX_SDL_EXTENSIONS (20)
 #define MAX_EXTENSIONS (MAX_SDL_EXTENSIONS+VALIDATION_EXTENSION_COUNT)

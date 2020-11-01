@@ -1,12 +1,4 @@
-#include "stdafx.h"
-#include "Renderer.h"
-#include "RenderLayer.h"
-#include "Object.h"
-#include "Shader.h"
-#include "Mesh.h"
-#include "BackedImage.h"
-#include "constants.h"
-#include "Debugger.h"
+#include "Internal.h"
 
 Renderer::Renderer() : obj(), packPreRender(NULL), packInitial(NULL), mesh_owners_node(this) {}
 
@@ -95,8 +87,6 @@ void Renderer::render(VkCommandBuffer cmd, glm::dmat4 projection, GPU* gpu) {
   //LOG("\nAddress of resource: %p\naddress of resources: %p\naddress of buffer: %p\n", (void*)buffer->resources.get(), (void*)&buffer->resources, (void*)buffer);//(outdated)first call: 0000000006905E78, second call: 00000000FDFDFDFD (crashed on next line)
   glm::mat4* transOut = reinterpret_cast<glm::mat4*>(buffer->resources[0]->map());
   transOut[0] = mvp;
-  mvp[3] = glm::vec4();
-  transOut[1] = mvp;//direction only without offset, for normals
   buffer->resources[0]->unmap();
   //LOG("Resource updated successfully\n");
   updateInstanceData(0, gpu);

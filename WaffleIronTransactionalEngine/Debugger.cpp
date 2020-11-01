@@ -1,6 +1,4 @@
-#include "Debugger.h"
-#include "GPU.h"
-#include "Globals.h"
+#include "Internal.h"
 
 static constexpr float defColor[4] = {0, 0, 0, 0};
 

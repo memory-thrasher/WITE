@@ -1,7 +1,5 @@
 #pragma once
 
-#include "Object.h"
-
 class Mesh : public WITE::Mesh {
 public:
   Mesh(WITE::MeshSource* source);

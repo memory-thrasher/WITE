@@ -13,12 +13,14 @@
 #include <iostream>
 #include <ctime>
 #include <wchar.h>
-//#include <minwindef.h>
+#undef max //or else numeric_limits::max breaks (because msbuild sucks)
+#undef min
 #else
 #include <stdio.h>
 #endif
 
 #include <fstream>
+#include <limits>
 //#include <algorithm>
 
 #if defined(__linux__)

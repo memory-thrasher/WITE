@@ -1,7 +1,5 @@
 #pragma once
 
-#include "exportTypes.h"
-
 namespace WITE {
 
   class SyncLock {

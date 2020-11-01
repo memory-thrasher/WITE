@@ -1,8 +1,5 @@
 #pragma once
 
-#include "stdafx.h"
-#include "Globals.h"
-
 class Queue;
 
 const float qPriorities[8] = { 0.9f, 0.3f, 0.8f, 0.2f, 0.7f, 0.1f, 0.85f, 0.65f };

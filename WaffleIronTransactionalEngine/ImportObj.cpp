@@ -1,8 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "stdafx.h"
-#include "Export.h"
+#include "Internal.h"
 
 #if !(_POSIX_C_SOURCE >= 200809L)
 size_t getline(char** lineptr, size_t* len, FILE* in) {

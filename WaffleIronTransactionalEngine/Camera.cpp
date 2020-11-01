@@ -1,6 +1,4 @@
-#include "stdafx.h"
-#include "Camera.h"
-#include "Shader.h"
+#include "Internal.h"
 
 Camera::Camera(WITE::IntBox3D size, Queue* graphics, Queue* present) : WITE::Camera(), graphicsQ(graphics), presentQ(present), fov(M_PI * 0.5f) {
   resize(size);

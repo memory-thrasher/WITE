@@ -1,7 +1,5 @@
 #pragma once
 
-#include "stdafx.h"
-
 template<class T> class AtomicLinkedList {
 public:
   AtomicLinkedList(T* data);

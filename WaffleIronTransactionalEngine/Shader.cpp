@@ -1,7 +1,4 @@
-#include "stdafx.h"
-#include "Shader.h"
-#include "Renderer.h"
-#include "BackedImage.h"
+#include "Internal.h"
 
 const struct extensionMeaning {
   const char* suffix;

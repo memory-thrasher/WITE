@@ -1,7 +1,5 @@
 #pragma once
 
-#include "constants.h"
-
 namespace WITE {
   /*
     Manages a single data buffer, tracking a head and a tail, allowing data to be pushed to the tail and popped from the head without
@@ -17,13 +15,14 @@ namespace WITE {
   */
   template<class HeadType, typename SIZE_TYPE = size_t, SIZE_TYPE DATA_SIZE = 0, SIZE_TYPE ENTRY_SIZE = sizeof(HeadType),
     SIZE_TYPE sizeFieldOffset = std::numeric_limits<size_t>::max(), bool ALLOW_REALLOC = true>
-  class export_def RollingBuffer {
+  class RollingBuffer {
   private:
   typedef struct {
     SIZE_TYPE size;
     HeadType head;
   } HeadWithSizeType;
   public:
+  typedef std::atomic<SIZE_TYPE> SIZE_TYPE_ATOMIC;
   template<SIZE_TYPE cloneSize = DATA_SIZE, SIZE_TYPE cloneCount = 1 + cloneSize / ENTRY_SIZE> class RBIterator;
   constexpr static bool INLINEDATA = bool(DATA_SIZE);
   constexpr static bool VARIABLE_RECORD_SIZE = !bool(ENTRY_SIZE);
@@ -64,7 +63,7 @@ namespace WITE {
   void writeRaw(SIZE_TYPE out, uint8_t* in, SIZE_TYPE size);//careful; only checked for wrap
   inline void BOUND_INC_HEAD(SIZE_TYPE amnt);
   inline void BOUND_INC_TAIL(SIZE_TYPE amnt);
-  std::atomic<SIZE_TYPE> head, tail, handleOffset;//TODO non-atomic option
+  SIZE_TYPE_ATOMIC head, tail, handleOffset;//TODO non-atomic option
   SIZE_TYPE size = 0, entries = 0;
   uint8_t * buf;
   bool outer = false;//when head = tail; true means buffer is full, false means empty, otherwise this should be false
@@ -323,7 +322,7 @@ namespace WITE {
 	if (size - head > tail) {//move tail
 	  if (trailingEmpty) {//move tail to fill void
 	    movRemaining = tail;
-	    mov = min(movRemaining, trailingEmpty);
+	    mov = WITE::min(movRemaining, trailingEmpty);
 	    memcpy(oldEnd, oldStart, mov);
 	    movRemaining -= mov;
 	    if (movRemaining > 0) {

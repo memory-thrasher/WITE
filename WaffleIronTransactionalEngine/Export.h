@@ -1,38 +1,54 @@
 #pragma once
 
+#include <atomic>
+#include <stdint.h>
+#include <limits>
+#include <vector>
+#include <string>
+#include <map>
+#include <type_traits>
+#include <iterator>
+#include <memory>
+
+#include <glm/glm.hpp>
+#include <glm/ext/matrix_transform.hpp>
+
 #include "constants.h"
-#include "exportTypes.h"
-//#include "AtomicLinkedList.h"//TODO
-#include "Database.h"
 
-namespace WITE {
+#if !(defined(_RELEASE) || defined(_DEBUG))
+#define _DEBUG
+#endif
+#ifndef DO_TIMING_ANALYSIS
+#define DO_TIMING_ANALYSIS 0
+#endif
 
-  export_dec void WITE_INIT(const char* gameName, uint64_t debugFlags);
-  export_dec FILE* file_open(const char* path, const char* mode);
-  export_dec uint64_t timeNs();
-  export_dec void flush(FILE* file);
-  export_dec FILE* getERRLOGFILE();
-  export_dec void sleep(uint64_t us);
-  export_dec bool loadFile(const char* filename, size_t &len, const unsigned char** dataout);
-  export_dec bool endsWith(const char* str, const char* suffix);
-  export_dec bool startsWith(const char* str, const char* prefix);
-  export_dec uint64_t getFormat(size_t components, size_t componentSize, size_t componentType);
-  export_dec size_t getFileSize(const char* path);//0 for does not exist
-  export_dec bool strcmp_s(const std::string& a, const std::string& b);
-  export_dec void enterMainLoop();//this call does not return. Set up type registration (with callbacks) first.
-#define database (*WITE::get_database())
-  export_dec WITE::Database** get_database();
-  export_dec uint64_t getDebugMode();
-  export_dec void gracefulExit();//returns quickly, stops app gracefully after frame completion and db sync.
+#ifdef _WIN32
+#define export_dec __declspec(dllexport)
+#define export_def __declspec(dllexport)
+#define wintypename typename
+#else
+//TODO
+#define wintypename
+#endif
 
-  template <typename _T, typename _Alloc = std::allocator<_T>>
-  void export_def vectorPurge(std::vector<_T, _Alloc>* v, _T o) {//Not thread safe. sync externally
-    auto it = v->begin();
-    while (it != v->end())
-      if (o == *it)
-	it = v->erase(it);
-      else
-	it++;
-  }
-  
-}
+#define export_var export_def
+
+#include "Globals_export.h"
+#include "CallbackFactory_export.h"
+#include "Thread_export.h"
+#include "RollingBuffer_export.h"
+#include "SyncLock_export.h"
+#include "WMath_export.h"
+#include "Transform_export.h"
+#include "Database_export.h"
+#include "Object_export.h"
+#include "ShaderResource_export.h"
+#include "Shader_export.h"
+#include "MeshSource_export.h"
+#include "StaticMesh_export.h"
+#include "Mesh_export.h"
+#include "GPU_export.h"
+#include "Renderer_export.h"
+#include "Camera_export.h"
+#include "Window_export.h"
+#include "Time_export.h"

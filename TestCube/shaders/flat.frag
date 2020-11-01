@@ -6,9 +6,11 @@ layout (std140, binding = 1) uniform buf {
 } ubuf;
 layout (location = 0) out vec4 outColor;
 layout (location = 0) in vec3 normal;
+layout (location = 1) in vec3 worldPos;
+layout (location = 2) in vec3 localPos;
 void main() {
-   vec3 lightLocation = (ubuf.obj * vec4(2, 3, 5, 1)).xyz;
-   vec3 lightDelta = lightLocation / length(lightLocation);
+   vec3 lightLocation = (ubuf.obj  * vec4(1, 0, 0, 1)).xyz - localPos;
+   vec3 lightDelta = lightLocation / dot(lightLocation, lightLocation);
    float lightLevel = max(dot(lightDelta, normal), 0);
-   outColor = vec4(lightLevel, lightLevel, lightLevel, 1);
+   outColor = vec4(vec3(1, 1, 1) * lightLevel, 1);
 }

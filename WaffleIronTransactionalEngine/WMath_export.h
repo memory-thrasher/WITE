@@ -1,10 +1,5 @@
 #pragma once
 
-#include <glm/glm.hpp>
-#include <glm/ext/matrix_transform.hpp>
-
-#include "constants.h"
-
 namespace WITE {
   
   class export_def BBox3D {
@@ -38,9 +33,9 @@ namespace WITE {
   };
   IntBox3D(uint64_t minx = 0, uint64_t maxx = 0, uint64_t miny = 0, uint64_t maxy = 0, uint64_t minz = 0, uint64_t maxz = 0) :
   minx(minx), miny(miny), minz(minz), maxx(maxx), maxy(maxy), maxz(maxz) {};
-  inline int width() { return maxx - minx; };
-  inline int height() { return maxy - miny; };
-  inline int depth() { return maxz - minz; };
+  inline int width()  { return (int)(maxx - minx); };
+  inline int height() { return (int)(maxy - miny); };
+  inline int depth()  { return (int)(maxz - minz); };
   inline bool operator==(IntBox3D& o) { return memcmp((void*)comp, (void*)o.comp, 6 * sizeof(minx)) == 0; };
   inline bool sameSize(IntBox3D& o) { return o.maxx - o.minx == maxx - minx && o.maxy - o.miny == maxy - miny && o.maxz - o.minz == maxz - minz; };
   };

@@ -84,6 +84,9 @@
     <ClCompile Include="ImportObj.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="StaticMesh.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="AtomicLinkedList.h">
@@ -104,22 +107,13 @@
     <ClInclude Include="constants.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Database.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="Export.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="exportTypes.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Globals.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="GPU.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="mainLoop.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Mesh.h">
@@ -137,31 +131,79 @@
     <ClInclude Include="RenderLayer.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="RollingBuffer.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="Shader.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="stdafx.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="SyncLock.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="Thread.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="Transform.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="Window.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="WMath.h">
+    <ClInclude Include="Debugger.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Debugger.h">
+    <ClInclude Include="Internal.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Database_export.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="RollingBuffer_export.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Transform_export.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Thread_export.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="WMath_export.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="SyncLock_export.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Globals_export.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="CallbackFactory_export.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ShaderResource_export.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Shader_export.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="MeshSource_export.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="StaticMesh_export.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Mesh_export.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="GPU_export.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Renderer_export.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Camera_export.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Window_export.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Time_export.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Object_export.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Database.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

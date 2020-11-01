@@ -1,6 +1,4 @@
-#include "stdafx.h"
-#include "Thread.h"
-#include "Export.h"
+#include "Internal.h"
 
 namespace WITE {
 

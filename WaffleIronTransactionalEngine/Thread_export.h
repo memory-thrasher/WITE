@@ -1,11 +1,7 @@
 #pragma once
 
-#include "SyncLock.h"
-#include "exportTypes.h"
-
 namespace WITE {
 
-  class Thread;
   //for when each thread needs its own instance of something
   template<class T> class ThreadResource {
   public:
@@ -50,7 +46,7 @@ namespace WITE {
     Initer typeInit;
     Destroyer typeDestroy;
     std::vector<Tentry> data;
-    class SyncLock lock;
+    SyncLock lock;
   };
 
   class Thread {

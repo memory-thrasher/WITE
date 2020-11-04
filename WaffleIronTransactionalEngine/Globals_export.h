@@ -69,13 +69,22 @@ namespace WITE {
   export_dec void gracefulExit();//returns quickly, stops app gracefully after frame completion and db sync.
 
   template <typename _T, typename _Alloc = std::allocator<_T>>
-  void export_def vectorPurge(std::vector<_T, _Alloc>* v, _T o) {//Not thread safe. sync externally
+  void vectorPurge(std::vector<_T, _Alloc>* v, _T o) {//Not thread safe. sync externally
     auto it = v->begin();
     while(it != v->end())
       if(o == *it)
         it = v->erase(it);
       else
         it++;
+  }
+
+  template <typename _T, typename _Alloc = std::allocator<_T>>
+  bool vectorContains(std::vector<_T, _Alloc>* v, _T o) {//Not thread safe. sync externally
+    auto it = v->begin();
+    while(it != v->end())
+      if(o == *it)
+        return true;
+    return false;
   }
 
 }

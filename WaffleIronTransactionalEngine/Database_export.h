@@ -32,7 +32,7 @@ namespace WITE {
   protected:
     constexpr static size_t BLOCKSIZE = 4096;
     enum state_t : uint16_t { unallocated = 0, data, branch, trunk };//branches contain references to datas, trunks contain references to branches or other trunks
-    enum logEntryType_t : uint8_t { del = 0, update };
+    enum logEntryType_t : uint8_t { illegal = 0, del, update };//so fresh memset(0) space is easier to spot as invalid
     typedef struct {
       state_t state;
       type type;//global enum-esque maintained by consumer, used by getEntriesOfType. [0,127] reserved

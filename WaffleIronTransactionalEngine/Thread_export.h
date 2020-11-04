@@ -5,47 +5,60 @@ namespace WITE {
   //for when each thread needs its own instance of something
   template<class T> class ThreadResource {
   public:
-    typedef std::shared_ptr<T> Tentry;
+    typedef T* Tentry;
     typedefCB(Initer, Tentry)
-    //typedef WITE::CallbackFactory<__VA_ARGS__> Initer_F; typedef typename Initer_F::callback_t Initer ;
     typedefCB(Destroyer, void, Tentry);
     template<typename U = T, std::enable_if_t<std::is_default_constructible<U>::value, int> = 0>
-    ThreadResource() : ThreadResource(Initer_F::make(&std::make_shared)) {};
-    ThreadResource(Initer typeInit, Destroyer destroyer = NULL) : typeInit(typeInit), typeDestroy(destroyer) {};
+    ThreadResource() : ThreadResource(Initer_F::make(&makeDefault)) {};
+    ThreadResource(Initer typeInit, Destroyer destroyer = NULL) : typeInit(typeInit), typeDestroy(destroyer), maxCreated(0) {
+      memset(data, 0, sizeof(data));
+    };
     ~ThreadResource() {
-      Tentry* list;
-      size_t count, i;
-      if (typeDestroy) {
-	count = listAll(&list);
-	for (i = 0;i < count;i++)
-	  if (data[i])
-	    typeDestroy->call(data[i]);
-      }
+      ScopeLock contextHold(&lock);
+      size_t i;
+      for (i = 0;i < maxCreated;i++)
+	if (data[i]) {
+	  if(typeDestroy)
+            typeDestroy->call(data[i]);
+          delete data[i];
+        }
+    }
+    template<typename U = T, std::enable_if_t<std::is_default_constructible<U>::value, int> = 0>
+    static Tentry makeDefault() {
+      return new T();
     }
     static Tentry makeEmpty() {
-      return std::shared_ptr<T>(static_cast<T*>(malloc(sizeof(T))));
+      auto ret = static_cast<T*>(malloc(sizeof(T)));
+      memset(ret, 0, sizeof(T));
+      return ret;
     }
-    std::shared_ptr<T> get();
-    std::shared_ptr<T> get(uint32_t tid) {
-	  ScopeLock contextHold(&lock);
-	  while (data.size() <= tid)
-		data.emplace_back(std::nullptr_t());
-      if (!data[tid]) data[tid] = typeInit->call();
+    T* get() {
+      return get(Thread::getCurrentTid());
+    }
+    T* get(uint32_t tid) {
+      if(tid >= maxCreated || !data[tid]) {
+        ScopeLock contextHold(&lock);
+        if(tid >= maxCreated)
+          maxCreated = tid + 1;
+        if(typeInit && !data[tid])
+          data[tid] = typeInit->call();
+      }
       return data[tid];
     }
-    size_t listAll(Tentry** pntr) {
-	  ScopeLock contextHold(&lock);//yes, this is necessary
-      *pntr = data.data();
-      return data.size();
-    }
-    size_t size() {
-	  ScopeLock contextHold(&lock);
-      return data.size();
+    size_t listAll(Tentry* out, size_t maxOut) {
+      size_t i, count = 0;
+      for(i = 0;i < maxCreated && count < maxOut;i++) {
+        if(data[i]) {
+          out[count++] = data[i];
+        }
+      }
+      return count;
     }
   private:
     Initer typeInit;
     Destroyer typeDestroy;
-    std::vector<Tentry> data;
+    Tentry data[MAX_THREADS];
+    size_t maxCreated;
     SyncLock lock;
   };
 
@@ -66,10 +79,6 @@ namespace WITE {
     uint32_t tid;
     Thread(threadEntry_t entry, uint32_t id);
     Thread();//dumby for allocation
-  };
-
-  template<class T> inline std::shared_ptr<T> ThreadResource<T>::get() {
-    return get(Thread::getCurrentTid());
   };
 
 };

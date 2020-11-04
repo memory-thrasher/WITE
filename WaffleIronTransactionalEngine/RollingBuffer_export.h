@@ -46,6 +46,7 @@ namespace WITE {
   SIZE_TYPE used();
   SIZE_TYPE count();
   SIZE_TYPE freeSpace();
+  SIZE_TYPE currentHandle();//the handle that points to the head
   void readFromHandle(uint8_t* out, SIZE_TYPE in, SIZE_TYPE size);//careful; only checked for wrap
   void writeFromHandle(SIZE_TYPE out, uint8_t* in, SIZE_TYPE size);//careful; only checked for wrap
   //NOT thread safe; ensure no threads are doing anything while this is executing
@@ -156,6 +157,10 @@ namespace WITE {
     return size - used();
   }
 
+  RB_PROTO(SIZE_TYPE)::currentHandle() {
+    return -handleOffset.load(/*std::memory_order_consume*/);
+  }
+
   RB_PROTO(void)::readFromHandle(uint8_t* out, SIZE_TYPE in, SIZE_TYPE size) {
     readRaw(out, in + handleOffset.load(/*std::memory_order_consume*/) + head.load(/*std::memory_order_consume*/), size);
   }
@@ -216,6 +221,7 @@ namespace WITE {
   }
 
   RB_PROTO(template<bool AS> typename std::enable_if_t<AS, uint16_t>)::pushBlocking(HeadType* newData, SIZE_TYPE dataSize, size_t* handleOut) {
+    if(dataSize > size) return RB_BUFFER_OVERFLOW;
     while(dataSize + sizeof(HeadWithSizeType) > freeSpace());//TODO yield?
     if(handleOut) *handleOut = used() - handleOffset.load(/*std::memory_order_consume*/);
     writeRaw(tail, dataSize, sizeof(SIZE_TYPE));
@@ -241,6 +247,7 @@ namespace WITE {
     SIZE_TYPE dataSize;
     memcpy(&dataSize, (uint8_t*)newData + sizeFieldOffset, sizeof(SIZE_TYPE));
     dataSize += sizeof(HeadType);
+    if(dataSize > size) return RB_BUFFER_OVERFLOW;
     while(dataSize + sizeof(HeadType) > freeSpace());//TODO yield?
     if(handleOut) *handleOut = used() - handleOffset.load(/*std::memory_order_consume*/);
     writeRaw(tail, (uint8_t*)newData, dataSize);
@@ -263,7 +270,8 @@ namespace WITE {
       max--;
       maxsize -= subsize;
       data += subsize;
-      *starts = totalWrote += subsize;
+      totalWrote += subsize;
+      *starts = totalWrote;
       starts++;
     }
     if (max) ret = RB_READ_INCOMPLETE;
@@ -289,7 +297,8 @@ namespace WITE {
       max--;
       maxsize -= subsize;
       data += subsize;
-      *starts = totalWrote += subsize;
+      totalWrote += subsize;
+      *starts = totalWrote;
       starts++;
     }
     if (max) ret = RB_READ_INCOMPLETE;

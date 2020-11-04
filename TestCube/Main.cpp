@@ -29,9 +29,9 @@ void cubeUpdate(WITE::Database::Entry e) {
   if(frameIdx % 1000 == 0) {
     LOG("living time: %llu\n", WITE::Time::frame() - WITE::Time::launchTime());
   }
-  if(WITE::Time::launchTime() + 100000000000 <= WITE::Time::frame()) {
+  if(WITE::Time::launchTime() + 10000000000 <= WITE::Time::frame()) {
     //if(frameIdx > 1000) {
-    LOG("Delta nano: %llu\nFPS: %llu\nlife: %llu\nframes: %llu\n", WITE::Time::delta(), frameIdx/100, WITE::Time::frame() - WITE::Time::launchTime(), frameIdx);
+    LOG("Delta nano: %llu\nFPS: %llu\nlife: %llu\nframes: %llu\n", WITE::Time::delta(), frameIdx/10, WITE::Time::frame() - WITE::Time::launchTime(), frameIdx);
     WITE::gracefulExit();
   }
 }
@@ -95,4 +95,5 @@ int main(int argc, char** argv) {
   database = db.get();
   db->allocate<cube>(cube::type);
   WITE::enterMainLoop();
+  db->gracefulStop();
 }

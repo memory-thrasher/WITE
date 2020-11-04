@@ -1,5 +1,16 @@
 #include "Internal.h"
 
+Object::Object(WITE::Database::Entry start, size_t transformOffset, WITE::Database::Entry* map) :
+  start(start), activeTransform(start, transformOffset, map) {
+  auto db = database;
+  creationFrame = db ? db->getCurrentFrame() : 0;
+};
+
+bool Object::isInitialized() {
+  auto db = database;
+  return db && db->getCurrentFrame() > creationFrame;
+};
+
 WITE::Transform Object::getTrans() {
   WITE::Transform ret;
   activeTransform.get(&ret);

@@ -135,7 +135,7 @@ void Shader::makePipeForRP(VkRenderPass rp, size_t passIdx, GPU* gpu, VkPipeline
   pipeInfo.renderPass = VK_NULL_HANDLE;
 }
 
-void Shader::render(std::shared_ptr<Queue::ExecutionPlan> ep, WITE::renderLayerMask layers, glm::dmat4 projection, GPU* gpu, VkRenderPass rp) {
+void Shader::render(Queue::ExecutionPlan* ep, WITE::renderLayerMask layers, glm::dmat4 projection, GPU* gpu, VkRenderPass rp) {
   VkCommandBuffer cmd;
   struct shaderGpuResources* resources = this->resources.get(gpu);
   // auto rpRes = &*resources->rpRes;//map*
@@ -163,7 +163,7 @@ void Shader::render(std::shared_ptr<Queue::ExecutionPlan> ep, WITE::renderLayerM
   }
 }
 
-void Shader::renderAll(std::shared_ptr<Queue::ExecutionPlan> ep, WITE::renderLayerMask layers, glm::dmat4 projection, GPU* gpu, VkRenderPass rp) {
+void Shader::renderAll(Queue::ExecutionPlan* ep, WITE::renderLayerMask layers, glm::dmat4 projection, GPU* gpu, VkRenderPass rp) {
   auto end = allShaders.end();
   for(auto shader = allShaders.begin();shader != end;shader++)
     (*shader)->render(ep, layers, projection, gpu, rp);

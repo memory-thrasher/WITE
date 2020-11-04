@@ -41,12 +41,12 @@ bool Queue::supports(VkSurfaceKHR* surface) {
   return compatible;
 }
 
-std::shared_ptr<Queue::ExecutionPlan> Queue::getComplexPlan() {
+Queue::ExecutionPlan* Queue::getComplexPlan() {
   return complexPlans.get();
 }
 
-std::shared_ptr<Queue::ExecutionPlan> Queue::makeComplexPlan() {
-  return std::make_shared<ExecutionPlan, Queue*>(this);
+Queue::ExecutionPlan* Queue::makeComplexPlan() {
+  return new ExecutionPlan(this);
 }
 
 Queue::ExecutionPlan::ExecutionPlan(Queue* master) : queue(master) {

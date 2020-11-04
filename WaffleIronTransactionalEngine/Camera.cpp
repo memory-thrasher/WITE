@@ -32,7 +32,7 @@ void Camera::setMatrix(glm::dmat4* n) {
   updateMaths();
 }
 
-void Camera::render(std::shared_ptr<Queue::ExecutionPlan> ep) {
+void Camera::render(Queue::ExecutionPlan* ep) {
   VkCommandBuffer cmd = ep->beginParallel();//cmd 0
   VkViewport viewport = { 0, 0, (float)screenbox.width(), (float)screenbox.height(), 0.01f, 1.0f };//TODO clipping plane as setting
   VkRect2D scissors = {{(int32_t)screenbox.minx, (int32_t)screenbox.miny}, {(uint32_t)screenbox.width(), (uint32_t)screenbox.height()}};

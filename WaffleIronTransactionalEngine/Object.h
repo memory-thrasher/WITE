@@ -3,18 +3,19 @@
 class Object : public WITE::Object
 {
 public:
-  Object(WITE::Database::Entry start, size_t transformOffset, WITE::Database::Entry* map) :
-    start(start), activeTransform(start, transformOffset, map) {};
+  Object(WITE::Database::Entry start, size_t transformOffset, WITE::Database::Entry* map);
   ~Object();
   WITE::Transform getTrans();//frame batched internally by Transform
   void pushTrans(WITE::Transform*);//updates location record in db entry
   void setName(const char*);
   void setNameF(const char*, ...);
   const char* getName();
+  bool isInitialized();
   WITE::Renderer* getRenderer(WITE::renderLayerIdx);
 protected:
   void* objData;//??
 private:
+  std::atomic<uint64_t> creationFrame = std::numeric_limits<uint64_t>::max();
   char* name = 0;
   template<typename T = void> class Subresource {//TODO make this export?
   public:

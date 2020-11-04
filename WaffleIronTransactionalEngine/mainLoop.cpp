@@ -30,7 +30,7 @@ uint8_t getVertBuffer() {
 void enterWorker(void* unused) {
   WITE::Database::Entry target;
   size_t start, end;
-  std::shared_ptr<workerData_t> sync = workerData.get();
+  auto sync = workerData.get();
   WITE::Database::typeHandles* handles = NULL;
   WITE::Database::type lastType = 0, type;
   while(true) {
@@ -57,24 +57,34 @@ void enterWorker(void* unused) {
   }
 }
 
+static typename decltype(workerData)::Tentry threadlist[MAX_THREADS];
+
 inline size_t dispatchWork() {//returns number of work units remaining
   size_t i, len, l, remainingUnits;
-  typename decltype(workerData)::Tentry* threadlist;
   do {
-    len = workerData.listAll(&threadlist);
+    len = workerData.listAll(threadlist, MAX_THREADS);
   } while (!threadlist);
   for(i = 0;i < len;i++) {
-    if(threadlist[i] && threadlist[i]->start.load(std::memory_order_seq_cst) == WORK_NONE) {
+    if(threadlist[i]->start.load(std::memory_order_seq_cst) == WORK_NONE) {
       remainingUnits = entitiesWithUpdate.size() - workunitIdx;
       l = glm::min<size_t>(remainingUnits, glm::max<size_t>(4, remainingUnits / (workerThreadCount*2)));
       if(l) {
 	threadlist[i]->len = l;
 	threadlist[i]->start.store(workunitIdx, std::memory_order_seq_cst);
+        //LOG("Sent work for entity %d to thread %d on frame %I64d\n", workunitIdx, i, database->getCurrentFrame());
 	workunitIdx += l;
       }
     }
   }
   return entitiesWithUpdate.size() - workunitIdx;
+}
+
+inline void waitForAllWorkToFinish() {
+  while(dispatchWork());//dispatch all
+  size_t len, i;
+  len = workerData.listAll(threadlist, MAX_THREADS);
+  for(i = 0;i < len;i++)
+    while(threadlist[i]->start.load(std::memory_order_seq_cst) != WORK_NONE);
 }
 
 extern void updateTime();
@@ -105,7 +115,8 @@ void enterMainLoop() {
     TIME(database->getEntriesWithUpdate(&entitiesWithUpdate), 2, "entry setup: %llu\n");
     TIME(dispatchWork(), 2, "first dispatch: %llu\n");//TODO specify longer total jobs
     TIME(while(!Window::areRendersDone()) dispatchWork(), 1, "Wait for render: %llu\n");//TODO work units performed here give a metric for comparative load
-    TIME(while(dispatchWork());, 1, "Wait for workers: %llu\n");
+    TIME(Window::pollAllEvents(), 2, "Event polling: %llu\n");
+    TIME(waitForAllWorkToFinish(), 1, "Wait for workers: %llu\n");
     TIME(Window::presentAll(), 1, "Present: %llu\n");//this may wait for vblank, if the fifo queue is full (which means we're 2+ frames ahead, 1 unseen in the queue and one cpu just completed
     tempu8 = meshSemaphore.load(std::memory_order_acquire);
     if(tempu8) {

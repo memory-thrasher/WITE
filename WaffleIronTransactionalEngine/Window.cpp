@@ -1,6 +1,7 @@
 #include "Internal.h"
 
-std::vector<WITE::Window*> Window::windows;
+std::vector<::Window*> Window::windows;
+std::map<uint32_t, ::Window*> Window::windowsBySdlId;
 
 Window::Window(size_t display) : WITE::Window() {
   displayIdx = display;
@@ -14,6 +15,8 @@ Window::Window(size_t display) : WITE::Window() {
 			       SDL_WINDOWPOS_CENTERED_DISPLAY((int)display), SDL_WINDOWPOS_CENTERED_DISPLAY((int)display),
 			       800, 600, SDL_WINDOW_VULKAN);// | SDL_WINDOW_BORDERLESS
   if (!sdlWindow) CRASH("Filed to create window\n");
+  sdlWindowId = SDL_GetWindowID(sdlWindow);
+  windowsBySdlId[sdlWindowId] = this;
   if (!SDL_Vulkan_GetInstanceExtensions(sdlWindow, &extensionCount, NULL)) CRASH("Failed to count extensions required by sdl window\n");
   if (extensionCount > MAX_SDL_EXTENSIONS)
     CRASH("Fail: sdl requires more extensions than we have room for. MAX_SDL_EXTENSIONS %d > %d\n", MAX_SDL_EXTENSIONS, extensionCount);
@@ -99,14 +102,23 @@ Window::Window(size_t display) : WITE::Window() {
 }
 
 Window::~Window() {
-  //TODO remove from windows list
-  //delete sdlWindow;
-  //TODO
+  windowsBySdlId.erase(sdlWindowId);
+  delete[] swapchain.images;
+  vkDestroySwapchainKHR(presentQ->gpu->device, swapchain.chain, NULL);
+  WITE::vectorPurge(&graphicsQ->gpu->windows, reinterpret_cast<WITE::Window*>(this));
+  WITE::vectorPurge(&windows, this);
+  windowsBySdlId.erase(sdlWindowId);
+  SDL_DestroyWindow(sdlWindow);
+  vkDestroySemaphore(graphicsQ->gpu->device, swapchain.semaphore, NULL);
+  vkDestroySurfaceKHR(vkSingleton.instance, surface, NULL);
 }
 
 void Window::recreateSwapchain() {
   size_t i;
-  delete[] swapchain.images;
+  if(swapchain.images) {//because minimize
+    delete[] swapchain.images;
+    swapchain.images = NULL;
+  }
   //copied from constructor:
   CRASHIFFAIL(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(presentQ->gpu->phys, surface, &surfaceCaps));
   if(!(surfaceCaps.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_DST_BIT))
@@ -115,6 +127,7 @@ void Window::recreateSwapchain() {
     surfaceCaps.maxImageExtent.width);
   size.height = glm::clamp<uint32_t>(surfaceCaps.currentExtent.height, surfaceCaps.minImageExtent.height,
     surfaceCaps.maxImageExtent.height);
+  if(!renderEnabled()) return;
   swapchain.info.imageExtent = size;
   swapchain.info.oldSwapchain = swapchain.chain;
   CRASHIFFAIL(vkCreateSwapchainKHR(presentQ->gpu->device, &swapchain.info, vkAlloc, &swapchain.chain));
@@ -125,10 +138,14 @@ void Window::recreateSwapchain() {
   for(i = 0;i < swapchain.imageCount;i++)
     new(&swapchain.images[i])BackedImage(presentQ->gpu, size, surfaceFormat, images[i]);//TODO make semaphore?
   delete[] images;
-  //vkDestroySwapchainKHR(presentQ->gpu->device, swapchain.chain, NULL);//TODO
+}
+
+inline bool Window::renderEnabled() {
+  return size.height > 0 && size.width > 0;
 }
 
 uint32_t Window::render() {
+  if(!renderEnabled()) return -1;
   const VkClearColorValue SWAP_CLEAR = {{1, 0.27f, 0.7f}};
   VkImageMemoryBarrier discardAndReceive, transformToPresentable;
   size_t i, len = cameras.size();
@@ -168,7 +185,7 @@ WITE::Window** WITE::Window::iterateWindows(size_t &num) {
 
 WITE::Window** Window::iterateWindows(size_t &num) {
   num = windows.size();
-  return windows.data();
+  return reinterpret_cast<WITE::Window**>(windows.data());
 }
 
 static std::vector<uint32_t> scIdxPerGpu[MAX_GPUS];//ONLY use from master thread
@@ -182,19 +199,22 @@ bool Window::areRendersDone() {
 
 void Window::renderAll() {
   auto end = windows.end();
+  uint32_t imgIdx;
   size_t i, count;
   Window* w;
   GPU* gpu;
-  std::shared_ptr<Queue::ExecutionPlan> ep;
+  Queue::ExecutionPlan* ep;
   for(i = 0;i < vkSingleton.gpuCount;i++) {
     swapchainsPerGpu[i].clear();
     scIdxPerGpu[i].clear();
   }
   for(auto ww = windows.begin();ww != end;++ww) {
     w = (Window*)(*ww);
+    TIME(imgIdx = w->render(), 2, "\tRender window: %llu\n");
+    if(!~imgIdx) continue;
     i = w->presentQ->gpu->idx;
     swapchainsPerGpu[i].push_back(w->swapchain.chain);
-    TIME(scIdxPerGpu[i].push_back(w->render()), 2, "\tRender window: %llu\n");
+    scIdxPerGpu[i].push_back(imgIdx);
     //reder reduces its execution plan, so only one semaphore need be waited per gpu
   }
   for(i = 0;i < vkSingleton.gpuCount;i++) {
@@ -209,7 +229,7 @@ void Window::renderAll() {
 void Window::presentAll() {
   static std::vector<VkSemaphore> sems;
   size_t i, count;
-  std::shared_ptr<Queue::ExecutionPlan> ep;
+  Queue::ExecutionPlan* ep;
   GPU* gpu;
   decltype(windows)::iterator end;
   for(i = 0;i < vkSingleton.gpuCount;i++) {
@@ -228,7 +248,7 @@ void Window::presentAll() {
       LOG("Recreating swapchains becuase present returned: %I32d\n", res);
       end = windows.end();
       for(auto ww = windows.begin();ww != end;++ww) {
-        ((::Window*)*ww)->recreateSwapchain();
+        ((::Window*)*ww)->recreateSwapchain();//TODO: only the window that caused the present error, if possible
       }
       break;
     default:
@@ -276,3 +296,77 @@ void Window::setLocation(int32_t x, int32_t y) {
 void Window::setSize(uint32_t width, uint32_t height) {
   SDL_SetWindowSize(sdlWindow, width, height);
 }
+
+void Window::pollAllEvents() {
+  static std::vector<uint32_t> seenUnknownTypes;
+  static std::vector<uint8_t> seenUnknownWindowTypes;
+  //uint32_t windowId = SDL_GetWindowID(sdlWindow);//TODO if this actually matters
+  SDL_Event evnt;
+  ::Window* window = NULL;
+  while(SDL_PollEvent(&evnt)) {
+    switch(evnt.type) {
+    case SDL_WINDOWEVENT:
+      window = windowsBySdlId[evnt.window.windowID];
+      if(!window) continue;//?? checked in every sample (against the singleton window id), no idea
+      switch(evnt.window.event) {
+      default:
+#ifdef _DEBUG
+        if(!WITE::vectorContains(&seenUnknownWindowTypes, evnt.window.event)) {
+          seenUnknownWindowTypes.push_back(evnt.window.event);
+          LOG("Received unknown window event: 0x%I32X (each type shown only once; see <SDL2/SDL_video.h>)\n", evnt.window.event);
+        } else {
+          LOG("Vector already contains event 0x%I32X\n", evnt.window.event);
+        }
+#endif
+        break;
+      case SDL_WINDOWEVENT_RESTORED:
+        window->recreateSwapchain();
+        break;
+      case SDL_WINDOWEVENT_FOCUS_GAINED:
+      case SDL_WINDOWEVENT_FOCUS_LOST:
+      case SDL_WINDOWEVENT_SHOWN:
+      case SDL_WINDOWEVENT_ENTER:
+      case SDL_WINDOWEVENT_LEAVE:
+      case SDL_WINDOWEVENT_EXPOSED:
+      case SDL_WINDOWEVENT_SIZE_CHANGED://handled dynamically //window->recreateSwapchain();
+        //ignore these
+        //break;
+      case SDL_WINDOWEVENT_NONE://unused according to docs, placeholder for probationary events in this switch
+      //probationary events here:
+        //TODO?
+        LOG("A window event in probation has been triggered: %I32d\n", evnt.window.event);
+        break;
+      case SDL_WINDOWEVENT_MINIMIZED:
+        LOG("Minimized\n");//worth logging bc can cause sync issues
+        break;
+      }
+      break;
+    case SDL_QUIT: WITE::gracefulExit(); break;
+    case SDL_TEXTEDITING:
+      if(!evnt.edit.length) break;//empty text events happen when the window is created. Ignore them.
+      char buffer[SDL_TEXTEDITINGEVENT_TEXT_SIZE];
+      memcpy(buffer, evnt.edit.text + evnt.edit.start, evnt.edit.length);
+      buffer[evnt.edit.length] = 0;
+      //TODO something?
+      LOG("Text editing event (not yet implemented), (len: %d) text: %s\n", evnt.edit.length, buffer);
+      break;
+    case SDL_MOUSEMOTION:
+    case SDL_MOUSEBUTTONDOWN:
+    case SDL_MOUSEBUTTONUP:
+    case SDL_MOUSEWHEEL:
+    case SDL_KEYDOWN:
+    case SDL_KEYUP:
+      //TODO
+      break;
+    default:
+#ifdef _DEBUG
+      if(!WITE::vectorContains(&seenUnknownTypes, evnt.type)) {
+        seenUnknownTypes.push_back(evnt.type);
+        LOG("Received unknown event: 0x%I32X (each type shown only once; see <SDL2/SDL_events.h>)\n", evnt.type);
+      }
+#endif
+      break;
+    }
+  }
+}
+

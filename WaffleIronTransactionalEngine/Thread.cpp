@@ -40,8 +40,8 @@ namespace WITE {
   void Thread::initThisThread(threadEntry_t entry) {//static  entry defaults to null
     uint32_t tid = seed.fetch_add(1, std::memory_order_relaxed);
     auto storage = threads.get(tid);
-    new(storage.get())Thread(entry, tid);
-    putThreadRef(storage.get());
+    new(storage)Thread(entry, tid);
+    putThreadRef(storage);
     if (storage->entry) storage->entry->call();
   }
 

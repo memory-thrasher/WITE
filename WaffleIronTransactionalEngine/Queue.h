@@ -38,7 +38,7 @@ public:
   };
   Queue(GPU* gpu, uint32_t family, uint32_t idx);
   ~Queue();
-  std::shared_ptr<ExecutionPlan> getComplexPlan();//EP is a thread-specific resource
+  ExecutionPlan* getComplexPlan();//EP is a thread-specific resource
   VkCommandBuffer makeCmd();
   VkQueue getQueue() { return queue; };
   void destroyCmd(VkCommandBuffer);
@@ -55,7 +55,7 @@ private:
   VkCommandPool cmdPool;//FIXME this could be moved to ExecutionPlan for better multi-threading (no more locks)
   VkCommandBufferAllocateInfo bufInfo;
   WITE::ThreadResource<ExecutionPlan> complexPlans;
-  std::shared_ptr<ExecutionPlan> makeComplexPlan();
+  ExecutionPlan* makeComplexPlan();
   size_t cmdCount = 0;
   friend class ExecutionPlan;
 };

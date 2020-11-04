@@ -92,9 +92,6 @@ Database::Database(const char * filenamefmt, size_t cachesize, int64_t loadidx) 
 Database::Database(size_t cachesize) : Database(NULL, cachesize) {}
 
 Database::~Database() {
-  //LOG("DB destructor called\n");
-  gracefulStop();
-  //LOG("DB destructor finished\n");
 }
 
 void Database::gracefulStop() {
@@ -132,7 +129,7 @@ void Database::rebase(const char * name, int64_t startidx) {
 }
 
 void Database::push(enqueuedLogEntry* ele) {
-  threadResources.get()->transactionalBacklog.pushBlocking(ele);
+  CRASHIFFAIL(threadResources.get()->transactionalBacklog.pushBlocking(ele));
   dbStatus.store(DB_STATUS_LOG_IN_THREAD_QUEUE, std::memory_order_release);
 }
 
@@ -319,6 +316,9 @@ void Database::getRaw(Entry e, size_t offset, size_t size, uint8_t* out, uint64_
         if(start < end)
           tlogManager.readFromHandle(out + start - offset, tlogPoint + sizeof(logEntry), end - start);
       }
+      if(tlogPoint == log.nextForObject) {
+        CRASH("FATAL: infinite loop detected in tlog. DB index is corrupt.\n");
+      }
       tlogPoint = log.nextForObject;
     }
   }
@@ -446,7 +446,7 @@ WITE::Object** Database::getObjectInstanceFor(Entry e) {
 void Database::primeThreadEntry() {//TODO start over, use shild functions
   size_t i, count, j = 0;
   bool didSomething;
-  decltype(threadResources)::Tentry* trs;
+  decltype(threadResources)::Tentry trs[MAX_THREADS];
   if(masterThreadState.exchange(1) != 0) CRASH("Attempted to launch second master db thread.\n");
   pt_tid = WITE::Thread::getCurrentTid();
   pt_activeF = fopen(&active.front(), "r+b");
@@ -456,9 +456,9 @@ do_something:
     if(target[0] && !pt_targetF)
       pt_targetF = fopen(&target.front(), "rb");
     didSomething = false;
-    count = threadResources.listAll(&trs);
+    count = threadResources.listAll(trs, MAX_THREADS);
     for(i = 0;i < count;i++)
-      if(trs[i] && trs[i]->allocSize) {
+      if(trs[i]->allocSize) {
         trs[i]->allocRet = pt_allocate(trs[i]->allocSize, trs[i]->map);
         trs[i]->allocSize = 0;
         didSomething = true;
@@ -786,6 +786,11 @@ bool Database::pt_commitTlog() {
   if(tlogManager.peek(pt_buffer.raw, pt_starts, BUFFER_SIZE, MAX_BATCH_FLUSH, NULL) == RB_BUFFER_UNDERFLOW)
     return false;
   do {
+#ifdef _DEBUG
+    //quick sanity check, that the commit we just got from the log is the next one for the object it belongs to.
+    if(allocTab[pt_buffer.log.header.start].tlogHeadForObject != tlogManager.currentHandle())
+      CRASHRET("Found DB index corruption: tlogHead for object does not match commit at tlog head.\n", false);
+#endif
     if(le->frameIdx >= maxframe) break;
     ce = allocTab[le->start].cacheLocation;
     if(ce) {
@@ -807,10 +812,13 @@ bool Database::pt_commitTlog() {
     allocTab[le->start].lastWrittenFrame = le->frameIdx;
     allocTab[le->start].tlogHeadForObject = le->nextForObject;
     if(le->nextForObject == NULL_OFFSET) allocTab[le->start].tlogTailForObject = NULL_OFFSET;
+#ifdef _DEBUG
+    else if(allocTab[le->start].tlogTailForObject == NULL_OFFSET)
+      CRASHRET("Corruption", false);
+#endif
     le = reinterpret_cast<logEntry*>(pt_buffer.raw + pt_starts[i]);
-    i++;
     tlogManager.drop();
-  } while(pt_starts[i]);
+  } while(pt_starts[i++]);
   return i;
 }
 

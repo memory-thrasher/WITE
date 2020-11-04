@@ -19,7 +19,7 @@ public:
   inline bool appliesOnLayer(WITE::renderLayerIdx i) { return layerMask & (1ull << i); };
   inline void setLayermaks(WITE::renderLayerMask in) { layerMask = in; };
   GPU* getGPU() { return presentQ->gpu; };
-  void render(std::shared_ptr<Queue::ExecutionPlan> ep);
+  void render(Queue::ExecutionPlan* ep);
   void blitTo(VkCommandBuffer cmd, VkImage dst);
 private:
   void recreateResources();//not thread safe, call only from main thread

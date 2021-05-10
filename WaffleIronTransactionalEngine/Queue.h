@@ -1,16 +1,16 @@
 #pragma once
 
-class Queue {
+class Queue : public WITE::Queue {
 public:
   static constexpr VkSemaphoreCreateInfo SEMAPHORE_CREATE_INFO = { VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO, 0, 0 };
   static constexpr VkCommandBufferBeginInfo CMDBUFFER_BEGIN_INFO = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, VK_NULL_HANDLE, 0, VK_NULL_HANDLE};
-  class ExecutionPlan {//thread-specific resource: do *not* pass between threads. Locks queue once any begin is called, until isRunning has returned false
+  class ExecutionPlan : public WITE::Queue::ExecutionPlan {//thread-specific resource: do *not* pass between threads. Locks queue once any begin is called, until isRunning has returned false
   public:
     ExecutionPlan(Queue* master);
     ~ExecutionPlan();
-    VkCommandBuffer beginParallel();//returns an empty commandbuffer in the recording state with no pre-dependencies
-    VkCommandBuffer beginSerial();//returns an empty commandbuffer in the recording state predependent on only the most recently returned commandbuffer
-    VkCommandBuffer beginReduce();//returns an empty commandbuffer in the recording state predependent on all previously returned commandbuffers.
+    void beginParallel();//returns an empty commandbuffer in the recording state with no pre-dependencies
+    void beginSerial();//returns an empty commandbuffer in the recording state predependent on only the most recently returned commandbuffer
+    void beginReduce();//returns an empty commandbuffer in the recording state predependent on all previously returned commandbuffers.
     VkCommandBuffer getActive();
     void popStateSemaphores(std::vector<VkSemaphore>*);
     void submit();//submit the plan for execution

@@ -73,6 +73,7 @@ void Mesh::proceduralMeshLoop(void* semRaw) {
   int8_t semaphoreRead;
   void* map;
   while (true) {
+    //TODO capture all camera locations here, so iterating them is less of a sync issue
     for (gpuIdx = 0;gpuIdx < vkSingleton.gpuCount;gpuIdx++) {
       auto vb = vertexBuffers.getPtr(gpuIdx, i);
       map = vb->verts.map();

@@ -135,38 +135,25 @@ void Shader::makePipeForRP(VkRenderPass rp, size_t passIdx, GPU* gpu, VkPipeline
   pipeInfo.renderPass = VK_NULL_HANDLE;
 }
 
-void Shader::render(Queue::ExecutionPlan* ep, WITE::renderLayerMask layers, glm::dmat4 projection, GPU* gpu, VkRenderPass rp) {
+void Shader::render(WITE::Queue::ExecutionPlan* ep, glm::dmat4 projection, WITE::renderLayerMask layers = ~(WITE::renderLayerMask)0) {//TODO export this
+  //TODO input collection of objects or transforms?
+  VkRenderPass rp = NULL;//TODO <<< stash/create here. Need resource layout info from constructor.
   VkCommandBuffer cmd;
+  GPU* gpu = static_cast<::GPU*>(ep->getGpu());
   struct shaderGpuResources* resources = this->resources.get(gpu);
-  // auto rpRes = &*resources->rpRes;//map*
-  // auto rprIter = rpRes->find(rp);//iterator
-  // std::shared_ptr<struct rpResources> rpr;
-  // if(rprIter != resources->rpRes->end()) {
-  //   rpr = rprIter->second;
-  // } else {
-  //   rpr = std::make_shared<struct rpResources>();
-  //   makePipeForRP(rp, gpu, &rpr->pipeline);
-  //   rpRes->insert(std::pair<VkRenderPass, std::shared_ptr<struct rpResources>>(rp, rpr));
-  // }
   size_t rpIdx = 0;//TODO rp index, assume one pass for now
   while(resources->perRP.size() <= rpIdx) resources->perRP.emplace_back();
   auto rpr = &resources->perRP[rpIdx];
   if(!rpr->pipeline) makePipeForRP(rp, rpIdx, gpu, &rpr->pipeline);
-  cmd = ep->getActive();
+  cmd = ((::Queue::ExecutionPlan*)ep)->getActive();
   vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, rpr->pipeline);
   for(WITE::renderLayerIdx rl = 0;rl < MAX_RENDER_LAYERS;rl++) {
-    if(layers & (1ull << rl)) {
+    if(layers & (1ull << rl) && renderers[rl].size()) {
       auto end = renderers[rl].end();
       for(auto renderer = renderers[rl].begin();renderer != end;renderer++)
 	(*renderer)->render(cmd, projection, gpu);
     }
   }
-}
-
-void Shader::renderAll(Queue::ExecutionPlan* ep, WITE::renderLayerMask layers, glm::dmat4 projection, GPU* gpu, VkRenderPass rp) {
-  auto end = allShaders.end();
-  for(auto shader = allShaders.begin();shader != end;shader++)
-    (*shader)->render(ep, layers, projection, gpu, rp);
 }
 
 WITE::Shader* WITE::Shader::make(const char** filepath, size_t files, struct WITE::Shader::resourceLayoutEntry* srles, size_t resources) {

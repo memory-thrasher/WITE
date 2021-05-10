@@ -261,8 +261,8 @@ std::unique_ptr<WITE::Window> WITE::Window::make(size_t display) {
   return std::make_unique<::Window>(display);
 }
 
-Camera* Window::addCamera(WITE::IntBox3D box) {
-  Camera* ret = new Camera(box, graphicsQ, presentQ);
+Camera* Window::addCamera(WITE::IntBox3D box, WITE::Camera::Render_cb_t rcb) {
+  Camera* ret = new Camera(box, graphicsQ, rcb);
   cameras.emplace_back(ret);
   return ret;
 }

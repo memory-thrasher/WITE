@@ -43,13 +43,6 @@ namespace WITE {
 #define TIME(cmd, level, ...) if(DO_TIMING_ANALYSIS >= level) {uint64_t _time = WITE::Time::nowNs(); cmd; _time = WITE::Time::nowNs() - _time; LOG(__VA_ARGS__, _time);} else {cmd;}
 #define debugMode (WITE::getDebugMode())
 
-  template<class T> struct remove_array { typedef T type; };
-  template<class T> struct remove_array<T[]> { typedef T type; };
-  template<class T, size_t N> struct remove_array<T[N]> { typedef T type; };
-  template<class T> struct remove_array_deep { typedef T type; };
-  template<class T> struct remove_array_deep<T[]> { typedef wintypename remove_array_deep<T>::type type; };
-  template<class T, size_t N> struct remove_array_deep<T[N]> { typedef wintypename remove_array_deep<T>::type type; };
-
   export_dec void WITE_INIT(const char* gameName, uint64_t debugFlags);
   export_dec FILE* file_open(const char* path, const char* mode);
   export_dec uint64_t timeNs();

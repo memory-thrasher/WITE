@@ -11,7 +11,7 @@ namespace WITE {
     virtual void setSize(uint32_t width, uint32_t height) = 0;
     virtual void setBounds(IntBox3D) = 0;
     virtual void setLocation(int32_t x, int32_t y, uint32_t w, uint32_t h) = 0;
-    virtual Camera* addCamera(IntBox3D) = 0;
+    virtual Camera* addCamera(IntBox3D, WITE::Camera::Render_cb_t) = 0;
     virtual Camera* getCamera(size_t idx) = 0;
     static std::unique_ptr<Window> make(size_t display = 0);
     static Window** iterateWindows(size_t &num);

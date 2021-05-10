@@ -33,6 +33,7 @@
 
 #define export_var export_def
 
+#include "Utils_Template_export.h"
 #include "Globals_export.h"
 #include "CallbackFactory_export.h"
 #include "Thread_export.h"
@@ -49,6 +50,11 @@
 #include "Mesh_export.h"
 #include "GPU_export.h"
 #include "Renderer_export.h"
+#include "BackedBuffer_export.h"
+#include "BackedImage_export.h"
+#include "RenderPass_export.h"
+#include "Queue_export.h"
 #include "Camera_export.h"
 #include "Window_export.h"
 #include "Time_export.h"
+#include "DFOSLG_export.h"

@@ -74,7 +74,10 @@ GPU::GPU(VkPhysicalDevice pdevice, size_t idx, size_t neededQueueCount, const un
   }
 }
 
-
 GPU::~GPU() {
   //TODO dispose stuff
+}
+
+WITE::GPU* WITE::GPU::get(size_t idx) {
+  return vkSingleton.gpus[idx];
 }

@@ -25,6 +25,7 @@ class Config;
 #include "Debugger.h"
 #include "RenderLayer.h"
 #include "Globals.h"
+#include "RenderPass.h"
 #include "Queue.h"
 #include "GPU.h"
 #include "BackedBuffer.h"

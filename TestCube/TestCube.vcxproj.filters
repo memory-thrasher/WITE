@@ -26,6 +26,9 @@
     <ClInclude Include="cube_data.h">
       <Filter>Source Files</Filter>
     </ClInclude>
+    <ClInclude Include="Shaders.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="shaders\flat.frag">

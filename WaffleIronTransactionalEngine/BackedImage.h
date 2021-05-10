@@ -6,10 +6,11 @@
   allocate staging more dynamically
 */
 
-class BackedImage : public WITE::ShaderResource {
+class BackedImage : public WITE::BackedImage {
 public:
   BackedImage(GPU*, VkExtent2D, VkImageViewCreateInfo = {}, VkImageCreateInfo = {});
   BackedImage(GPU*, VkExtent2D, VkFormat, VkImage = VK_NULL_HANDLE, uint32_t mipmap = 1);
+  BackedImage(GPU*, size_t width, size_t height, uint32_t format, uint64_t imageUsages = USAGE_SAMPLED, uint32_t mipmap = 1);
   ~BackedImage();
   void makeSampler();
   void load(BackedBuffer* src, size_t offset = 0, size_t srcBufWidth = -1, size_t srcBufHeight = -1,
@@ -18,6 +19,8 @@ public:
   VkFormat getFormat() { return format; };
   VkImageView getImageView() { return view; };
   size_t getSize() { return backing->getSize(); };
+  size_t getWidth();
+  size_t getHeight();
   void unmap() { (staging ? staging : backing)->unmap(); };
   void* map() { return (staging ? staging : backing)->map(); };
   VkImage getImage() { return image; };

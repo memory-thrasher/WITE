@@ -27,7 +27,7 @@ BackedImage::BackedImage(GPU* dev, VkExtent2D sizeParam, VkImageViewCreateInfo v
     backing->bindToImage(image);
     this->viewInfo.image = image;
   } else {
-	  image = viewInfo.image;
+    image = viewInfo.image;
   }
   this->size = sizeParam;
   vkCreateImageView(dev->device, &this->viewInfo, vkAlloc, &view);
@@ -41,6 +41,33 @@ BackedImage::BackedImage(GPU* dev, VkExtent2D size, VkFormat format, VkImage ima
   //when image is provided, the caller is responsible for destroying it
   //general use case is swapchain images, in which case they are destroyed by vkDestroySwapchain
   cleanupImage = false;
+}
+
+BackedImage::BackedImage(GPU* dev, size_t width, size_t height, uint32_t Wformat, uint64_t imageUsages, uint32_t mipmap) : format(static_cast<VkFormat>(Wformat)), dev(dev), size({width, height}) {
+  bool isDepth = format == FORMAT_D16_UNORM;
+  uint64_t vkUsage = 0;
+  if(imageUsages & USAGE_ATTACH_AUTO)
+    vkUsage |= isDepth ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+  if(imageUsages & USAGE_TRANSFER)
+    vkUsage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+  if(imageUsages & USAGE_SAMPLED)
+    vkUsage |= VK_IMAGE_USAGE_SAMPLED_BIT;
+  vkGetPhysicalDeviceFormatProperties(dev->phys, format, &props);
+  bool staged = bool(imageUsages & USAGE_LOAD) && !(props.linearTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT);
+  if(staged)
+    vkUsage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+  //TODO cross-gpu transfer option, with queue sharing
+  imageInfo = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO, NULL, 0, VK_IMAGE_TYPE_2D, format, { width, height, 1 }, mipmap, 1, VK_SAMPLE_COUNT_1_BIT, staged ? VK_IMAGE_TILING_OPTIMAL : VK_IMAGE_TILING_LINEAR, vkUsage, VK_SHARING_MODE_EXCLUSIVE, 0, NULL, staged ? VK_IMAGE_LAYOUT_UNDEFINED : VK_IMAGE_LAYOUT_PREINITIALIZED };
+  CRASHIFFAIL(vkCreateImage(dev->device, &imageInfo, vkAlloc, &image));
+  if(staged) {
+    staging = new BackedBuffer(dev, memReqs.size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
+    backing = new BackedBuffer(dev, &memReqs, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT);
+  } else {
+    backing = new BackedBuffer(dev, &memReqs, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT);
+  }
+  backing->bindToImage(image);
+  viewInfo = {VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO, NULL, 0, image, VK_IMAGE_VIEW_TYPE_2D, format, {VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A}, {isDepth ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT, 0, mipmap, 0, 1}};
+  vkCreateImageView(dev->device, &this->viewInfo, vkAlloc, &view);
 }
 
 BackedImage::~BackedImage() {
@@ -82,20 +109,11 @@ void BackedImage::load(BackedBuffer* src, size_t o, size_t bw, size_t bh, size_t
   VkBufferImageCopy copyRegion = { o, (uint32_t)bw, (uint32_t)bh, { viewInfo.subresourceRange.aspectMask, 0, 0, 1 },
 				   { (int32_t)dx, (int32_t)dy, 0 }, { (uint32_t)dw, (uint32_t)dh, 0 } };
   VkCommandBuffer cmd = dev->transferQ->makeCmd();
-  VkImageMemoryBarrier imageMemoryBarrier = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER, NULL,
-					      0, VK_ACCESS_TRANSFER_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED,
-					      VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED,
-					      image, viewInfo.subresourceRange };
-  vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
-		       0, 0, NULL, 0, NULL, 1, &imageMemoryBarrier);
-  vkCmdCopyBufferToImage(cmd, staging->buffer, image,
-			 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
-  imageMemoryBarrier = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER, NULL,
-					      VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT, VK_IMAGE_LAYOUT_UNDEFINED,
-					      VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED,
-					      image, viewInfo.subresourceRange };
-  vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
-		       VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, NULL, 0, NULL, 1, &imageMemoryBarrier);
+  VkImageMemoryBarrier imageMemoryBarrier = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER, NULL, 0, VK_ACCESS_TRANSFER_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED, image, viewInfo.subresourceRange };
+  vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 0, NULL, 1, &imageMemoryBarrier);
+  vkCmdCopyBufferToImage(cmd, src->buffer, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
+  imageMemoryBarrier = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER, NULL, VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED, image, viewInfo.subresourceRange };
+  vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, NULL, 0, NULL, 1, &imageMemoryBarrier);
   dev->transferQ->submit(cmd);
   dev->transferQ->destroyCmd(cmd);
 }
@@ -107,4 +125,12 @@ void BackedImage::makeSampler() {
 		  0.0, VK_FALSE, 1, VK_FALSE, VK_COMPARE_OP_NEVER, 0, 0, VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE,
 		  VK_FALSE };
   CRASHIFFAIL(vkCreateSampler(dev->device, &samplerInfo, vkAlloc, &sampler));
+}
+
+size_t BackedImage::getWidth() {
+  return size.width;
+}
+
+size_t BackedImage::getHeight() {
+  return size.height;
 }

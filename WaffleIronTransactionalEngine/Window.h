@@ -10,7 +10,7 @@ public:
   void setLocation(int32_t x, int32_t y, uint32_t w, uint32_t h);
   void setLocation(int32_t x, int32_t y);
   WITE::IntBox3D getBounds();
-  Camera* addCamera(WITE::IntBox3D);//TODO full-window camera default
+  Camera* addCamera(WITE::IntBox3D, WITE::Camera::Render_cb_t);
   Camera* getCamera(size_t idx);
   size_t getCameraCount();
   static void pollAllEvents();

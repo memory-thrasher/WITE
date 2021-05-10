@@ -14,9 +14,8 @@ public:
   //Shader(const char* filepathWildcard, struct WITE::Shader::resourceLayoutEntry*, size_t resources);
   Shader(const char** filepath, size_t files, struct WITE::Shader::resourceLayoutEntry*, size_t resources);
   ~Shader();
-  void render(Queue::ExecutionPlan* ep, WITE::renderLayerMask layers, glm::dmat4 projection, GPU* gpu, VkRenderPass rp);
+  void render(WITE::Queue::ExecutionPlan* ep, glm::dmat4 projection, WITE::renderLayerMask layers = ~(WITE::renderLayerMask)0);
   void ensureResources(GPU*);
-  static void renderAll(Queue::ExecutionPlan* ep, WITE::renderLayerMask layers, glm::dmat4 projection, GPU* gpu, VkRenderPass rp);
 private:
   static constexpr VkVertexInputBindingDescription viBinding = { 0, sizeof(WITE::Vertex), VK_VERTEX_INPUT_RATE_VERTEX };
   static constexpr VkVertexInputAttributeDescription viAttributes[3] = {//TODO configurable at shader create
@@ -49,7 +48,7 @@ private:
   };
   void makePipeForRP(VkRenderPass rp, size_t passIdx, GPU* gpu, VkPipeline* out);
   size_t subshaderCount, resourcesPerInstance;
-  GPUResource<shaderGpuResources> resources;
+  WITE::GPUResource<shaderGpuResources> resources;
   struct subshader_t* subshaders;//TODO free
   struct WITE::Shader::resourceLayoutEntry* resourceLayout;//TODO free
   std::vector<class Renderer*> renderers[MAX_RENDER_LAYERS];

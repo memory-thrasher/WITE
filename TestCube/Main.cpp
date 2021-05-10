@@ -74,7 +74,7 @@ int main(int argc, char** argv) {
   //end test monkey
   WITE::WITE_INIT("WITE test cube", DEBUG_MASK_VULKAN);
   struct WITE::Shader::resourceLayoutEntry flatLayout[] = {
-    { SHADER_RESOURCE_UNIFORM, SHADER_STAGE_VERT, 1, reinterpret_cast<void*>(sizeof(glm::mat4)) },//TODO this is assumed so should be implied, the provided resources should be in addition to trans
+    { SHADER_RESOURCE_UNIFORM, SHADER_STAGE_VERT, 1, reinterpret_cast<void*>(sizeof(glm::mat4)) },
     { SHADER_RESOURCE_UNIFORM, SHADER_STAGE_FRAG, 1, reinterpret_cast<void*>(sizeof(glm::mat4)) }
   };
   const char* flatFiles[2] = {"shaders/flat.vert.spv", "shaders/flat.frag.spv"};

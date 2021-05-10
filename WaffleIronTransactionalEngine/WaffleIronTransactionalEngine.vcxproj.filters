@@ -87,6 +87,9 @@
     <ClCompile Include="StaticMesh.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="RenderPass.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="AtomicLinkedList.h">
@@ -204,6 +207,30 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Database.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="DFOSLG_export.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Utils_Template_export.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="DFOSLG_definitions_export.cpp">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Queue_export.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="RenderPass_export.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="RenderPass.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="BackedImage_export.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="BackedBuffer_export.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

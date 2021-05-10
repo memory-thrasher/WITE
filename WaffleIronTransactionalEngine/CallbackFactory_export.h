@@ -15,18 +15,18 @@ namespace WITE {
       RET(T::*x)(CArgs..., RArgs...);
       T * owner;
       std::tuple<CArgs...> cargs;
-      RET call(RArgs... rargs) {
+      RET call(RArgs... rargs) const {
         return (*owner.*(x))(std::get<CArgs>(cargs)..., rargs...);
       };
     public:
       Callback(T* t, RET(T::*x)(CArgs..., RArgs...), CArgs... pda);
       ~Callback() {};
     };
-    template<class... CArgs> class StaticCallback : public Callback_t<RET, RArgs...> {
+    template<class... CArgs> class StaticCallback : public Callback_t<RET, RArgs...> const {
     private:
       RET(*x)(CArgs..., RArgs...);
       std::tuple<CArgs...> cargs;
-      RET call(RArgs... rargs) {
+      RET call(RArgs... rargs) const {
         return (*x)(std::get<CArgs>(cargs)..., rargs...);
       };
     public:

@@ -4,8 +4,9 @@ namespace WITE {
 
   class export_def Camera {
   public:
+    typedefCB(Render_cb_t, void, Queue::ExecutionPlan*);
     Camera(const Camera&) = delete;
-    static Camera* make(Window*, IntBox3D);//window owns camera object
+    static Camera* make(Window*, IntBox3D, Render_cb_t);//window owns camera object
     virtual ~Camera() = default;
     virtual void resize(IntBox3D) = 0;
     virtual float getPixelTangent() = 0;

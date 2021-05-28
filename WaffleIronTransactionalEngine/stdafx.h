@@ -21,6 +21,7 @@
 
 #include <fstream>
 #include <limits>
+#include <array>
 //#include <algorithm>
 
 #if defined(__linux__)

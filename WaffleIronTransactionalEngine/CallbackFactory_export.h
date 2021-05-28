@@ -22,7 +22,7 @@ namespace WITE {
       Callback(T* t, RET(T::*x)(CArgs..., RArgs...), CArgs... pda);
       ~Callback() {};
     };
-    template<class... CArgs> class StaticCallback : public Callback_t<RET, RArgs...> const {
+    template<class... CArgs> class StaticCallback : public Callback_t<RET, RArgs...> {
     private:
       RET(*x)(CArgs..., RArgs...);
       std::tuple<CArgs...> cargs;

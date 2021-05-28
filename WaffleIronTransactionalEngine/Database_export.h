@@ -18,13 +18,11 @@ namespace WITE {
       initHandle_t init;
       handle_t destroy;
     } typeHandles;
-    typedef struct {
+    typedef struct precompiledBatch_entry_t {
+      constexpr precompiledBatch_entry_t(const size_t start, const size_t len) : start(start), len(len) {}
       size_t start, len;
     } precompiledBatch_entry;
-    typedef struct {
-      std::unique_ptr<precompiledBatch_entry[]> data;
-      size_t size;
-    } precompiledBatch_t;
+    template<size_t size> using precompiledBatch_t = std::array<precompiledBatch_entry, size>;
     constexpr static Entry NULL_ENTRY = std::numeric_limits<Entry>::max();
     constexpr static size_t NULL_OFFSET = std::numeric_limits<size_t>::max();
     constexpr static uint64_t NULL_FRAME = std::numeric_limits<uint64_t>::max();
@@ -82,7 +80,7 @@ namespace WITE {
       uint32_t readsCachedLifetime;
       loadedEntry e;
     } cacheEntry;
-    typedef struct {
+    typedef struct allocationTableEntry_t {
       constexpr static size_t OBJECT_NULL = ((size_t)0)-1;
       cacheEntry* cacheLocation;//can be null
       uint64_t lastWrittenFrame, nextWriteFrame;
@@ -93,7 +91,7 @@ namespace WITE {
       Entry typeListNext, typeListLast;//linked list of all objects of this type, rebuilt on reload
       Object* obj;//passed to all functions, only meaningful in root Entrys
     } allocationTableEntry;//size: 80 bytes
-    typedef struct {
+    typedef struct threadResource_t {
       typedef RollingBuffer<enqueuedLogEntry, uint16_t, 65535, 0, (uint16_t)offsetof(enqueuedLogEntry, size), false> transactionalBacklog_t;
       transactionalBacklog_t transactionalBacklog;
       uint64_t currentFileIdx = -1;//target if it exists, active otherwise
@@ -101,7 +99,7 @@ namespace WITE {
       volatile Entry allocRet = NULL_ENTRY;
       volatile size_t allocSize = 0;
       Entry * volatile map;
-    } threadResource_t;
+    } threadResource;
     typedef typeHandles perTypeStatic;
     typedef struct {
       Entry firstOfType, lastOfType;//linked list
@@ -121,7 +119,7 @@ namespace WITE {
     //puts
     virtual void put(Entry, const uint8_t * in, uint64_t start, uint16_t len) = 0;//out starts with the bit that is updated
     virtual void put(Entry, const uint8_t * in, uint64_t* starts, uint64_t* lens, size_t count) = 0;//in starts at beginning of entry data
-    virtual void put(Entry, const uint8_t * in, const precompiledBatch_t*) = 0;
+    template<size_t fields, precompiledBatch_t<fields> batch> void put(Entry, const uint8_t * in);
     template<class T> void put(Entry, const T * in);//everything, avoid this
     template<class T, class U> void put(Entry, const T * in, U T::*field);
     template<class T, class U, class... Zs> inline void put(Entry e, const T * in, U T::*u, Zs... z);//use precompiled batches instead
@@ -147,8 +145,8 @@ namespace WITE {
     Database() = default;
     Database(const Database&) = delete;//no. just no.
     constexpr static uint8_t zero[BLOCKSIZE] = { 0 };
-    template<size_t idx, class T, class U, class V, class... Zs> constexpr static void createPrecompiledBatch(precompiledBatch_t& out, U T::*u, V T::*v, Zs... z);
-    template<size_t idx, class T, class U> constexpr static void createPrecompiledBatch(precompiledBatch_t& out, U T::*u);
+    template<size_t idx, size_t count, class T, class U, class V, class... Zs> constexpr static void createPrecompiledBatch(precompiledBatch_t<count>& out, U T::*u, V T::*v, Zs... z);
+    template<size_t idx, size_t count, class T, class U> constexpr static void createPrecompiledBatch(precompiledBatch_t<count>& out, U T::*u);
     virtual Entry allocate(size_t size, type) = 0;
   };
 
@@ -156,23 +154,48 @@ namespace WITE {
     return allocate(sizeof(T), t);
   }
 
-  template<size_t idx, class T, class U, class V, class... Zs>
-  constexpr void Database::createPrecompiledBatch(precompiledBatch_t& out, U T::*u, V T::*v, Zs... z) {
+  template<size_t idx, size_t count, class T, class U, class V, class... Zs>
+  constexpr void Database::createPrecompiledBatch(precompiledBatch_t<count>& out, U T::*u, V T::*v, Zs... z) {
     createPrecompiledBatch<idx>(out, u);//to specialization
     createPrecompiledBatch<idx+1>(out, v, std::forward<Zs>(z)...);//recurse or specilization
   }
 
-  template<size_t idx, class T, class U>
-  constexpr void Database::createPrecompiledBatch(precompiledBatch_t& out, U T::*u) {
-    out.data[idx] = { (size_t)u, sizeof(U) };
+  template<size_t idx, size_t count, class T, class U>
+  constexpr void Database::createPrecompiledBatch(precompiledBatch_t<count>& out, U T::*u) {
+    out.data[idx] = precompiledBatch_entry((size_t)u, sizeof(U));
   }
 
   template<class T, class... Zs>
   constexpr auto Database::createPrecompiledBatch(Zs... z) {
-    size_t len = sizeof...(Zs);
-    precompiledBatch_t ret = { std::make_unique<precompiledBatch_entry[]>(len), len };
-    createPrecompiledBatch<len, 0, T, Zs...>(&ret, std::forward<Zs>(z)...);//populate
+    constexpr size_t len = sizeof...(Zs);
+    auto simpleArray = precompiledBatch_t<len>();
+    createPrecompiledBatch<len, 0, T, Zs...>(&simpleArray, std::forward<Zs>(z)...);//populate
+    size_t contiguousCount = 0;
+    for(size_t i = 0;i < len-1;i++) {
+      if(simpleArray[i+1].start == simpleArray[i].start + simpleArray[i].len)
+	contiguousCount++;
+    }
+    auto ret = precompiledBatch_t<len - contiguousCount>();
+    size_t j = 0;
+    for(size_t i = 0;i < len;j++) {
+      size_t start = simpleArray[i].start;
+      size_t len = simpleArray[i].len;
+      i++;
+      while(i < len && simpleArray[i].start == start + len) {
+	len += simpleArray[i].len;
+	i++;
+      }
+      ret[j] = precompiledBatch_entry(start, len);
+    }
     return ret;
+  }
+
+  template<size_t batchSize, Database::precompiledBatch_t<batchSize> batch> void Database::put(Entry t, const uint8_t * inRaw) {
+    uint64_t start, end, i;
+    uint64_t len;
+    for(i = 0;i < batchSize;i++) {
+      put(t, inRaw + batch[i].start, batch[i].start, (uint16_t)batch[i].len);
+    }
   }
 
   template<class T> void Database::put(Entry e, const T * in) {//everything, avoid this

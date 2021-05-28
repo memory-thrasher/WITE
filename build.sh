@@ -13,7 +13,7 @@ if [ -z "${VK_SDK_PATH}" ]; then
     VK_SDK_PATH="${VULKAN_SDK}"
 fi
 VK_INCLUDE="-I${VK_SDK_PATH}/Include -I${VK_SDK_PATH}/Third-Party/Include"
-find *.cpp -type f -print0 |
+find -name *.cpp -type f -print0 |
     while IFS= read -d '' SRCFILE; do
 	DSTFILE="${OUTDIR}/${SRCFILE%.*}.o"
 	DEPENDENCIES="${OUTDIR}/${SRCFILE%.*}.d"

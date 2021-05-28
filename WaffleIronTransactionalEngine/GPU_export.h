@@ -12,7 +12,7 @@ namespace WITE {
     GPU() = default;
   };
 
-  template<class T, class D = std::default_delete<T>> export_def class GPUResource {//mostly thread safe, dirty read possible, most gpu stuff is kept on main thread
+  template<class T, class D = std::default_delete<T>> class export_def GPUResource {//mostly thread safe, dirty read possible, most gpu stuff is kept on main thread
   private:
     GPUResource(const GPUResource&) = delete;
     void inline ensureExists(GPU* g) {

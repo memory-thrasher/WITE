@@ -2,7 +2,7 @@
 
 class Shader : public WITE::Shader {
 public:
-  typedef struct {
+  typedef struct instance_st {
     std::unique_ptr<std::shared_ptr<class WITE::ShaderResource>[]> resources = std::nullptr_t();
     VkDescriptorSet descSet;
     bool inited = false;

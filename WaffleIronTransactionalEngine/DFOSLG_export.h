@@ -1,5 +1,5 @@
 #pragma once
-
+/*
 namespace WITE::DFOSLG {
 
   constexpr uint64_t
@@ -15,7 +15,7 @@ namespace WITE::DFOSLG {
 
   template<class staticInit, class execution> class Flow {//this is basically erverything one camera does during rendering //TODO
   public:
-    void render(WITE::ExecutionPlan);
+    void render(WITE::Queue::ExecutionPlan);
   };
 
   template<size_t id> class resource {
@@ -42,7 +42,7 @@ namespace WITE::DFOSLG {
   template<class First, class... S> class SerialExecution : public Executable {
   private:
     First f;
-    SerialExecution<S> rest;
+    SerialExecution<S...> rest;
   public:
     template<class Flow> SerialExecution() : f<Flow>(), rest<Flow>() {};
     inline void operator()() const {
@@ -79,3 +79,4 @@ namespace WITE::DFOSLG {
 #include "DFOSLG_definitions_export.cpp"
 
 }
+*/

@@ -172,40 +172,19 @@ void Database::put(Entry target, const uint8_t * in, uint64_t start, uint16_t le
 
 void Database::put(Entry e, const uint8_t * inRaw, uint64_t* starts, uint64_t* lens, size_t count) {
   //in starts at beginning of entry data
-  constexpr static uint16_t MAX_GAP = sizeof(logEntry) + 64;
-  //save overhead space if flushing many closely clustered tiny pieces
-  //TUNEME: how much ram is worth one fewer log transactions to flush?
+  //save overhead space if flushing contiguous regions
   uint64_t start, end, i;
   uint64_t len;
   for(i = 0;i < count;i++) {
     start = starts[i];
     len = lens[i];
     end = start + len;
-    while(i < count - 1 && starts[i + 1] <= end + MAX_GAP &&
-      starts[i + 1] + lens[i + 1] <= start + Database::BLOCKDATASIZE) {//compress multi-write
+    while(i < count - 1 && starts[i + 1] == end && starts[i + 1] + lens[i + 1] <= start + Database::BLOCKDATASIZE) {//compress multi-write
       i++;
       end = starts[i] + lens[i];
       len = end - start;
     }
     put(e, inRaw + start, start, (uint16_t)len);
-  }
-}
-
-void Database::put(Entry t, const uint8_t * inRaw, const precompiledBatch_t* fields) {
-  constexpr static uint16_t MAX_GAP = sizeof(logEntry) + 64;
-  uint64_t start, end, i;
-  uint64_t len;
-  for(i = 0;i < fields->size;i++) {
-    start = fields->data[i].start;
-    len = fields->data[i].len;
-    end = start + len;
-    while(i < fields->size - 1 && fields->data[i + 1].start <= end + MAX_GAP &&
-      fields->data[i + 1].start + fields->data[i + 1].len <= start + Database::BLOCKDATASIZE) {//TODO move this to precompile
-      i++;
-      end = fields->data[i].start + fields->data[i].len;
-      len = end - start;
-    }
-    put(t, inRaw + start, start, (uint16_t)len);
   }
 }
 
@@ -696,7 +675,7 @@ Database::Entry Database::pt_allocate(size_t size, Entry* map) {//evergreen mode
   return j;
 }
 
-bool Database::pt_adoptTlog(threadResource_t::transactionalBacklog_t* src) {
+bool Database::pt_adoptTlog(threadResource::transactionalBacklog_t* src) {
   size_t discard, read = 0, targetChild, offset, size, trunkIdx, branchIdx, targetTrunk, targetBranch, targetLeaf;
   Entry trunk, branch, leaf;
   state_t baseState;

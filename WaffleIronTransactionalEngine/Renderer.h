@@ -27,7 +27,7 @@ private:
   Shader* shader;
   std::shared_ptr<Mesh> mesh;
   Object* obj;
-  std::unique_ptr<GPUResource<Shader::Instance>> buffers;
+  std::unique_ptr<WITE::GPUResource<Shader::Instance>> buffers;
   AtomicLinkedList<Renderer> mesh_owners_node;
   packDataCB packPreRender, packInitial;
 };

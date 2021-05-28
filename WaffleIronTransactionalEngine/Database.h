@@ -14,7 +14,6 @@ public:
   //puts
   void put(Entry, const uint8_t * in, uint64_t start, uint16_t len);//out starts with the bit that is updated
   void put(Entry, const uint8_t * in, uint64_t* starts, uint64_t* lens, size_t count);//in starts at beginning of entry data
-  void put(Entry, const uint8_t * in, const precompiledBatch_t*);
   //gets
   void get(Entry, uint8_t* out, uint64_t start, uint16_t len);//out starts with the bit that is fetched
   void get(Entry, uint8_t* out, uint64_t* starts, uint64_t* lens, size_t count);//out starts at beginning of entry data
@@ -58,7 +57,7 @@ private:
   WITE::RollingBuffer<logEntry, size_t, 0, 0, offsetof(logEntry, size), false> tlogManager;//TODO index of free?
   std::atomic_uint8_t masterThreadState = 0;
   std::atomic_uint8_t dbStatus;
-  WITE::ThreadResource<threadResource_t> threadResources;
+  WITE::ThreadResource<threadResource> threadResources;
   //prime thread only: (all transient)
   constexpr static size_t MAX_BATCH_FLUSH = 32;
   constexpr static size_t BUFFER_SIZE = 65536;
@@ -92,7 +91,7 @@ private:
   } pt_rethinkCache_asyncVars;
   void primeThreadEntry();
   Entry pt_allocate(size_t size, Entry* map);
-  bool pt_adoptTlog(threadResource_t::transactionalBacklog_t* src);
+  bool pt_adoptTlog(threadResource::transactionalBacklog_t* src);
   bool pt_commitTlog();
   bool pt_flushTlog(uint64_t minimumFreeSpace = 0);//commit from previous frames, until has specified free space (flush all if given 0)
   bool pt_mindSplitBase();

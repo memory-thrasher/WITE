@@ -18,11 +18,11 @@ private:
     ~VertexBuffer();
   } VertexBuffer;
   static std::unique_ptr<VertexBuffer[]> makeBuffersFor(GPU*);
-  static GPUResource<VertexBuffer[]> vertexBuffers;
+  static WITE::GPUResource<VertexBuffer[]> vertexBuffers;
   static WITE::SyncLock allmeshes_lock;
   static AtomicLinkedList<Mesh> allMeshes;
   WITE::MeshSource* source;
-  GPUResource<subbuf_t[]> subbuf;
+  WITE::GPUResource<subbuf_t[]> subbuf;
   std::unique_ptr<subbuf_t[]> makeSubbuf(GPU*);
   AtomicLinkedList<Mesh> allMeshes_node;
   AtomicLinkedList<Renderer> owners;

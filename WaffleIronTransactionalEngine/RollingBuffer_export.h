@@ -136,7 +136,7 @@ namespace WITE {
     outer = head.load() == computed;
   }
 
-  RB_PROTO(template<SIZE_TYPE cloneSize, SIZE_TYPE cloneCount> RB_FQN::RBIterator<cloneSize, cloneCount>)::iter() {
+  RB_PROTO(template<SIZE_TYPE cloneSize, SIZE_TYPE cloneCount> typename RB_FQN::template RBIterator<cloneSize, cloneCount>)::iter() {
     RBIterator<cloneSize, cloneCount> ret(this);
     return ret;
   }

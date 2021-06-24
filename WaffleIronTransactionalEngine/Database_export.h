@@ -191,8 +191,7 @@ namespace WITE {
   }
 
   template<size_t batchSize, Database::precompiledBatch_t<batchSize> batch> void Database::put(Entry t, const uint8_t * inRaw) {
-    uint64_t start, end, i;
-    uint64_t len;
+    uint64_t i;
     for(i = 0;i < batchSize;i++) {
       put(t, inRaw + batch[i].start, batch[i].start, (uint16_t)batch[i].len);
     }

@@ -6,8 +6,8 @@ namespace WITE {
   template<class T> struct remove_array<T[]> { typedef T type; };
   template<class T, size_t N> struct remove_array<T[N]> { typedef T type; };
   template<class T> struct remove_array_deep { typedef T type; };
-  template<class T> struct remove_array_deep<T[]> { typedef wintypename remove_array_deep<T>::type type; };
-  template<class T, size_t N> struct remove_array_deep<T[N]> { typedef wintypename remove_array_deep<T>::type type; };
+  template<class T> struct remove_array_deep<T[]> { typedef typename remove_array_deep<T>::type type; };
+  template<class T, size_t N> struct remove_array_deep<T[N]> { typedef typename remove_array_deep<T>::type type; };
 
   template<class T, class compare = std::less<T>> static constexpr bool compareArrays(T a[], T b[], size_t n, compare C = compare(), std::less<size_t> D = std::less<size_t>()) {
     if(n == 0) return true;

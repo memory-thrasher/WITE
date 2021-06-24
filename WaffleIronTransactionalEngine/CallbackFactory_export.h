@@ -48,12 +48,12 @@ namespace WITE {
 
   template<class RET, class... RArgs> template<class U, class... CArgs> Callback_t<RET, RArgs...>*
   CallbackFactory<RET, RArgs...>::make(U* owner, CArgs... cargs, RET(U::*func)(CArgs..., RArgs...)) {
-    return new wintypename CallbackFactory<RET, RArgs...>::Callback<U, CArgs...>(owner, func, std::forward<CArgs>(cargs)...);
+    return new typename CallbackFactory<RET, RArgs...>::Callback<U, CArgs...>(owner, func, std::forward<CArgs>(cargs)...);
   };
 
   template<class RET, class... RArgs> template<class... CArgs> Callback_t<RET, RArgs...>*
   CallbackFactory<RET, RArgs...>::make(CArgs... cargs, RET(*func)(CArgs..., RArgs...)) {
-    return new wintypename CallbackFactory<RET, RArgs...>::StaticCallback<CArgs...>(func, std::forward<CArgs>(cargs)...);
+    return new typename CallbackFactory<RET, RArgs...>::StaticCallback<CArgs...>(func, std::forward<CArgs>(cargs)...);
   };
 
   #define typedefCB(name, ...) typedef WITE::CallbackFactory<__VA_ARGS__> name## _F; typedef typename name## _F::callback_t name ;

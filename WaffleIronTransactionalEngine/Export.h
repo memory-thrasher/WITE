@@ -9,6 +9,7 @@
 #include <type_traits>
 #include <iterator>
 #include <memory>
+#include <cstring>
 
 #include <glm/glm.hpp>
 #include <glm/ext/matrix_transform.hpp>
@@ -25,10 +26,9 @@
 #ifdef _WIN32
 #define export_dec __declspec(dllexport)
 #define export_def __declspec(dllexport)
-#define wintypename typename
 #else
-//TODO
-#define wintypename
+#define export_dec __attribute__((visibility("default")))
+#define export_def __attribute__((visibility("default")))
 #endif
 
 #define export_var export_def

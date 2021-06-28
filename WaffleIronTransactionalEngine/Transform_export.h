@@ -38,6 +38,9 @@ namespace WITE {
   private:
     glm::dmat4 matrix;
   };
-
+  constexpr Transform::Transform(const glm::dmat4& mat) : matrix(mat) {}
+  constexpr Transform::Transform(const glm::dmat4* mat) : matrix(*mat) {}
+  constexpr Transform::Transform() : matrix(glm::identity<glm::dmat4>()) {}
+  constexpr Transform::Transform(const Transform& other) : Transform(other.matrix) {}
 };
 

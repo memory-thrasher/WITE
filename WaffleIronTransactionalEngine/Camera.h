@@ -1,6 +1,5 @@
 #pragma once
 
-
 class Camera : public WITE::Camera {
 public:
   Camera(WITE::IntBox3D size, Queue* graphics, Render_cb_t);
@@ -17,7 +16,7 @@ public:
   inline void setFov(double val) { fov = val; updateMaths(); };
   inline double getFov() { return fov; };
   inline bool appliesOnLayer(WITE::renderLayerIdx i) { return layerMask & (1ull << i); };
-  inline void setLayermaks(WITE::renderLayerMask in) { layerMask = in; };
+  inline void setLayermask(WITE::renderLayerMask in) { layerMask = in; };
   GPU* getGPU() { return graphicsQ->gpu; };
   void render(Queue::ExecutionPlan* ep);
   void blitTo(VkCommandBuffer cmd, VkImage dst);
@@ -33,6 +32,7 @@ private:
   WITE::Window* window;
   WITE::Transform renderTransform, worldTransform;
   void updateMaths();
+  RenderPass* passes;
   size_t passCount = 1;//TODO setter?
 };
 

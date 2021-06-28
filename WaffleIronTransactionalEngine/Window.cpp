@@ -222,7 +222,7 @@ void Window::renderAll() {
     if(!count) continue;
     gpu = vkSingleton.gpus[i];
     ep = gpu->graphicsQ->getComplexPlan();
-    TIME(ep->submit(), 2, "\tSubmit for gpu %I64u: %llu\n", i);
+    TIME(ep->submit(), 2, "\tSubmit for gpu %lu: %llu\n", i);
   }
 }
 

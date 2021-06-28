@@ -522,7 +522,7 @@ void Database::pt_rethinkCache() {//called when prime thread has time to burn, b
   uint64_t opExpiration = WITE::Time::nowNs() + 2000000;//FIXME tune-able
 #define DB_RETHINK_SHOULD_YIELD (WITE::Time::nowNs() >= opExpiration)
   if(pt_rethinkCache_asyncVars.entryScanIdx == 0) {
-    TIME(memset(pt_rethinkCache_asyncVars.pt_cacheStaging, 0, sizeof(cacheIndex) * pt_rethinkCache_asyncVars.pt_cacheStagingSize), 3, "db: rethink cache: memset cache staging: %I64d\n");
+    TIME(memset(pt_rethinkCache_asyncVars.pt_cacheStaging, 0, sizeof(cacheIndex) * pt_rethinkCache_asyncVars.pt_cacheStagingSize), 3, "db: rethink cache: memset cache staging: %ld\n");
     pt_rethinkCache_asyncVars.pt_cacheStagingLen = 0;
   }
   TIME(
@@ -560,7 +560,7 @@ void Database::pt_rethinkCache() {//called when prime thread has time to burn, b
         pt_rethinkCache_asyncVars.pt_cacheStaging[mid].score = score;
         pt_rethinkCache_asyncVars.pt_cacheStaging[mid].ent = ate.allocationState == unallocated ? NULL_ENTRY : pt_rethinkCache_asyncVars.entryScanIdx;
       }
-    }, 3, "db: rethink cache: entry scan: %I64d\n");
+    }, 3, "db: rethink cache: entry scan: %ld\n");
   if(DB_RETHINK_SHOULD_YIELD) return;
   TIME(
     for(;pt_rethinkCache_asyncVars.cacheScanIdx < cacheCount;pt_rethinkCache_asyncVars.cacheScanIdx++) {
@@ -593,7 +593,7 @@ void Database::pt_rethinkCache() {//called when prime thread has time to burn, b
         cache[pt_rethinkCache_asyncVars.cacheScanIdx] = ce;//ce is on thread stack, which is cached, while cache is not cached
       }
       allocTab[ci.ent].cacheLocation = &cache[pt_rethinkCache_asyncVars.cacheScanIdx];
-    }, 3, "db: rethink cache: cache scan: %I64d\n");
+    }, 3, "db: rethink cache: cache scan: %ld\n");
   pt_rethinkCache_asyncVars.entryScanIdx = 0;
   pt_rethinkCache_asyncVars.cacheScanIdx = 0;
 }

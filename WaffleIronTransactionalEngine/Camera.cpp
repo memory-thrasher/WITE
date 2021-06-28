@@ -1,5 +1,7 @@
 #include "Internal.h"
 
+namespace WITE_internal {
+
 Camera::Camera(WITE::IntBox3D size, Queue* graphics, Render_cb_t render_cb) : WITE::Camera(), graphicsQ(graphics), render_cb(render_cb), fov(M_PI * 0.5f) {
   resize(size);
 }
@@ -86,7 +88,7 @@ void Camera::recreateResources() {//TODO much of this should move to the rp
        { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO, VK_NULL_HANDLE, 0, VK_NULL_HANDLE, VK_IMAGE_VIEW_TYPE_2D, RenderPass::COLOR_FORMAT,
 	 { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A }, { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 }
        }, {
-	   VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO, VK_NULL_HANDLE, 0, VK_IMAGE_TYPE_2D, RenderPass::COLOR_FORMAT, { (uint32_t)size.width(), (uint32_t)size.height(), 1 }, 1, 1, VK_SAMPLE_COUNT_1_BIT, (colorProps.linearTilingFeatures & VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT) ? VK_IMAGE_TILING_LINEAR : (colorProps.optimalTilingFeatures & VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT) ? VK_IMAGE_TILING_OPTIMAL : VK_IMAGE_TILING_BEGIN_RANGE, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, VK_SHARING_MODE_EXCLUSIVE, 0, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED
+	   VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO, VK_NULL_HANDLE, 0, VK_IMAGE_TYPE_2D, RenderPass::COLOR_FORMAT, { (uint32_t)size.width(), (uint32_t)size.height(), 1 }, 1, 1, VK_SAMPLE_COUNT_1_BIT, (colorProps.optimalTilingFeatures & VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT) ? VK_IMAGE_TILING_OPTIMAL : VK_IMAGE_TILING_LINEAR, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, VK_SHARING_MODE_EXCLUSIVE, 0, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED
        });
     passes[i].color = std::unique_ptr<BackedImage>(img);
     img = new BackedImage
@@ -106,6 +108,8 @@ void Camera::recreateResources() {//TODO much of this should move to the rp
     passes[i].beginInfo = { VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO, VK_NULL_HANDLE, passes[i].rp, passes[i].fb,
 			    {{0, 0}, {(uint32_t)size.width(), (uint32_t)size.height()}}, 2, RenderPass::CLEAR};
   }
+}
+
 }
 
 WITE::Camera* WITE::Camera::make(WITE::Window* w, WITE::IntBox3D box, WITE::Camera::Render_cb_t rcb) {

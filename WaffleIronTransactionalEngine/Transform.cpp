@@ -2,14 +2,6 @@
 
 namespace WITE {
 
-  constexpr Transform::Transform(const glm::dmat4& mat) : matrix(mat) {}
-
-  constexpr Transform::Transform(const glm::dmat4* mat) : matrix(*mat) {}
-
-  constexpr Transform::Transform() : matrix(glm::identity<glm::dmat4>()) {}
-
-  constexpr Transform::Transform(const Transform& other) : Transform(other.matrix) {}
-
   Transform::Transform(const glm::dvec3 pos, const glm::dvec3 rot, const glm::dvec3 scale) : matrix(getEulerAngleMatrix(rot)) {
     for(size_t i = 0;i < 3;i++) {
       matrix[i] *= scale[i];

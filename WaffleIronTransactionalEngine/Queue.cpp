@@ -17,7 +17,7 @@ Queue::~Queue() {}
 VkCommandBuffer Queue::makeCmd() {
   VkCommandBuffer ret;
   WITE::ScopeLock hold(&lock);
-  //LOG("Creating %I64d-th vkCmd\n", cmdCount);
+  //LOG("Creating %ld-th vkCmd\n", cmdCount);
   CRASHIFFAIL(vkAllocateCommandBuffers(gpu->device, &bufInfo, &ret), NULL);
   Debugger::setObjectName(gpu, VK_OBJECT_TYPE_COMMAND_BUFFER, ret, "Command buffer %d for thread %d of queue of family %d of gpu %d", cmdCount, WITE::Thread::getCurrentTid(), family, gpu->idx);
   cmdCount++;

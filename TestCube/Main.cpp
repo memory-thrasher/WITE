@@ -90,7 +90,7 @@ int main(int argc, char** argv) {
   auto cam = win1->addCamera(bounds);
   cam->setFov(glm::radians(45.0f) * bounds.height() / bounds.width());
   cam->setMatrix(&glm::lookAtRH(glm::dvec3(20, 0, 12), glm::dvec3(0, 0, 0), glm::dvec3(0, 0, 1)));
-  cam->setLayermaks(~0);
+  cam->setLayermask(~0);
   auto db = WITE::Database::makeDatabase(1024 * 1024 * 1024);
   database = db.get();
   db->allocate<cube>(cube::type);

@@ -335,14 +335,14 @@ namespace WITE {
 	    std::memcpy(oldEnd, oldStart, mov);
 	    movRemaining -= mov;
 	    if (movRemaining > 0) {
-	      memmove(newStart, oldStart + mov, movRemaining);
+	      std::memmove(newStart, oldStart + mov, movRemaining);
 	      tail = movRemaining;
 	    } else
 	      tail = newSize + movRemaining;//movRemaining <= 0
 	    head = oldHead;
 	  } else {//case: newend <= oldend: trailingEmpty = 0, must relocate segment of head at end to beginning
 	    mov = static_cast<size_t>(oldEnd - newEnd);
-	    if (mov != startOffset) memmove(newStart + mov, oldStart, tail);
+	    if (mov != static_cast<size_t>(startOffset)) std::memmove(newStart + mov, oldStart, tail);
 	    std::memcpy(newStart, newEnd, mov);
 	    tail = mov + tail;
 	    head = oldHead;
@@ -354,14 +354,14 @@ namespace WITE {
 	    if (mov) std::memcpy(newStart - mov + leadingEmpty, oldEnd - mov, mov);
 	    movRemaining -= mov;
 	    if (movRemaining > 0) {
-	      memmove(newEnd - mov - 1, oldStart + head, movRemaining);
+	      std::memmove(newEnd - mov - 1, oldStart + head, movRemaining);
 	      head = oldHead + movRemaining;
 	    } else
 	      head = leadingEmpty - mov;
 	    tail = oldTail;
 	  } else {//relocate segment of tail to head
 	    mov = size - head;
-	    if(mov != -startOffset) memmove(newEnd - mov, oldStart + head, mov);
+	    if(mov != static_cast<size_t>(-startOffset)) std::memmove(newEnd - mov, oldStart + head, mov);
 	    std::memcpy(newEnd - startOffset, oldStart, -startOffset);
 	    tail = oldTail;
 	    head = size - mov;

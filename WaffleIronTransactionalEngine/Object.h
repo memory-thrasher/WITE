@@ -56,8 +56,8 @@ private:
   };
   WITE::Database::Entry start;
   class Subresource<glm::dmat4x4> activeTransform;
-  ::Renderer renderLayer[MAX_RENDER_LAYERS];//change only via Renderer::bind; transient
+  WITE_internal::Renderer renderLayer[MAX_RENDER_LAYERS];//change only via Renderer::bind; transient
   WITE::SyncLock lock;//for Renderer
-  friend class ::Renderer;
+  friend class WITE_internal::Renderer;
 };
 

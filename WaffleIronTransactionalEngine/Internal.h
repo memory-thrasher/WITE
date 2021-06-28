@@ -3,6 +3,8 @@
 #include "Export.h"
 #include "stdafx.h"
 
+namespace WITE_internal {
+
 class Window;
 class Camera;
 class Object;
@@ -39,3 +41,5 @@ class Config;
 #include "Camera.h"
 #include "Window.h"
 #include "Config.h"
+
+}

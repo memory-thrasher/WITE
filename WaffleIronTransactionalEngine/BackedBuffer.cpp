@@ -1,5 +1,7 @@
 #include "Internal.h"
 
+namespace WITE_internal {
+
 constexpr static uint32_t PICK_MEMORY_FAILED = std::numeric_limits<uint32_t>::max();
 
 uint32_t pickMemType(VkMemoryRequirements* memReqs, GPU* gpu, VkFlags heapFlags, VkFlags typeFlags) {
@@ -16,7 +18,7 @@ uint32_t pickMemType(VkMemoryRequirements* memReqs, GPU* gpu, VkFlags heapFlags,
 
 BackedBuffer::BackedBuffer(GPU* dev, VkMemoryRequirements* memReqs, VkFlags heapflags, VkFlags typeflags) : size(memReqs->size), dev(dev) {
   VkMemoryAllocateInfo minfo = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, NULL, memReqs->size,
-	   pickMemType(memReqs, dev, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT, 0) };
+	   pickMemType(memReqs, dev, heapflags, typeflags) };
   CRASHIFFAIL(vkAllocateMemory(dev->device, &minfo, vkAlloc, &mem));//TODO split this off?function/class?
   info = { buffer, 0, size };
 }
@@ -61,4 +63,6 @@ void BackedBuffer::unmap() {
 void BackedBuffer::load(WITE::rawDataSource src) {
   src->call(map(), size);
   unmap();
+}
+
 }

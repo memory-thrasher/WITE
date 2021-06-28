@@ -46,7 +46,7 @@ void enterWorker(void* unused) {
       if(!handles || type != lastType) {
         handles = WITE::Database::getHandlesOfType(type);
         if(!handles || !handles->update)
-          CRASH("Illegal entry type in typesWithUpdate, entry: %I64d of type %d, frame: %I64d\n", start, type, database->getCurrentFrame());
+          CRASH("Illegal entry type in typesWithUpdate, entry: %ld of type %d, frame: %ld\n", start, type, database->getCurrentFrame());
         //FIXME this is still happening sometimes, start: 0, type: 0, frame: 11, 273
         lastType = type;
       }
@@ -71,7 +71,7 @@ inline size_t dispatchWork() {//returns number of work units remaining
       if(l) {
 	threadlist[i]->len = l;
 	threadlist[i]->start.store(workunitIdx, std::memory_order_seq_cst);
-        //LOG("Sent work for entity %d to thread %d on frame %I64d\n", workunitIdx, i, database->getCurrentFrame());
+        //LOG("Sent work for entity %d to thread %d on frame %ld\n", workunitIdx, i, database->getCurrentFrame());
 	workunitIdx += l;
       }
     }

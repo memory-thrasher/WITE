@@ -1,5 +1,7 @@
 #include "Internal.h"
 
+namespace WITE_internal {
+
 BackedImage::BackedImage(GPU* dev, VkExtent2D sizeParam, VkImageViewCreateInfo viewInfo,
 			 VkImageCreateInfo imgInfo) : viewInfo(viewInfo), format(viewInfo.format), dev(dev) {
   vkGetPhysicalDeviceFormatProperties(dev->phys, format, &props);
@@ -43,9 +45,9 @@ BackedImage::BackedImage(GPU* dev, VkExtent2D size, VkFormat format, VkImage ima
   cleanupImage = false;
 }
 
-BackedImage::BackedImage(GPU* dev, size_t width, size_t height, uint32_t Wformat, uint64_t imageUsages, uint32_t mipmap) : format(static_cast<VkFormat>(Wformat)), dev(dev), size({width, height}) {
+BackedImage::BackedImage(GPU* dev, uint32_t width, uint32_t height, uint32_t Wformat, uint64_t imageUsages, uint32_t mipmap) : size({width, height}), format(static_cast<VkFormat>(Wformat)), dev(dev) {
   bool isDepth = format == FORMAT_D16_UNORM;
-  uint64_t vkUsage = 0;
+  uint32_t vkUsage = 0;
   if(imageUsages & USAGE_ATTACH_AUTO)
     vkUsage |= isDepth ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
   if(imageUsages & USAGE_TRANSFER)
@@ -133,4 +135,6 @@ size_t BackedImage::getWidth() {
 
 size_t BackedImage::getHeight() {
   return size.height;
+}
+
 }

@@ -10,7 +10,7 @@ class BackedImage : public WITE::BackedImage {
 public:
   BackedImage(GPU*, VkExtent2D, VkImageViewCreateInfo = {}, VkImageCreateInfo = {});
   BackedImage(GPU*, VkExtent2D, VkFormat, VkImage = VK_NULL_HANDLE, uint32_t mipmap = 1);
-  BackedImage(GPU*, size_t width, size_t height, uint32_t format, uint64_t imageUsages = USAGE_SAMPLED, uint32_t mipmap = 1);
+  BackedImage(GPU*, uint32_t width, uint32_t height, uint32_t format, uint64_t imageUsages = USAGE_SAMPLED, uint32_t mipmap = 1);
   ~BackedImage();
   void makeSampler();
   void load(BackedBuffer* src, size_t offset = 0, size_t srcBufWidth = -1, size_t srcBufHeight = -1,

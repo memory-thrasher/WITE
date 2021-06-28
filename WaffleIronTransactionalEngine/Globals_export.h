@@ -32,7 +32,7 @@ namespace WITE {
 #endif
 #define CRASHRETLOG(ret, ...) { LOG(__VA_ARGS__); CRASHRET(ret); }
 #define CRASH(message, ...) { LOG(message, ##__VA_ARGS__); CRASHRET(); } //all crashes should explain themselves
-#define CRASHIFFAIL(_cmd_, ...) {int64_t _res = (int64_t)_cmd_; if(_res) { LOG("Got result: %I64d\n", _res); CRASHRET(__VA_ARGS__) } }//for VkResult. VK_SUCCESS = 0
+#define CRASHIFFAIL(_cmd_, ...) {int64_t _res = (int64_t)_cmd_; if(_res) { LOG("Got result: %ld\n", _res); CRASHRET(__VA_ARGS__) } }//for VkResult. VK_SUCCESS = 0
 #define CRASHIFWITHERRNO(_cmd_, ...) { if(_cmd_) { auto _en = errno; LOG("Got errno: %d\n", _en); CRASHRET(__VA_ARGS__) } }
 #define LOGMAT(mat, name) LOG("%s:\n%f %f %f %f\n%f %f %f %f\n%f %f %f %f\n%f %f %f %f\n", name,\
                   mat [0][0], mat [1][0], mat [2][0], mat [3][0],\

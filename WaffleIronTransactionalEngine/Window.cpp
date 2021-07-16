@@ -147,7 +147,6 @@ inline bool Window::renderEnabled() {
 uint32_t Window::render() {
   if(!renderEnabled()) return -1;
   const VkClearColorValue SWAP_CLEAR = {{1, 0.27f, 0.7f}};
-  VkImageMemoryBarrier discardAndReceive, transformToPresentable;
   size_t i, len = cameras.size();
   auto ep = graphicsQ->getComplexPlan();
   uint32_t swapIdx;
@@ -162,16 +161,14 @@ uint32_t Window::render() {
     cameras[i]->render(ep);
   //cmd = ep->beginReduce();//cmd 1
   cmd = ep->getActive();
-  discardAndReceive = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER, NULL, 0, VK_ACCESS_TRANSFER_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED, swapchain.images[swapIdx].getImage(), { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 } };
-  vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 0, NULL, 1, &discardAndReceive);
+  swapchain.images[swapIdx].discard();
+  swapchain.images[swapIdx].setLayout(LAYOUT_TRANSFER_DST, cmd, graphicsQ);
 #ifdef _DEBUG
-  const VkImageSubresourceRange subres0 = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
-  vkCmdClearColorImage(cmd, swapchain.images[swapIdx].getImage(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &SWAP_CLEAR, 1, &subres0);
+  swapchain.images[swapIdx].clear(cmd, &SWAP_CLEAR);
 #endif
   for(i = 0;i < len;i++)
     cameras[i]->blitTo(cmd, swapchain.images[swapIdx].getImage());
-  transformToPresentable = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER, NULL, VK_ACCESS_TRANSFER_WRITE_BIT, 0, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, graphicsQ->family, presentQ->family, swapchain.images[swapIdx].getImage(), { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 } };
-  vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 0, NULL, 1, &transformToPresentable);
+  swapchain.images[swapIdx].setLayout(VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, cmd, presentQ);
   return swapIdx;
 }
 

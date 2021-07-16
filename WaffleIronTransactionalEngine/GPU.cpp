@@ -74,6 +74,19 @@ GPU::GPU(VkPhysicalDevice pdevice, size_t idx, size_t neededQueueCount, const un
   }
 }
 
+
+VkFormatProperties& GPU::getFormatProperties(VkFormat format) {
+  auto pair = formats.find(format);
+  if(pair == formats.end()) {//not found
+    VkFormatProperties ret;
+    vkGetPhysicalDeviceFormatProperties(phys, format, &ret);
+    formats.insert(ret);
+    return ret;
+  } else {
+    return pair->second;
+  }
+}
+
 GPU::~GPU() {
   //TODO dispose stuff
 }

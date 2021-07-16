@@ -88,9 +88,12 @@ int main(int argc, char** argv) {
   bounds.maxy -= bounds.miny;
   bounds.minx = bounds.miny = 0;
   auto cam = win1->addCamera(bounds);
+  auto rp = WITE::RenderPass::make();
+  rp->setLayermask(~0);//this should also be the default
+  auto cam = WITE::Camera::make(bounds);
+  cam->setSource(rp);
   cam->setFov(glm::radians(45.0f) * bounds.height() / bounds.width());
   cam->setMatrix(&glm::lookAtRH(glm::dvec3(20, 0, 12), glm::dvec3(0, 0, 0), glm::dvec3(0, 0, 1)));
-  cam->setLayermask(~0);
   auto db = WITE::Database::makeDatabase(1024 * 1024 * 1024);
   database = db.get();
   db->allocate<cube>(cube::type);

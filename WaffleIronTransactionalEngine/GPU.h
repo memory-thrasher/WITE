@@ -12,6 +12,7 @@ public:
   size_t idx;
   size_t getIdx() { return idx; };
   VkPhysicalDevice phys;
+  VkFormatProperties& getFormatProperties(VkFormat format);//not sorted, but the odds are there are <5 entries.
   unsigned int queueFamilyCount;
   VkQueueFamilyProperties queueFamProps[MAX_QUEUES];
   VkPhysicalDeviceProperties props;
@@ -26,5 +27,6 @@ public:
   };
   Queue* presentQ = NULL;//populated by the first window that finds one, tried by future windows before exploring other queue options
 private:
+  std::map<VkFormat, VkFormatProperties> formats;
 };
 

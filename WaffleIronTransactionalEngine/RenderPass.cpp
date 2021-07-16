@@ -1,62 +1,81 @@
-//
-//static constexpr VkFormat DEPTH_FORMAT = VK_FORMAT_D16_UNORM, COLOR_FORMAT = VK_FORMAT_B8G8R8A8_UNORM;
-//static constexpr VkAttachmentDescription attachments[2] =
-//{{0, COLOR_FORMAT, VK_SAMPLE_COUNT_1_BIT, VK_ATTACHMENT_LOAD_OP_CLEAR, VK_ATTACHMENT_STORE_OP_STORE,
-//VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_DONT_CARE, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL},
-//{0, DEPTH_FORMAT, VK_SAMPLE_COUNT_1_BIT, VK_ATTACHMENT_LOAD_OP_CLEAR, VK_ATTACHMENT_STORE_OP_STORE,
-//VK_ATTACHMENT_LOAD_OP_LOAD, VK_ATTACHMENT_STORE_OP_STORE, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL}};
-//static constexpr VkAttachmentReference colorReference = {0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL},
-//depthReference = {1, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL};
-//static constexpr VkSubpassDescription subpass = {0, VK_PIPELINE_BIND_POINT_GRAPHICS, 0, NULL, 1, &colorReference, NULL, &depthReference, 0, NULL};
-//static constexpr VkRenderPassCreateInfo rpInfo = {VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO, NULL, 0, 2, attachments, 1, &subpass, 0, NULL};
-//static constexpr VkClearValue CLEAR[2] = {{{{0.2f, 0.2f, 0.2f, 0.2f}}}, {{1.0, 0}}};
-//static constexpr VkClearAttachment CLEAR_ATTACHMENTS[2] = {
-//  {VK_IMAGE_ASPECT_COLOR_BIT, 0, {{{0.5f, 0.5f, 0.5f, 0.5f}}}},
-//{VK_IMAGE_ASPECT_DEPTH_BIT, 1, {{1.0, 0}}}
-//};
-//VkRenderPass rp;
-//VkFramebuffer fb;//output of render (null if none or non-image)//TODO make this an optional component of BackedImage
-//VkRenderPassBeginInfo beginInfo;
-
 #include "Internal.h"
 
-RenderPass::RenderPass(uint64_t initMode, uint64_t initLayout, uint64_t endLayout, Queue* queue) {
-  //TODO this should be a convenience constructor for the bigger one that supports multiple buffers and subpasses
-  attachmentCount = 2;
-  bufferCount = 1;
-  buffers = (buffer*)malloc(sizeof(buffer));
-  buffers->attachments = (attachment*)malloc(sizeof(attachment) * attachmentCount);
-  vkCreateRenderPass();//TODO
-  beginInfo = { VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO, VK_NULL_HANDLE, rp, VK_NULL_HANDLE,
-  {{0, 0}, {(uint32_t)size.width(), (uint32_t)size.height()}}, 2, RenderPass::CLEAR };
-}
+namespace WITE_internal {
 
-void RenderPass::setImages(size_t bufferCount, WITE::BackedImage* Wcolor, WITE::BackedImage* Wdepth, size_t subpass = 0, bool singleSharedDepth = true) {
-  BackedImage* color = (BackedImage*)Wcolor, *depth = (BackedImage*)Wdepth;
-  size_t width = color->getWidth(),
-    height = color->getHeight();
-#ifdef _DEBUG
-  for(size_t i = 0;i < bufferCount;i++) {
-    if(color[i].getWidth() != width) CRASH("illegal color image width (%d) on fb %d of subpass %d\n", color[i].getWidth(), i, subpass);
-    if(color[i].getHeight() != height) CRASH("illegal color image height (%d) on fb %d of subpass %d\n", color[i].getHeight(), i, subpass);
-    if(!singleSharedDepth && depth[i].getWidth() != width) CRASH("illegal depth image width (%d) on fb %d of subpass %d\n", depth[i].getWidth(), i, subpass);
-    if(!singleSharedDepth && depth[i].getHeight() != height) CRASH("illegal depth image height (%d) on fb %d of subpass %d\n", depth[i].getHeight(), i, subpass);
+  RenderPass::RenderPass(WITE::Queue* q, WITE::ImageSource **inputs, size_t inputCount, uint64_t outputImageUsage) :
+    inputCount(inputCount), outputImageUsage(outputImageUsage | USAGE_ATTACH_AUTO), queue(reinterpret_cast<Queue*>(q))
+  {//TODO double-buffer option
+    this.attachments = std::make_unique<VkAttachmentDescription[]>(2 + inputCount);
+    auto attachments = this.attachments.get();
+    attachments[0] = { 0, FORMAT_STD_COLOR, VK_SAMPLE_COUNT_1_BIT, VK_ATTACHMENT_LOAD_OP_CLEAR, VK_ATTACHMENT_STORE_OP_STORE, VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+		       VK_ATTACHMENT_STORE_OP_DONT_CARE, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL };
+    attachments[1] = { 0, DEPTH_FORMAT, VK_SAMPLE_COUNT_1_BIT, VK_ATTACHMENT_LOAD_OP_CLEAR, VK_ATTACHMENT_STORE_OP_STORE, VK_ATTACHMENT_LOAD_OP_LOAD,
+		       VK_ATTACHMENT_STORE_OP_STORE, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL };
+    if(inputCount) {
+      this.inputs = malloc(sizeof(*inputs) * inputCount);
+      memcpy(this.inputs, inputs, inputCount * sizeof(*inputs));
+      inputReferences = new std::make_unique<VkAttachmentReference[]>(inputCount);
+      auto inputRefs = inputReferences.get();
+      for(size_t i = 0;i < inputCount;i++) {
+	inputRefs[i] = { i + 2, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };//i+2 bc 0 and 1 are color and depth
+	attachments[i+2] = { 0, inputs[i].getFormat(), VK_SAMPLE_COUNT_1_BIT, VK_ATTACHMENT_LOAD_OP_LOAD, VK_ATTACHMENT_STORE_OP_NONE_QCOM, VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+			     VK_ATTACHMENT_STORE_OP_DONT_CARE, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+      }
+    } else {
+      this.inputs = NULL;
+      inputReferences = NULL;
+    }
+    subpass = { 0, VK_PIPELINE_BIND_POINT_GRAPHICS, inputCount, NULL, 1, &colorReference, NULL, &depthReference, 0, NULL };
+    rpInfo = { VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO, NULL, 0, 2 + inputCount, attachments, 1, &subpass, 0, NULL };//TODO subpass dependencies?
+    CRASHIFFAIL(vkCreateRenderPass(gpu->device, &rpInfo, NULL, &rp));
+    beginInfo = { VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO, NULL, rp, NULL, {{0, 0}, {0, 0}}, 2, CLEAR };
+    attachmentViews = new VkImageView[inputCount + 2];
+    fbInfo = { VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO, NULL, 0, NULL, inputCount + 2, attachmentViews, 0, 0, 1 };
   }
-  if(singleSharedDepth) {
-    if(depth->getWidth() != width) CRASH("illegal depth image width (%d) on fb of subpass %d\n", depth->getWidth(), subpass);
-    if(depth->getHeight() != height) CRASH("illegal depth image height (%d) on fb of subpass %d\n", depth->getHeight(), subpass);
-  }
-#endif // DEBUG
-  VkImageView* views = (VkImageView*)malloc(sizeof(VkImageView) * attachmentCount);
-  if(singleSharedDepth)
-    views[0] = depth->getImageView();
-  VkFramebufferCreateInfo fbInfo = { VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO, NULL, 0, rp, attachmentCount, views, width, height, 1 };
-  for(size_t i = 0;i < bufferCount;i++) {
-    VkCreateFrameBuffer(queue->gpu->device, &fbInfo, NULL, buffers->fb);
-  }
-  free(views);
-}
 
-void RenderPass::begin(VkCommandBuffer cmd) {
-  vkCmdBeginRenderPass(cmd, &beginInfo, )
+    RenderPass::RenderPass(WITE::Queue* q) : this(q, NULL, 0, USAGE_TRANSFER_SRC) {}
+
+  void render(WITE::Camera* wcam) {
+    Camera* reinterpret_cast<Camera*>(wcam);
+    auto q = static_cast<WITE_internal::Queue*>(wq);
+    VkCommandBuffer cmd = q->getComplexPlan()->beginSerial();
+    //transition all input images to VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL with read bit
+    bool needNewFB = false;
+    for(size_t i = 0;i < inputCount;i++) {
+      BackedImage* img = inputs[i].getImage();
+      img->setLayout(LAYOUT_SHADER_RO, cmd, queue);
+      uint64_t serial = img->serialNumber();
+      if(serial > fbResourceSerial) {
+	needNewFB = true;
+	fbResourceSerial = serial;
+      }
+    }
+    if(needNewFB) recreateFB();
+    vkBeginRenderPass(cmd, beginInfo, VK_SUBPASS_CONTENTS_INLINE);
+    Shader::renderAll(queue->getComplexPlan(), layerMask, cam->getRenderMatrix(), queue->gpu, rp);//uh, looks like this doesn't exist anymore
+    vkCmdEndRenderpass(cmd);;
+  }
+
+  void recreateFB() {
+    fbInfo.renderPass = rp;
+    fbInfo.pAttachments = attachmentViews;
+    vkCreateFramebuffer(queue->gpu->device, &fbInfo, NULL, &fb);
+  }
+
+  void setOutputSize(WITE::IntBox3D screensize) {
+    size_t width = screensize.width();
+    size_t height = screensize.height();
+    if(width == outputSize.width() && height == outputSize.height()) return;
+    outputSize = screensize;
+    if(fb) vkDestroyFramebuffer(queue->gpu->device, fb, NULL);
+    colorOutImage = std::make_unique<BackedImage>(gpu, width, height, FORMAT_STD_COLOR, outputImageUsage);
+    depthOutImage = std::make_unique<BackedImage>(gpu, width, height, FORMAT_STD_DEPTH, outputImageUsage);
+    attachmentViews[0] = colorOutpImage->getImageView();
+    attachmentViews[1] = colorOutpImage->getImageView();
+    beginInfo.renderArea.extent = {width, height};
+    fbInfo.width = width;
+    fbInfo.height = height;
+    recreateFB();
+  }
+
 }

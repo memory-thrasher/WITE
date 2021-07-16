@@ -8,6 +8,7 @@ public:
   float getPixelTangent() { return pixelTangent; };
   float approxScreenArea(WITE::BBox3D*);
   glm::dvec3 getLocation();
+  glm::dmat4 getRenderMatrix();
   void setLocation(glm::dvec3);
   void setMatrix(glm::dmat4&);
   void setMatrix(glm::dmat4*);
@@ -15,14 +16,9 @@ public:
   WITE::IntBox3D getScreenRect() { return screenbox; };
   inline void setFov(double val) { fov = val; updateMaths(); };
   inline double getFov() { return fov; };
-  inline bool appliesOnLayer(WITE::renderLayerIdx i) { return layerMask & (1ull << i); };
-  inline void setLayermask(WITE::renderLayerMask in) { layerMask = in; };
   GPU* getGPU() { return graphicsQ->gpu; };
-  void render(Queue::ExecutionPlan* ep);
   void blitTo(VkCommandBuffer cmd, VkImage dst);
 private:
-  void recreateResources();//not thread safe, call only from main thread
-  WITE::renderLayerMask layerMask;
   float targetDelay = 1/60.0f;
   double fov;
   float pixelTangent;

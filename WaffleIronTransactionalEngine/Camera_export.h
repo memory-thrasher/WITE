@@ -19,8 +19,6 @@ namespace WITE {
     virtual IntBox3D getScreenRect() = 0;
     virtual void setFov(double) = 0;
     virtual double getFov() = 0;
-    virtual bool appliesOnLayer(renderLayerIdx i) = 0;
-    virtual void setLayermask(WITE::renderLayerMask newMask) = 0;
   protected:
     Camera() = default;
   };

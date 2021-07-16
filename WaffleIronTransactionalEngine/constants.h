@@ -48,9 +48,15 @@
 
 //These do not corrospond directly to anything from vulkan, but are used (in conjunction with other info) to determine multiple vulkan fields
 #define USAGE_ATTACH_AUTO 1 //what type is determined by format.
-#define USAGE_TRANSFER 2 //both dirs
-#define USAGE_SAMPLED 4
-#define USAGE_LOAD 8
+#define USAGE_TRANSFER_SRC 2
+#define USAGE_TRANSFER_DST 4
+#define USAGE_SAMPLED 8
+#define USAGE_LOAD 16
+
+//for automatic sizing of window-sized images (frambuffers) but maybe not other attachments
+#define SIZE_TYPE_ABSOLUTE 0;
+#define SIZE_TYPE_WINDOWAREA_RELATIVE 1;
+#define SIZE_TYPE_WINDOWAREA_SQUARE 2;//both sides = min(screen.width, screen.height) (useful to scale shadowmaps with screen size)
 
 #define DEBUG_MASK_VULKAN 1
 #define DEBUG_MASK_VULKAN_VERBOSE 2

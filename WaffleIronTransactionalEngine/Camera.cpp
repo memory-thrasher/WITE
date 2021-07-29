@@ -72,7 +72,7 @@ namespace WITE_internal {
     recreateResources();
   }
 
-  void Camera::blitTo(VkCommandBuffer cmd, BackedImage dst) {
+  void Camera::blitTo(VkCommandBuffer cmd, BackedImage* dst) {
     const VkImageSubresourceLayers subres0 = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
     WITE::IntBox3D size = screenbox;
     auto src = passes[passCount-1].getColorOutput();

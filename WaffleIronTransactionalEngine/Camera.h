@@ -17,7 +17,7 @@ public:
   inline void setFov(double val) { fov = val; updateMaths(); };
   inline double getFov() { return fov; };
   GPU* getGPU() { return graphicsQ->gpu; };
-  void blitTo(VkCommandBuffer cmd, VkImage dst);
+  void blitTo(VkCommandBuffer cmd, BackedImage* dst);
 private:
   float targetDelay = 1/60.0f;
   double fov;
@@ -28,6 +28,7 @@ private:
   WITE::Window* window;
   WITE::Transform renderTransform, worldTransform;
   void updateMaths();
+  //TODO hand in RPs on creation
   RenderPass* passes;
   size_t passCount = 1;//TODO setter?
 };

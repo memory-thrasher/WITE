@@ -5,3 +5,4 @@ foreach(SFILE ${WITE_CPPS})
 endforeach(SFILE)
 
 add_library( WITE ${WITE_OBJS} )
+target_link_libraries(WITE ${SDL2_LIBRARIES})

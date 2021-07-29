@@ -33,7 +33,7 @@ namespace WITE_internal {
     fbInfo = { VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO, NULL, 0, NULL, inputCount + 2, attachmentViews, 0, 0, 1 };
   }
 
-    RenderPass::RenderPass(WITE::Queue* q) : this(q, NULL, 0, USAGE_TRANSFER_SRC) {}
+  RenderPass::RenderPass(WITE::Queue* q) : this(q, NULL, 0, USAGE_TRANSFER_SRC) {}
 
   void render(WITE::Camera* wcam) {
     Camera* reinterpret_cast<Camera*>(wcam);
@@ -52,7 +52,9 @@ namespace WITE_internal {
     }
     if(needNewFB) recreateFB();
     vkBeginRenderPass(cmd, beginInfo, VK_SUBPASS_CONTENTS_INLINE);
-    Shader::renderAll(queue->getComplexPlan(), layerMask, cam->getRenderMatrix(), queue->gpu, rp);//uh, looks like this doesn't exist anymore
+    auto ep = queue->getComplexPlan();
+    auto matrix = cam->getRenderMatrix();
+    WITE_RENDERLAYERS_FOR(layer, layerMask, vkSingleton->renderLayers[layer].renderAll(ep, &matrix, rp));
     vkCmdEndRenderpass(cmd);;
   }
 

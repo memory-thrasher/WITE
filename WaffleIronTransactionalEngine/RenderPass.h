@@ -27,9 +27,9 @@ public:
   void setOutputSize(WITE::IntBox3D screensize);
   BackedImage* getImage() { return getColorOutputImage(); };//override from interface (TODO make interface)
   int64_t getFormat() { return FORMAT_STD_COLOR; };
-  inline bool appliesOnLayer(WITE::renderLayerIdx i) { return layerMask & (1ull << i); };
+  inline bool appliesOnLayer(WITE::renderLayerIdx i) { return layerMask & (static_cast<WITE::renderLayerIdx>(1) << i); };
   inline void setLayermask(WITE::renderLayerMask newMask) { layerMask = newMask; };
-  inline BackedImage* getColorOutputImage() { return olorOutImage.get(); };
+  inline BackedImage* getColorOutputImage() { return colorOutImage.get(); };
   inline BackedImage* getDepthOutputImage() { return depthOutImage.get(); };
 private:
   Queue* queue;

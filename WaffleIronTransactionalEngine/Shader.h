@@ -12,9 +12,9 @@ public:
     uint64_t format;
   };
   //Shader(const char* filepathWildcard, struct WITE::Shader::resourceLayoutEntry*, size_t resources);
-  Shader(const char** filepath, size_t files, struct WITE::Shader::resourceLayoutEntry*, size_t resources);
+  Shader(const char** filepath, size_t files, struct WITE::Shader::resourceLayoutEntry*, size_t resources, WITE::renderLayerMask appliesToLayers = ~0);
   ~Shader();
-  void render(WITE::Queue::ExecutionPlan* ep, glm::dmat4 projection, WITE::renderLayerMask layers = ~(WITE::renderLayerMask)0);
+  void render(WITE::Queue::ExecutionPlan* ep, glm::dmat4 projection, VkRenderPass rp);
   void ensureResources(GPU*);
 private:
   static constexpr VkVertexInputBindingDescription viBinding = { 0, sizeof(WITE::Vertex), VK_VERTEX_INPUT_RATE_VERTEX };
@@ -27,9 +27,6 @@ private:
     VkShaderModuleCreateInfo moduleInfo;//modulecreateflags, codesize, code
     const char* filepath;
     VkShaderStageFlagBits stageBit;
-  };
-  struct rpResources {
-    VkPipeline pipeline;
   };
   struct shaderGpuResources {
     std::unique_ptr<VkPipelineShaderStageCreateInfo[]> stageInfos;
@@ -44,9 +41,9 @@ private:
     VkDescriptorSetAllocateInfo descAllocInfo;//qazi-template, set descPool before use
     VkDescriptorPool growDescPool(GPU*);
     //std::unique_ptr<std::map<VkRenderPass, std::shared_ptr<struct rpResources>>> rpRes;
-    std::vector<struct rpResources> perRP;
+    std::map<VkRenderPass, VkPipeline> pipeline;//both key and value are opaque points, so just ints with extra steps
   };
-  void makePipeForRP(VkRenderPass rp, size_t passIdx, GPU* gpu, VkPipeline* out);
+  VkPipeline makePipeForRP(VkRenderPass rp, GPU* gpu);
   size_t subshaderCount, resourcesPerInstance;
   WITE::GPUResource<shaderGpuResources> resources;
   struct subshader_t* subshaders;//TODO free

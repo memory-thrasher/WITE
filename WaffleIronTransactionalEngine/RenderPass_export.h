@@ -2,7 +2,7 @@
 
 namespace WITE {
   
-  class RenderPass {
+  class RenderPass : public WITE {
   public:
     void setClearColor(glm::vec4 color, size_t imageIdx = -1);//color in bgra order, imageIdx optional if only one image
     void setClearDepth(float depth, uint32_t stencil, size_t imageIdx = -1);

@@ -7,7 +7,7 @@ const struct extensionMeaning {
 
 std::vector<Shader*> Shader::allShaders;
 
-Shader::Shader(const char** paths, size_t pathc, struct WITE::Shader::resourceLayoutEntry* res, size_t resc) :
+Shader::Shader(const char** paths, size_t pathc, struct WITE::Shader::resourceLayoutEntry* res, size_t resc, WITE::renderLayerMask appliesToLayers) :
   subshaderCount(pathc),
   resourcesPerInstance(resc),
   resources(decltype(resources)::constructor_F::make<Shader>(this, &Shader::makeDescriptors)),
@@ -24,6 +24,7 @@ Shader::Shader(const char** paths, size_t pathc, struct WITE::Shader::resourceLa
   }//TODO mmap shader file?
   memcpy(resourceLayout, res, sizeof(struct resourceLayoutEntry) * resc);
   allShaders.push_back(this);
+  WITE_RENDERLAYERS_FOR(layer, mask, vkSingleton->renderLayers[layer].registerShader(this));
 }
 
 // Shader::Shader(const char* filepathwildcard, struct WITE::Shader::resourceLayoutEntry* res, size_t resources) :
@@ -62,7 +63,6 @@ std::unique_ptr<struct Shader::shaderGpuResources> Shader::makeDescriptors(GPU* 
   ret->growDescPool(dev);
   if(!dev->pipeCache)
     CRASHIFFAIL(vkCreatePipelineCache(dev->device, &EMPTY_CACHE, VK_NULL_HANDLE, &dev->pipeCache), NULL);//FIXME this -1 in GPU.cpp
-  // ret->rpRes = std::make_unique<std::map<VkRenderPass, std::shared_ptr<struct rpResources>>>();
   return ret;
 }
 
@@ -112,7 +112,7 @@ std::unique_ptr<Shader::Instance> Shader::makeResources(GPU* device) {
   return ret;
 }
 
-void Shader::makePipeForRP(VkRenderPass rp, size_t passIdx, GPU* gpu, VkPipeline* out) {
+VkPipeline Shader::makePipeForRP(VkRenderPass rp, GPU* gpu) {
   struct shaderGpuResources* resources = this->resources.get(gpu);
   static VkDynamicState dynamicStateEnables[VK_DYNAMIC_STATE_RANGE_SIZE] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
   static VkPipelineDynamicStateCreateInfo dynamicState = { VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO, VK_NULL_HANDLE, 0, 2, dynamicStateEnables };
@@ -129,22 +129,20 @@ void Shader::makePipeForRP(VkRenderPass rp, size_t passIdx, GPU* gpu, VkPipeline
   pipeInfo.stageCount = subshaderCount;
   pipeInfo.pStages = resources->stageInfos.get();
   pipeInfo.renderPass = rp;
-  CRASHIFFAIL(vkCreateGraphicsPipelines(gpu->device, gpu->pipeCache, 1, &pipeInfo, VK_NULL_HANDLE, out));// &resources->rpRes.get()->at(rp)->pipeline
+  VkPipeline out;
+  CRASHIFFAIL(vkCreateGraphicsPipelines(gpu->device, gpu->pipeCache, 1, &pipeInfo, VK_NULL_HANDLE, &out));
   pipeInfo.stageCount = 0;//don't leak handle to thread stack
   pipeInfo.pStages = VK_NULL_HANDLE;
   pipeInfo.renderPass = VK_NULL_HANDLE;
+  return out;
 }
 
-void Shader::render(WITE::Queue::ExecutionPlan* ep, glm::dmat4 projection, WITE::renderLayerMask layers = ~(WITE::renderLayerMask)0) {//TODO export this
-  //TODO input collection of objects or transforms?
-  VkRenderPass rp = NULL;//TODO <<< stash/create here. Need resource layout info from constructor.
+void Shader::render(WITE::Queue::ExecutionPlan* ep, glm::dmat4 projection, VkRenderPass rp) {
   VkCommandBuffer cmd;
   GPU* gpu = static_cast<::GPU*>(ep->getGpu());
   struct shaderGpuResources* resources = this->resources.get(gpu);
-  size_t rpIdx = 0;//TODO rp index, assume one pass for now
-  while(resources->perRP.size() <= rpIdx) resources->perRP.emplace_back();
-  auto rpr = &resources->perRP[rpIdx];
-  if(!rpr->pipeline) makePipeForRP(rp, rpIdx, gpu, &rpr->pipeline);
+  auto pipeline = resources->pipeline[rp];
+  if(!pipeline) pipeline = resource->pipeline[rp] = makePipeForRP(rp, gpu);
   cmd = ((::Queue::ExecutionPlan*)ep)->getActive();
   vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, rpr->pipeline);
   for(WITE::renderLayerIdx rl = 0;rl < MAX_RENDER_LAYERS;rl++) {

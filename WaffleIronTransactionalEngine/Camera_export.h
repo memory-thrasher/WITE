@@ -4,7 +4,7 @@ namespace WITE {
 
   class export_def Camera {
   public:
-    typedefCB(Render_cb_t, void, Queue::ExecutionPlan*);
+    typedefCB(Render_cb_t, void);
     Camera(const Camera&) = delete;
     static Camera* make(Window*, IntBox3D, Render_cb_t);//window owns camera object
     virtual ~Camera() = default;
@@ -15,7 +15,6 @@ namespace WITE {
     virtual void setLocation(glm::dvec3) = 0;
     virtual void setMatrix(glm::dmat4&) = 0;
     virtual void setMatrix(glm::dmat4*) = 0;
-    virtual Window* getWindow() = 0;
     virtual IntBox3D getScreenRect() = 0;
     virtual void setFov(double) = 0;
     virtual double getFov() = 0;

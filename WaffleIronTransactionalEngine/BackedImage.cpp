@@ -178,3 +178,7 @@ namespace WITE_internal {
   }
 
 }
+
+std::unique_ptr<WITE::BackedImage> WITE::BackedImage::make(WITE::GPU* dev, uint32_t width, uint32_t height, uint32_t Wformat, uint64_t imageUsages, uint32_t mipmap) {
+  return std::make_unique(reinterpret_cast<Wite_internal::GPU*>(dev), width, height, Wformat, imageUsages, mipmap);
+}

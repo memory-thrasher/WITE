@@ -28,14 +28,14 @@ namespace WITE_internal {
     subpass = { 0, VK_PIPELINE_BIND_POINT_GRAPHICS, inputCount, NULL, 1, &colorReference, NULL, &depthReference, 0, NULL };
     rpInfo = { VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO, NULL, 0, 2 + inputCount, attachments, 1, &subpass, 0, NULL };//TODO subpass dependencies?
     CRASHIFFAIL(vkCreateRenderPass(gpu->device, &rpInfo, NULL, &rp));
-    beginInfo = { VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO, NULL, rp, NULL, {{0, 0}, {0, 0}}, 2, CLEAR };
+    beginInfo = { VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO, NULL, rp, NULL, {{0, 0}, {0, 0}}, 2, clearColors };
     attachmentViews = new VkImageView[inputCount + 2];
     fbInfo = { VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO, NULL, 0, NULL, inputCount + 2, attachmentViews, 0, 0, 1 };
   }
 
   RenderPass::RenderPass(WITE::Queue* q) : this(q, NULL, 0, USAGE_TRANSFER_SRC) {}
 
-  void render(WITE::Camera* wcam) {
+  void RenderPass::render(WITE::Camera* wcam) {
     Camera* reinterpret_cast<Camera*>(wcam);
     auto q = static_cast<WITE_internal::Queue*>(wq);
     VkCommandBuffer cmd = q->getComplexPlan()->beginSerial();
@@ -58,13 +58,13 @@ namespace WITE_internal {
     vkCmdEndRenderpass(cmd);;
   }
 
-  void recreateFB() {
+  void RenderPass::recreateFB() {
     fbInfo.renderPass = rp;
     fbInfo.pAttachments = attachmentViews;
     vkCreateFramebuffer(queue->gpu->device, &fbInfo, NULL, &fb);
   }
 
-  void setOutputSize(WITE::IntBox3D screensize) {
+  void RenderPass::setOutputSize(WITE::IntBox3D screensize) {
     size_t width = screensize.width();
     size_t height = screensize.height();
     if(width == outputSize.width() && height == outputSize.height()) return;
@@ -78,6 +78,19 @@ namespace WITE_internal {
     fbInfo.width = width;
     fbInfo.height = height;
     recreateFB();
+  }
+
+  BackedImage* RenderPass::getImage(WITE::IntBox3D size) {
+    setOutputSize(size);
+    return getColorOutputImage();
+  }
+
+  void setClearColor(float r, float g, float b, float a) {
+    clearColors[0].color.float32 = {r, g, b, a};
+  }
+
+  void setClearDepth(float depth, int32_t stencil) {
+    clearColors[1].depth = {depth, stencil};
   }
 
 }

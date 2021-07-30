@@ -3,6 +3,7 @@
 namespace WITE {
   class BackedImage : public WITE::ShaderResource {
   public:
+    BackedImage(const BackedImage&) = delete;
     virtual size_t getSize() = 0;
     virtual size_t getWidth() = 0;
     virtual size_t getHeight() = 0;

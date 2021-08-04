@@ -39,6 +39,7 @@ namespace WITE_internal {
     Camera* reinterpret_cast<Camera*>(wcam);
     auto q = static_cast<WITE_internal::Queue*>(wq);
     VkCommandBuffer cmd = q->getComplexPlan()->beginSerial();
+    //TODO inject semaphore dependency on whatever semaphore signals the input images' renders are complete IF not multibuffered.
     //transition all input images to VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL with read bit
     bool needNewFB = false;
     for(size_t i = 0;i < inputCount;i++) {
@@ -51,6 +52,10 @@ namespace WITE_internal {
       }
     }
     if(needNewFB) recreateFB();
+    VkViewport viewport = { 0, 0, (float)outputSize.width(), (float)outputSize.height(), 0.01f, 1.0f };//TODO clipping plane as setting
+    VkRect2D scissors = {{0, 0}, {(uint32_t)outputSize.width(), (uint32_t)outputSize.height()}};
+    vkCmdSetViewport(cmd, 0, 1, &viewport);
+    vkCmdSetScissor(cmd, 0, 1, &scissors);
     vkBeginRenderPass(cmd, beginInfo, VK_SUBPASS_CONTENTS_INLINE);
     auto ep = queue->getComplexPlan();
     auto matrix = cam->getRenderMatrix();

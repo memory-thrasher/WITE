@@ -144,36 +144,8 @@ inline bool Window::renderEnabled() {
   return size.height > 0 && size.width > 0;
 }
 
-uint32_t Window::render() {
-  if(!renderEnabled()) return -1;
-  const VkClearColorValue SWAP_CLEAR = {{1, 0.27f, 0.7f}};
-  size_t i, len = cameras.size();
-  auto ep = graphicsQ->getComplexPlan();
-  uint32_t swapIdx;
-  VkCommandBuffer cmd;
-#ifdef _DEBUG
-  if(ep->isRunning())
-    CRASHRETLOG(0, "NYI: synchronous executions from the same EP attempted, but only enough resources for a single execution are allocated presently\n");
-#endif
-  CRASHIFFAIL(vkAcquireNextImageKHR(graphicsQ->gpu->device, swapchain.chain, 10000000000ul, swapchain.semaphore, VK_NULL_HANDLE, &swapIdx), 0);//if there is not one available, it blocks on present, apparently... and that's the problem?
-  ep->queueWaitForSemaphore(swapchain.semaphore);
-  for(i = 0;i < len;i++)
-    cameras[i]->render(ep);
-  //cmd = ep->beginReduce();//cmd 1
-  cmd = ep->getActive();
-  swapchain.images[swapIdx].discard();
-  swapchain.images[swapIdx].setLayout(LAYOUT_TRANSFER_DST, cmd, graphicsQ);
-#ifdef _DEBUG
-  swapchain.images[swapIdx].clear(cmd, &SWAP_CLEAR);
-#endif
-  for(i = 0;i < len;i++)
-    cameras[i]->blitTo(cmd, swapchain.images[swapIdx].getImage());
-  swapchain.images[swapIdx].setLayout(VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, cmd, presentQ);
-  return swapIdx;
-}
-
 bool Window::isRenderDone() {
-  return !graphicsQ->getComplexPlan()->isRunning();
+  return !graphicsQ->getComplexPlan()->isRunning();//TODO find better way
 }
 
 WITE::Window** WITE::Window::iterateWindows(size_t &num) {
@@ -185,72 +157,46 @@ WITE::Window** Window::iterateWindows(size_t &num) {
   return reinterpret_cast<WITE::Window**>(windows.data());
 }
 
-static std::vector<uint32_t> scIdxPerGpu[MAX_GPUS];//ONLY use from master thread
-static std::vector<VkSwapchainKHR> swapchainsPerGpu[MAX_GPUS];
-
-bool Window::areRendersDone() {
-  for(size_t i = 0;i < vkSingleton.gpuCount;i++)
-    if(scIdxPerGpu[i].size() && vkSingleton.gpus[i]->graphicsQ->getComplexPlan()->isRunning()) return false;
-  return true;
-}
-
-void Window::renderAll() {
-  auto end = windows.end();
-  uint32_t imgIdx;
-  size_t i, count;
-  Window* w;
-  GPU* gpu;
-  Queue::ExecutionPlan* ep;
-  for(i = 0;i < vkSingleton.gpuCount;i++) {
-    swapchainsPerGpu[i].clear();
-    scIdxPerGpu[i].clear();
-  }
-  for(auto ww = windows.begin();ww != end;++ww) {
-    w = (Window*)(*ww);
-    TIME(imgIdx = w->render(), 2, "\tRender window: %llu\n");
-    if(!~imgIdx) continue;
-    i = w->presentQ->gpu->idx;
-    swapchainsPerGpu[i].push_back(w->swapchain.chain);
-    scIdxPerGpu[i].push_back(imgIdx);
-    //reder reduces its execution plan, so only one semaphore need be waited per gpu
-  }
-  for(i = 0;i < vkSingleton.gpuCount;i++) {
-    count = scIdxPerGpu[i].size();
-    if(!count) continue;
-    gpu = vkSingleton.gpus[i];
-    ep = gpu->graphicsQ->getComplexPlan();
-    TIME(ep->submit(), 2, "\tSubmit for gpu %lu: %llu\n", i);
+void Window::present() {//main thread only
+  if(!renderEnabled()) continue;
+  static std::vector<VkSemaphore> sems;
+  decltype(windows)::iterator end;
+  size_t i, len = cameras.size();
+  auto ep = graphicsQ->getComplexPlan();
+  uint32_t swapIdx;
+  CRASHIFFAIL(vkAcquireNextImageKHR(graphicsQ->gpu->device, swapchain.chain, 10000000000ul, swapchain.semaphore, VK_NULL_HANDLE, &swapIdx), 0);
+  ep->queueWaitForSemaphore(swapchain.semaphore);
+  auto cmd = ep->getActive();
+  swapchain.images[swapIdx].discard();
+  swapchain.images[swapIdx].setLayout(LAYOUT_TRANSFER_DST, cmd, graphicsQ);
+#ifdef _DEBUG
+  swapchain.images[swapIdx].clear(cmd, &SWAP_CLEAR);
+#endif
+  for(i = 0;i < len;i++)
+    cameras[i]->blitTo(cmd, swapchain.images[swapIdx].getImage());
+  swapchain.images[swapIdx].setLayout(VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, cmd, presentQ);
+  ep->submit();
+  sems.clear();
+  ep->popStateSemaphores(&sems);
+  VkPresentInfoKHR pi = { VK_STRUCTURE_TYPE_PRESENT_INFO_KHR, NULL, (uint32_t)sems.size(), sems.data(), 0, swapchain.chain, swapIdx, NULL };
+  VkResult res;
+  TIME(res = vkQueuePresentKHR(presentQ->queue, &pi), 2, "\tPresent: %llu\n");
+  switch(res) {
+  case VK_SUCCESS: break;
+  case VK_SUBOPTIMAL_KHR://docs say recreating the swapchain is the right answer
+  case VK_ERROR_OUT_OF_DATE_KHR:
+    LOG("Recreating swapchain becuase present returned: %I32d\n", res);
+    recreateSwapchain();
+    break;
+  default:
+    CRASH("Present failed with return code: %d\n", res);
   }
 }
 
 void Window::presentAll() {
-  static std::vector<VkSemaphore> sems;
-  size_t i, count;
-  Queue::ExecutionPlan* ep;
-  GPU* gpu;
-  decltype(windows)::iterator end;
-  for(i = 0;i < vkSingleton.gpuCount;i++) {
-    count = scIdxPerGpu[i].size();
-    if(!count) continue;
-    gpu = vkSingleton.gpus[i];
-    ep = gpu->graphicsQ->getComplexPlan();
-    ep->popStateSemaphores(&sems);
-    VkPresentInfoKHR pi = { VK_STRUCTURE_TYPE_PRESENT_INFO_KHR, NULL, (uint32_t)sems.size(), sems.data(), (uint32_t)count, swapchainsPerGpu[i].data(), scIdxPerGpu[i].data(), NULL };
-    VkResult res;
-    TIME(res = vkQueuePresentKHR(gpu->presentQ->queue, &pi), 2, "\tPresent: %llu\n");
-    switch(res) {
-    case VK_SUCCESS: break;
-    case VK_SUBOPTIMAL_KHR://docs say recreating the swapchain is the right answer
-    case VK_ERROR_OUT_OF_DATE_KHR:
-      LOG("Recreating swapchains becuase present returned: %I32d\n", res);
-      end = windows.end();
-      for(auto ww = windows.begin();ww != end;++ww) {
-        ((::Window*)*ww)->recreateSwapchain();//TODO: only the window that caused the present error, if possible
-      }
-      break;
-    default:
-      CRASH("Present failed with return code: %d\n", res);
-    }
+  auto end = windows.end();
+  for(auto ww = windows.begin();ww != end;++ww) {
+    ((::Window*)*ww)->present();
   }
 }
 

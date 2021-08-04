@@ -114,6 +114,12 @@ std::unique_ptr<Shader::Instance> Shader::makeResources(GPU* device) {
 
 VkPipeline Shader::makePipeForRP(VkRenderPass rp, GPU* gpu) {
   struct shaderGpuResources* resources = this->resources.get(gpu);
+  static VkVertexInputBindingDescription viBinding = { 0, sizeof(WITE::Vertex), VK_VERTEX_INPUT_RATE_VERTEX };
+  static VkVertexInputAttributeDescription viAttributes[3] = {//TODO configurable at shader create
+    { 0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0 },
+    { 1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(WITE::Vertex, nx)},
+    { 2, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(WITE::Vertex, r)}
+  };
   static VkDynamicState dynamicStateEnables[VK_DYNAMIC_STATE_RANGE_SIZE] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
   static VkPipelineDynamicStateCreateInfo dynamicState = { VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO, VK_NULL_HANDLE, 0, 2, dynamicStateEnables };
   static VkPipelineVertexInputStateCreateInfo vi = { VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO, VK_NULL_HANDLE, 0, 1, &viBinding, 3, viAttributes };

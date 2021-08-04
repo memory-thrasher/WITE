@@ -17,12 +17,6 @@ public:
   void render(WITE::Queue::ExecutionPlan* ep, glm::dmat4 projection, VkRenderPass rp);
   void ensureResources(GPU*);
 private:
-  static constexpr VkVertexInputBindingDescription viBinding = { 0, sizeof(WITE::Vertex), VK_VERTEX_INPUT_RATE_VERTEX };
-  static constexpr VkVertexInputAttributeDescription viAttributes[3] = {//TODO configurable at shader create
-    { 0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0 },
-    { 1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(WITE::Vertex, nx)},
-    { 2, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(WITE::Vertex, r)}
-  };
   struct subshader_t {
     VkShaderModuleCreateInfo moduleInfo;//modulecreateflags, codesize, code
     const char* filepath;

@@ -93,14 +93,15 @@ extern void initTime();
 void enterMainLoop() {
   masterState = 1;
   size_t i;
-  static std::atomic<int8_t> meshSemaphore;
+  static std::atomic<int8_t> meshSemaphore;//static so it's not on a thread stack
   int8_t tempu8;
   initTime();
   meshSemaphore.store(0, std::memory_order_relaxed);
   WITE::Thread::spawnThread(WITE::Thread::threadEntry_t_F::make<void*>(&meshSemaphore, &Mesh::proceduralMeshLoop));
   auto workerEntry = WITE::Thread::threadEntry_t_F::make<void*>(NULL, &enterWorker);
   for(i = 0;i < workerThreadCount;i++) WITE::Thread::spawnThread(workerEntry);
-  do {
+  do {//wait for first procedural mesh loop to complete
+    //TODO I really shouldn't need to count on this. Render code should check if the mesh is real before rendering.
     tempu8 = meshSemaphore.load(std::memory_order_consume);
   } while(!tempu8);
   vertBuffer = tempu8 - 1;
@@ -108,7 +109,6 @@ void enterMainLoop() {
   while(true) {
     TIME(database->advanceFrame(), 1, "advance frame (db wait): %llu\n");//no updates on frame 0.
     if(masterState.load(std::memory_order_relaxed) == 2) break;
-    TIME(Window::renderAll(), 1, "Render: %llu\n");//Expensive. note: includes load of transforms of objects at renderFrame
     updateTime();
     entitiesWithUpdate.clear();
     workunitIdx = 0;
@@ -117,7 +117,7 @@ void enterMainLoop() {
     TIME(while(!Window::areRendersDone()) dispatchWork(), 1, "Wait for render: %llu\n");//TODO work units performed here give a metric for comparative load
     TIME(Window::pollAllEvents(), 2, "Event polling: %llu\n");
     TIME(waitForAllWorkToFinish(), 1, "Wait for workers: %llu\n");
-    TIME(Window::presentAll(), 1, "Present: %llu\n");//this may wait for vblank, if the fifo queue is full (which means we're 2+ frames ahead, 1 unseen in the queue and one cpu just completed
+    TIME(Window::presentAll(), 1, "Present: %llu\n");//this may wait for vblank, if the fifo queue is full
     tempu8 = meshSemaphore.load(std::memory_order_acquire);
     if(tempu8) {
       vertBuffer = tempu8 - 1;

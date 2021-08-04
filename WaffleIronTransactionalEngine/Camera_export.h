@@ -2,11 +2,11 @@
 
 namespace WITE {
 
+  //TODO split camera, which represents a 3d coord capable of rendering, from viewport, a section of a window that gets an image
   class export_def Camera {
   public:
-    typedefCB(Render_cb_t, void);
     Camera(const Camera&) = delete;
-    static Camera* make(Window*, IntBox3D, Render_cb_t);//window owns camera object
+    static Camera* make(Window*, IntBox3D);//window owns camera object
     virtual ~Camera() = default;
     virtual void resize(IntBox3D) = 0;
     virtual float getPixelTangent() = 0;

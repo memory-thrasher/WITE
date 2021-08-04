@@ -119,14 +119,14 @@ namespace WITE_internal {
     dev->transferQ->destroyCmd(cmd);
   }
 
-  void BackedImage::makeSampler() {
+  /*  void BackedImage::makeSampler() {//This should be handled by constructor if usage bits include sampling.
     samplerInfo = { VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO, NULL, 0, VK_FILTER_NEAREST,
 		    VK_FILTER_NEAREST, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
 		    VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
 		    0.0, VK_FALSE, 1, VK_FALSE, VK_COMPARE_OP_NEVER, 0, 0, VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE,
 		    VK_FALSE };
     CRASHIFFAIL(vkCreateSampler(dev->device, &samplerInfo, vkAlloc, &sampler));
-  }
+    }*/
 
   size_t BackedImage::getWidth() {
     return size.width;

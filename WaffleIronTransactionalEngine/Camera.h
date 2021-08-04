@@ -2,7 +2,7 @@
 
 class Camera : public WITE::Camera {
 public:
-  Camera(WITE::IntBox3D size, std::shared_ptr<WITE::ImageSource> source, Render_cb_t = NULL);
+  Camera(WITE::IntBox3D size, std::shared_ptr<WITE::ImageSource> source);
   ~Camera();
   void resize(WITE::IntBox3D);
   float getPixelTangent() { return pixelTangent; };
@@ -19,7 +19,6 @@ public:
 private:
   double fov;
   float pixelTangent;
-  Render_cb_t render_cb;
   WITE::IntBox3D screenbox;
   WITE::Transform renderTransform, worldTransform;
   void updateMaths();

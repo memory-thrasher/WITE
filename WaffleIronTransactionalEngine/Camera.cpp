@@ -2,7 +2,7 @@
 
 namespace WITE_internal {
 
-  Camera::Camera(WITE::IntBox3D size, Queue* graphics, Render_cb_t render_cb) : WITE::Camera(), graphicsQ(graphics), render_cb(render_cb), fov(M_PI * 0.5f) {
+  Camera::Camera(WITE::IntBox3D size, Queue* graphics) : WITE::Camera(), graphicsQ(graphics), fov(M_PI * 0.5f) {
     resize(size);
   }
 
@@ -38,18 +38,6 @@ namespace WITE_internal {
     return renderTransform.getMat();
   }
 
-  void Camera::render(Queue::ExecutionPlan* ep) {
-    VkCommandBuffer cmd = ep->beginParallel();//cmd 0
-    VkViewport viewport = { 0, 0, (float)screenbox.width(), (float)screenbox.height(), 0.01f, 1.0f };//TODO clipping plane as setting
-    VkRect2D scissors = {{(int32_t)screenbox.minx, (int32_t)screenbox.miny}, {(uint32_t)screenbox.width(), (uint32_t)screenbox.height()}};
-    vkCmdSetViewport(cmd, 0, 1, &viewport);
-    vkCmdSetScissor(cmd, 0, 1, &scissors);
-    render_cb->call(ep);
-    /*vkCmdBeginRenderPass(cmd, &passes[0].beginInfo, VK_SUBPASS_CONTENTS_INLINE);
-      Shader::renderAll(ep, layerMask, renderTransform.getMat(), graphicsQ->gpu, passes[0].rp);
-      vkCmdEndRenderPass(cmd);*/
-  }
-
   void Camera::updateMaths() {
     //renderTransform = glm::dmat4(1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 1) * //clip
     //  glm::perspective(fov, (double)(screenbox.width) / screenbox.height, 0.1, 100.0) * //projection
@@ -82,7 +70,7 @@ namespace WITE_internal {
 
 }
 
-WITE::Camera* WITE::Camera::make(WITE::Window* w, WITE::IntBox3D box, WITE::Camera::Render_cb_t rcb) {
-  return w->addCamera(box, rcb);
+WITE::Camera* WITE::Camera::make(WITE::Window* w, WITE::IntBox3D box) {
+  return w->addCamera(box);
 }
 

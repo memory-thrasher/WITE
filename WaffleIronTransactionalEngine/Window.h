@@ -15,7 +15,7 @@ public:
   size_t getCameraCount();
   static void pollAllEvents();
   static bool areRendersDone();
-  static void renderAll();
+  void present();
   static void presentAll();
   static inline WITE::Window** iterateWindows(size_t &num);
 private:
@@ -23,7 +23,6 @@ private:
   static std::map<uint32_t, ::Window*> windowsBySdlId;
   void recreateSwapchain();
   inline bool renderEnabled();
-  //static std::vector<Window*> windows;//already in super
   SDL_Window * sdlWindow;
   uint32_t sdlWindowId;
   size_t displayIdx;
@@ -37,14 +36,9 @@ private:
     VkSwapchainCreateInfoKHR info;
     VkSwapchainKHR chain;
     BackedImage* images;
-    //VkFramebuffer *framebuffers;
     VkSemaphore semaphore;
   } swapchain;
   std::vector<std::unique_ptr<Camera>> cameras;
-  typedef struct {
-    VkSwapchainKHR swapchain;
-    uint32_t imageIdx;
-  } PresentInfoSegment;
   uint32_t render();//returns which swapchain image it uses
 };
 

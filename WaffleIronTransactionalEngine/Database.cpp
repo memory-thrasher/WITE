@@ -130,7 +130,7 @@ void Database::rebase(const char * name, int64_t startidx) {
 
 void Database::push(enqueuedLogEntry* ele) {
   CRASHIFFAIL(threadResources.get()->transactionalBacklog.pushBlocking(ele));
-  dbStatus.store(DB_STATUS_LOG_IN_THREAD_QUEUE, std::memory_order_release);
+  dbStatus.fetch_or(DB_STATUS_LOG_IN_THREAD_QUEUE, std::memory_order_release);
 }
 
 void Database::free(Entry d) {
@@ -346,7 +346,7 @@ Database::Entry Database::allocate(size_t size, type t) {//allocation is handled
   tr->map = allocationMap;
   tr->allocRet = NULL_ENTRY;
   tr->allocSize = size;
-  dbStatus.store(DB_STATUS_LOG_IN_THREAD_QUEUE, std::memory_order_release);
+  dbStatus.fetch_or(DB_STATUS_LOG_IN_THREAD_QUEUE, std::memory_order_release);
   while(tr->allocRet == NULL_ENTRY) WITE::sleep(50);//TUNEME sleep time
   //TODO maybe split here, so can allocate without type if needed
   auto ret = tr->allocRet;

@@ -7,7 +7,7 @@ public:
   uint32_t put(WITE::Vertex*, uint64_t offset, uint64_t maxSize, GPU*);
   static void proceduralMeshLoop(void* semaphore);//semaphore is type std::atomic<uint8_t>
 private:
-  static constexpr size_t VERTEX_BUFFERS = 2;
+  static constexpr size_t VERTEX_BUFFERS = 3;//active read, standby, writing
   typedef struct {
     VkDeviceSize vbStart, vbLength;//uint64
   } subbuf_t;

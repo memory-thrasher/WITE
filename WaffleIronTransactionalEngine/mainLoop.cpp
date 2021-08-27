@@ -1,10 +1,12 @@
 #include "Internal.h"
 
-#define WORK_NONE (std::numeric_limits<size_t>::max())
+#define WORK_NONE -1
+#define WORK_FRAME_END -2
+#define MASTER_STATE_QUIT 2
 
 typedef struct {
-  std::atomic<size_t> start;
-  size_t len;
+  std::atomic<ssize_t> start;
+  ssize_t len;
 } workerData_t;
 
 void initWorker(workerData_t* out) {
@@ -29,29 +31,36 @@ uint8_t getVertBuffer() {
 
 void enterWorker(void* unused) {
   WITE::Database::Entry target;
-  size_t start, end;
+  ssize_t start, end;
   auto sync = workerData.get();
   WITE::Database::typeHandles* handles = NULL;
   WITE::Database::type lastType = 0, type;
   while(true) {
     do {
       start = sync->start.load(std::memory_order_seq_cst);
-      if(masterState.load(std::memory_order_relaxed) == 2) return;
+      if(masterState.load(std::memory_order_relaxed) == MASTER_STATE_QUIT) return;
       WITE::sleep(100);
     } while(start == WORK_NONE);
-    end = sync->len + start;
-    while(start < end) {
-      target = entitiesWithUpdate[start];
-      type = database->getEntryType(target);
-      if(!handles || type != lastType) {
-        handles = WITE::Database::getHandlesOfType(type);
-        if(!handles || !handles->update)
-          CRASH("Illegal entry type in typesWithUpdate, entry: %ld of type %d, frame: %ld\n", start, type, database->getCurrentFrame());
-        //FIXME this is still happening sometimes, start: 0, type: 0, frame: 11, 273
-        lastType = type;
+    switch(start) {
+    default:
+      end = sync->len + start;
+      while(start < end) {
+	target = entitiesWithUpdate[start];
+	type = database->getEntryType(target);
+	if(!handles || type != lastType) {
+	  handles = WITE::Database::getHandlesOfType(type);
+	  if(!handles || !handles->update)
+	    CRASH("Illegal entry type in typesWithUpdate, entry: %ld of type %d, frame: %ld\n", start, type, database->getCurrentFrame());
+	  //FIXME this is still happening sometimes, start: 0, type: 0, frame: 11, 273
+	  lastType = type;
+	}
+	handles->update->call(target);
+	start++;
       }
-      handles->update->call(target);
-      start++;
+      break;
+    case WORK_FRAME_END:
+      Queue::submitAllForThisThread();
+      break;
     }
     sync->start.store(WORK_NONE, std::memory_order_seq_cst);
   }
@@ -83,6 +92,11 @@ inline void waitForAllWorkToFinish() {
   while(dispatchWork());//dispatch all
   size_t len, i;
   len = workerData.listAll(threadlist, MAX_THREADS);
+  for(i = 0;i < len;i++) {
+    while(threadlist[i]->start.load(std::memory_order_seq_cst) != WORK_NONE);
+    //TODO wait for all old calls to finish?
+    threadlist[i]->start.store(WORK_FRAME_END, std::memory_order_seq_cst);
+  }
   for(i = 0;i < len;i++)
     while(threadlist[i]->start.load(std::memory_order_seq_cst) != WORK_NONE);
 }
@@ -119,7 +133,7 @@ void enterMainLoop() {
     TIME(waitForAllWorkToFinish(), 1, "Wait for workers: %llu\n");
     TIME(Window::presentAll(), 1, "Present: %llu\n");//this may wait for vblank, if the fifo queue is full
     tempu8 = meshSemaphore.load(std::memory_order_acquire);
-    if(tempu8) {
+    if(tempu8) {//vertex buffer is tripple-buffered so allowing writes to the next one won't bother reads in progress
       vertBuffer = tempu8 - 1;
       meshSemaphore.store(0, std::memory_order_release);
     }

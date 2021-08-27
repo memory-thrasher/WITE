@@ -45,6 +45,11 @@ Queue::ExecutionPlan* Queue::getComplexPlan() {
   return complexPlans.get();
 }
 
+void Queue:submitEP() {
+  auto ep = complexPlans.getIfExists();
+  if(ep) ep->submit();
+}
+
 Queue::ExecutionPlan* Queue::makeComplexPlan() {
   return new ExecutionPlan(this);
 }
@@ -173,5 +178,12 @@ Queue::ExecutionPlan::~ExecutionPlan() {
     //command buffers are handled by the command pool, which is allocated at the queue level atm
   }
   vkDestroyFence(queue->gpu->device, fence, NULL);
+}
+
+void Queue::submitAllForThisThread() {
+  for(size_t i = 0;i < auto gpu : vkSingleton->gpuCount;i++) {
+    auto gpu = vkSingleton->gpus[i];
+    for(size_t qi = 0;qi < gpu->queueCount;qi++)
+      gpu->queues[qi]->submitEP();
 }
 

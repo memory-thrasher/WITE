@@ -16,13 +16,10 @@ public:
     void submit();//submit the plan for execution
     bool isRunning();
     void queueWaitForSemaphore(VkSemaphore sem);
-    //void present(uint32_t count, const VkSwapchainKHR* chains, const uint32_t* indexes);
-    //^^TODO, but allow for graphics queue to be a different queue
   private:
     constexpr static size_t MAX_QUEUE_REDUCE = 16;//use case atm, this is the max number of cameras per window
     typedef struct {
       VkCommandBuffer cmd;
-      //VkSubmitInfo submitInfo;//Moved to parallel vector for easier enquement
       VkSemaphore completionSemaphore;
       VkSemaphore waitedSemaphores[MAX_QUEUE_REDUCE];
       VkPipelineStageFlags waitedSem_PipeStages[MAX_QUEUE_REDUCE];
@@ -39,12 +36,14 @@ public:
   Queue(GPU* gpu, uint32_t family, uint32_t idx);
   ~Queue();
   ExecutionPlan* getComplexPlan();//EP is a thread-specific resource
+  void submitEP(); //submit the EP for this thread if one exists, otherwise noop
   VkCommandBuffer makeCmd();
   VkQueue getQueue() { return queue; };
   void destroyCmd(VkCommandBuffer);
   void submit(VkCommandBuffer* cmds, size_t cmdLen, VkFence fence = VK_NULL_HANDLE);
   inline void submit(VkCommandBuffer cmd, VkFence fence = VK_NULL_HANDLE) { submit(&cmd, 1, fence); };
   bool supports(VkSurfaceKHR*);
+  static void submitAllForThisThread();
   GPU* gpu;
   unsigned int family;
   VkQueue queue;//TODO private and getters for these

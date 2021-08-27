@@ -43,6 +43,10 @@ namespace WITE {
       }
       return data[tid];
     }
+    T* getIfExists() {
+      if(tid >= maxCreated || !data[tid]) return NULL;
+      return data[tid];
+    }
     size_t listAll(Tentry* out, size_t maxOut) {
       size_t i, count = 0;
       for(i = 0;i < maxCreated && count < maxOut;i++) {

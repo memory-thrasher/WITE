@@ -168,10 +168,10 @@ void Window::present() {//main thread only
   ep->queueWaitForSemaphore(swapchain.semaphore);
   auto cmd = ep->getActive();
   swapchain.images[swapIdx].discard();
-  swapchain.images[swapIdx].setLayout(LAYOUT_TRANSFER_DST, cmd, graphicsQ);
 #ifdef _DEBUG
   swapchain.images[swapIdx].clear(cmd, &SWAP_CLEAR);
 #endif
+  swapchain.images[swapIdx].setLayout(LAYOUT_TRANSFER_DST, cmd, graphicsQ);
   for(i = 0;i < len;i++)
     cameras[i]->blitTo(cmd, swapchain.images[swapIdx].getImage());
   swapchain.images[swapIdx].setLayout(VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, cmd, presentQ);
@@ -194,8 +194,7 @@ void Window::present() {//main thread only
 }
 
 void Window::presentAll() {
-  auto end = windows.end();
-  for(auto ww = windows.begin();ww != end;++ww) {
+  for(auto ww in windows) {
     ((::Window*)*ww)->present();
   }
 }

@@ -154,7 +154,8 @@ namespace WITE_internal {
     VkImageMemoryBarrier barrier = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER, NULL,
 				     vkAccessBitmask, newAccess,
 				     layout, newLayout,
-				     ownerQueue && newOwner ? ownerQueue->family : VK_QUEUE_FAMILY_IGNORED, newOwner->newOwner->family : VK_QUEUE_FAMILY_IGNORED,
+				     ownerQueue && newOwner ? ownerQueue->family : VK_QUEUE_FAMILY_IGNORED,
+				     newOwner ? newOwner->family : VK_QUEUE_FAMILY_IGNORED,
 				     image,
 				     { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 }
     };

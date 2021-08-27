@@ -5,7 +5,15 @@ namespace WITE {
   class ImageSource {
   public:
     ImageSource(const ImageSource&) = delete;
-    virtual BackedImage* getImage(WITE::IntBox3D) = 0;
+    virtual const BackedImage* getImages() = 0;
+    virtual size_t getImageCount() = 0;
+    virtual int64_t getFormat() = 0;
+    //the rest are optional
+    virtual void requestResize() {};
+    virtual size_t getReadIdx() { return database->getCurrentFrame() % getImageCount(); };
+    virtual size_t getWriteIdx() { return (database->getCurrentFrame() + 1) % getImageCount(); };
+    virtual const BackedImage* getReadImage() { return getImages()[getReadIdx()]; };
+    virtual BackedImage* getWriteImage() { return getImages()[getWriteIdx()]; };
   };
 
   class StaticImageSource : public ImageSource {

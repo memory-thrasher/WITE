@@ -2,7 +2,7 @@
 
 namespace WITE_internal {
 
-  Camera::Camera(WITE::IntBox3D size, Queue* graphics) : WITE::Camera(), graphicsQ(graphics), fov(M_PI * 0.5f) {
+  Camera::Camera(WITE::IntBox3D size, , std::shared_ptr<WITE::ImageSource> source) : WITE::Camera(), fov(M_PI * 0.5f), source(source) {
     resize(size);
   }
 
@@ -57,7 +57,7 @@ namespace WITE_internal {
   void Camera::resize(WITE::IntBox3D newsize) {
     if(screenbox.sameSize(newsize)) return;
     screenbox = newsize;
-    recreateResources();
+    source->requestResize(newsize);
   }
 
   void Camera::blitTo(VkCommandBuffer cmd, BackedImage* dst) {
@@ -68,9 +68,5 @@ namespace WITE_internal {
     vkCmdBlitImage(cmd, src->getImage(), src->getLayout(), dst, dst->getLayout(), 1, &region, VK_FILTER_NEAREST);//TODO filter should be setting, or cubic if we msaa
   }
 
-}
-
-WITE::Camera* WITE::Camera::make(WITE::Window* w, WITE::IntBox3D box) {
-  return w->addCamera(box);
 }
 

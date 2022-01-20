@@ -11,6 +11,8 @@ Window::Window(size_t display) : WITE::Window() {
   size_t i, j;
   bool found;
   windows.push_back(this);
+  //TODO get size of dispaly by idx (fullscreen)
+  //TODO allow size to be provided
   sdlWindow = SDL_CreateWindow(vkSingleton.appInfo.pApplicationName,
 			       SDL_WINDOWPOS_CENTERED_DISPLAY((int)display), SDL_WINDOWPOS_CENTERED_DISPLAY((int)display),
 			       800, 600, SDL_WINDOW_VULKAN);// | SDL_WINDOW_BORDERLESS
@@ -47,7 +49,7 @@ Window::Window(size_t display) : WITE::Window() {
   }
   graphicsQ = presentQ->gpu->graphicsQ;
   if(!presentQ->gpu->presentQ) presentQ->gpu->presentQ = presentQ;
-  //docs unclear, but hopefully a gpu queue that can present any surface can also support all surfaces on it.
+  //docs unclear, but hopefully a gpu queue that can present any surface can also support all surfaces on the same gpu.
   //This is assumed later in render code, so assert it here:
   else if(presentQ->gpu->presentQ != presentQ) CRASH("Not Yet Implemented: different windows on the same gpu require different present queues.\n");
   uint32_t formatCount;
@@ -203,8 +205,8 @@ std::unique_ptr<WITE::Window> WITE::Window::make(size_t display) {
   return std::make_unique<::Window>(display);
 }
 
-Camera* Window::addCamera(WITE::IntBox3D box, WITE::Camera::Render_cb_t rcb) {
-  Camera* ret = new Camera(box, graphicsQ, rcb);
+Camera* Window::addCamera(WITE::IntBox3D box, std::shared_ptr<WITE::ImageSource> src) {
+  Camera* ret = new Camera(box, src);
   cameras.emplace_back(ret);
   return ret;
 }
@@ -238,6 +240,8 @@ void Window::setLocation(int32_t x, int32_t y) {
 void Window::setSize(uint32_t width, uint32_t height) {
   SDL_SetWindowSize(sdlWindow, width, height);
 }
+
+WITE::Queue* getGraphicsQueue() { return graphicsQ; }
 
 void Window::pollAllEvents() {
   static std::vector<uint32_t> seenUnknownTypes;

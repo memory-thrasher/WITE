@@ -16,6 +16,7 @@ public:
   inline void setFov(double val) { fov = val; updateMaths(); };
   inline double getFov() { return fov; };
   void blitTo(VkCommandBuffer cmd, BackedImage* dst);
+  void render() { source->render(this); };
 private:
   double fov;
   float pixelTangent;

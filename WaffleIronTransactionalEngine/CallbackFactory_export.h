@@ -1,10 +1,16 @@
 #pragma once
 
+#ifdef _WIN32
+#define wintypename typename
+#else
+#define wintypename
+#endif
+
 namespace WITE {
 
   template<class RET, class... RArgs> class Callback_t {
   public:
-    virtual RET call(RArgs... rargs) = 0;
+    virtual RET call(RArgs... rargs) const = 0;
     virtual ~Callback_t() = default;
   };
 
@@ -15,23 +21,23 @@ namespace WITE {
       RET(T::*x)(CArgs..., RArgs...);
       T * owner;
       std::tuple<CArgs...> cargs;
-      RET call(RArgs... rargs) const {
-        return (*owner.*(x))(std::get<CArgs>(cargs)..., rargs...);
-      };
     public:
       Callback(T* t, RET(T::*x)(CArgs..., RArgs...), CArgs... pda);
       ~Callback() {};
+      RET call(RArgs... rargs) const override {
+        return (*owner.*(x))(std::get<CArgs>(cargs)..., rargs...);
+      };
     };
     template<class... CArgs> class StaticCallback : public Callback_t<RET, RArgs...> {
     private:
       RET(*x)(CArgs..., RArgs...);
       std::tuple<CArgs...> cargs;
-      RET call(RArgs... rargs) const {
-        return (*x)(std::get<CArgs>(cargs)..., rargs...);
-      };
     public:
       StaticCallback(RET(*x)(CArgs..., RArgs...), CArgs... pda);
       ~StaticCallback() {};
+      RET call(RArgs... rargs) const override {
+        return (*x)(std::get<CArgs>(cargs)..., rargs...);
+      };
     };
   public:
     typedef Callback_t<RET, RArgs...>* callback_t;
@@ -48,12 +54,12 @@ namespace WITE {
 
   template<class RET, class... RArgs> template<class U, class... CArgs> Callback_t<RET, RArgs...>*
   CallbackFactory<RET, RArgs...>::make(U* owner, CArgs... cargs, RET(U::*func)(CArgs..., RArgs...)) {
-    return new typename CallbackFactory<RET, RArgs...>::Callback<U, CArgs...>(owner, func, std::forward<CArgs>(cargs)...);
+    return new wintypename CallbackFactory<RET, RArgs...>::Callback<U, CArgs...>(owner, func, std::forward<CArgs>(cargs)...);
   };
 
   template<class RET, class... RArgs> template<class... CArgs> Callback_t<RET, RArgs...>*
   CallbackFactory<RET, RArgs...>::make(CArgs... cargs, RET(*func)(CArgs..., RArgs...)) {
-    return new typename CallbackFactory<RET, RArgs...>::StaticCallback<CArgs...>(func, std::forward<CArgs>(cargs)...);
+    return new wintypename CallbackFactory<RET, RArgs...>::StaticCallback<CArgs...>(func, std::forward<CArgs>(cargs)...);
   };
 
   #define typedefCB(name, ...) typedef WITE::CallbackFactory<__VA_ARGS__> name## _F; typedef typename name## _F::callback_t name ;

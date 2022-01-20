@@ -15,7 +15,7 @@ public:
     image from RP does render on update! Both need cmd anyway
    */
   RenderPass(WITE::Queue*);
-  RenderPass(WITE::Queue*, WITE::ImageSource **inputs, size_t inputCount);
+  RenderPass(WITE::Queue*, WITE::ImageSource **inputs, size_t inputCount, uint64_t outputImageUsage);
   void render();
   void requestResize(WITE::IntBox3D screensize);//override from interface
   BackedImage* getImages();//override from interface

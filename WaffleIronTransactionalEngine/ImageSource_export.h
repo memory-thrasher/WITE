@@ -9,7 +9,7 @@ namespace WITE {
     virtual size_t getImageCount() = 0;
     virtual int64_t getFormat() = 0;
     //the rest are optional
-    virtual void requestResize() {};
+    virtual void requestResize(IntBox3D) {};
     virtual size_t getReadIdx() { return database->getCurrentFrame() % getImageCount(); };
     virtual size_t getWriteIdx() { return (database->getCurrentFrame() + 1) % getImageCount(); };
     virtual const BackedImage* getReadImage() { return getImages()[getReadIdx()]; };

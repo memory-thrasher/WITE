@@ -32,7 +32,7 @@ namespace WITE {
 #endif
 #define CRASHRETLOG(ret, ...) { LOG(__VA_ARGS__); CRASHRET(ret); }
 #define CRASH(message, ...) { LOG(message, ##__VA_ARGS__); CRASHRET(); } //all crashes should explain themselves
-#define CRASHIFFAIL(_cmd_, ...) {int64_t _res = (int64_t)_cmd_; if(_res) { LOG("Got result: %I64d\n", _res); CRASHRET(__VA_ARGS__) } }//for VkResult. VK_SUCCESS = 0
+#define CRASHIFFAIL(_cmd_, ...) {int64_t _res = (int64_t)_cmd_; if(_res) { LOG("Got result: %ld\n", _res); CRASHRET(__VA_ARGS__) } }//for VkResult. VK_SUCCESS = 0
 #define CRASHIFWITHERRNO(_cmd_, ...) { if(_cmd_) { auto _en = errno; LOG("Got errno: %d\n", _en); CRASHRET(__VA_ARGS__) } }
 #define LOGMAT(mat, name) LOG("%s:\n%f %f %f %f\n%f %f %f %f\n%f %f %f %f\n%f %f %f %f\n", name,\
                   mat [0][0], mat [1][0], mat [2][0], mat [3][0],\
@@ -42,13 +42,6 @@ namespace WITE {
 
 #define TIME(cmd, level, ...) if(DO_TIMING_ANALYSIS >= level) {uint64_t _time = WITE::Time::nowNs(); cmd; _time = WITE::Time::nowNs() - _time; LOG(__VA_ARGS__, _time);} else {cmd;}
 #define debugMode (WITE::getDebugMode())
-
-  template<class T> struct remove_array { typedef T type; };
-  template<class T> struct remove_array<T[]> { typedef T type; };
-  template<class T, size_t N> struct remove_array<T[N]> { typedef T type; };
-  template<class T> struct remove_array_deep { typedef T type; };
-  template<class T> struct remove_array_deep<T[]> { typedef wintypename remove_array_deep<T>::type type; };
-  template<class T, size_t N> struct remove_array_deep<T[N]> { typedef wintypename remove_array_deep<T>::type type; };
 
   export_dec void WITE_INIT(const char* gameName, uint64_t debugFlags);
   export_dec FILE* file_open(const char* path, const char* mode);

@@ -8,7 +8,7 @@
 #define MAX_QUEUES (32)
 #define DEVICE_EXTENSIONS_LEN (1)
 
-typedef struct {
+typedef struct vulkan_singleton_st {
   const char* extensions[MAX_EXTENSIONS];
   const char* layers[MAX_LAYERS];
   unsigned int extensionCount, layerCount;

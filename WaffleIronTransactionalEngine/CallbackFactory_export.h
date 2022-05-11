@@ -1,10 +1,16 @@
 #pragma once
 
+#ifdef _WIN32
+#define wintypename typename
+#else
+#define wintypename
+#endif
+
 namespace WITE {
 
   template<class RET, class... RArgs> class Callback_t {
   public:
-    virtual RET call(RArgs... rargs) = 0;
+    virtual RET call(RArgs... rargs) const = 0;
     virtual ~Callback_t() = default;
   };
 
@@ -15,23 +21,23 @@ namespace WITE {
       RET(T::*x)(CArgs..., RArgs...);
       T * owner;
       std::tuple<CArgs...> cargs;
-      RET call(RArgs... rargs) {
-        return (*owner.*(x))(std::get<CArgs>(cargs)..., rargs...);
-      };
     public:
       Callback(T* t, RET(T::*x)(CArgs..., RArgs...), CArgs... pda);
       ~Callback() {};
+      RET call(RArgs... rargs) const override {
+        return (*owner.*(x))(std::get<CArgs>(cargs)..., rargs...);
+      };
     };
     template<class... CArgs> class StaticCallback : public Callback_t<RET, RArgs...> {
     private:
       RET(*x)(CArgs..., RArgs...);
       std::tuple<CArgs...> cargs;
-      RET call(RArgs... rargs) {
-        return (*x)(std::get<CArgs>(cargs)..., rargs...);
-      };
     public:
       StaticCallback(RET(*x)(CArgs..., RArgs...), CArgs... pda);
       ~StaticCallback() {};
+      RET call(RArgs... rargs) const override {
+        return (*x)(std::get<CArgs>(cargs)..., rargs...);
+      };
     };
   public:
     typedef Callback_t<RET, RArgs...>* callback_t;

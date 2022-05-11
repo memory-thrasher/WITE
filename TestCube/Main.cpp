@@ -21,6 +21,10 @@ static shaders_t shaders;
 
 static uint64_t frameIdx = 0;
 
+static struct {
+  std::shared_ptr<WITE::RenderPass> cam1;
+} renderPasses;
+
 void cubeUpdate(WITE::Database::Entry e) {
   frameIdx++;
   auto o = (*database->getObjectInstanceFor(e));
@@ -74,7 +78,7 @@ int main(int argc, char** argv) {
   //end test monkey
   WITE::WITE_INIT("WITE test cube", DEBUG_MASK_VULKAN);
   struct WITE::Shader::resourceLayoutEntry flatLayout[] = {
-    { SHADER_RESOURCE_UNIFORM, SHADER_STAGE_VERT, 1, reinterpret_cast<void*>(sizeof(glm::mat4)) },//TODO this is assumed so should be implied, the provided resources should be in addition to trans
+    { SHADER_RESOURCE_UNIFORM, SHADER_STAGE_VERT, 1, reinterpret_cast<void*>(sizeof(glm::mat4)) },
     { SHADER_RESOURCE_UNIFORM, SHADER_STAGE_FRAG, 1, reinterpret_cast<void*>(sizeof(glm::mat4)) }
   };
   const char* flatFiles[2] = {"shaders/flat.vert.spv", "shaders/flat.frag.spv"};
@@ -87,10 +91,12 @@ int main(int argc, char** argv) {
   bounds.maxx -= bounds.minx;
   bounds.maxy -= bounds.miny;
   bounds.minx = bounds.miny = 0;
-  auto cam = win1->addCamera(bounds);
+  renderPasses.cam1 = WITE::RenderPass::make(win1->getGraphicsQueue());
+  renderPasses.cam1->setLayermask(~0);//this should also be the default
+  auto cam = win1->addCamera(bounds, renderPasses.cam1);
+  auto cam = WITE::Camera::make(bounds);
   cam->setFov(glm::radians(45.0f) * bounds.height() / bounds.width());
   cam->setMatrix(&glm::lookAtRH(glm::dvec3(20, 0, 12), glm::dvec3(0, 0, 0), glm::dvec3(0, 0, 1)));
-  cam->setLayermaks(~0);
   auto db = WITE::Database::makeDatabase(1024 * 1024 * 1024);
   database = db.get();
   db->allocate<cube>(cube::type);

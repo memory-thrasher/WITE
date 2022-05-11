@@ -130,7 +130,7 @@ void Database::rebase(const char * name, int64_t startidx) {
 
 void Database::push(enqueuedLogEntry* ele) {
   CRASHIFFAIL(threadResources.get()->transactionalBacklog.pushBlocking(ele));
-  dbStatus.store(DB_STATUS_LOG_IN_THREAD_QUEUE, std::memory_order_release);
+  dbStatus.fetch_or(DB_STATUS_LOG_IN_THREAD_QUEUE, std::memory_order_release);
 }
 
 void Database::free(Entry d) {
@@ -172,40 +172,19 @@ void Database::put(Entry target, const uint8_t * in, uint64_t start, uint16_t le
 
 void Database::put(Entry e, const uint8_t * inRaw, uint64_t* starts, uint64_t* lens, size_t count) {
   //in starts at beginning of entry data
-  constexpr static uint16_t MAX_GAP = sizeof(logEntry) + 64;
-  //save overhead space if flushing many closely clustered tiny pieces
-  //TUNEME: how much ram is worth one fewer log transactions to flush?
+  //save overhead space if flushing contiguous regions
   uint64_t start, end, i;
   uint64_t len;
   for(i = 0;i < count;i++) {
     start = starts[i];
     len = lens[i];
     end = start + len;
-    while(i < count - 1 && starts[i + 1] <= end + MAX_GAP &&
-      starts[i + 1] + lens[i + 1] <= start + Database::BLOCKDATASIZE) {//compress multi-write
+    while(i < count - 1 && starts[i + 1] == end && starts[i + 1] + lens[i + 1] <= start + Database::BLOCKDATASIZE) {//compress multi-write
       i++;
       end = starts[i] + lens[i];
       len = end - start;
     }
     put(e, inRaw + start, start, (uint16_t)len);
-  }
-}
-
-void Database::put(Entry t, const uint8_t * inRaw, const precompiledBatch_t* fields) {
-  constexpr static uint16_t MAX_GAP = sizeof(logEntry) + 64;
-  uint64_t start, end, i;
-  uint64_t len;
-  for(i = 0;i < fields->size;i++) {
-    start = fields->data[i].start;
-    len = fields->data[i].len;
-    end = start + len;
-    while(i < fields->size - 1 && fields->data[i + 1].start <= end + MAX_GAP &&
-      fields->data[i + 1].start + fields->data[i + 1].len <= start + Database::BLOCKDATASIZE) {//TODO move this to precompile
-      i++;
-      end = fields->data[i].start + fields->data[i].len;
-      len = end - start;
-    }
-    put(t, inRaw + start, start, (uint16_t)len);
   }
 }
 
@@ -367,7 +346,7 @@ Database::Entry Database::allocate(size_t size, type t) {//allocation is handled
   tr->map = allocationMap;
   tr->allocRet = NULL_ENTRY;
   tr->allocSize = size;
-  dbStatus.store(DB_STATUS_LOG_IN_THREAD_QUEUE, std::memory_order_release);
+  dbStatus.fetch_or(DB_STATUS_LOG_IN_THREAD_QUEUE, std::memory_order_release);
   while(tr->allocRet == NULL_ENTRY) WITE::sleep(50);//TUNEME sleep time
   //TODO maybe split here, so can allocate without type if needed
   auto ret = tr->allocRet;
@@ -543,7 +522,7 @@ void Database::pt_rethinkCache() {//called when prime thread has time to burn, b
   uint64_t opExpiration = WITE::Time::nowNs() + 2000000;//FIXME tune-able
 #define DB_RETHINK_SHOULD_YIELD (WITE::Time::nowNs() >= opExpiration)
   if(pt_rethinkCache_asyncVars.entryScanIdx == 0) {
-    TIME(memset(pt_rethinkCache_asyncVars.pt_cacheStaging, 0, sizeof(cacheIndex) * pt_rethinkCache_asyncVars.pt_cacheStagingSize), 3, "db: rethink cache: memset cache staging: %I64d\n");
+    TIME(memset(pt_rethinkCache_asyncVars.pt_cacheStaging, 0, sizeof(cacheIndex) * pt_rethinkCache_asyncVars.pt_cacheStagingSize), 3, "db: rethink cache: memset cache staging: %ld\n");
     pt_rethinkCache_asyncVars.pt_cacheStagingLen = 0;
   }
   TIME(
@@ -581,7 +560,7 @@ void Database::pt_rethinkCache() {//called when prime thread has time to burn, b
         pt_rethinkCache_asyncVars.pt_cacheStaging[mid].score = score;
         pt_rethinkCache_asyncVars.pt_cacheStaging[mid].ent = ate.allocationState == unallocated ? NULL_ENTRY : pt_rethinkCache_asyncVars.entryScanIdx;
       }
-    }, 3, "db: rethink cache: entry scan: %I64d\n");
+    }, 3, "db: rethink cache: entry scan: %ld\n");
   if(DB_RETHINK_SHOULD_YIELD) return;
   TIME(
     for(;pt_rethinkCache_asyncVars.cacheScanIdx < cacheCount;pt_rethinkCache_asyncVars.cacheScanIdx++) {
@@ -614,7 +593,7 @@ void Database::pt_rethinkCache() {//called when prime thread has time to burn, b
         cache[pt_rethinkCache_asyncVars.cacheScanIdx] = ce;//ce is on thread stack, which is cached, while cache is not cached
       }
       allocTab[ci.ent].cacheLocation = &cache[pt_rethinkCache_asyncVars.cacheScanIdx];
-    }, 3, "db: rethink cache: cache scan: %I64d\n");
+    }, 3, "db: rethink cache: cache scan: %ld\n");
   pt_rethinkCache_asyncVars.entryScanIdx = 0;
   pt_rethinkCache_asyncVars.cacheScanIdx = 0;
 }
@@ -696,7 +675,7 @@ Database::Entry Database::pt_allocate(size_t size, Entry* map) {//evergreen mode
   return j;
 }
 
-bool Database::pt_adoptTlog(threadResource_t::transactionalBacklog_t* src) {
+bool Database::pt_adoptTlog(threadResource::transactionalBacklog_t* src) {
   size_t discard, read = 0, targetChild, offset, size, trunkIdx, branchIdx, targetTrunk, targetBranch, targetLeaf;
   Entry trunk, branch, leaf;
   state_t baseState;

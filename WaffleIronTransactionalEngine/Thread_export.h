@@ -32,9 +32,7 @@ namespace WITE {
       memset(ret, 0, sizeof(T));
       return ret;
     }
-    T* get() {
-      return get(Thread::getCurrentTid());
-    }
+    T* get();
     T* get(uint32_t tid) {
       if(tid >= maxCreated || !data[tid]) {
         ScopeLock contextHold(&lock);
@@ -43,6 +41,10 @@ namespace WITE {
         if(typeInit && !data[tid])
           data[tid] = typeInit->call();
       }
+      return data[tid];
+    }
+    T* getIfExists() {
+      if(tid >= maxCreated || !data[tid]) return NULL;
       return data[tid];
     }
     size_t listAll(Tentry* out, size_t maxOut) {
@@ -80,6 +82,10 @@ namespace WITE {
     Thread(threadEntry_t entry, uint32_t id);
     Thread();//dumby for allocation
   };
+
+  template<class T> T* ThreadResource<T>::get() {
+    return get(Thread::getCurrentTid());
+  }
 
 };
 

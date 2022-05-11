@@ -187,6 +187,7 @@
     <ClCompile Include="Queue.cpp" />
     <ClCompile Include="Renderer.cpp" />
     <ClCompile Include="RenderLayer.cpp" />
+    <ClCompile Include="RenderPass.cpp" />
     <ClCompile Include="Shader.cpp" />
     <ClCompile Include="StaticMesh.cpp" />
     <ClCompile Include="stdafx.cpp" />
@@ -199,7 +200,9 @@
   <ItemGroup>
     <ClInclude Include="AtomicLinkedList.h" />
     <ClInclude Include="BackedBuffer.h" />
+    <ClInclude Include="BackedBuffer_export.h" />
     <ClInclude Include="BackedImage.h" />
+    <ClInclude Include="BackedImage_export.h" />
     <ClInclude Include="CallbackFactory_export.h" />
     <ClInclude Include="Camera.h" />
     <ClInclude Include="Camera_export.h" />
@@ -208,6 +211,8 @@
     <ClInclude Include="Database.h" />
     <ClInclude Include="Database_export.h" />
     <ClInclude Include="Debugger.h" />
+    <ClInclude Include="DFOSLG_definitions_export.cpp" />
+    <ClInclude Include="DFOSLG_export.h" />
     <ClInclude Include="Export.h" />
     <ClInclude Include="Globals.h" />
     <ClInclude Include="Globals_export.h" />
@@ -220,9 +225,12 @@
     <ClInclude Include="Object.h" />
     <ClInclude Include="Object_export.h" />
     <ClInclude Include="Queue.h" />
+    <ClInclude Include="Queue_export.h" />
     <ClInclude Include="Renderer.h" />
     <ClInclude Include="Renderer_export.h" />
     <ClInclude Include="RenderLayer.h" />
+    <ClInclude Include="RenderPass.h" />
+    <ClInclude Include="RenderPass_export.h" />
     <ClInclude Include="RollingBuffer_export.h" />
     <ClInclude Include="Shader.h" />
     <ClInclude Include="ShaderResource_export.h" />
@@ -233,6 +241,7 @@
     <ClInclude Include="Thread_export.h" />
     <ClInclude Include="Time_export.h" />
     <ClInclude Include="Transform_export.h" />
+    <ClInclude Include="Utils_Template_export.h" />
     <ClInclude Include="Window.h" />
     <ClInclude Include="Window_export.h" />
     <ClInclude Include="WMath_export.h" />

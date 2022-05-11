@@ -10,12 +10,13 @@ public:
   void setLocation(int32_t x, int32_t y, uint32_t w, uint32_t h);
   void setLocation(int32_t x, int32_t y);
   WITE::IntBox3D getBounds();
-  Camera* addCamera(WITE::IntBox3D);//TODO full-window camera default
+  Camera* addCamera(WITE::IntBox3D, std::shared_ptr<WITE::ImageSource>);
   Camera* getCamera(size_t idx);
   size_t getCameraCount();
+  WITE::Queue* getGraphicsQueue();
   static void pollAllEvents();
   static bool areRendersDone();
-  static void renderAll();
+  void present();
   static void presentAll();
   static inline WITE::Window** iterateWindows(size_t &num);
 private:
@@ -23,7 +24,6 @@ private:
   static std::map<uint32_t, ::Window*> windowsBySdlId;
   void recreateSwapchain();
   inline bool renderEnabled();
-  //static std::vector<Window*> windows;//already in super
   SDL_Window * sdlWindow;
   uint32_t sdlWindowId;
   size_t displayIdx;
@@ -37,14 +37,8 @@ private:
     VkSwapchainCreateInfoKHR info;
     VkSwapchainKHR chain;
     BackedImage* images;
-    //VkFramebuffer *framebuffers;
     VkSemaphore semaphore;
   } swapchain;
   std::vector<std::unique_ptr<Camera>> cameras;
-  typedef struct {
-    VkSwapchainKHR swapchain;
-    uint32_t imageIdx;
-  } PresentInfoSegment;
-  uint32_t render();//returns which swapchain image it uses
 };
 

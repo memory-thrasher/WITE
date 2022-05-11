@@ -3,6 +3,8 @@
 #include "Export.h"
 #include "stdafx.h"
 
+namespace WITE_internal {
+
 class Window;
 class Camera;
 class Object;
@@ -26,9 +28,10 @@ class Config;
 #include "RenderLayer.h"
 #include "Globals.h"
 #include "Queue.h"
-#include "GPU.h"
 #include "BackedBuffer.h"
 #include "BackedImage.h"
+#include "RenderPass.h"
+#include "GPU.h"
 #include "AtomicLinkedList.h"
 #include "Mesh.h"
 #include "Shader.h"
@@ -38,3 +41,5 @@ class Config;
 #include "Camera.h"
 #include "Window.h"
 #include "Config.h"
+
+}

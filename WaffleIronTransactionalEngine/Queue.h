@@ -1,28 +1,25 @@
 #pragma once
 
-class Queue {
+class Queue : public WITE::Queue {
 public:
   static constexpr VkSemaphoreCreateInfo SEMAPHORE_CREATE_INFO = { VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO, 0, 0 };
   static constexpr VkCommandBufferBeginInfo CMDBUFFER_BEGIN_INFO = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, VK_NULL_HANDLE, 0, VK_NULL_HANDLE};
-  class ExecutionPlan {//thread-specific resource: do *not* pass between threads. Locks queue once any begin is called, until isRunning has returned false
+  class ExecutionPlan : public WITE::Queue::ExecutionPlan {//thread-specific resource: do *not* pass between threads. Locks queue once any begin is called, until isRunning has returned false
   public:
     ExecutionPlan(Queue* master);
     ~ExecutionPlan();
-    VkCommandBuffer beginParallel();//returns an empty commandbuffer in the recording state with no pre-dependencies
-    VkCommandBuffer beginSerial();//returns an empty commandbuffer in the recording state predependent on only the most recently returned commandbuffer
-    VkCommandBuffer beginReduce();//returns an empty commandbuffer in the recording state predependent on all previously returned commandbuffers.
+    void beginParallel();//returns an empty commandbuffer in the recording state with no pre-dependencies
+    void beginSerial();//returns an empty commandbuffer in the recording state predependent on only the most recently returned commandbuffer
+    void beginReduce();//returns an empty commandbuffer in the recording state predependent on all previously returned commandbuffers.
     VkCommandBuffer getActive();
     void popStateSemaphores(std::vector<VkSemaphore>*);
     void submit();//submit the plan for execution
     bool isRunning();
     void queueWaitForSemaphore(VkSemaphore sem);
-    //void present(uint32_t count, const VkSwapchainKHR* chains, const uint32_t* indexes);
-    //^^TODO, but allow for graphics queue to be a different queue
   private:
     constexpr static size_t MAX_QUEUE_REDUCE = 16;//use case atm, this is the max number of cameras per window
     typedef struct {
       VkCommandBuffer cmd;
-      //VkSubmitInfo submitInfo;//Moved to parallel vector for easier enquement
       VkSemaphore completionSemaphore;
       VkSemaphore waitedSemaphores[MAX_QUEUE_REDUCE];
       VkPipelineStageFlags waitedSem_PipeStages[MAX_QUEUE_REDUCE];
@@ -39,12 +36,14 @@ public:
   Queue(GPU* gpu, uint32_t family, uint32_t idx);
   ~Queue();
   ExecutionPlan* getComplexPlan();//EP is a thread-specific resource
+  void submitEP(); //submit the EP for this thread if one exists, otherwise noop
   VkCommandBuffer makeCmd();
   VkQueue getQueue() { return queue; };
   void destroyCmd(VkCommandBuffer);
   void submit(VkCommandBuffer* cmds, size_t cmdLen, VkFence fence = VK_NULL_HANDLE);
   inline void submit(VkCommandBuffer cmd, VkFence fence = VK_NULL_HANDLE) { submit(&cmd, 1, fence); };
   bool supports(VkSurfaceKHR*);
+  static void submitAllForThisThread();
   GPU* gpu;
   unsigned int family;
   VkQueue queue;//TODO private and getters for these

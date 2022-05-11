@@ -136,7 +136,7 @@ namespace WITE {
     outer = head.load() == computed;
   }
 
-  RB_PROTO(template<SIZE_TYPE cloneSize, SIZE_TYPE cloneCount> RB_FQN::RBIterator<cloneSize, cloneCount>)::iter() {
+  RB_PROTO(template<SIZE_TYPE cloneSize, SIZE_TYPE cloneCount> typename RB_FQN::template RBIterator<cloneSize, cloneCount>)::iter() {
     RBIterator<cloneSize, cloneCount> ret(this);
     return ret;
   }
@@ -310,7 +310,7 @@ namespace WITE {
   RB_PROTO(template<bool M> typename std::enable_if_t<M, uint16_t>)::relocate(uint8_t* newStart, SIZE_TYPE newSize) {
     uint8_t* newEnd, *oldStart, *oldEnd;
     size_t used = this->used(), leadingEmpty, trailingEmpty, mov;
-    int64_t oldHead, oldTail, startOffset, movRemaining;
+    ssize_t oldHead, oldTail, startOffset, movRemaining;
     bool wasWrapped;
     if (newSize < used) return RB_BUFFER_OVERFLOW;
     SIZE_TYPE head = this->head.load(/*std::memory_order_seq_cst*/), tail = this->tail.load(/*std::memory_order_seq_cst*/);
@@ -331,38 +331,38 @@ namespace WITE {
 	if (size - head > tail) {//move tail
 	  if (trailingEmpty) {//move tail to fill void
 	    movRemaining = tail;
-	    mov = WITE::min(movRemaining, trailingEmpty);
-	    memcpy(oldEnd, oldStart, mov);
+	    mov = std::min<size_t>(movRemaining, trailingEmpty);
+	    std::memcpy(oldEnd, oldStart, mov);
 	    movRemaining -= mov;
 	    if (movRemaining > 0) {
-	      memmove(newStart, oldStart + mov, movRemaining);
+	      std::memmove(newStart, oldStart + mov, movRemaining);
 	      tail = movRemaining;
 	    } else
 	      tail = newSize + movRemaining;//movRemaining <= 0
 	    head = oldHead;
 	  } else {//case: newend <= oldend: trailingEmpty = 0, must relocate segment of head at end to beginning
 	    mov = static_cast<size_t>(oldEnd - newEnd);
-	    if (mov != startOffset) memmove(newStart + mov, oldStart, tail);
-	    memcpy(newStart, newEnd, mov);
+	    if (mov != static_cast<size_t>(startOffset)) std::memmove(newStart + mov, oldStart, tail);
+	    std::memcpy(newStart, newEnd, mov);
 	    tail = mov + tail;
 	    head = oldHead;
 	  }
 	} else {//move head
 	  if (leadingEmpty) {//move head back to fill void
 	    movRemaining = size - head;
-	    mov = min<int64_t>(movRemaining, leadingEmpty);
-	    if (mov) memcpy(newStart - mov + leadingEmpty, oldEnd - mov, mov);
+	    mov = std::min<int64_t>(movRemaining, leadingEmpty);
+	    if (mov) std::memcpy(newStart - mov + leadingEmpty, oldEnd - mov, mov);
 	    movRemaining -= mov;
 	    if (movRemaining > 0) {
-	      memmove(newEnd - mov - 1, oldStart + head, movRemaining);
+	      std::memmove(newEnd - mov - 1, oldStart + head, movRemaining);
 	      head = oldHead + movRemaining;
 	    } else
 	      head = leadingEmpty - mov;
 	    tail = oldTail;
 	  } else {//relocate segment of tail to head
 	    mov = size - head;
-	    if(mov != -startOffset) memmove(newEnd - mov, oldStart + head, mov);
-	    memcpy(newEnd - startOffset, oldStart, -startOffset);
+	    if(mov != static_cast<size_t>(-startOffset)) std::memmove(newEnd - mov, oldStart + head, mov);
+	    std::memcpy(newEnd - startOffset, oldStart, -startOffset);
 	    tail = oldTail;
 	    head = size - mov;
 	  }
@@ -374,12 +374,12 @@ namespace WITE {
 	    tail = oldTail;
 	  } else {//wrap tail around to the beginning
 	    tail = oldTail - newSize;
-	    memcpy(newStart, newEnd, tail);
+	    std::memcpy(newStart, newEnd, tail);
 	    head = oldHead;
 	  }
 	} else {//wrap head around to end
 	  mov = -oldHead;
-	  memcpy(newEnd - mov - 1, oldStart + head, mov);
+	  std::memcpy(newEnd - mov - 1, oldStart + head, mov);
 	  head = size - mov;
 	  tail = oldTail;
 	}

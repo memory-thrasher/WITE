@@ -11,7 +11,7 @@ namespace WITE::DB {
   private:
     size_t masterThread;//assigned on db load
     volatile DBDelta *firstLog, *lastLog;//these are write-protected by Database::logMutex
-    size_t idx;//location of the corrosponding record in the main db file
+    size_t idx,;//location of the corrosponding record in the main db file
     Database* db;
     //TODO some kind of work for update tracking to help decide which entities get moved during thread load balancing
     friend class Database;

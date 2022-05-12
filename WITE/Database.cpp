@@ -173,6 +173,17 @@ namespace WITE::DB {
     }
   }
 
+  DBEntity* Database::getEntityAfter(DBEntity* src) {
+    size_t id = ~0;
+    DBDelta* delta = src->firstLog;
+    while(delta && delta->frame < currentFrame) {
+      if(delta->write_nextGlobalId)
+	id = delta->new_next_GlobalId;
+      delta = delta->nextForEntity;
+    }
+    return id == ~0 ? NULL : getEntity(id);
+  }
+
 }
 
 

@@ -27,7 +27,17 @@ namespave WITE::DB {
   }
 
   void DBEntity::write(void* src, size_t len, size_t offset) {
-    //TODO
+    DBDelta delta;
+    while(offset < DBRecord::CONTENT_SIZE && len) {
+      delta.len = glm::min(DBDelta::MAX_DELTA_SIZE, DBRecord::CONTENT_SIZE - offset - len);
+      memcpy(reinterpret_cast<void*>(delta.content), src, delta.len);
+      src += delta.len;
+      offset += delta.len;
+      len -= delta.len;
+    }
+    if(len + offset > DBRecord::CONTENT_SIZE) {
+      db->getEntityAfter(this)->write(src, len, offset);
+    }
   }
 
 }

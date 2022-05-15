@@ -16,7 +16,6 @@ namespace WITE::DB {
     for(size_t i = 0;i < DB_THREAD_COUNT;i++)
       new(&threads[i])DBThread(this, i);
     this.threads = std::unique_ptr<DBThread>(threads);
-    //TODO populate threadsByTid
     for(size_t i = 0;i < typeCount;i++) {
       this->types.insert({types[i]., types[i]});
     }
@@ -30,8 +29,8 @@ namespace WITE::DB {
       free.push(new(&entities[i])DBEntity(this, i));
     //no need to load anything when there's no file to load from
     this->metadata = std::unique_ptr(entities);
-    data = reinterpret_cast<DBRecord*>(mmap(NULL, sizeof(DBRecord) * entityCount, PROT_READ | PROT_WRITE,
-					    MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB | MAP_HUGE_2MB, -1, 0));
+    data_raw = mmap(NULL, sizeof(DBRecord) * entityCount, PROT_READ | PROT_WRITE,
+		    MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB | MAP_HUGE_2MB, -1, 0);
   }
 
   Database::Database(struct entity_type* types, size_t typeCount, int backingStoreFd, size_t entityCount) :
@@ -43,16 +42,17 @@ namespace WITE::DB {
     }
     this->entityCount = entityCount;
     free = AtomicRollingQueue<DBEntity*>(entityCount);
-    data = reinterpret_cast<DBRecord*>(mmap(NULL, sizeof(DBRecord) * entityCount, PROT_READ | PROT_WRITE,
-					    MAP_SHARED | MAP_HUGETLB | MAP_HUGE_2MB | MAP_POPULATE, backingStoreFd, 0));
+    data_raw = mmap(NULL, sizeof(DBRecord) * entityCount, PROT_READ | PROT_WRITE,
+		    MAP_SHARED | MAP_HUGETLB | MAP_HUGE_2MB | MAP_POPULATE, backingStoreFd, 0);
     DBEntity* entities = reinterpret_cast<DBEntity*>(malloc(sizeof(DBEntity) * entityCount));
     for(size_t i = 0;i < entityCount;i++) {
       DBEntity* dbe = new(&entities[i])DBEntity(this, i);
       if(data[i].header.flags & DBRecord::flag_t::allocated) {
 	size_t tid = i % DB_THREAD_COUNT;
-	dbe->masterThread = tid;
-	if(getType
-	threads[tid].addToSlice(dbe);
+	if(getType(&data[i].header.type)) {
+	  dbe->masterThread = tid;
+	  threads[tid].addToSlice(dbe);
+	}
       } else {
 	free.push(dbe);
       }
@@ -60,7 +60,55 @@ namespace WITE::DB {
     this->metadata = std::unique_ptr(entities);
   }
 
-  //TODO destructor, close all db threads by setting semaphore to state_exiting
+  Database::~Database() {
+    stop();
+    while(applyLogTransactions());
+    msync(data_raw, sizeof(DBRecord) * entityCount, MS_SYNC);//flush
+    munmap(data_raw, sizeof(DBRecord) * entityCount);
+  }
+
+  bool Database::anyThreadIs(DBThread::semaphoreState state) {
+    for(size_t i = 0;i < DB_THREAD_COUNT;i++)
+      if(threads[i].semaphore == state)
+	return true;
+    return false;
+  }
+
+  bool Database::anyThreadBroke() {
+    for(size_t i = 0;i < DB_THREAD_COUNT;i++) {
+      auto state = threads[i].semaphore;
+      if(state == state_exited || state_exiting || state == state_exploded)
+	return true;
+    }
+    return false;
+  }
+
+  void signalThreads(DBThread::semaphoreState s) {
+    for(size_t i = 0;i < DB_THREAD_COUNT;i++)
+      threads[i].setState(s);
+  }
+
+  void Database::start() {
+    started = true;
+    for(size_t i = 0;i < DB_THREAD_COUNT;i++) {
+      threads[i].start();
+      threadsByTid.insert({ threads[i].getTid(), i });
+    }
+    while(!shuttinngDown) {
+      while(anyThreadIs(DBThread::state_updating))
+	WITE::Platform::Thread::sleep();
+      if(anyThreadBroke())
+	stop();
+      signalThreads(DBThread::state_
+    }
+  }
+
+  void Database::stop() {
+    shuttingDown = true;
+    signalThreads(DBThread::state_exiting);
+    for(size_t i = 0;i < DB_THREAD_COUNT;i++)
+      threads[i].join();
+  }
 
   DBThread* getLightestThread() {
     DBThread* ret = &threads[0];
@@ -119,10 +167,14 @@ namespace WITE::DB {
     write(delta);
   }
 
+  DBThread* Database::getCurrentThread() {
+    return &threads[threadsByTid[DBThread::getCurrentTid()]];
+  }
+
   void Database::write(DBDelta* src) {
     if(started) {
       delta->frame = curentFrame;
-      auto threadLog = &DBThread.getCurrentThread()->transactions;
+      auto threadLog = &getCurrentThread()->transactions;
       if(!threadLog->push(src)) {
 	ScopeLock lock(&logMutex);
 	size_t freeLog = log.freeSpace();
@@ -170,7 +222,7 @@ namespace WITE::DB {
 	minimumApplyRemaining = 0;
       } else if(thisBatchSize < MAX_BATCH_SIZE) {//this means ran out of deltas that belong to previous frames to flush, yet still don't have enough room in the log; this is fatal
 	//this is actually the best possible time to crash: we have just finished writing an entire frame to the save
-	msync(reinterpret_cast<void*>(data), sizeof(DBRecord) * entityCount, MS_SYNC);//flush
+	msync(data_raw, sizeof(DBRecord) * entityCount, MS_SYNC);//flush
 	shuttingDown = true;
 	exit(EXIT_FAILURE);
 	while(1);//do not release mutex
@@ -221,13 +273,6 @@ namespace WITE::DB {
 //       new(&threads[i])DBThread(this, i);
 //     }
 //     this.threads = new std::unique_ptr<DBThread[]>(threads);
-//   }
-
-//   Database::anyThreadIs(DBThread::semaphoreState state) {
-//     for(size_t i = 0;i < threadCount;i++)
-//       if(threads[i].semaphore == state)
-// 	return true;
-//     return false;
 //   }
 
 //   void mainLoop() {

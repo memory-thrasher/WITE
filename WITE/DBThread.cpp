@@ -9,7 +9,27 @@ namespace WITE::DB {
   DBThread::DBThread(Database const * db, size_t tid) : dbI(tid), db(db), slice(10000), slice_toBeRemoved(1000),
 							slice_toBeAdded(1000), transactions() {}
 
+  bool DBThread::setState(semaphoreState desired) {
+    do {
+      semaphoreState state = semaphore.load(std::memory_order_acquire);
+      if(state == state_exiting || state == state_exploded)
+	return false;
+    } while(!semaphore.compare_exchange_strong(&state, desired));
+  }
+
+  bool DBThread::waitForState(semaphoreState desired) {
+    while(true) {
+      semaphoreState state = semaphore.load(std::memory_order_consume);
+      if(state == desired)
+	return true;
+      if(state == state_exited || state_exiting || state == state_exploded)
+	return false;
+      Thread::sleep();
+    }
+  }
+
   void DBThread::workLoop() {
+    this.thread = PThread::current();
     static const struct itimerspec FRAME_MAX_TIME { { 0, 0 }, { std::numeric_limits<time_t>::max, 0 } };
     struct itimerspec frameTime;
     struct sigevent noop;
@@ -23,16 +43,13 @@ namespace WITE::DB {
       while(1) {
 	if(timer_settime(cpuTimer, 0, &FRAME_MAX_TIME, NULL))
 	  WARN("Timer set fail, thread balancing may be wrong");
-	semaphore = state_updating;
+	if(!setState(state_updating)) break;
 	DBRecord data;
 	for(DBEntity* ent : slice) {
 	  ent->read(&data);
 	  db->getType(data.type)->update.call(&data);
 	}
-	auto state = state_updating;
-	semaphore.compare_exchange_strong(&state, state_updated);
-	while((state = semaphore) != state_maintaining && state != state_exiting);
-	if(state == state_exiting) break;
+	if(!setState(state_updated) || !waitForState(state_maintaining)) break;
 	if(timer_gettime(cpuTimer, &cpuTimer))
 	  WARN("Timer get fail, thread balancing may be wrong");
 	nsSpentOnLastFrame = (FRAME_MAX_TIME.it_value.tv_sec - cpuTime.it_value.tv_sec) * 1000000000 +
@@ -44,13 +61,49 @@ namespace WITE::DB {
 			  });
 	  slice_toBeRemoved.clear();
 	}
-	slice.splice(slice.end(), slice_toBeAdded);//splice moves, so this clears toBeAdded
+	{
+	  ScopeLock lock(&sliceAlterationPoolMutex);
+	  if(slice_toBeAdded.size())
+	    slice.splice(slice.end(), slice_toBeAdded);//splice moves, so this clears toBeAdded
+	  if(!setState(state_frameSync) || !waitForState(state_updating)) break;
+	}
       }
       time_delete(cpuTimer);
+      semaphore = state_exited;
     } catch {
       time_delete(cpuTimer);
       semaphore = state_exploded;
     }
+  }
+
+  void DBThread::start() {
+    if(semaphore != state_initial)
+      return;
+    PThread.spawnThread(PThread::threadEntry_t_F::make(this, &DBThread::workLoop));
+    waitForState(state_updating);
+  }
+
+  void DBThread::addToSlice(DBEntity* in) {
+    ScopeLock lock(&sliceAlterationPoolMutex);
+    slice_toBeAdded.push_back(in);
+  }
+
+  void DBThread::removeFromSlice(DBEntity* in) {
+    ScopeLock lock(&sliceAlterationPoolMutex);
+    slice_toBeRemoved.push_back(in);
+  }
+
+  void DBThread::join() {
+    setState(state_exiting);
+    waitForState(state_exited);
+  }
+
+  uint32_t DBThread::getCurrentTid() {
+    return PThread::getCurrentTid();
+  }
+
+  uint32_t DBThread::getTid() {
+    return thread->getTid();
   }
 
 }

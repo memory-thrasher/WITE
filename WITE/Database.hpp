@@ -13,6 +13,8 @@ automatic transfer of objects between thread slices
 
  */
 
+#include <map>
+
 #include "SyncLock.hpp"
 #include "DBDelta.hpp"
 #include "DBRecord.hpp"
@@ -27,6 +29,7 @@ namespace WITE::DB {
   class DBDelta;
   enum DBThread::semaphoreState;
   class DBEntity;
+  struct entity_type;
 
   class Database {
   private:
@@ -44,18 +47,22 @@ namespace WITE::DB {
     void applyLogTransactions(size_t min = 0);//applying a minimum of 0 attempts one batch
     bool deltaIsInPast(DBDelta*);
     static Callback_t<bool, DBDelta*> deltaIsInPast_cb;
-    Database();//boilerplate
+    Database(struct entity_type* types, size_t typeCount);//boilerplate
+    std::map<DBRecord::type_t, struct entity_type> types;
+    //TODO (head) entities by type, liked list?
     DBThread* getLightestThread();
   public:
-    Database(int backingStore_fd, size_t entityCount = 0);//entityCount intended for making a new file
-    Database(size_t entityCount);//for anonymous
+    Database(struct entity_type* types, size_t typeCount,
+	     int backingStore_fd, size_t entityCount = 0);//entityCount intended for making a new file
+    Database(struct entity_type* types, size_t typeCount, size_t entityCount);//for anonymous
     // void mainLoop();
     void write(DBDelta*);//appends to the current thread's transaction queue, flushing it if out of space
     void read(DBEntity* src, DBRecord* dst);
     DBEntity* getEntity(size_t id);
     uint64_t getFrame() { return currentFrame; };
-    DBEntity* allocate(size_t count = 1);
+    DBEntity* allocate(DBRecord::type_t type, size_t count = 1, bool isHead = true);
     void deallocate(DBEntity*, DBRecord* info = NULL);//requires some info from the record's present state, provide if already read to avoid redundent read
+    const struct entity_type* getType(DBRecord::type_t);
   }
 
 }

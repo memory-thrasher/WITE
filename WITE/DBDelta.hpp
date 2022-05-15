@@ -15,6 +15,7 @@ namespace WITE::DB {
     DBDelta() : frame(~0);//for constructing temps and arrays, so no need to init very much
     DBDelta(const DBDelta&);//copy constructor that only copies the first len bytes of content
     void applyTo(class DBRecord*);
-  };//size=171
+    void clear();
+  };//size=190
 
 }

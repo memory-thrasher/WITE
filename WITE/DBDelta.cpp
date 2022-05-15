@@ -12,4 +12,11 @@ namespace WITE::DB {
       out->type = new_type;
   }
 
+  void DBDelta::clear() {
+    dstStart = len = 0;
+    write_nextGlobalId = write_type = 0;
+    nextForEntity = NULL;
+    flagWriteMask = 0;
+  }
+
 }

@@ -28,16 +28,44 @@ namespave WITE::DB {
 
   void DBEntity::write(void* src, size_t len, size_t offset) {
     DBDelta delta;
+    delta.clear();
     while(offset < DBRecord::CONTENT_SIZE && len) {
       delta.len = glm::min(DBDelta::MAX_DELTA_SIZE, DBRecord::CONTENT_SIZE - offset - len);
       memcpy(reinterpret_cast<void*>(delta.content), src, delta.len);
       src += delta.len;
       offset += delta.len;
       len -= delta.len;
+      write(&delta);
     }
     if(len + offset > DBRecord::CONTENT_SIZE) {
       db->getEntityAfter(this)->write(src, len, offset);
     }
+  }
+
+  void DBEntity::writeFlags(DBRecord::flag_t mask, DBRecord::flag_t values) {
+    DBDelta delta;
+    delta.clear();
+    delta.flagWriteMask = mask;
+    delta.flagWriteValues = values;
+    write(&delta);
+  }
+
+  void DBEntity::setType(DBRecord::type_t type) {
+    DBDelta delta;
+    delta.clear();
+    delta.write_type = 1;
+    delta.new_type = type;
+    write(&delta);
+  }
+
+  bool DBEntity::isUpdatable() {
+    DBRecord record;
+    read(&record);
+    return isUpdatable(&record);
+  }
+
+  /*static*/ bool DBEntity::isUpdatable(DBRecord* r) {
+    return (r.header.flags & DBRecord::head_node) && db->getType(r.header.type)->update != NULL;
   }
 
 }

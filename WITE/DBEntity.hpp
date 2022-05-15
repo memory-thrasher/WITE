@@ -2,6 +2,8 @@
 enttiy class contains metadata only, and is held internally by the db in ram to track the location and other info of a virtual object. Handles to entities are handed off to the worker thread for that and other threads' updates.
  */
 
+#include "Callback.hpp"
+
 namespace WITE::DB {
 
   class Database;
@@ -28,7 +30,7 @@ namespace WITE::DB {
     template<typename T, typename V, V T::* M> inline void read(T* dst) {
       read(reinterpret_cast<void*>(dst), sizeof(M), WITE::Util::member_offset(T, M));
     };
-    //TODO range / specific fields
+    //TODO member pointer variadic
     void write(class DBDelta* src);
     void write(void* src, size_t len, size_t offset = 0);
     template<typename T> inline void write(T* src) { write(reinterpret_cast<void*>(src), sizeof(T)); };
@@ -36,7 +38,15 @@ namespace WITE::DB {
       write(reinterpret_cast<void*>(src), sizeof(M), WITE::Util::member_offset(T, M));
     };
     //TODO member pointer variadic
-    //TODO shortcuts for flag-only writes
-  }
+    void writeFlags(DBRecord::flag_t mask, DBRecord::flag_t values);
+    void setType(DBRecord::type_t type);
+    bool isUpdatable();
+    static bool isUpdatable(DBRecord* r);
+  };
+
+  struct entity_type {
+    typedefCB(updateFn, void, DBRecord*);
+    updateFn update;
+  };
 
 }

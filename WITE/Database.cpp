@@ -9,7 +9,7 @@
 
 namespace WITE::DB {
 
-  Database::Database() {
+  Database::Database(struct entity_type* types, size_t typeCount) {
     DBThread* threads = reinterpret_cast<DBThread*>(malloc(sizeof(DbThread) * DB_THREAD_COUNT));
     if(!threads)
       CRASH_PREINIT("Faialed to create thread array");
@@ -17,9 +17,13 @@ namespace WITE::DB {
       new(&threads[i])DBThread(this, i);
     this.threads = std::unique_ptr<DBThread>(threads);
     //TODO populate threadsByTid
+    for(size_t i = 0;i < typeCount;i++) {
+      this->types.insert({types[i]., types[i]});
+    }
   }
 
-  Database::Database(size_t entityCount) : this(),
+  Database::Database(struct entity_type* types, size_t typeCount, size_t entityCount) :
+    this(types, typeCount),
     entityCount(entityCount), free(entityCount) {
     DBEntity* entities = reinterpret_cast<DBEntity*>(malloc(sizeof(DBEntity) * entityCount));
     for(size_t i = 0;i < entityCount;i++)
@@ -30,7 +34,8 @@ namespace WITE::DB {
 					    MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB | MAP_HUGE_2MB, -1, 0));
   }
 
-  Database::Database(int backingStoreFd, size_t entityCount) : this() {
+  Database::Database(struct entity_type* types, size_t typeCount, int backingStoreFd, size_t entityCount) :
+    this(types, typeCount) {
     if(!entityCount) {
       struct stat stat;
       fstat(backingStoreFd, &stat);
@@ -46,6 +51,7 @@ namespace WITE::DB {
       if(data[i].header.flags & DBRecord::flag_t::allocated) {
 	size_t tid = i % DB_THREAD_COUNT;
 	dbe->masterThread = tid;
+	if(getType
 	threads[tid].addToSlice(dbe);
       } else {
 	free.push(dbe);
@@ -54,15 +60,17 @@ namespace WITE::DB {
     this->metadata = std::unique_ptr(entities);
   }
 
+  //TODO destructor, close all db threads by setting semaphore to state_exiting
+
   DBThread* getLightestThread() {
     DBThread* ret = &threads[0];
     for(size_t i = 1;i < DB_THREAD_COUNT;i++)
-      if(threads[i].timeSPentOnLastFrame < ret->timeSPentOnLastFrame)
+      if(threads[i].nsSpentOnLastFrame < ret->nsSpentOnLastFrame)
 	ret = &threads[i];
     return ret;
   }
 
-  DBEntity* Database::allocate(size_t count) {
+  DBEntity* Database::allocate(DBRecord::type_t type, size_t count, bool isHead) {
     DBThread* t = getLightestThread();//TODO something cleverer
     DBEntity* ret = free.pop();
     if(!ret) return NULL;
@@ -70,15 +78,21 @@ namespace WITE::DB {
     t->addToSlice(ret);
     DBDelta delta;//set allocated flag
     delta.targetEntityId = ret->idx;
-    delta.flagWriteValues = DBRecord::allocated | DBRecord::head_node;
+    delta.flagWriteValues = DBRecord::allocated | (isHead ? DBRecord::head_node : 0);
+    delta.write_type = 1;
+    delta.new_type = type;
     if(count > 1) {
       delta.flagWriteValues |= DBRecord::has_next;
       delta.write_nextGlobalId = true;
-      delta.new_nextGlobalId = allocate(count - 1)->idx;
+      delta.new_nextGlobalId = allocate(type, count - 1, false)->idx;
     }
-    delta.flagWriteMask = delta.flagWriteValues;
+    delta.flagWriteMask = DBRecord::allocated | DBRecord::head_node | DBRecord::has_next;
     write(delta);
     return ret;
+  }
+
+  const struct entity_type* Database::getType(DBRecord::type_t t) {
+    return &types[t];
   }
 
   void Database::deallocate(DBEntity* libre, DBRecord* state) {

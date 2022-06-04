@@ -117,7 +117,7 @@ namespace WITE::Collections {
 
   bool isEmpty() {
     WITE::Util::ScopeLock lock(threadSafe ? lock : NULL);
-    return std::memcmp(&head, &tail, sizeof(pseudoPointer)) == 0;
+    return memcmp(&head, &tail, sizeof(pseudoPointer)) == 0;
   }
 
 }

@@ -2,6 +2,8 @@
 
 #include <glm/glm.hpp>
 
+#include "StdExtensions.hpp"
+
 namespace WITE::Util {
   
   class BBox3D {
@@ -38,7 +40,7 @@ namespace WITE::Util {
   inline int width()  { return (int)(maxx - minx); };
   inline int height() { return (int)(maxy - miny); };
   inline int depth()  { return (int)(maxz - minz); };
-  inline bool operator==(IntBox3D& o) { return memcmp((void*)comp, (void*)o.comp, 6 * sizeof(minx)) == 0; };
+  inline bool operator==(IntBox3D& o) { return memcmp(comp, o.comp, sizeof(comp)) == 0; };
   inline bool sameSize(IntBox3D& o) { return o.maxx - o.minx == maxx - minx && o.maxy - o.miny == maxy - miny && o.maxz - o.minz == maxz - minz; };
   };
 

@@ -1,9 +1,8 @@
 #pragma once
 
-#include <cstring>
-
 #include "Thread.hpp"
 #include "Math.hpp"
+#include "StdExtensions.hpp"
 
 namespace WITE::Collections {
 
@@ -27,7 +26,7 @@ namespace WITE::Collections {
       if constexpr(std::is_copy_constructible<T>::value) {
 	*ret = *src;
       } else {
-	std::memcpy(reinterpret_cast<void*>(ret), reinterpret_cast<void*>(src), sizeof(T));
+	memcpy(ret, src, sizeof(T));
       }
       return ret;
     }
@@ -41,7 +40,7 @@ namespace WITE::Collections {
       if constexpr(std::is_copy_constructible<T>::value) {
 	*out = data[target];
       } else {
-	std::memcpy(reinterpret_cast<void*>(out), reinterpret_cast<void*>(&data[target]), sizeof(T));
+	memcpy(out, &data[target], sizeof(T));
       }
       nextOut = nextTarget;
     }
@@ -67,7 +66,7 @@ namespace WITE::Collections {
 	if constexpr(std::is_copy_constructible<T>::value) {
 	  data[j] = in[i];
 	} else {
-	  std::memcpy(reinterpret_cast<void*>(&data[j]), reinterpret_cast<void*>(&in[i]), sizeof(T));
+	  memcpy(&data[j], &in[i], sizeof(T));
 	}
 	if(handleOut)
 	  handleOut[i] = &data[j];
@@ -106,11 +105,11 @@ namespace WITE::Collections {
 	}
       } else {
 	if(nextTarget > target) {
-	  std::memcpy(reinterpret_cast<void*>(out), reinterpret_cast<void*>(&data[target]), sizeof(T) * targetCount);
+	  memcpy(out, &data[target], sizeof(T) * targetCount);
 	} else {
 	  size_t split = SIZE - target - 1;
-	  std::memcpy(reinterpret_cast<void*>(out), reinterpret_cast<void*>(&data[target]), sizeof(T) * split);
-	  std::memcpy(reinterpret_cast<void*>(&out[split]), reinterpret_cast<void*>(data), sizeof(T) * (targetCount - split));
+	  memcpy(out, &data[target], sizeof(T) * split);
+	  memcpy(&out[split], data, sizeof(T) * (targetCount - split));
 	}
       }
       return targetCount;

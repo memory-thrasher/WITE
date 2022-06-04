@@ -30,7 +30,7 @@ namespace WITE::Collections {
       if constexpr(std::is_copy_constructible<T>::value) {
 	*ret = *src;
       } else {
-	memcpy(reinterpret_cast<void*>(ret), reinterpret_cast<void*>(src), sizeof(T));
+	memcpy(ret, src, sizeof(T));
       }
       size_t temp = target;
       while(!nextCommit.compare_exchange_strong(temp, nextTarget, std::memory_order_release, std::memory_order_relaxed))
@@ -62,7 +62,7 @@ namespace WITE::Collections {
 	if constexpr(std::is_copy_constructible<T>::value) {
 	  *out = data[target];
 	} else {
-	  memcpy(reinterpret_cast<void*>(out), reinterpret_cast<void*>(&data[target]), sizeof(T));
+	  memcpy(out, &data[target], sizeof(T));
 	}
       } while(!nextOut.compare_exchange_strong(target, nextTarget, std::memory_order_release, std::memory_order_acquire));
     }
@@ -101,7 +101,7 @@ namespace WITE::Collections {
 	if constexpr(std::is_copy_constructible<T>::value) {
 	  data[j] = in[i];
 	} else {
-	  memcpy(reinterpret_cast<void*>(&data[j]), reinterpret_cast<void*>(&in[i]), sizeof(T));
+	  memcpy(&data[j], &in[i], sizeof(T));
 	}
 	if(handleOut)
 	  handleOut[i] = &data[j];
@@ -145,11 +145,11 @@ namespace WITE::Collections {
 	  }
 	} else {
 	  if(nextTarget > target) {
-	    memcpy(reinterpret_cast<void*>(out), reinterpret_cast<void*>(&data[target]), sizeof(T) * targetCount);
+	    memcpy(out, &data[target], sizeof(T) * targetCount);
 	  } else {
 	    size_t split = size - target - 1;
-	    memcpy(reinterpret_cast<void*>(out), reinterpret_cast<void*>(&data[target]), sizeof(T) * split);
-	    memcpy(reinterpret_cast<void*>(&out[split]), reinterpret_cast<void*>(data), sizeof(T) * (targetCount - split));
+	    memcpy(out, &data[target], sizeof(T) * split);
+	    memcpy(&out[split], data, sizeof(T) * (targetCount - split));
 	  }
 	}
       } while(!nextOut.compare_exchange_strong(target, nextTarget, std::memory_order_release, std::memory_order_acquire));

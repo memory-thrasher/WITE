@@ -24,7 +24,7 @@ namespace WITE::Collections {
       throw new std::runtime_error("Heap overflow (write past end)");
     }
     uint8_t* dst = data.get() + dst_idx;
-    memcpy(dst, reinterpret_cast<void*>(&len), sizeof(size_t));
+    memcpy(dst, &len, sizeof(size_t));
     memcpy(dst + sizeof(size_t), src, len);
     readHead += size;
     return { dst, len };

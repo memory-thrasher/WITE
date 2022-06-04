@@ -1,4 +1,65 @@
+#pragma once
+
+#include "SyncLock.hpp"
+#include "Callback.hpp"
+
 namespace WITE::Platform {
+
+  template<class T> class ThreadResource {
+  public:
+    static constexpr size_t MAX_THREADS = 256;
+    typedef T* Tentry;
+    typedefCB(Initer, Tentry)
+    typedefCB(Destroyer, void, Tentry);
+    template<typename U = T, std::enable_if_t<std::is_default_constructible<U>::value, int> = 0>
+    ThreadResource() : ThreadResource(Initer_F::make(&makeDefault)) {};
+    ThreadResource(Initer typeInit, Destroyer destroyer = NULL) : typeInit(typeInit), typeDestroy(destroyer) {
+      memset(data, 0, sizeof(data));
+    };
+    ~ThreadResource() {
+      Util::ScopeLock contextHold(&lock);
+      size_t i;
+      for (i = 0;i < MAX_THREADS;i++)
+	if (data[i]) {
+	  if(typeDestroy)
+            typeDestroy->call(data[i]);
+          delete data[i];
+        }
+    }
+    template<typename U = T, std::enable_if_t<std::is_default_constructible<U>::value, int> = 0>
+    static Tentry makeDefault() {
+      return new T();
+    }
+    static Tentry makeEmpty() {
+      auto ret = static_cast<T*>(malloc(sizeof(T)));
+      memset(ret, 0, sizeof(T));
+      return ret;
+    }
+    T* get();
+    T* get(uint32_t tid) {
+      if(!data[tid]) {
+	Util::ScopeLock contextHold(&lock);
+        if(typeInit && !data[tid])
+          data[tid] = typeInit->call();
+      }
+      return data[tid];
+    }
+    T* getIfExists(size_t tid) {
+      return data[tid];
+    }
+    size_t listAll(Tentry* out, size_t maxOut) {
+      size_t i, count = 0;
+      for(i = 0;i < MAX_THREADS && count < maxOut;i++)
+        if(data[i])
+          out[count++] = data[i];
+      return count;
+    }
+  private:
+    Initer typeInit;
+    Destroyer typeDestroy;
+    Tentry data[MAX_THREADS];
+    Util::SyncLock lock;
+  };
 
   class Thread {
   public:

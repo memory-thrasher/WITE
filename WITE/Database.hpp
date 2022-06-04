@@ -13,11 +13,16 @@ automatic transfer of objects between thread slices
 
  */
 
+#pragma once
+
 #include <map>
+#include <memory>
 
 #include "SyncLock.hpp"
 #include "DBDelta.hpp"
 #include "DBRecord.hpp"
+#include "AtomicRollingQueue.hpp"
+#include "DBThread.hpp"
 
 #ifndef DB_THREAD_COUNT
 #define DB_THREAD_COUNT 16
@@ -25,9 +30,7 @@ automatic transfer of objects between thread slices
 
 namespace WITE::DB {
 
-  class DBThread;
   class DBDelta;
-  enum DBThread::semaphoreState;
   class DBEntity;
   struct entity_type;
 
@@ -37,9 +40,9 @@ namespace WITE::DB {
     volatile bool shuttingDown = false, started = false;
     std::unique_ptr<DBThread[DB_THREAD_COUNT]> threads;
     std::map<int, size_t> threadsByTid;
-    SyncLock logMutex;
-    RollingQueue<DBDelta, DB_THREAD_COUNT * 256 * 1024 * 1024 / sizeof(DBDelta)> log;
-    AtomicRollingQueue<DBEntity*> free;
+    Util::SyncLock logMutex;
+    Collections::RollingQueue<DBDelta, DB_THREAD_COUNT * 256l * 1024 * 1024 / sizeof(DBDelta)> log;
+    Collections::AtomicRollingQueue<DBEntity*> free;
     size_t entityCount;
     const std::unique_ptr<DBEntity[]> metadata;//TODO make this expandable IF a backing file was provided?
     union {
@@ -51,7 +54,7 @@ namespace WITE::DB {
     void signalThreads(DBThread::semaphoreState);
     void applyLogTransactions(size_t min = 0);//applying a minimum of 0 attempts one batch
     bool deltaIsInPast(DBDelta*);
-    static Callback_t<bool, DBDelta*> deltaIsInPast_cb;
+    static Util::Callback_t<bool, DBDelta*> deltaIsInPast_cb;
     Database(struct entity_type* types, size_t typeCount);//boilerplate
     std::map<DBRecord::type_t, struct entity_type> types;
     //TODO (head) entities by type, liked list?
@@ -70,7 +73,7 @@ namespace WITE::DB {
     void deallocate(DBEntity*, DBRecord* info = NULL);//requires some info from the record's present state, provide if already read to avoid redundent read
     const struct entity_type* getType(DBRecord::type_t);
     void start();
-  }
+  };
 
 }
 

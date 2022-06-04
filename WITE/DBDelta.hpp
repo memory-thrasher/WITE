@@ -1,3 +1,8 @@
+#pragma once
+
+#include "DBRecord.hpp"
+#include "DBEntity.hpp"
+
 namespace WITE::DB {
 
   class DBDelta {
@@ -11,10 +16,10 @@ namespace WITE::DB {
     DBRecord::type_t new_type;
     bool write_nextGlobalId, write_type;
     DBDelta* nextForEntity;
-    DBEntity::flag_t flagWriteMask, flagWriteValues;
-    DBDelta() : frame(~0);//for constructing temps and arrays, so no need to init very much
+    DBRecord::flag_t flagWriteMask, flagWriteValues;
+    DBDelta() : frame(~0) {}//for constructing temps and arrays, so no need to init very much
     DBDelta(const DBDelta&);//copy constructor that only copies the first len bytes of content
-    void applyTo(class DBRecord*);
+    void applyTo(DBRecord*);
     void clear();
   };//size=190
 

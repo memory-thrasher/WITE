@@ -1,4 +1,9 @@
+#pragma once
+
+#include <cstring>
+
 #include "Thread.hpp"
+#include "Math.hpp"
 
 namespace WITE::Collections {
 
@@ -19,10 +24,10 @@ namespace WITE::Collections {
       if(nextTarget == nextOut)//"full"
 	return NULL;
       T* ret = &data[target];
-      constexpr if(std::is_copy_constructable<T>::value) {
+      if constexpr(std::is_copy_constructible<T>::value) {
 	*ret = *src;
       } else {
-	memcpy(reinterpret_cast<void*>(ret), reinterpret_cast<void*>(src), sizeof(T));
+	std::memcpy(reinterpret_cast<void*>(ret), reinterpret_cast<void*>(src), sizeof(T));
       }
       return ret;
     }
@@ -33,10 +38,10 @@ namespace WITE::Collections {
       //we always have 1 empty slot, or else we couldn't tell full from empty because lastIn == nextOut
       if(nextTarget == nextIn)//empty
 	  return false;
-      constexpr if(std::is_copy_constructable<T>::value) {
+      if constexpr(std::is_copy_constructible<T>::value) {
 	*out = data[target];
       } else {
-	memcpy(reinterpret_cast<void*>(out), reinterpret_cast<void*>(&data[target]), sizeof(T));
+	std::memcpy(reinterpret_cast<void*>(out), reinterpret_cast<void*>(&data[target]), sizeof(T));
       }
       nextOut = nextTarget;
     }
@@ -53,36 +58,36 @@ namespace WITE::Collections {
     size_t bulkPush(T* in, size_t count, T** handleOut) {
       size_t target = nextIn, nextTarget, targetCount;
       size_t tail = nextOut;
-      targetCount = glm::min(count, tail > target ? SIZE - tail + target - 1 : target - tail);
+      targetCount = Util::min(count, tail > target ? SIZE - tail + target - 1 : target - tail);
       if(!targetCount)
 	return 0;//"full"
       nextTarget = wrap(target + targetCount);
       nextIn = nextTarget;
       for(int i = 0, j = target;i < targetCount;i++) {
-	constexpr if(std::is_copy_constructable<T>::value) {
+	if constexpr(std::is_copy_constructible<T>::value) {
 	  data[j] = in[i];
 	} else {
-	  memcpy(reinterpret_cast<void*>(&data[j]), reinterpret_cast<void*>(&in[i]), sizeof(T));
+	  std::memcpy(reinterpret_cast<void*>(&data[j]), reinterpret_cast<void*>(&in[i]), sizeof(T));
 	}
 	if(handleOut)
 	  handleOut[i] = &data[j];
 	j = wrap(j + 1);
       }
-      return ret;
+      return targetCount;
     }
 
     //bulk pop with predicate callback that performs binary search (for "pop only deltas from previous frames")
-    size_t bulkPop(T* out, size_t count, Callback_t<bool, T*>* condition) {
+    size_t bulkPop(T* out, size_t count, Util::Callback_t<bool, T*>* condition) {
       size_t target = nextOut, nextTarget, targetCount;
-      if(condition && !condition=->call(&data[target]))
+      if(condition && !condition->call(&data[target]))
 	return 0;
-      size_t head = nextCommit;
-      targetCount = glm::min(count, head < target ? SIZE - target + head : head - target);
+      size_t head = nextIn;
+      targetCount = Util::min(count, head < target ? SIZE - target + head : head - target);
       if(!targetCount)
 	return 0;
       //condition binary search
       if(condition && !condition->call(&data[wrap(target + targetCount)])) {
-	size bottom = 0, middle = targetCount / 2;
+	size_t bottom = 0, middle = targetCount / 2;
 	while(targetCount - bottom > 1) {
 	  if(condition->call(&data[wrap(target + middle)]))
 	    bottom = middle;
@@ -94,18 +99,18 @@ namespace WITE::Collections {
       }
       nextTarget = wrap(target + targetCount);
       //we always have 1 empty slot, or else we couldn't tell full from empty because lastIn == nextOut
-      constexpr if(std::is_copy_constructable<T>::value) {
+      if constexpr(std::is_copy_constructible<T>::value) {
 	for(int i = 0, j = target;i < targetCount;i++) {
 	  out[i] = data[j];
 	  j = wrap(j + 1);
 	}
       } else {
-	if(newTarget > target) {
-	  memcpy(reinterpret_cast<void*>(out), reinterpret_cast<void*>(&data[target]), sizeof(T) * targetCount);
+	if(nextTarget > target) {
+	  std::memcpy(reinterpret_cast<void*>(out), reinterpret_cast<void*>(&data[target]), sizeof(T) * targetCount);
 	} else {
 	  size_t split = SIZE - target - 1;
-	  memcpy(reinterpret_cast<void*>(out), reinterpret_cast<void*>(&data[target]), sizeof(T) * split);
-	  memcpy(reinterpret_cast<void*>(&out[split]), reinterpret_cast<void*>(data), sizeof(T) * (targetCount - split));
+	  std::memcpy(reinterpret_cast<void*>(out), reinterpret_cast<void*>(&data[target]), sizeof(T) * split);
+	  std::memcpy(reinterpret_cast<void*>(&out[split]), reinterpret_cast<void*>(data), sizeof(T) * (targetCount - split));
 	}
       }
       return targetCount;

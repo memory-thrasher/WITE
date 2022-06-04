@@ -1,8 +1,10 @@
 #pragma once
 
+#include <glm/glm.hpp>
+
 namespace WITE::Util {
   
-  class export_def BBox3D {
+  class BBox3D {
   public:
   typedef glm::dvec3 v3;
   union {
@@ -25,7 +27,7 @@ namespace WITE::Util {
   constexpr inline double height2D() const { return maxy - miny; };
   };
 
-  class export_def IntBox3D {
+  class IntBox3D {
   public:
   union {
     uint64_t comp[1];

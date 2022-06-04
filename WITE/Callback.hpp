@@ -1,5 +1,7 @@
 #pragma once
 
+#include <tuple>
+
 #ifdef _WIN32
 #define wintypename typename
 #else
@@ -62,7 +64,7 @@ namespace WITE::Util {
     return new wintypename CallbackFactory<RET, RArgs...>::StaticCallback<CArgs...>(func, std::forward<CArgs>(cargs)...);
   };
 
-  #define typedefCB(name, ...) typedef WITE::CallbackFactory<__VA_ARGS__> name## _F; typedef typename name## _F::callback_t name ;
+#define typedefCB(name, ...) typedef WITE::Util::CallbackFactory<__VA_ARGS__> name## _F; typedef typename name## _F::callback_t name ;
 
   typedefCB(rawDataSource, int, void*, size_t)
 

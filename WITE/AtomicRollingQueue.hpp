@@ -1,4 +1,6 @@
 #include "Thread.hpp"
+#include "StdExtensions.hpp"
+#include "Math.hpp"
 
 namespace WITE::Collections {
 
@@ -13,7 +15,7 @@ namespace WITE::Collections {
     size_t wrap(size_t i) { return i > size ? i > size * 2 ? i % size : i - size : i; }
   public:
 
-    AtomicRollingQueue(size_t size) : size(size), data(std::make_unique(size)) {}
+    AtomicRollingQueue(size_t size) : size(size), data(std::make_unique<T[]>(size)) {}
 
     //only blocks if after an unfinished call to the same method, blocks until that call completes, thus becomming strongly-after.
     T* push(T* src) {
@@ -23,15 +25,15 @@ namespace WITE::Collections {
 	//we always have 1 empty slot, or else we couldn't tell full from empty because lastIn == nextOut
 	if(nextTarget == nextOut.load(std::memory_order_consume))//"full"
 	  return NULL;
-      } while(!nextIn.compare_exchange_strong(&target, nextTarget, std::memory_order_release, std::memory_order_acquire));
+      } while(!nextIn.compare_exchange_strong(target, nextTarget, std::memory_order_release, std::memory_order_acquire));
       T* ret = &data[target];
-      constexpr if(std::is_copy_constructable<T>::value) {
+      if constexpr(std::is_copy_constructible<T>::value) {
 	*ret = *src;
       } else {
 	memcpy(reinterpret_cast<void*>(ret), reinterpret_cast<void*>(src), sizeof(T));
       }
       size_t temp = target;
-      while(!nextCommit.compare_exchane_strong(&temp, nextTarget, std::memory_order_release, std::memory_order_relaxed))
+      while(!nextCommit.compare_exchange_strong(temp, nextTarget, std::memory_order_release, std::memory_order_relaxed))
 	temp = target;
       return ret;
     }
@@ -42,8 +44,8 @@ namespace WITE::Collections {
 
     T* push_blocking(T* src) {
       T* ret = push(src);
-      while(ret == null) {
-	Thread.sleep();
+      while(ret == NULL) {
+	Platform::Thread::sleep();
 	ret = push(src);
       }
       return ret;
@@ -57,12 +59,12 @@ namespace WITE::Collections {
 	//we always have 1 empty slot, or else we couldn't tell full from empty because lastIn == nextOut
 	if(nextTarget == nextCommit.load(std::memory_order_consume))//empty
 	  return false;
-	constexpr if(std::is_copy_constructable<T>::value) {
+	if constexpr(std::is_copy_constructible<T>::value) {
 	  *out = data[target];
 	} else {
 	  memcpy(reinterpret_cast<void*>(out), reinterpret_cast<void*>(&data[target]), sizeof(T));
 	}
-      } while(!nextOut.compare_exchange_strong(&target, nextTarget, std::memory_order_release, std::memory_order_acquire));
+      } while(!nextOut.compare_exchange_strong(target, nextTarget, std::memory_order_release, std::memory_order_acquire));
     }
 
     T& pop() {
@@ -72,7 +74,7 @@ namespace WITE::Collections {
     }
 
     void pop_blocking(T* out) {
-      while(!pop(out)) Thread.sleep();
+      while(!pop(out)) Platform::Thread::sleep();
     }
 
     T& pop_blocking() {
@@ -90,13 +92,13 @@ namespace WITE::Collections {
       size_t target = nextIn.load(std::memory_order_acquire), nextTarget, targetCount;
       do {
 	size_t tail = nextOut.load(std::memory_order_consume);
-	targetCount = glm::min(count, tail > target ? size - tail + target - 1 : target - tail);
+	targetCount = Util::min(count, tail > target ? size - tail + target - 1 : target - tail);
 	if(!targetCount)
 	  return 0;//"full"
 	nextTarget = wrap(target + targetCount);
-      } while(!nextIn.compare_exchange_strong(&target, nextTarget, std::memory_order_release, std::memory_order_acquire));
+      } while(!nextIn.compare_exchange_strong(target, nextTarget, std::memory_order_release, std::memory_order_acquire));
       for(int i = 0, j = target;i < targetCount;i++) {
-	constexpr if(std::is_copy_constructable<T>::value) {
+	if constexpr(std::is_copy_constructible<T>::value) {
 	  data[j] = in[i];
 	} else {
 	  memcpy(reinterpret_cast<void*>(&data[j]), reinterpret_cast<void*>(&in[i]), sizeof(T));
@@ -106,25 +108,25 @@ namespace WITE::Collections {
 	j = wrap(j + 1);
       }
       size_t temp = target;
-      while(!nextCommit.compare_exchane_strong(&temp, nextTarget, std::memory_order_release, std::memory_order_relaxed))
+      while(!nextCommit.compare_exchange_strong(temp, nextTarget, std::memory_order_release, std::memory_order_relaxed))
 	temp = target;
-      return ret;
+      return targetCount;
     }
 
     //bulk pop with predicate callback that performs binary search (for "pop only deltas from previous frames")
-    size_t bulkPop(T* out, size_t count, Callback_t<bool, T*>* condition) {
+    size_t bulkPop(T* out, size_t count, Util::Callback_t<bool, T*>* condition) {
       //concurrent pop is supported but highly unlikely so not optimized
       size_t target = nextOut.load(std::memory_order_acquire), nextTarget, targetCount;
       do {
-	if(!condition=->call(&data[target]))
+	if(!condition->call(&data[target]))
 	  return 0;
 	size_t head = nextCommit.load(std::memory_order_acquire);
-	targetCount = glm::min(count, head < target ? size - target + head : head - target);
+	targetCount = Util::min(count, head < target ? size - target + head : head - target);
 	if(!targetCount)
 	  return 0;
 	//condition binary search
 	if(!condition->call(&data[wrap(target + targetCount)])) {
-	  size bottom = 0, middle = targetCount / 2;
+	  size_t bottom = 0, middle = targetCount / 2;
 	  while(targetCount - bottom > 1) {
 	    if(condition->call(&data[wrap(target + middle)]))
 	      bottom = middle;
@@ -136,13 +138,13 @@ namespace WITE::Collections {
 	}
 	nextTarget = wrap(target + targetCount);
 	//we always have 1 empty slot, or else we couldn't tell full from empty because lastIn == nextOut
-	constexpr if(std::is_copy_constructable<T>::value) {
+	if constexpr(std::is_copy_constructible<T>::value) {
 	  for(int i = 0, j = target;i < targetCount;i++) {
 	    out[i] = data[j];
 	    j = wrap(j + 1);
 	  }
 	} else {
-	  if(newTarget > target) {
+	  if(nextTarget > target) {
 	    memcpy(reinterpret_cast<void*>(out), reinterpret_cast<void*>(&data[target]), sizeof(T) * targetCount);
 	  } else {
 	    size_t split = size - target - 1;
@@ -150,10 +152,10 @@ namespace WITE::Collections {
 	    memcpy(reinterpret_cast<void*>(&out[split]), reinterpret_cast<void*>(data), sizeof(T) * (targetCount - split));
 	  }
 	}
-      } while(!nextOut.compare_exchange_strong(&target, nextTarget, std::memory_order_release, std::memory_order_acquire));
+      } while(!nextOut.compare_exchange_strong(target, nextTarget, std::memory_order_release, std::memory_order_acquire));
       return targetCount;
     }
 
-  }
+  };
 
 }

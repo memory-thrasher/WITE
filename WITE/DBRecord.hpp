@@ -1,3 +1,5 @@
+#pragma once
+
 namespace WITE::DB {
 
   typedef struct DBRecord {

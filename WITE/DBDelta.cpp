@@ -7,16 +7,16 @@ namespace WITE::DB {
       memcpy(&out->content[dstStart], content, len);
     out->header.flags ^= flagWriteMask & (out->header.flags ^ flagWriteValues);
     if(write_nextGlobalId)
-      out->nextGlobalId = new_nextGlobalId;
+      out->header.nextGlobalId = new_nextGlobalId;
     if(write_type)
-      out->type = new_type;
+      out->header.type = new_type;
   }
 
   void DBDelta::clear() {
     dstStart = len = 0;
     write_nextGlobalId = write_type = 0;
     nextForEntity = NULL;
-    flagWriteMask = 0;
+    flagWriteMask = DBRecordFlag::none;
   }
 
 }

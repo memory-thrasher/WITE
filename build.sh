@@ -1,5 +1,5 @@
 BASEDIR="$(cd "$(dirname "$0")"; pwd -L)"
-OUTDIR="${BASEDIR}/build/WITE"
+OUTDIR="${BASEDIR}/build/WITE" #TODO not just WITE but all subdirs
 LOGFILE="${OUTDIR}/buildlog.txt"
 ERRLOG="${OUTDIR}/builderrs.txt"
 rm "${LOGFILE}" "${ERRLOG}" 2>/dev/null
@@ -29,15 +29,27 @@ find -name '*.cpp' -type f -print0 |
 	$COMPILER $VK_INCLUDE --std=c++20 -Werror -Wall "${SRCFILE}" -c -o "${DSTFILE}" -DDEBUG >>"${LOGFILE}" 2>>"${ERRLOG}" || break;
 	echo "Built: ${SRCFILE}"
     done
+#TODO other file types (shaders etc.)
+find "$OUTDIR" -type d -print0 |
+    while IFS= read -d '' DIRNAME; do
+	cd "$DIRNAME";
+	find -iname '*.o' | grep -qF .o || continue;
+	#TODO VK_LIB ?
+	LIBNAME="$(basename "${DIRNAME}").so"
+	echo "Linking $LIBNAME"
+	$COMPILER $(find -name '*.o') -o $LIBNAME
+    done
 #TODO build .so and executables, one per top level dir
 #if [ $(find -name '*.cpp' | wc -l) -eq $(find -name '*.o' | wc -l) ]; then
 #    echo "All objects built, now linking"
 #    $COMPILER $(find -name '*.o')
 #fi
 echo "${ERRLOG}"
-if [ $(stat -c %s "${ERRLOG}") -gt 0 ]; then
+if [ -f "${ERRLOG}" ] && [ $(stat -c %s "${ERRLOG}") -gt 0 ]; then
     let i=0; while [ $i -lt 10 ]; do echo; let i++; done;
     head -n 60 "${ERRLOG}"
+else
+    echo "Success"
 fi
 
 

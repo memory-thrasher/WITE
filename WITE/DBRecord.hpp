@@ -1,5 +1,8 @@
 #pragma once
 
+#include <stdint.h>
+#include <stdlib.h>
+
 #include "DBRecordFlag.hpp"
 
 namespace WITE::DB {

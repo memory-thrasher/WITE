@@ -63,15 +63,14 @@ namespace WITE::DB {
 	nsSpentOnLastFrame = (FRAME_MAX_TIME.it_value.tv_sec - frameTime.it_value.tv_sec) * 1000000000 +
 	  (FRAME_MAX_TIME.it_value.tv_nsec - frameTime.it_value.tv_nsec);
 	//shifts in slices should not count against this threads work units because they are unrelated to slice size
-	if(slice_toBeRemoved.size()) {
-	  Collections::remove_if(slice, [this](auto e){ return Collections::contains(slice_toBeRemoved, e); });
-	  slice_toBeRemoved.clear();
-	}
-	{
+	if(slice_toBeAdded.size() + slice_toBeRemoved.size()) {
 	  Util::ScopeLock lock(&sliceAlterationPoolMutex);
+	  if(slice_toBeRemoved.size()) {
+	    Collections::remove_if(slice, [this](auto e){ return Collections::contains(slice_toBeRemoved, e); });
+	    slice_toBeRemoved.clear();
+	  }
 	  if(slice_toBeAdded.size())
 	    Collections::concat_move(slice, slice_toBeAdded);
-	    //slice.splice(slice.end(), slice_toBeAdded);//splice moves, so this clears toBeAdded
 	  if(!setState(state_frameSync) || !waitForState(state_updating)) break;
 	}
       }

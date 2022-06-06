@@ -1,4 +1,7 @@
+#include <stdlib.h>
+
 #include "SyncLock.hpp"
+#include "Thread.hpp"
 
 namespace WITE::Util {
 
@@ -9,7 +12,7 @@ namespace WITE::Util {
     seed = queueSeed.fetch_add(1, std::memory_order_acq_rel);//take a number
     while (seed > queueCurrent.load(std::memory_order_consume))
       if(!busy)
-	std::this_thread::sleep_for(std::chrono::micorseconds(10));
+	Platform::Thread::sleepShort();
   }
 
   void SyncLock::ReleaseLock() {
@@ -20,11 +23,11 @@ namespace WITE::Util {
     uint64_t newSeed;
     newSeed = queueSeed.fetch_add(1, std::memory_order_acq_rel);
     queueCurrent.fetch_add(1, std::memory_order_release);
-    while (newSeed > queueCurrent.load(std::memory_order_consume)) sleep(1);
+    while (newSeed > queueCurrent.load(std::memory_order_consume)) Platform::Thread::sleepShort();
   }
 
   ScopeLock::ScopeLock(SyncLock * sl) {
-    sl->WaitForLock();
+    sl->WaitForLock(false);//maybe make this optional?
     lock = sl;
   }
 

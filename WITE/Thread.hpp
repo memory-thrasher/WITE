@@ -70,6 +70,8 @@ namespace WITE::Platform {
     static void spawnThread(threadEntry_t entry);
     static Thread* current();
     static void sleep(uint64_t ms = 0);
+    static void sleepShort();//for non-busy wait, wait aa very small amount of time
+    //^^todo maybe like std::this_thread::sleep_for(std::chrono::micorseconds(10));
     uint32_t getTid();
     ~Thread();
   private:

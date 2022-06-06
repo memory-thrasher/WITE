@@ -1,6 +1,7 @@
 #pragma once
 
 #include <tuple>
+#include <memory>
 
 #ifdef _WIN32
 #define wintypename typename
@@ -45,6 +46,8 @@ namespace WITE::Util {
     typedef Callback_t<RET, RArgs...>* callback_t;
     template<class U, class... CArgs> static callback_t make(U* owner, CArgs... cargs, RET(U::*func)(CArgs..., RArgs...));
     template<class... CArgs> static callback_t make(CArgs... cargs, RET(*func)(CArgs..., RArgs...));//for non-members or static members
+    template<class U, class... CArgs> static std::unique_ptr<Callback_t<RET, RArgs...>> make_unique(U* owner, CArgs... cargs, RET(U::*func)(CArgs..., RArgs...));
+    template<class... CArgs> static std::unique_ptr<Callback_t<RET, RArgs...>> make_unique(CArgs... cargs, RET(*func)(CArgs..., RArgs...));
   };
   template<class RET2, class... RArgs2> template<class T2, class... CArgs2>
   CallbackFactory<RET2, RArgs2...>::Callback<T2, CArgs2...>::Callback(T2* t, RET2(T2::*x)(CArgs2..., RArgs2...), CArgs2... pda) :
@@ -63,6 +66,16 @@ namespace WITE::Util {
   CallbackFactory<RET, RArgs...>::make(CArgs... cargs, RET(*func)(CArgs..., RArgs...)) {
     return new wintypename CallbackFactory<RET, RArgs...>::StaticCallback<CArgs...>(func, std::forward<CArgs>(cargs)...);
   };
+
+  template<class RET, class... RArgs> template<class U, class... CArgs> std::unique_ptr<Callback_t<RET, RArgs...>>
+  CallbackFactory<RET, RArgs...>::make_unique(U* owner, CArgs... cargs, RET(U::*func)(CArgs..., RArgs...)) {
+    return std::unique_ptr<Callback_t<RET, RArgs...>>(make(owner, std::forward(cargs)..., func));
+  }
+
+  template<class RET, class... RArgs> template<class... CArgs> std::unique_ptr<Callback_t<RET, RArgs...>>
+  CallbackFactory<RET, RArgs...>::make_unique(CArgs... cargs, RET(*func)(CArgs..., RArgs...)) {
+    return std::unique_ptr<Callback_t<RET, RArgs...>>(make(std::forward(cargs)..., func));
+  }
 
 #define typedefCB(name, ...) typedef WITE::Util::CallbackFactory<__VA_ARGS__> name## _F; typedef typename name## _F::callback_t name ;
 

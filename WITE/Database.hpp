@@ -38,36 +38,39 @@ namespace WITE::DB {
   private:
     uint64_t currentFrame = 0;
     volatile bool shuttingDown = false, started = false;
-    std::unique_ptr<DBThread[DB_THREAD_COUNT]> threads;
+    DBThread* threads;
     std::map<int, size_t> threadsByTid;
     Util::SyncLock logMutex;
     Collections::RollingQueue<DBDelta, DB_THREAD_COUNT * 256l * 1024 * 1024 / sizeof(DBDelta)> log;
-    Collections::AtomicRollingQueue<DBEntity*> free;
     size_t entityCount;
-    const std::unique_ptr<DBEntity[]> metadata;//TODO make this expandable IF a backing file was provided?
-    union {
-      DBRecord* data;//mmap'ed file
+    std::unique_ptr<Collections::AtomicRollingQueue<DBEntity*>> free;
+    std::unique_ptr<Util::Callback_t<bool, DBDelta*>> deltaIsInPast_cb;
+    DBEntity* metadata;//TODO make this expandable IF a backing file was provided?
+    union {//mmap'ed file
+      DBRecord* data;
       void* data_raw;
     };
+    std::map<DBRecord::type_t, struct entity_type> types;
     bool anyThreadIs(DBThread::semaphoreState);
     bool anyThreadBroke();
     void signalThreads(DBThread::semaphoreState);
-    void applyLogTransactions(size_t min = 0);//applying a minimum of 0 attempts one batch
+    size_t applyLogTransactions(size_t min = 0);//applying a minimum of 0 attempts one batch
     bool deltaIsInPast(DBDelta*);
-    static Util::Callback_t<bool, DBDelta*> deltaIsInPast_cb;
-    Database(struct entity_type* types, size_t typeCount);//boilerplate
-    std::map<DBRecord::type_t, struct entity_type> types;
+    void constructorCommon(struct entity_type* types, size_t typeCount);//boilerplate
     //TODO (head) entities by type, liked list?
     DBThread* getLightestThread();
     DBThread* getCurrentThread();
+    void stop();
   public:
     Database(struct entity_type* types, size_t typeCount,
 	     int backingStore_fd, size_t entityCount = 0);//entityCount intended for making a new file
     Database(struct entity_type* types, size_t typeCount, size_t entityCount);//for anonymous
+    ~Database();
     // void mainLoop();
     void write(DBDelta*);//appends to the current thread's transaction queue, flushing it if out of space
     void read(DBEntity* src, DBRecord* dst);
     DBEntity* getEntity(size_t id);
+    DBEntity* getEntityAfter(DBEntity* src);
     uint64_t getFrame() { return currentFrame; };
     DBEntity* allocate(DBRecord::type_t type, size_t count = 1, bool isHead = true);
     void deallocate(DBEntity*, DBRecord* info = NULL);//requires some info from the record's present state, provide if already read to avoid redundent read

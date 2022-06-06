@@ -43,6 +43,7 @@ namespace WITE::Collections {
 	memcpy(out, &data[target], sizeof(T));
       }
       nextOut = nextTarget;
+      return true;
     }
 
     inline size_t count() {

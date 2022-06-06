@@ -18,8 +18,8 @@ namespace WITE::DB {
       size_t overlap = Util::min(DBRecord::CONTENT_SIZE, maxSize) - offset;
       memcpy(dst, &record.content + offset, overlap);
       if(maxSize > DBRecord::CONTENT_SIZE - offset) {
-	ASSERT_WARN(record.header.flags & DBRecord::flag_t::has_next, "DB large object read underflow");
-	db->getEntity(record.header.nextGlobalId)->read(dst + overlap, maxSize - overlap, 0);
+    	ASSERT_WARN((record.header.flags & DBRecordFlag::has_next) != 0, "DB large object read underflow");
+    	db->getEntity(record.header.nextGlobalId)->read(dst + overlap, maxSize - overlap, 0);
       }
     }
   }
@@ -45,7 +45,7 @@ namespace WITE::DB {
     }
   }
 
-  void DBEntity::writeFlags(DBRecord::flag_t mask, DBRecord::flag_t values) {
+  void DBEntity::writeFlags(DBRecordFlag mask, DBRecordFlag values) {
     DBDelta delta;
     delta.clear();
     delta.flagWriteMask = mask;
@@ -64,11 +64,11 @@ namespace WITE::DB {
   bool DBEntity::isUpdatable() {
     DBRecord record;
     read(&record);
-    return isUpdatable(&record);
+    return isUpdatable(&record, db);
   }
 
-  /*static*/ bool DBEntity::isUpdatable(DBRecord* r) {
-    return (r.header.flags & DBRecord::head_node) && db->getType(r.header.type)->update != NULL;
+  /*static*/ bool DBEntity::isUpdatable(DBRecord* r, Database* db) {
+    return (r->header.flags & DBRecordFlag::head_node) != 0 && db->getType(r->header.type)->update != NULL;
   }
 
 }

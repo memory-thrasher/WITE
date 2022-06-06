@@ -7,7 +7,7 @@ namespace WITE::Util {
   class SyncLock {
   public:
     SyncLock();
-    void WaitForLock(bool busy);
+    void WaitForLock(bool busy = false);
     void ReleaseLock();
     void yield();
   private:

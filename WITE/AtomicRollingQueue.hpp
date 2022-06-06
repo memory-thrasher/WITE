@@ -15,7 +15,7 @@ namespace WITE::Collections {
     size_t wrap(size_t i) { return i > size ? i > size * 2 ? i % size : i - size : i; }
   public:
 
-    AtomicRollingQueue(size_t size) : size(size), data(std::make_unique<T[]>(size)) {}
+    AtomicRollingQueue(size_t size) : data(std::make_unique<T[]>(size)), size(size) {}
 
     //only blocks if after an unfinished call to the same method, blocks until that call completes, thus becomming strongly-after.
     T* push(T* src) {
@@ -65,9 +65,10 @@ namespace WITE::Collections {
 	  memcpy(out, &data[target], sizeof(T));
 	}
       } while(!nextOut.compare_exchange_strong(target, nextTarget, std::memory_order_release, std::memory_order_acquire));
-    }
+      return true;
+    };
 
-    T& pop() {
+    T pop() {
       T ret;
       pop(&ret);
       return ret;

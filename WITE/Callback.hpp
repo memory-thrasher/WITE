@@ -2,6 +2,7 @@
 
 #include <tuple>
 #include <memory>
+#include <functional>
 
 #ifdef _WIN32
 #define wintypename typename
@@ -23,12 +24,13 @@ namespace WITE::Util {
     private:
       RET(T::*x)(CArgs..., RArgs...);
       T * owner;
-      std::tuple<CArgs...> cargs;
+      const std::tuple<CArgs...> cargs;
     public:
       Callback(T* t, RET(T::*x)(CArgs..., RArgs...), CArgs... pda);
       ~Callback() {};
       RET call(RArgs... rargs) const override {
-        return (*owner.*(x))(std::get<CArgs>(cargs)..., rargs...);
+        //return (*owner.*(x))(std::get<CArgs>(cargs)..., rargs...);
+	return std::apply(x, std::tuple_cat(std::tie(owner), cargs, std::tie(rargs...)));
       };
     };
     template<class... CArgs> class StaticCallback : public Callback_t<RET, RArgs...> {
@@ -39,7 +41,8 @@ namespace WITE::Util {
       StaticCallback(RET(*x)(CArgs..., RArgs...), CArgs... pda);
       ~StaticCallback() {};
       RET call(RArgs... rargs) const override {
-        return (*x)(std::get<CArgs>(cargs)..., rargs...);
+        // return (*x)(std::get<CArgs>(cargs)..., rargs...);
+	return std::apply(x, std::tuple_cat(cargs, std::tie(rargs...)));
       };
     };
   public:

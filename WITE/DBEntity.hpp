@@ -28,6 +28,8 @@ namespace WITE::DB {
   public:
     void read(DBRecord* dst);
     void read(uint8_t* dst, size_t maxSize, size_t offset = 0);//maxSize because the record might be bigger than the stored data
+    template<typename T, typename RET = std::enable_if_t<!std::is_same_v<uint8_t, T>, void>>
+    RET read(T* src, size_t len, size_t offset = 0) { read(reinterpret_cast<uint8_t*>(src), len * sizeof(T), offset); };
     template<typename T> inline void read(T* dst) { read(reinterpret_cast<uint8_t*>(dst), sizeof(T)); };
     template<typename T, typename V, V T::* M> inline void read(T* dst) {
       read(reinterpret_cast<uint8_t*>(dst), sizeof(M), WITE::Util::member_offset(M));
@@ -35,6 +37,8 @@ namespace WITE::DB {
     //TODO member pointer variadic
     void write(DBDelta* src);
     void write(uint8_t* src, size_t len, size_t offset = 0);
+    template<typename T, typename RET = std::enable_if_t<!std::is_same_v<uint8_t, T>, void>>
+    RET write(T* src, size_t len, size_t offset = 0) { write(reinterpret_cast<uint8_t*>(src), len * sizeof(T), offset); };
     template<typename T> inline void write(T* src) { write(reinterpret_cast<uint8_t*>(src), sizeof(T)); };
     template<typename T, typename V, V T::* M> inline void write(T* src) {
       write(reinterpret_cast<uint8_t*>(src), sizeof(M), WITE::Util::member_offset(M));

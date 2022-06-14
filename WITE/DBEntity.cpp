@@ -5,6 +5,10 @@
 
 namespace WITE::DB {
 
+  void DBEntity::destroy() {
+    db->deallocate(this);
+  }
+
   void DBEntity::read(DBRecord* dst) {
     db->read(this, dst);
   }
@@ -13,10 +17,11 @@ namespace WITE::DB {
     DBRecord record;
     read(&record);
     if(offset > DBRecord::CONTENT_SIZE) {
+      //TODO header-only read of record in this case
       db->getEntity(record.header.nextGlobalId)->read(dst, maxSize, offset - DBRecord::CONTENT_SIZE);
     } else {
       size_t overlap = Util::min(DBRecord::CONTENT_SIZE, maxSize) - offset;
-      memcpy(dst, &record.content + offset, overlap);
+      memcpy(dst, &record.content + offset, overlap);//TODO don't memcpy content twice, content-only read into dst
       if(maxSize > DBRecord::CONTENT_SIZE - offset) {
     	ASSERT_WARN((record.header.flags & DBRecordFlag::has_next) != 0, "DB large object read underflow");
     	db->getEntity(record.header.nextGlobalId)->read(dst + overlap, maxSize - overlap, 0);
@@ -29,11 +34,11 @@ namespace WITE::DB {
     db->write(delta);
   }
 
-  void DBEntity::write(uint8_t* src, size_t len, size_t offset) {
+  void DBEntity::write(const uint8_t* src, size_t len, size_t offset) {
     DBDelta delta;
     delta.clear();
     while(offset < DBRecord::CONTENT_SIZE && len) {
-      delta.len = Util::min(DBDelta::MAX_DELTA_SIZE, DBRecord::CONTENT_SIZE - offset - len);
+      delta.len = Util::min(DBDelta::MAX_DELTA_SIZE, DBRecord::CONTENT_SIZE - offset, len);
       memcpy(delta.content, src, delta.len);
       src += delta.len;
       offset += delta.len;
@@ -69,6 +74,14 @@ namespace WITE::DB {
 
   /*static*/ bool DBEntity::isUpdatable(DBRecord* r, Database* db) {
     return (r->header.flags & DBRecordFlag::head_node) != 0 && db->getType(r->header.type)->update != NULL;
+  }
+
+  void DBEntity::completeRead(uint8_t* out, DBRecord* record, size_t len) {
+    size_t thisLen = Util::min(len, DBRecord::CONTENT_SIZE);
+    memcpy(out, record->content, thisLen);
+    if(len > thisLen && (record->header.flags & DBRecordFlag::has_next) != 0) {
+      db->getEntity(record->header.nextGlobalId)->read(out + DBRecord::CONTENT_SIZE, len - thisLen);
+    }
   }
 
 }

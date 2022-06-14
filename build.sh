@@ -1,6 +1,8 @@
 BUILDLIBS="WITE"
 BUILDTESTS="Tests"
 BUILDAPP=""
+LINKOPTS="-lrt"
+BOTHOPTS="-pthread -DDEBUG -g"
 BASEDIR="$(cd "$(dirname "$0")"; pwd -L)"
 OUTDIR="${BASEDIR}/build" #TODO not just WITE but all subdirs
 LOGFILE="${OUTDIR}/buildlog.txt"
@@ -38,7 +40,7 @@ find $BUILDLIBS $BUILDAPP $BUILDTESTS -name '*.cpp' -type f -print0 |
 	    $COMPILER $VK_INCLUDE -E -o /dev/null -H "${SRCFILE}" 2>&1 | grep -o '[^[:space:]]*$' >"${DEPENDENCIES}"
 	fi
 	rm "${DEPENDENCIES}"
-	if ! $COMPILER $VK_INCLUDE --std=c++20 -fPIC -Werror -Wall "${SRCFILE}" -c -o "${DSTFILE}" -DDEBUG >>"${LOGFILE}" 2>>"${ERRLOG}"; then
+	if ! $COMPILER $VK_INCLUDE --std=c++20 -fPIC $BOTHOPTS -Werror -Wall "${SRCFILE}" -c -o "${DSTFILE}" >>"${LOGFILE}" 2>>"${ERRLOG}"; then
 	    touch "${SRCFILE}";
 	    break;
 	fi
@@ -48,42 +50,47 @@ find $BUILDLIBS $BUILDAPP $BUILDTESTS -name '*.cpp' -type f -print0 |
 #TODO other file types (shaders etc.)
 
 #libs
-for DIRNAME in $BUILDLIBS; do
-    echo "Pre-Linking $DIRNAME"
-    echo find "$DIRNAME" -iname '*.o'
-    find "$DIRNAME" -iname '*.o'
-    find "$DIRNAME" -iname '*.o' | grep -qF .o || continue;
-    LIBNAME="$DIRNAME/$(basename "${DIRNAME}").so"
-    if [ -f "$LIBNAME" ] && [ $(find "$DIRNAME" -iname '*.o' -newer "$LIBNAME" | wc -l) -eq 0 ]; then continue; fi;
-    #TODO VK_LIB ?
-    echo "Linking $LIBNAME"
-    $COMPILER -shared $(find "$DIRNAME" -name '*.o') -o $LIBNAME >>"${LOGFILE}" 2>>"${ERRLOG}"
-done
-BUILTLIBS="$(find $OUTDIR -iname '*.so')"
+if [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
+    BUILTLIBS=
+    for DIRNAME in $BUILDLIBS; do
+	BUILTLIBS="-l:${DIRNAME}.so "
+	LIBNAME="$OUTDIR/$(basename "${DIRNAME}").so"
+	if [ -f "$LIBNAME" ] && [ $(find "$OUTDIR/$DIRNAME" -iname '*.o' -newer "$LIBNAME" | wc -l) -eq 0 ]; then continue; fi;
+	#TODO VK_LIB ?
+	echo "Linking $LIBNAME"
+	$COMPILER -shared $BOTHOPTS $LINKOPTS $(find "$OUTDIR/$DIRNAME" -name '*.o') -o $LIBNAME >>"${LOGFILE}" 2>>"${ERRLOG}"
+    done
+fi
 
 #tests
-for DIRNAME in $BUILDTESTS; do
-    find "$OUTDIR/$DIRNAME" -iname '*.o' -print0 |
-	while IFS= read -d '' OFILE; do
-	    #TODO VK_LIB ?
-	    TESTNAME="${OFILE%.*}"
-	    echo "Building test $TESTNAME"
-	    $COMPILER "$OFILE" -o "$TESTNAME" -L "${OUTDIR}" >>"${LOGFILE}" 2>>"${ERRLOG}"
-	    echo running test "${TESTNAME}">>"${LOGFILE}"
-	    $TESTNAME 2>>"${ERRLOG}" >>"${LOGFILE}"
-	done
-done
+if [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
+    for DIRNAME in $BUILDTESTS; do
+	find "$OUTDIR/$DIRNAME" -iname '*.o' -print0 |
+	    while IFS= read -d '' OFILE; do
+		#TODO VK_LIB ?
+		TESTNAME="${OFILE%.*}"
+		echo running test $TESTNAME
+		$COMPILER "$OFILE" -o "$TESTNAME" -L "${OUTDIR}" "-Wl,-rpath,$OUTDIR" $BUILTLIBS $LINKOPTS $BOTHOPTS 2>>"${ERRLOG}" >>"${LOGFILE}"
+		echo running test "${TESTNAME}" >>"${LOGFILE}"
+		$TESTNAME 2>>"${ERRLOG}" >>"${LOGFILE}"
+		code=$?
+		if [ $code -ne 0 ]; then echo "Exit code: " $code >>"${ERRLOG}"; fi;
+	    done
+    done
+fi
 
 #apps
-for DIRNAME in $BUILDAPP; do
-    find "$DIRNAME" -iname '*.o' | grep -qF .o || continue;
-    APPNAME="$DIRNAME/$(basename "${DIRNAME}").so"
-    #TODO VK_LIB ?
-    echo "Linking $APPNAME"
-    $COMPILER $(find "$DIRNAME" -name '*.o') -o $APPNAME >>"${LOGFILE}" 2>>"${ERRLOG}"
-done
+if [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
+    for DIRNAME in $BUILDAPP; do
+	find "$DIRNAME" -iname '*.o' | grep -qF .o || continue;
+	APPNAME="$DIRNAME/$(basename "${DIRNAME}").so"
+	#TODO VK_LIB ?
+	echo "Linking $APPNAME"
+	$COMPILER $(find "$DIRNAME" -name '*.o') -o $APPNAME $BOTHOPTS >>"${LOGFILE}" 2>>"${ERRLOG}"
+    done
+fi
 
-if [ -f "${ERRLOG}" ] && [ $(stat -c %s "${ERRLOG}") -gt 0 ]; then
+if [ -f "${ERRLOG}" ] && [ "$(stat -c %s "${ERRLOG}")" -gt 0 ]; then
     echo "${ERRLOG}"
     let i=0; while [ $i -lt 10 ]; do echo; let i++; done;
     head -n 60 "${ERRLOG}"

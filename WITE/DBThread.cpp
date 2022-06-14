@@ -55,7 +55,7 @@ namespace WITE::DB {
 	DBRecord data;
 	for(DBEntity* ent : slice) {
 	  ent->read(&data);
-	  db->getType(data.header.type)->update->call(&data);
+	  db->getType(data.header.type)->update(&data, ent);
 	}
 	if(!setState(state_updated) || !waitForState(state_maintaining)) break;
 	if(timer_gettime(cpuTimer, &frameTime))

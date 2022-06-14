@@ -29,31 +29,45 @@ namespace WITE::DB {
     void read(DBRecord* dst);
     void read(uint8_t* dst, size_t maxSize, size_t offset = 0);//maxSize because the record might be bigger than the stored data
     template<typename T, typename RET = std::enable_if_t<!std::is_same_v<uint8_t, T>, void>>
-    RET read(T* src, size_t len, size_t offset = 0) { read(reinterpret_cast<uint8_t*>(src), len * sizeof(T), offset); };
+    RET read(T* dst, size_t len, size_t offset = 0) { read(reinterpret_cast<uint8_t*>(dst), len * sizeof(T), offset); };
     template<typename T> inline void read(T* dst) { read(reinterpret_cast<uint8_t*>(dst), sizeof(T)); };
     template<typename T, typename V, V T::* M> inline void read(T* dst) {
       read(reinterpret_cast<uint8_t*>(dst), sizeof(M), WITE::Util::member_offset(M));
     };
+    void completeRead(uint8_t* out, DBRecord* record, size_t len);
+    template<typename T> void completeRead(T* out, DBRecord* record) {
+      completeRead(reinterpret_cast<uint8_t*>(out), record, sizeof(T));
+    };
     //TODO member pointer variadic
     void write(DBDelta* src);
-    void write(uint8_t* src, size_t len, size_t offset = 0);
+    void write(const uint8_t* src, size_t len, size_t offset = 0);
     template<typename T, typename RET = std::enable_if_t<!std::is_same_v<uint8_t, T>, void>>
-    RET write(T* src, size_t len, size_t offset = 0) { write(reinterpret_cast<uint8_t*>(src), len * sizeof(T), offset); };
-    template<typename T> inline void write(T* src) { write(reinterpret_cast<uint8_t*>(src), sizeof(T)); };
+    RET write(const T* src, size_t len, size_t offset = 0) {
+      write(reinterpret_cast<const uint8_t*>(src), len * sizeof(T), offset);
+    };
+    template<typename T> inline void write(const T* src) { write(reinterpret_cast<const uint8_t*>(src), sizeof(T)); };
     template<typename T, typename V, V T::* M> inline void write(T* src) {
-      write(reinterpret_cast<uint8_t*>(src), sizeof(M), WITE::Util::member_offset(M));
+      write(reinterpret_cast<const uint8_t*>(src), sizeof(M), WITE::Util::member_offset(M));
     };
     //TODO member pointer variadic
     void writeFlags(DBRecordFlag mask, DBRecordFlag values);
     void setType(DBRecord::type_t type);
     bool isUpdatable();
     static bool isUpdatable(DBRecord* r, Database* db);
+    void destroy();
   };
 
   struct entity_type {
     DBRecord::type_t typeId;
-    typedefCB(updateFn, void, DBRecord*);
-    updateFn update;
+    void(*update)(DBRecord*, DBEntity*);//TODO constexpr compatible callback_t
+    //typedefCB(updateFn, void, DBRecord*, DBEntity*);
+    //updateFn update;
+    //std::unique_ptr<WITE::Util::Callback_t<void, DBRecord*, DBEntity*>> update;
+    //WITE::Util::Callback_t<void, DBRecord*, DBEntity*>& update;
   };
+
+  // static void _NULL_UPDATE(DBRecord*, DBEntity*) {}
+  // static constexpr WITE::Util::Callback_t<void, DBRecord*, DBEntity*>& NULL_UPDATE =
+  //   entity_type::updateFn_F::make_ref(&_NULL_UPDATE);
 
 }

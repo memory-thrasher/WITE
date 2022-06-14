@@ -1,13 +1,48 @@
 #pragma once
 
+//https://stackoverflow.com/questions/6707148/foreach-macro-on-macros-arguments
+#define EVAL0(...) __VA_ARGS__
+#define EVAL1(...) EVAL0(EVAL0(EVAL0(__VA_ARGS__)))
+#define EVAL2(...) EVAL1(EVAL1(EVAL1(__VA_ARGS__)))
+#define EVAL3(...) EVAL2(EVAL2(EVAL2(__VA_ARGS__)))
+#define EVAL4(...) EVAL3(EVAL3(EVAL3(__VA_ARGS__)))
+#define EVAL(...)  EVAL4(EVAL4(EVAL4(__VA_ARGS__)))
+#define MAP_END(...)
+#define MAP_OUT
+#define MAP_COMMA ,
+#define MAP_GET_END2() 0, MAP_END
+#define MAP_GET_END1(...) MAP_GET_END2
+#define MAP_GET_END(...) MAP_GET_END1
+#define MAP_NEXT0(test, next, ...) next MAP_OUT
+#define MAP_NEXT1(test, next) MAP_NEXT0(test, next, 0)
+#define MAP_NEXT(test, next)  MAP_NEXT1(MAP_GET_END test, next)
+#define MAP0(f, x, peek, ...) f(x) MAP_NEXT(peek, MAP1)(f, peek, __VA_ARGS__)
+#define MAP1(f, x, peek, ...) f(x) MAP_NEXT(peek, MAP0)(f, peek, __VA_ARGS__)
+#define MAP_LIST_NEXT1(test, next) MAP_NEXT0(test, MAP_COMMA next, 0)
+#define MAP_LIST_NEXT(test, next)  MAP_LIST_NEXT1(MAP_GET_END test, next)
+#define MAP_LIST0(f, x, peek, ...) f(x) MAP_LIST_NEXT(peek, MAP_LIST1)(f, peek, __VA_ARGS__)
+#define MAP_LIST1(f, x, peek, ...) f(x) MAP_LIST_NEXT(peek, MAP_LIST0)(f, peek, __VA_ARGS__)
+
+/**
+ * Applies the function macro `f` to each of the remaining parameters.
+ */
+#define MAP(f, ...) EVAL(MAP1(f, __VA_ARGS__, ()()(), ()()(), ()()(), 0))
+
+/**
+ * Applies the function macro `f` to each of the remaining parameters and
+ * inserts commas between the results.
+ */
+#define MAP_LIST(f, ...) EVAL(MAP_LIST1(f, __VA_ARGS__, ()()(), ()()(), ()()(), 0))
+
 #ifdef DEBUG
 
 #include <iostream>
 
-#define ERROR(str) { std::cerr << str; }//TODO set global failure flag that db should read to graceful stop
-#define WARN(str) { std::cerr << str; }
-#define ASSERT_WARN(cond, msg) { if(cond) { std::cerr << (msg); } }
-#define CRASH_PREINIT(msg) { std::cerr << (msg); exit(EXIT_FAILURE); }
+#define WARN1(msg) { std::cerr << msg; }
+
+#define WARN(...) MAP(WARN1, __VA_ARGS__, std::endl)
+#define ERROR(...) { WARN(__VA_ARGS__); }//TODO set global failure flag that db should read to graceful stop
+#define ASSERT_WARN(cond, ...) { if(cond) { WARN(__VA_ARGS__); } }
 
 #else //release
 
@@ -16,3 +51,7 @@
 #define ASSERT_WARN() {}
 
 #endif
+
+#define CRASH_PREINIT(...) { ERROR(__VA_ARGS__); exit(EXIT_FAILURE); }
+#define CRASH(...) { ERROR(__VA_ARGS__); } //TODO set a global flag for dbs to graceul down
+#define CRASHRET(ret, ...) { CRASH(__VA_ARGS__); return ret; } //return will never happen but it satisfies the compiler

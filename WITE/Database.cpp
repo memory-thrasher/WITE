@@ -1,6 +1,7 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
+#include <sys/resource.h>
 
 #include "Database.hpp"
 #include "DBEntity.hpp"
@@ -9,9 +10,13 @@
 #include "DBThread.hpp"
 #include "DEBUG.hpp"
 
+#define PAGEPOW 23
+#define MAPTHRESH (2 << PAGEPOW)
+
 namespace WITE::DB {
 
-  void Database::constructorCommon(struct entity_type* types, size_t typeCount) {
+  Database::Database(struct entity_type* types, size_t typeCount, size_t entityCount, int backingStoreFd) {
+    //entityCount param will yield to size of file if backing store is given and exists
     deltaIsInPast_cb = Util::CallbackFactory<bool, DBDelta*>::make_unique(this, &Database::deltaIsInPast);
     threads = reinterpret_cast<DBThread*>(malloc(sizeof(DBThread) * DB_THREAD_COUNT));
     if(!threads)
@@ -21,31 +26,44 @@ namespace WITE::DB {
     for(size_t i = 0;i < typeCount;i++) {
       this->types.insert({types[i].typeId, types[i]});
     }
-  }
-
-  Database::Database(struct entity_type* types, size_t typeCount, size_t entityCount) :
-    entityCount(entityCount), free(std::make_unique<Collections::AtomicRollingQueue<DBEntity*>>(entityCount)) {
-    constructorCommon(types, typeCount);
-    DBEntity* entities = reinterpret_cast<DBEntity*>(malloc(sizeof(DBEntity) * entityCount));
-    for(size_t i = 0;i < entityCount;i++)
-      free->push(new(&entities[i])DBEntity(this, i));
-    //no need to load anything when there's no file to load from
-    this->metadata = entities;
-    data_raw = mmap(NULL, sizeof(DBRecord) * entityCount, PROT_READ | PROT_WRITE,
-		    MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB | (23 << MAP_HUGE_SHIFT), -1, 0);
-  }
-
-  Database::Database(struct entity_type* types, size_t typeCount, int backingStoreFd, size_t entityCount) {
-    constructorCommon(types, typeCount);
-    if(!entityCount) {
+    int mmapFlags = 0;
+    if(backingStoreFd >= 0) {
       struct stat stat;
       fstat(backingStoreFd, &stat);
-      entityCount = stat.st_size / sizeof(DBRecord);
+      size_t entityCountFromFile = stat.st_size / sizeof(DBRecord);
+      if(entityCountFromFile > entityCount)
+	entityCount = entityCountFromFile;
+      // else
+	//TODO grow file
+      mmapFlags |= MAP_SHARED | MAP_POPULATE;
+    } else { //anonymous db
+      mmapFlags |= MAP_PRIVATE | MAP_ANONYMOUS;
     }
     this->entityCount = entityCount;
     free = std::make_unique<Collections::AtomicRollingQueue<DBEntity*>>(entityCount);
-    data_raw = mmap(NULL, sizeof(DBRecord) * entityCount, PROT_READ | PROT_WRITE,
-		    MAP_SHARED | MAP_HUGETLB | (23 << MAP_HUGE_SHIFT) | MAP_POPULATE, backingStoreFd, 0);
+    //TODO test data limit RLIMIT_DATA see getrlimit(2)
+    size_t mmapsize = sizeof(DBRecord) * entityCount;
+    if(mmapsize > MAPTHRESH)
+      mmapFlags |= MAP_HUGETLB | (PAGEPOW << MAP_HUGE_SHIFT);
+    data_raw = mmap(NULL, mmapsize, PROT_READ | PROT_WRITE, mmapFlags, backingStoreFd, 0);
+    if(data_raw == MAP_FAILED) {
+      int e = errno;
+      if(e == ENOMEM) { //data rlimit might be to blame. Try to increase it.
+	WARN("Attempting to increase data rlimit because mmap failed with ENOMEM");
+	struct rlimit rlim;
+	if(getrlimit(RLIMIT_DATA, &rlim)) CRASH_PREINIT("Failed to fetch data rlimit");
+	WARN("Data rlimt old: ", rlim.rlim_cur);
+	rlim.rlim_cur = Util::max(rlim.rlim_cur + mmapsize, rlim.rlim_max);
+	WARN("Data rlimt new: ", rlim.rlim_cur);
+	if(rlim.rlim_cur < mmapsize) CRASH_PREINIT("Data rlimit hard limit too low");
+	if(setrlimit(RLIMIT_DATA, &rlim)) CRASH_PREINIT("Failed to set data rlimit");
+	data_raw = mmap(NULL, mmapsize, PROT_READ | PROT_WRITE, mmapFlags, backingStoreFd, 0);
+	e = errno;
+      }
+      if(data_raw == MAP_FAILED)
+	CRASH_PREINIT("Failed to create memory map with size ", sizeof(DBRecord) * entityCount,
+		      " flags ", mmapFlags, " and errno ", e);
+    }
     DBEntity* entities = reinterpret_cast<DBEntity*>(malloc(sizeof(DBEntity) * entityCount));
     for(size_t i = 0;i < entityCount;i++) {
       //TODO progress report callback for loading bar?
@@ -141,14 +159,16 @@ namespace WITE::DB {
     DBDelta delta;//set allocated flag
     delta.targetEntityId = ret->idx;
     delta.flagWriteValues = DBRecordFlag::allocated | (isHead ? DBRecordFlag::head_node : DBRecordFlag::none);
-    delta.write_type = 1;
+    delta.write_type = true;
     delta.new_type = type;
+    delta.write_nextGlobalId = true;
     if(count > 1) {
       delta.flagWriteValues |= DBRecordFlag::has_next;
-      delta.write_nextGlobalId = true;
       delta.new_nextGlobalId = allocate(type, count - 1, false)->idx;
     }
     delta.flagWriteMask = DBRecordFlag::all;
+    delta.len = delta.dstStart = 0;
+    delta.frame = 0;
     write(&delta);
     return ret;
   }

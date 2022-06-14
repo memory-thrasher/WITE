@@ -2,6 +2,7 @@
 
 #include "SyncLock.hpp"
 #include "Callback.hpp"
+#include "StdExtensions.hpp"
 
 namespace WITE::Platform {
 
@@ -14,7 +15,7 @@ namespace WITE::Platform {
     template<typename U = T, std::enable_if_t<std::is_default_constructible<U>::value, int> = 0>
     ThreadResource() : ThreadResource(Initer_F::make(&makeDefault)) {};
     ThreadResource(Initer typeInit, Destroyer destroyer = NULL) : typeInit(typeInit), typeDestroy(destroyer) {
-      memset(data, 0, sizeof(data));
+      WITE::memset(data, 0, sizeof(data));
     };
     ~ThreadResource() {
       Util::ScopeLock contextHold(&lock);
@@ -34,6 +35,9 @@ namespace WITE::Platform {
       auto ret = static_cast<T*>(malloc(sizeof(T)));
       memset(ret, 0, sizeof(T));
       return ret;
+    }
+    static Initer initAsEmpty() {
+      return Initer_F::make(&makeEmpty);
     }
     T* get();
     T* get(uint32_t tid) {

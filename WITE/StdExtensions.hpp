@@ -25,12 +25,16 @@ namespace WITE::Collections {
 
 namespace WITE {
 
-  template<typename D, typename S> inline void memcpy(D* dst, S* src, size_t len) {
-    std::memcpy(reinterpret_cast<void*>(dst), reinterpret_cast<void*>(src), len);
+  template<typename D, typename S> inline void memcpy(D* dst, const S* src, size_t len) {
+    std::memcpy(reinterpret_cast<void*>(dst), reinterpret_cast<const void*>(src), len);
   }
 
-  template<typename D, typename S> inline auto memcmp(D* dst, S* src, size_t len) {
-    return std::memcmp(reinterpret_cast<void*>(dst), reinterpret_cast<void*>(src), len);
+  template<typename D, typename S> inline auto memcmp(const D* dst, const S* src, size_t len) {
+    return std::memcmp(reinterpret_cast<const void*>(dst), reinterpret_cast<const void*>(src), len);
+  }
+
+  template<typename T> inline void memset(T* dst, const char value, const size_t len) {
+    std::memset(reinterpret_cast<void*>(dst), value, len);
   }
 
 }

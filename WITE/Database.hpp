@@ -56,20 +56,17 @@ namespace WITE::DB {
     void signalThreads(DBThread::semaphoreState);
     size_t applyLogTransactions(size_t min = 0);//applying a minimum of 0 attempts one batch
     bool deltaIsInPast(DBDelta*);
-    void constructorCommon(struct entity_type* types, size_t typeCount);//boilerplate
     //TODO (head) entities by type, liked list?
     DBThread* getLightestThread();
     DBThread* getCurrentThread();
     void stop();
   public:
-    Database(struct entity_type* types, size_t typeCount,
-	     int backingStore_fd, size_t entityCount = 0);//entityCount intended for making a new file
-    Database(struct entity_type* types, size_t typeCount, size_t entityCount);//for anonymous
+    Database(struct entity_type* types, size_t typeCount, size_t entityCount, int backingStore_fd = -1);
     ~Database();
     // void mainLoop();
     void write(DBDelta*);//appends to the current thread's transaction queue, flushing it if out of space
     void read(DBEntity* src, DBRecord* dst);
-    DBEntity* getEntity(size_t id);
+    DBEntity* getEntity(size_t id) { return &metadata[id]; };
     DBEntity* getEntityAfter(DBEntity* src);
     uint64_t getFrame() { return currentFrame; };
     DBEntity* allocate(DBRecord::type_t type, size_t count = 1, bool isHead = true);

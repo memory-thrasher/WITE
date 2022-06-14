@@ -5,22 +5,38 @@
 
 using namespace WITE::DB;
 
-struct entity_type dummy = { 1, NULL }; //type1, no update just push it around
+const struct entity_type dummy_et = { 1, NULL }; //type1, no update just push it around
+
+class timebomb_t {
+private:
+  size_t frameCounter;
+public:
+  static void onUpdate(DBRecord* data, DBEntity* dbe) {
+    timebomb_t dis;
+    dbe->completeRead(&dis, data);
+    if(dis.frameCounter++ > 200)
+      dbe->destroy();
+    dbe->write(&dis);
+  }
+  static constexpr struct entity_type et = { 2, &onUpdate };
+};
 
 struct entity_type types[] =
   {
-   dummy
+   dummy_et,
+   timebomb_t::et
   };
 
 //#define assert(cond) if(!(cond)) std::cerr << "Error " << __FILE__ << ":" << __LINE__
 
+const char* hw = "Hello World";
+char out[200];
+
 int main (int argc, char** argv) {
   Database* db = new Database(types, sizeof(types)/sizeof(types[0]), 100);
-  DBEntity* e = db->allocate(dummy.typeId);
-  char hw[] = "Hello World";
-  e->write(hw, sizeof(hw));
-  char out[200];
-  e->read(&out, sizeof(hw));
+  DBEntity* e = db->allocate(dummy_et.typeId);
+  e->write(hw, strlen(hw));
+  e->read(out, strlen(hw));
   assert(strcmp(hw, out) == 0);
 }
 

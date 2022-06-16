@@ -4,7 +4,7 @@
 #include "DBDelta.hpp"
 #include "RollingQueue.hpp"
 
-namespace WITE::DB::Platform { class Thread; }
+namespace WITE::Platform { class Thread; }
 
 namespace WITE::DB {
 
@@ -15,8 +15,8 @@ namespace WITE::DB {
   private:
     typedef class WITE::Platform::Thread PThread;
     static constexpr size_t TRANSACTION_COUNT = 128*1024*1024 / sizeof(DBDelta);//~700k
-    enum semaphoreState : uint8_t { state_initial, state_updating, state_updated, state_maintaining,
-				    state_frameSync, state_exiting, state_exploded, state_exited };
+    enum semaphoreState : uint8_t { state_initial, state_ready, state_updating, state_updated, state_maintaining,
+				    state_maintained, state_exiting, state_exploded, state_exited };
     std::atomic<semaphoreState> semaphore = state_initial;
     size_t dbId;
     Database* db;
@@ -34,12 +34,14 @@ namespace WITE::DB {
     void start();//called by db
     void addToSlice(DBEntity*);
     void removeFromSlice(DBEntity*);
-    bool setState(semaphoreState desired);
+    bool setState(semaphoreState old, semaphoreState desired);
     bool waitForState(semaphoreState desired);
+    bool waitForState(semaphoreState old, semaphoreState desired);
     void join();
-    uint32_t getTid();
   public:
     static uint32_t getCurrentTid();
+    uint32_t getTid();
+    uint32_t getDbid() { return dbId; };
   };
 
 }

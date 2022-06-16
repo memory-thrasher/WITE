@@ -39,10 +39,12 @@
 #include <iostream>
 
 #define WARN1(msg) { std::cerr << msg; }
+#define LOG1(msg) { std::cout << msg; }
 
-#define WARN(...) MAP(WARN1, __VA_ARGS__, std::endl)
+#define WARN(...) { MAP(WARN1, __VA_ARGS__, " (", __FILE__, ": ", __LINE__, ")", std::endl); }
 #define ERROR(...) { WARN(__VA_ARGS__); }//TODO set global failure flag that db should read to graceful stop
 #define ASSERT_WARN(cond, ...) { if(cond) { WARN(__VA_ARGS__); } }
+#define LOG(...) { MAP(LOG1, __VA_ARGS__, " (", __FILE__, ": ", __LINE__, ")", std::endl); }
 
 #else //release
 

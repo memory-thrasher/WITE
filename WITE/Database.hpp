@@ -53,7 +53,7 @@ namespace WITE::DB {
     std::map<DBRecord::type_t, struct entity_type> types;
     bool anyThreadIs(DBThread::semaphoreState);
     bool anyThreadBroke();
-    void signalThreads(DBThread::semaphoreState);
+    void signalThreads(DBThread::semaphoreState from, DBThread::semaphoreState to, DBThread::semaphoreState waitFor);
     size_t applyLogTransactions(size_t min = 0);//applying a minimum of 0 attempts one batch
     bool deltaIsInPast(DBDelta*);
     //TODO (head) entities by type, liked list?
@@ -70,9 +70,11 @@ namespace WITE::DB {
     DBEntity* getEntityAfter(DBEntity* src);
     uint64_t getFrame() { return currentFrame; };
     DBEntity* allocate(DBRecord::type_t type, size_t count = 1, bool isHead = true);
+    inline DBEntity* allocate(const struct entity_type& type, size_t count = 1) { return allocate(type.typeId, count); };
     void deallocate(DBEntity*, DBRecord* info = NULL);//requires some info from the record's present state, provide if already read to avoid redundent read
     const struct entity_type* getType(DBRecord::type_t);
     void start();
+    void shutdown();
   };
 
 }

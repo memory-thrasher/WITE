@@ -1,6 +1,10 @@
 #include <iostream>
 #include <cstring>
 
+//for timeout
+#include <sys/time.h>
+#include <sys/resource.h>
+
 #include "../WITE/Database.hpp"
 
 using namespace WITE::DB;
@@ -12,11 +16,16 @@ private:
   size_t frameCounter;
 public:
   static void onUpdate(DBRecord* data, DBEntity* dbe) {
+    Database* db = dbe->getDb();
     timebomb_t dis;
     dbe->completeRead(&dis, data);
-    if(dis.frameCounter++ > 200)
+    dis.frameCounter++;
+    if(dis.frameCounter % 50 == 49)
+      db->allocate(et);
+    if(dis.frameCounter > 200)
       dbe->destroy();
     dbe->write(&dis);
+    if(db->getFrame() > 500) db->shutdown();
   }
   static constexpr struct entity_type et = { 2, &onUpdate };
 };
@@ -38,5 +47,15 @@ int main (int argc, char** argv) {
   e->write(hw, strlen(hw));
   e->read(out, strlen(hw));
   assert(strcmp(hw, out) == 0);
+  db->allocate(timebomb_t::et);
+  //set up absolute timeout so if the db hangs, the test can eventually exit.
+  //Linux kernel makes this real easy for it's own benefit. TODO this might need help on other platforms
+  {
+    struct rlimit rlim;
+    getrlimit(RLIMIT_CPU, &rlim);
+    rlim.rlim_max = WITE::Util::min(20, rlim.rlim_max);
+    rlim.rlim_cur = rlim.rlim_max - 5;
+  }
+  db->start();
 }
 

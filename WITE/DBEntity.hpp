@@ -55,6 +55,7 @@ namespace WITE::DB {
     bool isUpdatable();
     static bool isUpdatable(DBRecord* r, Database* db);
     void destroy();
+    Database* getDb() { return db; };
   };
 
   struct entity_type {

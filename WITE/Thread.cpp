@@ -6,38 +6,6 @@
 
 namespace WITE::Platform {
 
-// #ifdef _WIN32//copied from old implementation, TODO test/update when win binaries are desirable if pthread doesn't work
-
-//   DWORD dwTlsIndex;
-
-//   void Thread::init() {//static
-//     if (seed.load() == 0) {
-//       dwTlsIndex = TlsAlloc();
-//     }
-//     initThisThread();
-//   }
-
-//   Thread* Thread::current() {
-//     LPVOID ret = TlsGetValue(dwTlsIndex);
-//     if (!ret) CRASHRET(NULL);
-//     return static_cast<Thread*>(ret);
-//   }
-
-//   void putThreadRef(Thread* ref) {
-//     if (!TlsSetValue(dwTlsIndex, ref)) CRASH("Thread init failed: Failed to store thread id in thread storage (win32 kit)\n");
-//   }
-
-//   DWORD WINAPI winThreadCallback(LPVOID lpParam) {
-//     Thread::initThisThread(static_cast<Thread::threadEntry_t>(lpParam));
-//     return 0;
-//   }
-
-//   void Thread::spawnThread(threadEntry_t entry) {//static
-//     CreateThread(NULL, 0, winThreadCallback, entry, 0, NULL);
-//   }
-
-// #endif
-
   //#if posix, but c should always be posix
 
   namespace ThreadInternal {
@@ -59,12 +27,20 @@ namespace WITE::Platform {
       return 0;
     }
 
+    bool hasThreadRef() {
+      return pthread_getspecific(ThreadInternal::threadObjKey);
+    }
+
   }
 
+  Util::SyncLock initLock;
   void Thread::init() {//static
     if (seed.load() == 0) {
-      if(pthread_key_create(&ThreadInternal::threadObjKey, &ThreadInternal::threadDestructorWrapper))
-	CRASH("Failed to allocate thread key. This should not happen.");
+      Util::ScopeLock lock(&initLock);
+      if (seed.load() == 0) {
+	if(pthread_key_create(&ThreadInternal::threadObjKey, &ThreadInternal::threadDestructorWrapper))
+	  CRASH("Failed to allocate thread key. This should not happen.");
+      }
     }
     initThisThread();
   }
@@ -86,6 +62,11 @@ namespace WITE::Platform {
   ThreadResource<Thread> Thread::threads(decltype(Thread::threads)::initAsEmpty());//static
 
   void Thread::initThisThread(threadEntry_t entry) {//static, entry defaults to null
+    if(ThreadInternal::hasThreadRef()) {
+      WARN("Repeated init on this thread");
+      if(entry) entry->call();
+      return;
+    }
     uint32_t tid = seed.fetch_add(1, std::memory_order_relaxed);
     auto storage = threads.get(tid);
     new(storage)Thread(entry, tid);

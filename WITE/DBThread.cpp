@@ -12,17 +12,12 @@
 
 namespace WITE::DB {
 
-  DBThread::DBThread(Database* const db, size_t tid) : dbId(tid), db(db), slice(10000), slice_toBeRemoved(1000),
-							slice_toBeAdded(1000), transactions() {}
+  DBThread::DBThread(Database* const db, size_t tid) : dbId(tid), db(db), slice(), slice_toBeRemoved(),
+						       slice_toBeAdded(), transactions() {}
 
-  bool DBThread::setState(semaphoreState desired) {
-    semaphoreState state;
-    do {
-      state = semaphore.load(std::memory_order_acquire);
-      if(state == state_exiting || state == state_exploded)
-	return false;
-    } while(!semaphore.compare_exchange_strong(state, desired));
-    return true;
+  bool DBThread::setState(const semaphoreState old, const semaphoreState desired) {
+    semaphoreState state = old;
+    return semaphore.compare_exchange_strong(state, desired, std::memory_order_acq_rel, std::memory_order_consume);
   }
 
   bool DBThread::waitForState(semaphoreState desired) {
@@ -36,6 +31,17 @@ namespace WITE::DB {
     }
   }
 
+  bool DBThread::waitForState(const semaphoreState old, const semaphoreState desired) {
+    semaphoreState state = semaphore.load(std::memory_order_consume);
+    while(state != desired) {
+      if(state != old)
+	return false;
+      PThread::sleep();
+      state = semaphore.load(std::memory_order_consume);
+    }
+    return true;
+  }
+
   void DBThread::workLoop() {
     this->thread = PThread::current();
     static const struct itimerspec FRAME_MAX_TIME { { 0, 0 }, { std::numeric_limits<time_t>::max(), 0 } };
@@ -47,21 +53,23 @@ namespace WITE::DB {
       ERROR("FAILED to start db thread because timing is unavailable");
       return;
     }
+    setState(state_initial, state_ready);
+    waitForState(state_ready, state_updating);
     try {
       while(1) {
 	if(timer_settime(cpuTimer, 0, &FRAME_MAX_TIME, NULL))
 	  WARN("Timer set fail, thread balancing may be wrong");
-	if(!setState(state_updating)) break;
+	if(semaphore != state_updating) break;
 	DBRecord data;
 	for(DBEntity* ent : slice) {
 	  ent->read(&data);
 	  db->getType(data.header.type)->update(&data, ent);
 	}
-	if(!setState(state_updated) || !waitForState(state_maintaining)) break;
 	if(timer_gettime(cpuTimer, &frameTime))
 	  WARN("Timer get fail, thread balancing may be wrong");
 	nsSpentOnLastFrame = (FRAME_MAX_TIME.it_value.tv_sec - frameTime.it_value.tv_sec) * 1000000000 +
 	  (FRAME_MAX_TIME.it_value.tv_nsec - frameTime.it_value.tv_nsec);
+	if(!setState(state_updating, state_updated) || !waitForState(state_updated, state_maintaining)) break;
 	//shifts in slices should not count against this threads work units because they are unrelated to slice size
 	if(slice_toBeAdded.size() + slice_toBeRemoved.size()) {
 	  Util::ScopeLock lock(&sliceAlterationPoolMutex);
@@ -71,8 +79,8 @@ namespace WITE::DB {
 	  }
 	  if(slice_toBeAdded.size())
 	    Collections::concat_move(slice, slice_toBeAdded);
-	  if(!setState(state_frameSync) || !waitForState(state_updating)) break;
 	}
+	if(!setState(state_maintaining, state_maintained) || !waitForState(state_maintained, state_updating)) break;
       }
       timer_delete(cpuTimer);
       semaphore = state_exited;
@@ -86,7 +94,7 @@ namespace WITE::DB {
     if(semaphore != state_initial)
       return;
     PThread::spawnThread(PThread::threadEntry_t_F::make(this, &DBThread::workLoop));
-    waitForState(state_updating);
+    waitForState(state_initial, state_ready);
   }
 
   void DBThread::addToSlice(DBEntity* in) {
@@ -100,8 +108,8 @@ namespace WITE::DB {
   }
 
   void DBThread::join() {
-    setState(state_exiting);
-    waitForState(state_exited);
+    semaphore = state_exiting;
+    waitForState(state_exiting, state_exited);
   }
 
   uint32_t DBThread::getCurrentTid() {

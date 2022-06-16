@@ -3,6 +3,7 @@
 #include <sys/mman.h>
 #include <sys/resource.h>
 
+#include "Thread.hpp"
 #include "Database.hpp"
 #include "DBEntity.hpp"
 #include "DBRecord.hpp"
@@ -106,38 +107,49 @@ namespace WITE::DB {
     return false;
   }
 
-  void Database::signalThreads(DBThread::semaphoreState s) {
+  void Database::signalThreads(DBThread::semaphoreState from, DBThread::semaphoreState to, DBThread::semaphoreState waitFor) {
     for(size_t i = 0;i < DB_THREAD_COUNT;i++)
-      threads[i].setState(s);
+      threads[i].setState(from, to);
+    for(size_t i = 0;i < DB_THREAD_COUNT;i++) {
+      while(true) {
+	auto state = threads[i].semaphore.load(std::memory_order_consume);
+	if(state == waitFor) break;
+	if(state != to) CRASH("Thread state mismatch! signalThreads(from, to, waitFor)", from, to, waitFor,
+			      " but thread ", i, "is in state ", state);
+	WITE::Platform::Thread::sleepShort();
+      }
+    }
   }
 
   void Database::start() {
+    Platform::Thread::init();
     started = true;
     for(size_t i = 0;i < DB_THREAD_COUNT;i++) {
       threads[i].start();
       threadsByTid.insert({ threads[i].getTid(), i });
     }
-    while(!shuttingDown) {
-      while(anyThreadIs(DBThread::state_updating))
-	WITE::Platform::Thread::sleepShort();
+    signalThreads(DBThread::state_ready, DBThread::state_updating, DBThread::state_updated);
+    while(true) {
       if(anyThreadBroke()) {
 	stop();
 	break;
       }
-      signalThreads(DBThread::state_maintaining);
-      while(anyThreadIs(DBThread::state_maintaining))
-	WITE::Platform::Thread::sleepShort();
-      if(anyThreadBroke()) {
+      signalThreads(DBThread::state_updated, DBThread::state_maintaining, DBThread::state_maintained);
+      if(anyThreadBroke() || shuttingDown) {
 	stop();
 	break;
       }
-      signalThreads(DBThread::state_updating);
+      currentFrame++;
+      signalThreads(DBThread::state_maintained, DBThread::state_updating, DBThread::state_updated);
     }
+  }
+
+  void Database::shutdown() {
+    shuttingDown = true;
   }
 
   void Database::stop() {
     shuttingDown = true;
-    signalThreads(DBThread::state_exiting);
     for(size_t i = 0;i < DB_THREAD_COUNT;i++)
       threads[i].join();
   }

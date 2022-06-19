@@ -16,7 +16,7 @@ namespace WITE::Collections {
 
   template<typename T> inline void concat_move(std::vector<T>& dst, std::vector<T>& src) {
     dst.reserve(dst.size() + src.size());
-    for(auto i = src.begin();++i != src.end();)
+    for(auto i = src.begin();i != src.end();i++)
       dst.push_back(std::move(*i));
     src.clear();
   }

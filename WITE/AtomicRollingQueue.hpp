@@ -12,7 +12,9 @@ namespace WITE::Collections {
     std::atomic_size_t nextCommit,//the index of a datum that has not finished being written. Data below this are readable.
       nextIn,//the index of an empty datum that is next to be allocated
       nextOut;//the index of the next datum to be popped
-    size_t wrap(size_t i) { return i > size ? i > size * 2 ? i % size : i - size : i; }
+    size_t wrap(size_t i) {
+      return i >= size ? i >= size * 2 ? i % size : i - size : i;
+    };
   public:
 
     AtomicRollingQueue(size_t size) : data(std::make_unique<T[]>(size)), size(size) {}
@@ -68,9 +70,10 @@ namespace WITE::Collections {
       return true;
     };
 
-    T pop() {
+    template<typename R = std::enable_if_t<std::is_pointer_v<T>, T>> R pop() {
       T ret;
-      pop(&ret);
+      if(!pop(&ret))
+	return (T)0;
       return ret;
     }
 

@@ -5,8 +5,8 @@
 
 namespace WITE::DB {
 
-  void DBEntity::destroy() {
-    db->deallocate(this);
+  void DBEntity::destroy(DBRecord* data) {
+    db->deallocate(this, data);
   }
 
   void DBEntity::read(DBRecord* dst) {
@@ -23,7 +23,7 @@ namespace WITE::DB {
       size_t overlap = Util::min(DBRecord::CONTENT_SIZE, maxSize) - offset;
       memcpy(dst, &record.content + offset, overlap);//TODO don't memcpy content twice, content-only read into dst
       if(maxSize > DBRecord::CONTENT_SIZE - offset) {
-    	ASSERT_WARN((record.header.flags & DBRecordFlag::has_next) != 0, "DB large object read underflow");
+    	ASSERT_TRAP((record.header.flags & DBRecordFlag::has_next) != 0, "DB large object read underflow");
     	db->getEntity(record.header.nextGlobalId)->read(dst + overlap, maxSize - overlap, 0);
       }
     }
@@ -73,7 +73,11 @@ namespace WITE::DB {
   }
 
   /*static*/ bool DBEntity::isUpdatable(DBRecord* r, Database* db) {
-    return (r->header.flags & DBRecordFlag::head_node) != 0 && db->getType(r->header.type)->update != NULL;
+    return isUpdatable((r->header.flags & DBRecordFlag::head_node) != 0, r->header.type, db);
+  }
+
+  /*static*/ bool DBEntity::isUpdatable(bool isHead, DBRecord::type_t type, Database* db) {
+    return isHead && db->getType(type)->update != NULL;
   }
 
   void DBEntity::completeRead(uint8_t* out, DBRecord* record, size_t len) {

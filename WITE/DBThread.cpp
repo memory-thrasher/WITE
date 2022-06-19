@@ -67,8 +67,10 @@ namespace WITE::DB {
 	}
 	if(timer_gettime(cpuTimer, &frameTime))
 	  WARN("Timer get fail, thread balancing may be wrong");
+	db->flushTransactions(&transactions);
 	nsSpentOnLastFrame = (FRAME_MAX_TIME.it_value.tv_sec - frameTime.it_value.tv_sec) * 1000000000 +
 	  (FRAME_MAX_TIME.it_value.tv_nsec - frameTime.it_value.tv_nsec);
+	//state sync so changes to this thread's slice don't block other threads adding rows to this thread.
 	if(!setState(state_updating, state_updated) || !waitForState(state_updated, state_maintaining)) break;
 	//shifts in slices should not count against this threads work units because they are unrelated to slice size
 	if(slice_toBeAdded.size() + slice_toBeRemoved.size()) {

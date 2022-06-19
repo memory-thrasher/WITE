@@ -16,12 +16,13 @@ namespace WITE::DB {
 
   class DBEntity {
   private:
-    size_t masterThread;//assigned on db load
+    size_t masterThread;
     DBDelta * volatile firstLog, * volatile lastLog;//these are write-protected by Database::logMutex
     size_t idx;//location of the corrosponding record in the main db file
     Database* db;
     //TODO some kind of work for update tracking to help decide which entities get moved during thread load balancing
     friend class Database;
+    friend class DBThread;
     DBEntity(const DBEntity&) = delete;
     DBEntity() = delete;
     DBEntity(Database* db, size_t idx) : masterThread(~0), idx(idx), db(db) {}
@@ -54,21 +55,27 @@ namespace WITE::DB {
     void setType(DBRecord::type_t type);
     bool isUpdatable();
     static bool isUpdatable(DBRecord* r, Database* db);
-    void destroy();
+    static bool isUpdatable(bool isHead, DBRecord::type_t type, Database* db);
+    void destroy(DBRecord* data = NULL);
     Database* getDb() { return db; };
   };
 
   struct entity_type {
     DBRecord::type_t typeId;
-    void(*update)(DBRecord*, DBEntity*);//TODO constexpr compatible callback_t
-    //typedefCB(updateFn, void, DBRecord*, DBEntity*);
-    //updateFn update;
-    //std::unique_ptr<WITE::Util::Callback_t<void, DBRecord*, DBEntity*>> update;
-    //WITE::Util::Callback_t<void, DBRecord*, DBEntity*>& update;
-  };
+    //TODO constexpr compatible callback_t
+    void(*update)(DBRecord*, DBEntity*);//happens once per frame
 
-  // static void _NULL_UPDATE(DBRecord*, DBEntity*) {}
-  // static constexpr WITE::Util::Callback_t<void, DBRecord*, DBEntity*>& NULL_UPDATE =
-  //   entity_type::updateFn_F::make_ref(&_NULL_UPDATE);
+    //once per object, not re-called when the game loads. For setting up the db record's initial state
+    void(*onAllocate)(DBEntity*);
+
+    //At most once per object, not called when the game closes, for freeing any subsidiary db records
+    void(*onDeallocate)(DBEntity*);
+
+    //once per object per session, called after onAllocate when newly created, and again when the game loads, for setting up transient resources. Not allowed to access the db (because it might not be fully loaded yet)
+    void(*onSpinUp)(DBEntity*);
+
+    //once per object per session, called before onDeallocate when destroying the object, or when the game closes, for freeing transient resources. Should not write to the db (use deallocate for that)
+    void(*onSpinDown)(DBEntity*);
+  };
 
 }

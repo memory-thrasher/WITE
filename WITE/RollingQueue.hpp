@@ -28,6 +28,7 @@ namespace WITE::Collections {
       } else {
 	memcpy(ret, src, sizeof(T));
       }
+      nextIn = nextTarget;
       return ret;
     }
 
@@ -35,7 +36,7 @@ namespace WITE::Collections {
       size_t target = nextOut,
 	nextTarget = wrap(target + 1);
       //we always have 1 empty slot, or else we couldn't tell full from empty because lastIn == nextOut
-      if(nextTarget == nextIn)//empty
+      if(target == nextIn)//empty
 	  return false;
       if constexpr(std::is_copy_constructible<T>::value) {
 	*out = data[target];
@@ -48,7 +49,7 @@ namespace WITE::Collections {
 
     inline size_t count() {
       size_t tail = nextOut, head = nextIn;
-      return tail < head ? SIZE - head + tail : tail - head;
+      return tail < head ? head - tail : SIZE - head + tail;
     }
 
     inline size_t freeSpace() {
@@ -56,13 +57,12 @@ namespace WITE::Collections {
     }
 
     size_t bulkPush(T* in, size_t count, T** handleOut) {
-      size_t target = nextIn, nextTarget, targetCount;
+      size_t target = nextIn, targetCount;
       size_t tail = nextOut;
       targetCount = Util::min(count, tail > target ? SIZE - tail + target - 1 : target - tail);
       if(!targetCount)
 	return 0;//"full"
-      nextTarget = wrap(target + targetCount);
-      nextIn = nextTarget;
+      nextIn = wrap(target + targetCount);
       for(int i = 0, j = target;i < targetCount;i++) {
 	if constexpr(std::is_copy_constructible<T>::value) {
 	  data[j] = in[i];
@@ -81,8 +81,7 @@ namespace WITE::Collections {
       size_t target = nextOut, nextTarget, targetCount;
       if(condition && !condition->call(&data[target]))
 	return 0;
-      size_t head = nextIn;
-      targetCount = Util::min(count, head < target ? SIZE - target + head : head - target);
+      targetCount = Util::min(count, freeSpace());
       if(!targetCount)
 	return 0;
       //condition binary search
@@ -113,6 +112,7 @@ namespace WITE::Collections {
 	  memcpy(&out[split], data, sizeof(T) * (targetCount - split));
 	}
       }
+      nextOut = nextTarget;
       return targetCount;
     }
 

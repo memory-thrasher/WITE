@@ -40,7 +40,7 @@ find $BUILDLIBS $BUILDAPP $BUILDTESTS -name '*.cpp' -type f -print0 |
 	    $COMPILER $VK_INCLUDE -E -o /dev/null -H "${SRCFILE}" 2>&1 | grep -o '[^[:space:]]*$' >"${DEPENDENCIES}"
 	fi
 	rm "${DEPENDENCIES}"
-	if ! $COMPILER $VK_INCLUDE --std=c++20 -fPIC $BOTHOPTS -Werror -Wall "${SRCFILE}" -c -o "${DSTFILE}" >>"${LOGFILE}" 2>>"${ERRLOG}"; then
+	if ! $COMPILER $VK_INCLUDE --std=c++20 -D_POSIX_C_SOURCE=200112L -fPIC $BOTHOPTS -Werror -Wall "${SRCFILE}" -c -o "${DSTFILE}" >>"${LOGFILE}" 2>>"${ERRLOG}"; then
 	    touch "${SRCFILE}";
 	    break;
 	fi
@@ -50,7 +50,7 @@ find $BUILDLIBS $BUILDAPP $BUILDTESTS -name '*.cpp' -type f -print0 |
 #TODO other file types (shaders etc.)
 
 #libs
-if [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
+if ! [ -f "${ERRLOG}" ] || [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
     BUILTLIBS=
     for DIRNAME in $BUILDLIBS; do
 	BUILTLIBS="-l:${DIRNAME}.so "
@@ -63,7 +63,7 @@ if [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
 fi
 
 #tests
-if [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
+if ! [ -f "${ERRLOG}" ] || [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
     for DIRNAME in $BUILDTESTS; do
 	find "$OUTDIR/$DIRNAME" -iname '*.o' -print0 |
 	    while IFS= read -d '' OFILE; do
@@ -80,7 +80,7 @@ if [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
 fi
 
 #apps
-if [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
+if ! [ -f "${ERRLOG}" ] || [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
     for DIRNAME in $BUILDAPP; do
 	find "$DIRNAME" -iname '*.o' | grep -qF .o || continue;
 	APPNAME="$DIRNAME/$(basename "${DIRNAME}").so"

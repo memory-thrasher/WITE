@@ -32,7 +32,6 @@ namespace WITE::DB {
 
   class DBDelta;
   class DBEntity;
-  struct entity_type;
 
   class Database {
   private:
@@ -75,6 +74,7 @@ namespace WITE::DB {
     const struct entity_type* getType(DBRecord::type_t);
     void start();
     void shutdown();
+    void flushTransactions(decltype(DBThread::transactions)*);
   };
 
 }

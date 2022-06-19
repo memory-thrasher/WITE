@@ -21,6 +21,24 @@ namespace WITE::DB {
     DBDelta(const DBDelta&);//copy constructor that only copies the first len bytes of content
     void applyTo(DBRecord*);
     void clear();
+    DBDelta& operator=(const DBDelta& src) noexcept {
+      frame = src.frame;
+      dstStart = src.dstStart;
+      len = src.len;
+      memcpy(content, src.content, len);
+      targetEntityId = src.targetEntityId;
+      write_nextGlobalId = src.write_nextGlobalId;
+      if(write_nextGlobalId)
+	new_nextGlobalId = src.new_nextGlobalId;
+      write_type = src.write_type;
+      if(write_type)
+	new_type = src.new_type;
+      nextForEntity = NULL;//src.nextForEntity;//do not copy linked list pointers
+      flagWriteMask = src.flagWriteMask;
+      if(flagWriteMask != 0)
+	flagWriteValues = src.flagWriteValues;
+      return *this;
+    };
   };//size=190
 
 }

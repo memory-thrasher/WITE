@@ -19,4 +19,8 @@ namespace WITE::DB {
     flagWriteMask = DBRecordFlag::none;
   }
 
+  DBDelta::DBDelta(const DBDelta& src) {
+    *this = src;
+  }
+
 }

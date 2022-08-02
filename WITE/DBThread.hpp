@@ -3,6 +3,7 @@
 #include "SyncLock.hpp"
 #include "DBDelta.hpp"
 #include "RollingQueue.hpp"
+#include "LinkedList.hpp"
 
 namespace WITE::Platform { class Thread; }
 
@@ -24,8 +25,10 @@ namespace WITE::DB {
     DBThread(const DBThread&) = delete;
     DBThread() = delete;
     DBThread(Database* const, size_t tid);//TODO set stack size? See ulimit -s
-    //slice only contains head entities of types that have a registered update cb, to optimize for updates
-    std::vector<DBEntity*> slice, slice_toBeRemoved, slice_toBeAdded;
+    //slice is separated by if the entity type has a registered update cb, to optimize for updates
+    std::vector<DBEntity*> slice_withUpdates, slice_withoutUpdates, slice_toBeRemoved, slice_toBeAdded;
+    std::vector<DBRecord::type_t> temp_uniqTypes;
+    std::map<DBRecord::type_t, Collections::LinkedList> typeIndex;
     Util::SyncLock sliceAlterationPoolMutex;
     Collections::RollingQueue<DBDelta, TRANSACTION_COUNT> transactions;
     uint64_t nsSpentOnLastFrame;

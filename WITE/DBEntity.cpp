@@ -68,7 +68,7 @@ namespace WITE::DB {
 
   bool DBEntity::isUpdatable() {
     DBRecord record;
-    read(&record);
+    read(&record);//TODO use limited read
     return isUpdatable(&record, db);
   }
 

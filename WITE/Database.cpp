@@ -73,7 +73,7 @@ namespace WITE::DB {
 	auto type = &this->types[data[i].header.type];
 	if(type->onSpinUp)
 	  type->onSpinUp(&entities[i]);
-	if(DBEntity::isUpdatable(&data[i], this)) {
+	if(data[i].header.flags & DBRecordFlag::head_node) {
 	  dbe->masterThread = tid;
 	  threads[tid].addToSlice(dbe);
 	}
@@ -145,6 +145,7 @@ namespace WITE::DB {
       signalThreads(DBThread::state_maintained, DBThread::state_updating, DBThread::state_updated);
     }
     //TODO for type, if type has onSpinDown, for object of that type, call onSpinDown (need index of objects by type) LL?
+    //index of objects by type probably needed anyway for messenger entities
     #warning onSpinDown //compiler-level reminder ^
   }
 
@@ -171,7 +172,7 @@ namespace WITE::DB {
     DBEntity* ret = free->pop();
     if(!ret) return NULL;
     ASSERT_TRAP(std::less()(metadata-1, ret) && std::less()(ret, metadata + entityCount), "Illegal entity returned from free");
-    if(DBEntity::isUpdatable(isHead, type, this)) {
+    if(isHead) {
       ret->masterThread = t->dbId;
       t->addToSlice(ret);
     } else {

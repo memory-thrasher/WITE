@@ -76,11 +76,23 @@ namespace WITE::DB {
 	if(slice_toBeAdded.size() + slice_toBeRemoved.size()) {
 	  Util::ScopeLock lock(&sliceAlterationPoolMutex);
 	  if(slice_toBeRemoved.size()) {
-	    Collections::remove_if(slice, [this](auto e){ return Collections::contains(slice_toBeRemoved, e); });
+	    auto up = [this](auto e){ return Collections::contains(slice_toBeRemoved, e) };
+	    Collections::remove_if(slice_withUpdates, up);
+	    Collections::remove_if(slice_withoutUpdates, up);
+	    temp_uniqTypes.clear();
+	    Collections::uniq(slice_toBeRemoved, [](DBEntity* dbe) { return dbe->getType(); }, &temp_uniqTypes);
+	    for(int i = 0;i < temp_uniqTypes.size();i++)
+	      typeIndex[uniqTypes[i]].remove_if(up);
 	    slice_toBeRemoved.clear();
 	  }
-	  if(slice_toBeAdded.size())
-	    Collections::concat_move(slice, slice_toBeAdded);
+	  if(slice_toBeAdded.size()) {
+	    for(auto i = slice_toBeAdded.begin();i != slice_toBeAdded.end();i++) {
+	      auto type = db->getType(i->getType());
+	      (type.update ? slice_withUpdates : slice_withoutUpdates).push_back(*i);
+	      typeIndex[type.typeId].push_back(*i);
+	    }
+	    slice_toBeAdded.clear();
+	  }
 	}
 	if(!setState(state_maintaining, state_maintained) || !waitForState(state_maintained, state_updating)) break;
       }

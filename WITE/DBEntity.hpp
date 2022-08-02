@@ -20,12 +20,13 @@ namespace WITE::DB {
     DBDelta * volatile firstLog, * volatile lastLog;//these are write-protected by Database::logMutex
     size_t idx;//location of the corrosponding record in the main db file
     Database* db;
+    DBEntity* nextOfTypeInThread;//protected by owning thread
     //TODO some kind of work for update tracking to help decide which entities get moved during thread load balancing
     friend class Database;
     friend class DBThread;
     DBEntity(const DBEntity&) = delete;
     DBEntity() = delete;
-    DBEntity(Database* db, size_t idx) : masterThread(~0), idx(idx), db(db) {}
+    DBEntity(Database* db, size_t idx) : masterThread(~0), idx(idx), db(db), nextOfTypeInThread(NULL) {}
   public:
     void read(DBRecord* dst);
     void read(uint8_t* dst, size_t maxSize, size_t offset = 0);//maxSize because the record might be bigger than the stored data
@@ -52,6 +53,7 @@ namespace WITE::DB {
     };
     //TODO member pointer variadic
     void writeFlags(DBRecordFlag mask, DBRecordFlag values);
+    DBRecord::type_t getType();//TODO limited read
     void setType(DBRecord::type_t type);
     bool isUpdatable();
     static bool isUpdatable(DBRecord* r, Database* db);

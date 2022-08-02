@@ -21,6 +21,12 @@ namespace WITE::Collections {
     src.clear();
   }
 
+  template<class T, class U, class V> void uniq(T src, U p, V& out) {
+    for(auto it = src.begin();it != src.end();it++)
+      if(p(*it) && !contains(out, *it))
+	out.push_back(*it);
+  }
+
 }
 
 namespace WITE {

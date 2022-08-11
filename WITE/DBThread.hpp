@@ -1,5 +1,8 @@
 #pragma once
 
+#include <map>
+
+#include "IteratorWrapper.hpp"
 #include "SyncLock.hpp"
 #include "DBDelta.hpp"
 #include "RollingQueue.hpp"
@@ -28,7 +31,7 @@ namespace WITE::DB {
     //slice is separated by if the entity type has a registered update cb, to optimize for updates
     std::vector<DBEntity*> slice_withUpdates, slice_withoutUpdates, slice_toBeRemoved, slice_toBeAdded;
     std::vector<DBRecord::type_t> temp_uniqTypes;
-    std::map<DBRecord::type_t, Collections::LinkedList> typeIndex;
+    std::map<DBRecord::type_t, Collections::LinkedList<DBEntity, &DBEntity::nextOfTypeInThread>> typeIndex;
     Util::SyncLock sliceAlterationPoolMutex;
     Collections::RollingQueue<DBDelta, TRANSACTION_COUNT> transactions;
     uint64_t nsSpentOnLastFrame;
@@ -41,10 +44,14 @@ namespace WITE::DB {
     bool waitForState(semaphoreState desired);
     bool waitForState(semaphoreState old, semaphoreState desired);
     void join();
+    auto getSliceMembersOfType(DBRecord::type_t t) {
+      //Collections::IteratorWrapper<typeIndex::mapped_type::iterator>
+      return Collections::IteratorWrapper<DBEntity*>(typeIndex[t]);
+    };
   public:
     static uint32_t getCurrentTid();
-    uint32_t getTid();
-    uint32_t getDbid() { return dbId; };
+    inline uint32_t getTid();
+    inline uint32_t getDbid() { return dbId; };
   };
 
 }

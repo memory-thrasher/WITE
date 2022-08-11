@@ -73,7 +73,7 @@ namespace WITE::DB {
 	auto type = &this->types[data[i].header.type];
 	if(type->onSpinUp)
 	  type->onSpinUp(&entities[i]);
-	if(data[i].header.flags & DBRecordFlag::head_node) {
+	if((data[i].header.flags & DBRecordFlag::head_node) != 0) {
 	  dbe->masterThread = tid;
 	  threads[tid].addToSlice(dbe);
 	}
@@ -144,9 +144,10 @@ namespace WITE::DB {
       currentFrame++;
       signalThreads(DBThread::state_maintained, DBThread::state_updating, DBThread::state_updated);
     }
-    //TODO for type, if type has onSpinDown, for object of that type, call onSpinDown (need index of objects by type) LL?
-    //index of objects by type probably needed anyway for messenger entities
-    #warning onSpinDown //compiler-level reminder ^
+    for(auto& type : types)
+      if(type.second.onSpinDown)
+	for(DBEntity& e : getByType(type.first))
+	  type.second.onSpinDown(&e);
   }
 
   void Database::shutdown() {

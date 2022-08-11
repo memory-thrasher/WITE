@@ -18,6 +18,8 @@ automatic transfer of objects between thread slices
 #include <map>
 #include <memory>
 
+#include "IteratorMultiplexer.hpp"
+#include "IteratorWrapper.hpp"
 #include "SyncLock.hpp"
 #include "DBDelta.hpp"
 #include "DBRecord.hpp"
@@ -30,7 +32,6 @@ automatic transfer of objects between thread slices
 
 namespace WITE::DB {
 
-  class DBDelta;
   class DBEntity;
 
   class Database {
@@ -75,6 +76,13 @@ namespace WITE::DB {
     void start();
     void shutdown();
     void flushTransactions(decltype(DBThread::transactions)*);
+
+    const static auto getByTypeThread_cb = Collections::IteratorMultiplexer<DBThread*, decltype(DBThread::typeIndex)::mapped_type::iterator>::fetcher_cb_F::make_membercaller(&DBThread::getSliceMembersOfType);
+    auto getByType(DBRecord::type_t type) const {
+      return Collections::IteratorMultiplexer//<DBThread*, decltype(DBThread::typeIndex)::mapped_type::iterator>
+	(Collections::IteratorWrapper(threads, threads + DB_THREAD_COUNT + 1), getByTypeThread_cb);
+    };
+
   };
 
 }

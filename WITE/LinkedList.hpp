@@ -9,11 +9,12 @@ namespace WITE::Collections {
       T* first;
       T* last;
     };
+    using LinkedType = T;
   private:
     RootNode root;
   public:
     void append(T* n) {
-      n.*A = root.last;
+      n->*A = root.last;
       root.last = n;
     };
 
@@ -23,8 +24,8 @@ namespace WITE::Collections {
     public:
       iterator() : t(NULL) {};
       iterator(T* t) : t(t) {};
-      T& operator*() const { return *t; } const:
-      T* operator->() { return t; } const;
+      LinkedType& operator*() const { return *t; };
+      LinkedType* operator->() const { return t; };
       iterator& operator++() {
 	if(t) t = t->*A;
 	return *this;
@@ -34,18 +35,14 @@ namespace WITE::Collections {
 	operator++();
 	return old;
       };
-      inline bool operator==(const iterator& l, const iterator& r) { return l.t == r.t; };
-      inline bool operator!=(const iterator& l, const iterator& r) { return !(l == r); };
+      inline bool operator==(const iterator& r) { return t == r.t; };
+      inline bool operator!=(const iterator& r) { return !(this == r); };
       inline iterator& operator=(const iterator& other) {
 	if(this == &other) return *this;
 	t = other.t;
 	return *this;
       };
     };
-    template<> std::iterator_traits<iterator>::value_type = T;
-    template<> std::iterator_traits<iterator>::reference = T&;
-    template<> std::iterator_traits<iterator>::pointer = T*;
-    template<> std::iterator_traits<iterator>::iterator_category = std::forward_iterator_tag;
     iterator begin() {
       return root.first;
     };
@@ -61,7 +58,7 @@ namespace WITE::Collections {
 	current = current->*A;
 	temp->*A = NULL;
       }
-      if(!curent) {
+      if(!current) {
 	root.first = root.last = NULL;
 	return;
       } else root.first = current;
@@ -82,6 +79,6 @@ namespace WITE::Collections {
 	}
       }
     };
-  }
+  };
 
 }

@@ -10,11 +10,11 @@ namespace WITE::Collections {
     t.erase(std::remove_if(t.begin(), t.end(), p), t.end());
   }
 
-  template<typename T> inline bool contains(std::vector<T>& t, T e) {
+  template<typename T, class C> inline bool contains(C& t, T e) {
     return std::find(t.begin(), t.end(), e) != t.end();
   }
 
-  template<typename T> inline void concat_move(std::vector<T>& dst, std::vector<T>& src) {
+  template<typename T, class C> inline void concat_move(C& dst, C& src) {
     dst.reserve(dst.size() + src.size());
     for(auto i = src.begin();i != src.end();i++)
       dst.push_back(std::move(*i));
@@ -22,9 +22,11 @@ namespace WITE::Collections {
   }
 
   template<class T, class U, class V> void uniq(T src, U p, V& out) {
-    for(auto it = src.begin();it != src.end();it++)
-      if(p(*it) && !contains(out, *it))
-	out.push_back(*it);
+    for(auto it = src.begin();it != src.end();it++) {
+      auto u = p(*it);
+      if(!contains(out, u))
+	out.push_back(u);
+    }
   }
 
 }

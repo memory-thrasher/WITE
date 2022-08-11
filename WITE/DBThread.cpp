@@ -12,8 +12,14 @@
 
 namespace WITE::DB {
 
-  DBThread::DBThread(Database* const db, size_t tid) : dbId(tid), db(db), slice(), slice_toBeRemoved(),
-						       slice_toBeAdded(), transactions() {}
+  DBThread::DBThread(Database* const db, size_t tid) :
+    dbId(tid),
+    db(db),
+    slice_withUpdates(),
+    slice_withoutUpdates(),
+    slice_toBeRemoved(),
+    slice_toBeAdded(),
+    transactions() {}
 
   bool DBThread::setState(const semaphoreState old, const semaphoreState desired) {
     semaphoreState state = old;
@@ -61,7 +67,7 @@ namespace WITE::DB {
 	  WARN("Timer set fail, thread balancing may be wrong");
 	if(semaphore != state_updating) break;
 	DBRecord data;
-	for(DBEntity* ent : slice) {
+	for(DBEntity* ent : slice_withUpdates) {
 	  ent->read(&data);
 	  db->getType(data.header.type)->update(&data, ent);
 	}
@@ -76,20 +82,20 @@ namespace WITE::DB {
 	if(slice_toBeAdded.size() + slice_toBeRemoved.size()) {
 	  Util::ScopeLock lock(&sliceAlterationPoolMutex);
 	  if(slice_toBeRemoved.size()) {
-	    auto up = [this](auto e){ return Collections::contains(slice_toBeRemoved, e) };
+	    auto up = [this](auto e){ return Collections::contains(slice_toBeRemoved, e); };
 	    Collections::remove_if(slice_withUpdates, up);
 	    Collections::remove_if(slice_withoutUpdates, up);
 	    temp_uniqTypes.clear();
-	    Collections::uniq(slice_toBeRemoved, [](DBEntity* dbe) { return dbe->getType(); }, &temp_uniqTypes);
+	    Collections::uniq(slice_toBeRemoved, [](DBEntity* dbe) { return dbe->getType(); }, temp_uniqTypes);
 	    for(int i = 0;i < temp_uniqTypes.size();i++)
-	      typeIndex[uniqTypes[i]].remove_if(up);
+	      typeIndex[temp_uniqTypes[i]].remove_if(up);
 	    slice_toBeRemoved.clear();
 	  }
 	  if(slice_toBeAdded.size()) {
 	    for(auto i = slice_toBeAdded.begin();i != slice_toBeAdded.end();i++) {
-	      auto type = db->getType(i->getType());
-	      (type.update ? slice_withUpdates : slice_withoutUpdates).push_back(*i);
-	      typeIndex[type.typeId].push_back(*i);
+	      auto type = db->getType((*i)->getType());
+	      (type->update ? slice_withUpdates : slice_withoutUpdates).push_back(*i);
+	      typeIndex[type->typeId].append(*i);
 	    }
 	    slice_toBeAdded.clear();
 	  }

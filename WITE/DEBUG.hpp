@@ -42,18 +42,26 @@
 #define LOG1(msg) { std::cout << msg; }
 
 #define WARN(...) { MAP(WARN1, __VA_ARGS__, " (", __FILE__, ": ", __LINE__, ")", std::endl); }
-#define ERROR(...) { WARN(__VA_ARGS__); }//TODO set global failure flag that db should read to graceful stop
-#define ASSERT_TRAP(cond, ...) { if(!(cond)) { WARN(__VA_ARGS__); __builtin_trap(); } }
+#define ERROR(...) { WARN(__VA_ARGS__); /*exit(1);*/ }//TODO set global failure flag that db should read to graceful stop
+#define ASSERT_TRAP(cond, ...) { if(!(cond)) { WARN(__VA_ARGS__); asm("INT3"); } }
 #define LOG(...) { MAP(LOG1, __VA_ARGS__, " (", __FILE__, ": ", __LINE__, ")", std::endl); }
 
 #else //release
 
 #define ERROR(str) TODO gui error box
 #define WARN(str) TODO log file
-#define ASSERT_WARN() {}
+#define ASSERT_TRAP() {}
 
 #endif
 
 #define CRASH_PREINIT(...) { ERROR(__VA_ARGS__); exit(EXIT_FAILURE); }
 #define CRASH(...) { ERROR(__VA_ARGS__); } //TODO set a global flag for dbs to graceul down
 #define CRASHRET(ret, ...) { CRASH(__VA_ARGS__); return ret; } //return will never happen but it satisfies the compiler
+
+template<class T> void hexdump(T* src) {
+  uint8_t* data = reinterpret_cast<uint8_t*>(src);
+  for(size_t i = 0;i < sizeof(T);i++)
+    std::cout << std::hex << static_cast<int>(data[i]) << " ";
+  std::cout << std::endl;
+}
+

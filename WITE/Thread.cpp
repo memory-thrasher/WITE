@@ -23,7 +23,7 @@ namespace WITE::Platform {
     }
 
     void* pthreadCallback(void* param) {
-      Thread::initThisThread(reinterpret_cast<Thread::threadEntry_t>(param));
+      Thread::initThisThread(Thread::threadEntry_t(param));
       return 0;
     }
 
@@ -53,7 +53,7 @@ namespace WITE::Platform {
 
   void Thread::spawnThread(threadEntry_t entry) {//static
     pthread_t temp;
-    pthread_create(&temp, NULL, &ThreadInternal::pthreadCallback, reinterpret_cast<void*>(entry));
+    pthread_create(&temp, NULL, &ThreadInternal::pthreadCallback, (void*)entry);
   }
 
   //#endif posix

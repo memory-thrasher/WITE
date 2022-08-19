@@ -31,12 +31,14 @@ public:
       else
 	std::cout << "Spawning at frame " << dbf << std::endl;
     }
-    if(dis.frameCounter >= 200)
-      dbe->destroy();
+    if(dis.frameCounter >= 200) {
+      std::cout << "Destroying at frame " << dbf << std::endl;
+      dbe->destroy(data);
+    }
     dbe->write(&dis);
     if(dbf >= 500) db->shutdown();
   }
-  static constexpr struct entity_type et = { 2, &onUpdate };
+  const inline static struct entity_type et = { .typeId = 2, .update = entity_type::update_t_F::make(&onUpdate) };
 };
 
 struct entity_type types[] =
@@ -51,20 +53,24 @@ const char* hw = "Hello World";
 char out[200];
 
 int main (int argc, char** argv) {
+  assert(WITE::Util::min(20, 200) == 20);
+  //set up absolute timeout so if the db hangs, the test can eventually exit.
+  //Linux kernel makes this real easy for it's own benefit. TODO this might need help on other platforms
+  {
+    struct rlimit rlim;
+    getrlimit(RLIMIT_CPU, &rlim);
+    rlim.rlim_max = WITE::Util::min<uint64_t, uint64_t>(20, rlim.rlim_max);
+    rlim.rlim_cur = rlim.rlim_max - 5;
+    setrlimit(RLIMIT_CPU, &rlim);
+    getrlimit(RLIMIT_CPU, &rlim);
+    std::cout << "Limiting cpu time to " << rlim.rlim_cur << " seconds." << std::endl;
+  }
   Database* db = new Database(types, sizeof(types)/sizeof(types[0]), 1024);
   DBEntity* e = db->allocate(dummy_et.typeId);
   e->write(hw, strlen(hw));
   e->read(out, strlen(hw));
   assert(strcmp(hw, out) == 0);
   db->allocate(timebomb_t::et);
-  //set up absolute timeout so if the db hangs, the test can eventually exit.
-  //Linux kernel makes this real easy for it's own benefit. TODO this might need help on other platforms
-  {
-    struct rlimit rlim;
-    getrlimit(RLIMIT_CPU, &rlim);
-    rlim.rlim_max = WITE::Util::min(20, rlim.rlim_max);
-    rlim.rlim_cur = rlim.rlim_max - 5;
-  }
   std::cout << "Starting db" << std::endl;
   //TODO record current time
   db->start();

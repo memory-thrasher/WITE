@@ -42,6 +42,7 @@ namespace WITE::DB {
     while(state != desired) {
       if(state != old)
 	return false;
+      //TODO make an idle time spender in database that does housekeeping while waiting?
       PThread::sleep();
       state = semaphore.load(std::memory_order_consume);
     }
@@ -93,9 +94,9 @@ namespace WITE::DB {
 	  }
 	  if(slice_toBeAdded.size()) {
 	    for(auto i = slice_toBeAdded.begin();i != slice_toBeAdded.end();i++) {
-	      auto type = db->getType((*i)->getType());
-	      (type->update ? slice_withUpdates : slice_withoutUpdates).push_back(*i);
-	      typeIndex[type->typeId].append(*i);
+	      auto type = db->getType(i->second);
+	      (type->update ? slice_withUpdates : slice_withoutUpdates).push_back(i->first);
+	      typeIndex[type->typeId].append(i->first);
 	    }
 	    slice_toBeAdded.clear();
 	  }
@@ -117,13 +118,15 @@ namespace WITE::DB {
     waitForState(state_initial, state_ready);
   }
 
-  void DBThread::addToSlice(DBEntity* in) {
+  void DBThread::addToSlice(DBEntity* in, DBRecord::type_t type) {
     Util::ScopeLock lock(&sliceAlterationPoolMutex);
-    slice_toBeAdded.push_back(in);
+    in->masterThread = dbId;
+    slice_toBeAdded.push_back(std::pair(in, type));
   }
 
   void DBThread::removeFromSlice(DBEntity* in) {
     Util::ScopeLock lock(&sliceAlterationPoolMutex);
+    in->masterThread = ~0;
     slice_toBeRemoved.push_back(in);
   }
 
@@ -134,10 +137,6 @@ namespace WITE::DB {
 
   uint32_t DBThread::getCurrentTid() {
     return PThread::getCurrentTid();
-  }
-
-  uint32_t DBThread::getTid() {
-    return thread->getTid();
   }
 
 }

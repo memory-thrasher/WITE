@@ -35,18 +35,18 @@ namespace WITE::Collections {
 	operator++();
 	return old;
       };
-      inline bool operator==(const iterator& r) { return t == r.t; };
-      inline bool operator!=(const iterator& r) { return !(this == r); };
+      inline bool operator==(const iterator& r) const { return t == r.t; };
+      inline bool operator!=(const iterator& r) const { return !(*this == r); };
       inline iterator& operator=(const iterator& other) {
 	if(this == &other) return *this;
 	t = other.t;
 	return *this;
       };
     };
-    iterator begin() {
+    iterator begin() const {
       return root.first;
     };
-    iterator end() {
+    iterator end() const {
       return iterator();
     };
 

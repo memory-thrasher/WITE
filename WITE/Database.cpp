@@ -18,7 +18,7 @@ namespace WITE::DB {
 
   Database::Database(struct entity_type* types, size_t typeCount, size_t entityCount, int backingStoreFd) {
     //entityCount param will yield to size of file if backing store is given and exists
-    deltaIsInPast_cb = Util::CallbackFactory<bool, DBDelta*>::make_unique(this, &Database::deltaIsInPast);
+    deltaIsInPast_cb = deltaIsInPast_cb_t_F::make(this, &Database::deltaIsInPast);
     threads = reinterpret_cast<DBThread*>(malloc(sizeof(DBThread) * DB_THREAD_COUNT));
     if(!threads)
       CRASH_PREINIT("Failed to create thread array");
@@ -72,10 +72,9 @@ namespace WITE::DB {
 	size_t tid = i % DB_THREAD_COUNT;
 	auto type = &this->types[data[i].header.type];
 	if(type->onSpinUp)
-	  type->onSpinUp(&entities[i]);
+	  type->onSpinUp->call(&entities[i]);
 	if((data[i].header.flags & DBRecordFlag::head_node) != 0) {
-	  dbe->masterThread = tid;
-	  threads[tid].addToSlice(dbe);
+	  threads[tid].addToSlice(dbe, type->typeId);
 	}
       } else {
 	free->push(dbe);
@@ -116,14 +115,17 @@ namespace WITE::DB {
       while(true) {
 	auto state = threads[i].semaphore.load(std::memory_order_consume);
 	if(state == waitFor) break;
-	if(state != to) CRASH("Thread state mismatch! signalThreads(from, to, waitFor)", from, to, waitFor,
-			      " but thread ", i, "is in state ", state);
+	if(state != to) CRASH("Thread state mismatch! signalThreads(from, to, waitFor)", (int)from, ", ", (int)to, ", ",
+			      (int)waitFor, ", ", " but thread ", i, " is in state ", (int)state);
 	WITE::Platform::Thread::sleepShort();
       }
     }
   }
 
+  Database* Database::liveDb = NULL;
+
   void Database::start() {
+    liveDb = this;
     Platform::Thread::init();
     started = true;
     for(size_t i = 0;i < DB_THREAD_COUNT;i++) {
@@ -174,8 +176,7 @@ namespace WITE::DB {
     if(!ret) return NULL;
     ASSERT_TRAP(std::less()(metadata-1, ret) && std::less()(ret, metadata + entityCount), "Illegal entity returned from free");
     if(isHead) {
-      ret->masterThread = t->dbId;
-      t->addToSlice(ret);
+      t->addToSlice(ret, type);
     } else {
       ret->masterThread = ~0;
     }
@@ -188,7 +189,7 @@ namespace WITE::DB {
     if(count > 1) {
       delta.flagWriteValues |= DBRecordFlag::has_next;
       delta.new_nextGlobalId = allocate(type, count - 1, false)->idx;
-    }
+    } else delta.new_nextGlobalId = ~0;
     delta.flagWriteMask = DBRecordFlag::all;
     delta.len = delta.dstStart = 0;
     delta.frame = 0;
@@ -205,26 +206,27 @@ namespace WITE::DB {
     return &types[t];
   }
 
-  void Database::deallocate(DBEntity* libre, DBRecord* state) {
+  void Database::deallocate(DBEntity* libre, DBRecord::header_t* state) {
     ASSERT_TRAP(std::less()(metadata-1, libre) && std::less()(libre, metadata + entityCount), "Illegal entity fed to free");
     free->push(libre);
+    ASSERT_TRAP(libre->masterThread < DB_THREAD_COUNT, "attempting to free entity with no master");
     threads[libre->masterThread].removeFromSlice(libre);
-    libre->masterThread = ~0;
-    DBRecord temp;
+    DBRecord::header_t stateHeader = {};
     if(!state) {
       //TODO only read the part that we need
-      read(getEntity(libre->idx), &temp);
-      state = &temp;
+      readHeader(getEntity(libre->idx), &stateHeader);
+      state = &stateHeader;
     }
-    if((state->header.flags & DBRecordFlag::has_next) != 0) {
-      deallocate(getEntity(state->header.nextGlobalId));
+    if((state->flags & DBRecordFlag::has_next) != 0) {
+      deallocate(getEntity(state->nextGlobalId));
     }
-    auto type = &types[state->header.type];
+    auto type = &types[state->type];
     if(type->onSpinDown)
       type->onSpinDown(libre);
     if(type->onDeallocate)
       type->onDeallocate(libre);
     DBDelta delta;
+    delta.clear();
     delta.targetEntityId = libre->idx;
     //set allocated flag
     delta.flagWriteMask = DBRecordFlag::all;
@@ -237,9 +239,9 @@ namespace WITE::DB {
   }
 
   void Database::write(DBDelta* src) {
-    ASSERT_TRAP(src != NULL & src->targetEntityId < entityCount, "Illegal delta");
     if(started) {
       src->frame = currentFrame;
+      src->integrityCheck(this);
       auto threadLog = &getCurrentThread()->transactions;
       if(!threadLog->push(src)) {
 	flushTransactions(threadLog);
@@ -247,11 +249,14 @@ namespace WITE::DB {
       }
     } else {
       //this is for setting up the game start or menus
+      src->frame = 0;
+      src->integrityCheck(this);
       src->applyTo(&data[src->targetEntityId]);
     }
   }
 
   void Database::flushTransactions(decltype(DBThread::transactions)* threadLog) {
+    ASSERT_TRAP((void*)this == (void*)liveDb, "I am a teapot");
     Util::ScopeLock lock(&logMutex);
     size_t freeLog = log.freeSpace();
     if(freeLog < DBThread::TRANSACTION_COUNT)
@@ -279,7 +284,8 @@ namespace WITE::DB {
     static const size_t MAX_BATCH_SIZE = 4*1024/sizeof(DBDelta);
     DBDelta batch[MAX_BATCH_SIZE];//4kb (max thread stack size (ulimit -s) is often 8kb
     do {
-      size_t thisBatchSize = log.bulkPop(batch, MAX_BATCH_SIZE, deltaIsInPast_cb.get());
+      //TODO make this thread-safe so multiple threads start applying logs at once while waiting (keep transactions in order!)
+      size_t thisBatchSize = log.bulkPop(batch, MAX_BATCH_SIZE, deltaIsInPast_cb);
       for(size_t i = 0;i < thisBatchSize;i++) {
 	DBDelta* delta = &batch[i];
 	size_t id = delta->targetEntityId;
@@ -316,15 +322,44 @@ namespace WITE::DB {
     }
   }
 
-  DBEntity* Database::getEntityAfter(DBEntity* src) {
-    size_t id = ~0;
-    DBDelta* delta = src->firstLog;
+  void Database::readHeader(DBEntity* e, DBRecord::header_t* out, bool readNext, bool readType, bool readFlags) {
+    *out = data[e->idx].header;
+    DBDelta* delta = e->firstLog;
     while(delta && delta->frame < currentFrame) {
-      if(delta->write_nextGlobalId)
-	id = delta->new_nextGlobalId;
+      if(readNext && delta->write_nextGlobalId)
+	out->nextGlobalId = delta->new_nextGlobalId;
+      if(readType && delta->write_type)
+	out->type = delta->new_type;
+      if(readFlags && delta->flagWriteMask != 0)
+	out->flags ^= delta->flagWriteMask & (out->flags ^ delta->flagWriteMask);
       delta = delta->nextForEntity;
     }
-    return id == ~0 ? NULL : getEntity(id);
   }
+
+  DBEntity* Database::getEntityAfter(DBEntity* src) {
+    DBRecord::header_t header;
+    readHeader(src, &header, true, false, true);
+    return (header.flags & DBRecordFlag::has_next) != 0 ? getEntity(header.nextGlobalId) : NULL;
+  }
+
+  Database::threadTypeSearchIterator::fetcher_cb_return
+  typeMembersFromThread(DBRecord::type_t t,
+			Database::threadTypeSearchIterator::fetcher_cb_param thread) {
+    return thread->getSliceMembersOfType(t);
+  }
+
+  Database::threadTypeSearchIterator Database::getByType(DBRecord::type_t t) const {
+    auto l2_cb = threadTypeSearchIterator::fetcher_cb_F::make<DBRecord::type_t>(t, &typeMembersFromThread);
+    return threadTypeSearchIterator(Collections::IteratorWrapper(threads, threads + DB_THREAD_COUNT + 1), l2_cb);
+  }
+
+  DBEntity* Database::getEntity(size_t id) {
+    ASSERT_TRAP(id < entityCount, "insane entity id: ", id);
+    return &metadata[id];
+  };
+
+  size_t Database::getEntityCount() {
+    return entityCount;
+  };
 
 }

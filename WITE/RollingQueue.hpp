@@ -3,6 +3,7 @@
 #include "Thread.hpp"
 #include "Math.hpp"
 #include "StdExtensions.hpp"
+#include "DEBUG.hpp"
 
 namespace WITE::Collections {
 
@@ -37,8 +38,8 @@ namespace WITE::Collections {
 	nextTarget = wrap(target + 1);
       //we always have 1 empty slot, or else we couldn't tell full from empty because lastIn == nextOut
       if(target == nextIn)//empty
-	  return false;
-      if constexpr(std::is_copy_constructible<T>::value) {
+	return false;
+      if constexpr (std::is_copy_constructible<T>::value) {
 	*out = data[target];
       } else {
 	memcpy(out, &data[target], sizeof(T));
@@ -77,7 +78,7 @@ namespace WITE::Collections {
     }
 
     //bulk pop with predicate callback that performs binary search (for "pop only deltas from previous frames")
-    size_t bulkPop(T* out, size_t count, Util::Callback_t<bool, T*>* condition) {
+    size_t bulkPop(T* out, size_t count, Util::CallbackPtr<bool, T*> condition) {
       size_t target = nextOut, nextTarget, targetCount;
       if(condition && !condition->call(&data[target]))
 	return 0;

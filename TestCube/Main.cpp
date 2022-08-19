@@ -62,8 +62,9 @@ void cubeDestroy(WITE::Database::Entry e) {
   (*database->getObjectInstanceFor(e)) = NULL;
 }
 
+#warning how is this compiling?
 const inline static WITE::Database::typeHandles cube_functions = {
-  WITE::CallbackFactory<void, WITE::Database::Entry>::make(&cubeUpdate),
+								  DBEntity::entity_type:: WITE::CallbackFactory<void, WITE::Database::Entry>::make(&cubeUpdate),
   WITE::CallbackFactory<void, WITE::Database::Entry, WITE::Database::Entry*>::make(&cubeInit),
   WITE::CallbackFactory<void, WITE::Database::Entry>::make(&cubeDestroy)
 };

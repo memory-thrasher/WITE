@@ -6,7 +6,9 @@ namespace WITE::Collections {
   template<class I1, class I2>
   class IteratorMultiplexer {
   public:
-    typedefCB(fetcher_cb, I1&, I2);
+    using fetcher_cb_return = IteratorWrapper<I2>;
+    using fetcher_cb_param = I1;
+    typedefCB(fetcher_cb, fetcher_cb_return, fetcher_cb_param);
   private:
     IteratorWrapper<I1> upper;
     IteratorWrapper<I2> lower;
@@ -15,22 +17,25 @@ namespace WITE::Collections {
     IteratorMultiplexer() : upper(), lower(), p() {}
     IteratorMultiplexer(IteratorWrapper<I1> i1, fetcher_cb p) :
       upper(i1),
-      lower(p(*i1)),
+      lower(p->call((fetcher_cb_param)upper)),
       p(p) {
     };
-    inline operator bool() { return (bool)upper; };
-    inline auto operator*() { return *lower; };
+    inline operator bool() const { return (bool)upper; };
+    typename std::conditional<std::is_pointer_v<I2>,
+			      typename std::add_rvalue_reference<std::remove_pointer_t<I2>>::type,
+			      decltype(*lower)>::type
+    inline operator*() { return *lower; };
     inline auto& operator->() { return *lower; };
-    inline bool operator==(const IteratorMultiplexer<I1, I2>& r) {
+    inline bool operator==(const IteratorMultiplexer<I1, I2>& r) const {
       return (!r && !*this) || (r.upper == upper && r.lower == lower);
     };
-    inline bool operator!=(const IteratorMultiplexer<I1, I2>& r) { return !operator==(r); };
+    //inline bool operator!=(const IteratorMultiplexer<I1, I2>& r) { return !operator==(r); };//implied now?
     inline IteratorMultiplexer operator++() {
       lower++;
       if(!lower && upper) {
 	upper++;
 	if(upper)
-	  lower = p(*upper);
+	  lower = p->call((fetcher_cb_param)upper);
       }
       return *this;
     };

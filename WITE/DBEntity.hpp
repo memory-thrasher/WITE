@@ -34,7 +34,7 @@ namespace WITE::DB {
     RET read(T* dst, size_t len, size_t offset = 0) { read(reinterpret_cast<uint8_t*>(dst), len * sizeof(T), offset); };
     template<typename T> inline void read(T* dst) { read(reinterpret_cast<uint8_t*>(dst), sizeof(T)); };
     template<typename T, typename V, V T::* M> inline void read(T* dst) {
-      read(reinterpret_cast<uint8_t*>(dst), sizeof(M), WITE::Util::member_offset(M));
+      read(reinterpret_cast<uint8_t*>(dst), sizeof(V), WITE::Util::member_offset(M));
     };
     void completeRead(uint8_t* out, DBRecord* record, size_t len);
     template<typename T> void completeRead(T* out, DBRecord* record) {
@@ -53,10 +53,10 @@ namespace WITE::DB {
     };
     //TODO member pointer variadic
     void writeFlags(DBRecordFlag mask, DBRecordFlag values);
-    DBRecord::type_t getType();//TODO limited read
+    DBRecord::type_t getType();
     void setType(DBRecord::type_t type);
     bool isUpdatable();
-    static bool isUpdatable(DBRecord* r, Database* db);
+    static bool isUpdatable(DBRecord::header_t* h, Database* db);
     static bool isUpdatable(bool isHead, DBRecord::type_t type, Database* db);
     void destroy(DBRecord* data = NULL);
     Database* getDb() { return db; };
@@ -64,20 +64,23 @@ namespace WITE::DB {
 
   struct entity_type {
     DBRecord::type_t typeId;
-    //TODO constexpr compatible callback_t
-    void(*update)(DBRecord*, DBEntity*);//happens once per frame
+
+    typedefCB(update_t, void, DBRecord*, DBEntity*)
+    const update_t update;//happens once per frame
+
+    typedefCB(meta_t, void, DBEntity*);
 
     //once per object, not re-called when the game loads. For setting up the db record's initial state
-    void(*onAllocate)(DBEntity*);
+    const meta_t onAllocate;
 
     //At most once per object, not called when the game closes, for freeing any subsidiary db records
-    void(*onDeallocate)(DBEntity*);
+    const meta_t onDeallocate;
 
     //once per object per session, called after onAllocate when newly created, and again when the game loads, for setting up transient resources. Not allowed to access the db (because it might not be fully loaded yet)
-    void(*onSpinUp)(DBEntity*);
+    const meta_t onSpinUp;
 
     //once per object per session, called before onDeallocate when destroying the object, or when the game closes, for freeing transient resources. Should not write to the db (use deallocate for that)
-    void(*onSpinDown)(DBEntity*);
+    const meta_t onSpinDown;
   };
 
 }

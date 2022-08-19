@@ -17,7 +17,7 @@ namespace WITE::Collections {
     };
   public:
 
-    AtomicRollingQueue(size_t size) : data(std::make_unique<T[]>(size)), size(size) {}
+    AtomicRollingQueue(size_t size) : data(std::make_unique<T[]>(size)), size(size), nextCommit(0), nextIn(0), nextOut(0) {}
 
     //only blocks if after an unfinished call to the same method, blocks until that call completes, thus becomming strongly-after.
     T* push(T* src) {

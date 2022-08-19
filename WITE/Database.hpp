@@ -44,7 +44,8 @@ namespace WITE::DB {
     Collections::RollingQueue<DBDelta, DB_THREAD_COUNT * 256l * 1024 * 1024 / sizeof(DBDelta)> log;
     size_t entityCount;
     std::unique_ptr<Collections::AtomicRollingQueue<DBEntity*>> free;
-    std::unique_ptr<Util::Callback_t<bool, DBDelta*>> deltaIsInPast_cb;
+    typedefCB(deltaIsInPast_cb_t, bool, DBDelta*)
+    deltaIsInPast_cb_t deltaIsInPast_cb;
     DBEntity* metadata;//TODO make this expandable IF a backing file was provided?
     union {//mmap'ed file
       DBRecord* data;
@@ -56,32 +57,32 @@ namespace WITE::DB {
     void signalThreads(DBThread::semaphoreState from, DBThread::semaphoreState to, DBThread::semaphoreState waitFor);
     size_t applyLogTransactions(size_t min = 0);//applying a minimum of 0 attempts one batch
     bool deltaIsInPast(DBDelta*);
-    //TODO (head) entities by type, liked list?
     DBThread* getLightestThread();
     DBThread* getCurrentThread();
     void stop();
+    static Database* liveDb;
   public:
     Database(struct entity_type* types, size_t typeCount, size_t entityCount, int backingStore_fd = -1);
     ~Database();
     // void mainLoop();
     void write(DBDelta*);//appends to the current thread's transaction queue, flushing it if out of space
     void read(DBEntity* src, DBRecord* dst);
-    DBEntity* getEntity(size_t id) { return &metadata[id]; };
+    void read(DBEntity* src, DBRecord* dst, size_t offset, size_t len);//TODO for DBEntities::read(dst, size, offset)
+    void readHeader(DBEntity* src, DBRecord::header_t* out, bool readNext = true, bool readType = true, bool readFlags = true);
+    DBEntity* getEntity(size_t id);
     DBEntity* getEntityAfter(DBEntity* src);
     uint64_t getFrame() { return currentFrame; };
+    size_t getEntityCount();
     DBEntity* allocate(DBRecord::type_t type, size_t count = 1, bool isHead = true);
     inline DBEntity* allocate(const struct entity_type& type, size_t count = 1) { return allocate(type.typeId, count); };
-    void deallocate(DBEntity*, DBRecord* info = NULL);//requires some info from the record's present state, provide if already read to avoid redundent read
+    void deallocate(DBEntity*, DBRecord::header_t* info = NULL);//requires some info from the record's present state, provide if already read to avoid redundent read
     const struct entity_type* getType(DBRecord::type_t);
     void start();
     void shutdown();
     void flushTransactions(decltype(DBThread::transactions)*);
 
-    const static auto getByTypeThread_cb = Collections::IteratorMultiplexer<DBThread*, decltype(DBThread::typeIndex)::mapped_type::iterator>::fetcher_cb_F::make_membercaller(&DBThread::getSliceMembersOfType);
-    auto getByType(DBRecord::type_t type) const {
-      return Collections::IteratorMultiplexer//<DBThread*, decltype(DBThread::typeIndex)::mapped_type::iterator>
-	(Collections::IteratorWrapper(threads, threads + DB_THREAD_COUNT + 1), getByTypeThread_cb);
-    };
+    using threadTypeSearchIterator = typename Collections::IteratorMultiplexer<DBThread*, decltype(DBThread::typeIndex)::mapped_type::iterator>;
+    threadTypeSearchIterator getByType(DBRecord::type_t type) const;
 
   };
 

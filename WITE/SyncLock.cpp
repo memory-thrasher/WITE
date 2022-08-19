@@ -8,7 +8,7 @@ namespace WITE::Util {
   SyncLock::SyncLock() {}
 
   void SyncLock::WaitForLock(bool busy) {
-    size_t seed;
+    uint64_t seed;
     seed = queueSeed.fetch_add(1, std::memory_order_acq_rel);//take a number
     while (seed > queueCurrent.load(std::memory_order_consume))
       if(!busy)

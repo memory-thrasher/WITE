@@ -6,7 +6,7 @@
 namespace WITE::DB {
 
   void DBEntity::destroy(DBRecord* data) {
-    db->deallocate(this, data);
+    db->deallocate(this, data ? &data->header : NULL);
   }
 
   void DBEntity::read(DBRecord* dst) {
@@ -15,11 +15,11 @@ namespace WITE::DB {
 
   void DBEntity::read(uint8_t* dst, size_t maxSize, size_t offset) {
     DBRecord record;
-    read(&record);
     if(offset > DBRecord::CONTENT_SIZE) {
-      //TODO header-only read of record in this case
+      db->readHeader(this, &record.header, true, false, false);
       db->getEntity(record.header.nextGlobalId)->read(dst, maxSize, offset - DBRecord::CONTENT_SIZE);
     } else {
+      read(&record);
       size_t overlap = Util::min(DBRecord::CONTENT_SIZE, maxSize) - offset;
       memcpy(dst, &record.content + offset, overlap);//TODO don't memcpy content twice, content-only read into dst
       if(maxSize > DBRecord::CONTENT_SIZE - offset) {
@@ -58,6 +58,12 @@ namespace WITE::DB {
     write(&delta);
   }
 
+  DBRecord::type_t DBEntity::getType() {
+    DBRecord::header_t header;
+    db->readHeader(this, &header, false, true, false);
+    return header.type;
+  }
+
   void DBEntity::setType(DBRecord::type_t type) {
     DBDelta delta;
     delta.clear();
@@ -67,17 +73,17 @@ namespace WITE::DB {
   }
 
   bool DBEntity::isUpdatable() {
-    DBRecord record;
-    read(&record);//TODO use limited read
-    return isUpdatable(&record, db);
+    DBRecord::header_t header;
+    db->readHeader(this, &header);
+    return isUpdatable(&header, db);
   }
 
-  /*static*/ bool DBEntity::isUpdatable(DBRecord* r, Database* db) {
-    return isUpdatable((r->header.flags & DBRecordFlag::head_node) != 0, r->header.type, db);
+  /*static*/ bool DBEntity::isUpdatable(DBRecord::header_t* h, Database* db) {
+    return isUpdatable((h->flags & DBRecordFlag::head_node) != 0, h->type, db);
   }
 
   /*static*/ bool DBEntity::isUpdatable(bool isHead, DBRecord::type_t type, Database* db) {
-    return isHead && db->getType(type)->update != NULL;
+    return isHead && db->getType(type)->update;
   }
 
   void DBEntity::completeRead(uint8_t* out, DBRecord* record, size_t len) {

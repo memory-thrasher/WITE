@@ -8,16 +8,18 @@ enttiy class contains metadata only, and is held internally by the db in ram to 
 #include "Utils_Memory.hpp"
 #include "DBRecord.hpp"
 #include "RollingQueue.hpp"
+#include "DBDelta.hpp"
+#include "AtomicLinkedList.hpp"
 
 namespace WITE::DB {
 
   class Database;
-  class DBDelta;
 
   class DBEntity {
   private:
+    uint64_t lastWrittenFrame = 0;
     size_t masterThread;
-    DBDelta * volatile firstLog, * volatile lastLog;//these are write-protected by Database::logMutex
+    Collections::AtomicLinkedList<DBDelta, &DBDelta::nextForEntity> log;
     size_t idx;//location of the corrosponding record in the main db file
     Database* db;
     DBEntity* nextOfTypeInThread;//protected by owning thread
@@ -28,6 +30,7 @@ namespace WITE::DB {
     DBEntity() = delete;
     DBEntity(Database* db, size_t idx) : masterThread(~0), idx(idx), db(db), nextOfTypeInThread(NULL) {}
   public:
+    auto inline getId() { return idx; };
     void read(DBRecord* dst);
     void read(uint8_t* dst, size_t maxSize, size_t offset = 0);//maxSize because the record might be bigger than the stored data
     template<typename T, typename RET = std::enable_if_t<!std::is_same_v<uint8_t, T>, void>>
@@ -60,27 +63,6 @@ namespace WITE::DB {
     static bool isUpdatable(bool isHead, DBRecord::type_t type, Database* db);
     void destroy(DBRecord* data = NULL);
     Database* getDb() { return db; };
-  };
-
-  struct entity_type {
-    DBRecord::type_t typeId;
-
-    typedefCB(update_t, void, DBRecord*, DBEntity*)
-    const update_t update;//happens once per frame
-
-    typedefCB(meta_t, void, DBEntity*);
-
-    //once per object, not re-called when the game loads. For setting up the db record's initial state
-    const meta_t onAllocate;
-
-    //At most once per object, not called when the game closes, for freeing any subsidiary db records
-    const meta_t onDeallocate;
-
-    //once per object per session, called after onAllocate when newly created, and again when the game loads, for setting up transient resources. Not allowed to access the db (because it might not be fully loaded yet)
-    const meta_t onSpinUp;
-
-    //once per object per session, called before onDeallocate when destroying the object, or when the game closes, for freeing transient resources. Should not write to the db (use deallocate for that)
-    const meta_t onSpinDown;
   };
 
 }

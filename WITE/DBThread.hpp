@@ -5,6 +5,7 @@
 #include "IteratorWrapper.hpp"
 #include "SyncLock.hpp"
 #include "DBDelta.hpp"
+#include "DBEntity.hpp"
 #include "RollingQueue.hpp"
 #include "LinkedList.hpp"
 
@@ -48,7 +49,8 @@ namespace WITE::DB {
   public:
     const auto getSliceMembersOfType(DBRecord::type_t t) const {
       //Collections::IteratorWrapper<typeIndex::mapped_type::iterator>
-      return Collections::IteratorWrapper<decltype(typeIndex)::mapped_type::iterator>(typeIndex.at(t));
+      return typeIndex.contains(t) ? Collections::IteratorWrapper<decltype(typeIndex)::mapped_type::iterator>(typeIndex.at(t)) :
+	Collections::IteratorWrapper<decltype(typeIndex)::mapped_type::iterator>();//empty iterator
     };
     static uint32_t getCurrentTid();
     inline uint32_t getTid() { return thread->getTid(); };

@@ -83,7 +83,7 @@ namespace WITE::DB {
   }
 
   /*static*/ bool DBEntity::isUpdatable(bool isHead, DBRecord::type_t type, Database* db) {
-    return isHead && db->getType(type)->update;
+    return isHead && db->getType(type)->onUpdate;
   }
 
   void DBEntity::completeRead(uint8_t* out, DBRecord* record, size_t len) {

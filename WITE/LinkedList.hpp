@@ -1,3 +1,5 @@
+#pragma once
+
 namespace WITE::Collections {
 
   template<class T> using LinkedListAnchor = T*;
@@ -5,18 +7,34 @@ namespace WITE::Collections {
   template<class T, LinkedListAnchor<T> T::* A> class LinkedList {//root element, stored in something other than T
   public:
     // template<Anchor T::A>
+    using LinkedType = T;
+  private:
     struct RootNode {
       T* first;
       T* last;
     };
-    using LinkedType = T;
-  private:
     RootNode root;
   public:
     void append(T* n) {
-      n->*A = root.last;
+      if(root.last)
+	root.last->*A = n;
       root.last = n;
+      if(!root.first)
+	root.first = n;
     };
+    inline void push(T* t) { append(t); };
+    T* pop() {
+      T* ret = root.first;
+      if(!ret) return ret;
+      T* next = ret->*A;
+      root.first = next;
+      if(!next)
+	root.last = NULL;
+      return ret;
+    };
+    inline const T* peek() const { return root.first; };
+    inline const T* peekLast() const { return root.last; };
+    inline auto peekLastDirty() const { return peekLast(); };//for drop-in replacement of atomic
 
     class iterator {
     private:
@@ -24,6 +42,7 @@ namespace WITE::Collections {
     public:
       iterator() : t(NULL) {};
       iterator(T* t) : t(t) {};
+      operator T*() { return t; };
       LinkedType& operator*() const { return *t; };
       LinkedType* operator->() const { return t; };
       iterator& operator++() {
@@ -42,6 +61,7 @@ namespace WITE::Collections {
 	t = other.t;
 	return *this;
       };
+      operator bool() { return t; };
     };
     iterator begin() const {
       return root.first;

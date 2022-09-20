@@ -1,7 +1,7 @@
 BUILDLIBS="WITE"
 BUILDTESTS="Tests"
 BUILDAPP=""
-LINKOPTS="-lrt"
+LINKOPTS="-lrt -latomic"
 BOTHOPTS="-pthread -DDEBUG -g"
 BASEDIR="$(cd "$(dirname "$0")"; pwd -L)"
 OUTDIR="${BASEDIR}/build" #TODO not just WITE but all subdirs
@@ -72,7 +72,7 @@ if ! [ -f "${ERRLOG}" ] || [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
 		echo running test $TESTNAME
 		$COMPILER "$OFILE" -o "$TESTNAME" -L "${OUTDIR}" "-Wl,-rpath,$OUTDIR" $BUILTLIBS $LINKOPTS $BOTHOPTS 2>>"${ERRLOG}" >>"${LOGFILE}"
 		echo running test "${TESTNAME}" >>"${LOGFILE}"
-		$TESTNAME 2>>"${ERRLOG}" >>"${LOGFILE}"
+		time $TESTNAME 2>>"${ERRLOG}" >>"${LOGFILE}"
 		code=$?
 		if [ $code -ne 0 ]; then echo "Exit code: " $code >>"${ERRLOG}"; fi;
 	    done
@@ -96,6 +96,7 @@ if [ -f "${ERRLOG}" ] && [ "$(stat -c %s "${ERRLOG}")" -gt 0 ]; then
     head -n 60 "${ERRLOG}"
 else
     echo "Success"
+    tail "${LOGFILE}"
 fi
 
 

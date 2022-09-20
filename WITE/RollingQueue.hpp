@@ -13,7 +13,7 @@ namespace WITE::Collections {
     T data[SIZE];
     size_t nextIn,//the index of an empty datum that is next to be allocated
       nextOut;//the index of the next datum to be popped
-    constexpr size_t wrap(size_t i) { return i > SIZE ? i > SIZE * 2 ? i % SIZE : i - SIZE : i; }
+    constexpr size_t wrap(size_t i) { return i >= SIZE ? i >= SIZE * 2 ? i % SIZE : i - SIZE : i; };
   public:
 
     //only blocks if strongly-after an unfinished call to the same method, blocks until that call completes
@@ -49,8 +49,8 @@ namespace WITE::Collections {
     }
 
     inline size_t count() {
-      size_t tail = nextOut, head = nextIn;
-      return tail < head ? head - tail : SIZE - head + tail;
+      size_t tail = nextIn, head = nextOut;
+      return head <= tail ? tail - head : SIZE - head + tail;
     }
 
     inline size_t freeSpace() {

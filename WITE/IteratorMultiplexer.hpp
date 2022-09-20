@@ -13,12 +13,20 @@ namespace WITE::Collections {
     IteratorWrapper<I1> upper;
     IteratorWrapper<I2> lower;
     fetcher_cb p;
+    void checkLower() {
+      while(!lower && upper) {
+	upper++;
+	if(upper)
+	  lower = p->call((fetcher_cb_param)upper);
+      }
+    };
   public:
     IteratorMultiplexer() : upper(), lower(), p() {}
     IteratorMultiplexer(IteratorWrapper<I1> i1, fetcher_cb p) :
       upper(i1),
       lower(p->call((fetcher_cb_param)upper)),
       p(p) {
+      checkLower();
     };
     inline operator bool() const { return (bool)upper; };
     typename std::conditional<std::is_pointer_v<I2>,
@@ -32,11 +40,7 @@ namespace WITE::Collections {
     //inline bool operator!=(const IteratorMultiplexer<I1, I2>& r) { return !operator==(r); };//implied now?
     inline IteratorMultiplexer operator++() {
       lower++;
-      if(!lower && upper) {
-	upper++;
-	if(upper)
-	  lower = p->call((fetcher_cb_param)upper);
-      }
+      checkLower();
       return *this;
     };
     inline IteratorMultiplexer operator++(int) {
@@ -47,6 +51,12 @@ namespace WITE::Collections {
     //begin and end so this can be the target of a foreach
     inline IteratorMultiplexer<I1, I2> begin() const { return *this; };//invokes copy constructor
     inline IteratorMultiplexer<I1, I2> end() const { return IteratorMultiplexer<I1, I2>(); };
+    inline size_t count() {
+      size_t ret = 0;
+      IteratorMultiplexer<I1, I2> clone(*this);
+      while(clone++) ret++;
+      return ret;
+    };
   };
 
 };

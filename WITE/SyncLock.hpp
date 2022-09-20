@@ -13,12 +13,14 @@ namespace WITE::Util {
   private:
     typedef std::atomic<uint64_t> ticket_t;
     ticket_t queueSeed, queueCurrent;
+    uint32_t owningThread;
   };
 
   class ScopeLock {
   public:
     inline void yield();
     ScopeLock(SyncLock* lock);
+    ScopeLock(ScopeLock& o);
     ~ScopeLock();
   private:
     SyncLock *lock;

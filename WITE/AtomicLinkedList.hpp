@@ -1,45 +1,77 @@
+#include <atomic>
+
 namespace WITE::Collections {
 
-  template<class Node> using AtomicLinkedListNodeMember = Node*;//should this be atomic?
+  template<class Node> using AtomicLinkedListNodeMember = Node*volatile;
 
-  template<class Node, AtomicLinnkedListNodeMember Node::*NodePtr> class AtomicLinkedList {
+  template<class Node, AtomicLinkedListNodeMember<Node> Node::*NodePtr> class AtomicLinkedList {
   private:
-    std::atomic<Node*> first, last;
+    typedef struct { Node* first, *last; } root_t;
+    std::atomic<root_t> root;
     AtomicLinkedList(AtomicLinkedList&) = delete;
   public:
+    AtomicLinkedList() {};
     void push(Node* gnu) {
       gnu->*NodePtr = NULL;
-      Node* previousLast = last.exchange(gnu, std::memory_order_acq_rel);
-      previousLast->*NodePtr = gnu;
+      Node* previousLast;
+      root_t newRoot, temp = root.load(std::memory_order_acquire);
+      do {
+	newRoot = temp;
+	previousLast = newRoot.last;
+	newRoot.last = gnu;
+	if(!previousLast)
+	  newRoot.first = gnu;
+      } while(!root.compare_exchange_weak(temp, newRoot, std::memory_order_release, std::memory_order_relaxed));
+      if(previousLast)
+	previousLast->*NodePtr = gnu;
     };
     Node* pop() {
-      Node* ret = first.Load(std::memory_order_acquire);
+      Node* ret;
+      root_t newRoot, temp = root.load(std::memory_order_acquire);
       do {
+	newRoot = temp;
+	ret = newRoot.first;
 	if(!ret) return NULL;
 	Node* next = ret->*NodePtr;
-      } while(!first.compare_exchange_strong(&ret, next, std::memory_order_release, std::memory_order_acq_rel));
+	newRoot.first = next;
+	if(!next)
+	  newRoot.last = NULL;
+      } while(!root.compare_exchange_weak(temp, newRoot, std::memory_order_release, std::memory_order_relaxed));
       return ret;
     };
-    Node* peek() {
-      return first.Load(std::memory_order_consume);
+    Node* peek() const {
+      return root.load(std::memory_order_consume).first;
     };
-    class Iterator {
+    const Node* const peekLast() const {
+      return root.load(std::memory_order_consume).last;
+    };
+    const Node* const peekLastDirty() const {
+      return peekLast();
+    };
+    class iterator {
     private:
       Node* current;
-      Iterator(Node* c) : current(c) {}
+      iterator(Node* c) : current(c) {}
+      // iterator(Node* c, AtomicLinkedList<Node>* t) : current(c), lock(m) {}
+      iterator(iterator& o) : current(o.current) {}
+      friend class AtomicLinkedList;
     public:
+      operator Node*() { return current; };
       Node* operator->() { return current; };
-      Iterator& operator++() {
+      iterator& operator++() {
 	if(current) current = current->*NodePtr;
 	return *this;
       };
-      Iterator operator++(int) {
-	Iterator old = *this;
+      iterator operator++(int) {
+	iterator old = *this;
 	operator++();
 	return old;
       };
+      operator bool() { return current; };
     };
-    Iterator begin() { return Iterator(first.load(std::memory_order_consume)); };
-  }
+    iterator begin() {
+      return iterator(root.load(std::memory_order_consume).first);
+    };
+  };
 
 }

@@ -25,6 +25,7 @@ namespace WITE::Platform {
 	  if(typeDestroy)
             typeDestroy->call(data[i]);
           delete data[i];
+	  data[i] = NULL;
         }
     }
     template<typename U = T, std::enable_if_t<std::is_default_constructible<U>::value, int> = 0>

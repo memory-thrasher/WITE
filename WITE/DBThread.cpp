@@ -22,6 +22,7 @@ namespace WITE::DB {
     transactions() {}
 
   bool DBThread::setState(const semaphoreState old, const semaphoreState desired) {
+    ASSERT_TRAP(desired <= state_exited, "illegal semaphore state");
     semaphoreState state = old;
     return semaphore.compare_exchange_strong(state, desired, std::memory_order_acq_rel, std::memory_order_consume);
   }
@@ -33,7 +34,7 @@ namespace WITE::DB {
 	return true;
       if(state == state_exited || state == state_exiting || state == state_exploded)
 	return false;
-      PThread::sleep();
+      db->idle(&transactions);
     }
   }
 
@@ -42,8 +43,7 @@ namespace WITE::DB {
     while(state != desired) {
       if(state != old)
 	return false;
-      //TODO make an idle time spender in database that does housekeeping while waiting?
-      PThread::sleep();
+      db->idle(&transactions);
       state = semaphore.load(std::memory_order_consume);
     }
     return true;
@@ -66,11 +66,15 @@ namespace WITE::DB {
       while(1) {
 	if(timer_settime(cpuTimer, 0, &FRAME_MAX_TIME, NULL))
 	  WARN("Timer set fail, thread balancing may be wrong");
-	if(semaphore != state_updating) break;
+	if(semaphore != state_updating)
+	  break;
 	DBRecord data;
 	for(DBEntity* ent : slice_withUpdates) {
 	  ent->read(&data);
-	  db->getType(data.header.type)->update(&data, ent);
+	  ASSERT_TRAP(data.header.flags >> DBRecordFlag::allocated, "unallocated entity in slice, frame: ", db->getFrame(), ", ent: ", ent->getId());
+	  auto type = db->getType(data.header.type);
+	  ASSERT_TRAP(type->onUpdate, "onUpdate missing");
+	  type->onUpdate(&data, ent);
 	}
 	if(timer_gettime(cpuTimer, &frameTime))
 	  WARN("Timer get fail, thread balancing may be wrong");
@@ -78,7 +82,8 @@ namespace WITE::DB {
 	nsSpentOnLastFrame = (FRAME_MAX_TIME.it_value.tv_sec - frameTime.it_value.tv_sec) * 1000000000 +
 	  (FRAME_MAX_TIME.it_value.tv_nsec - frameTime.it_value.tv_nsec);
 	//state sync so changes to this thread's slice don't block other threads adding rows to this thread.
-	if(!setState(state_updating, state_updated) || !waitForState(state_updated, state_maintaining)) break;
+	if(!setState(state_updating, state_updated) || !waitForState(state_updated, state_maintaining))
+	  break;
 	//shifts in slices should not count against this threads work units because they are unrelated to slice size
 	if(slice_toBeAdded.size() + slice_toBeRemoved.size()) {
 	  Util::ScopeLock lock(&sliceAlterationPoolMutex);
@@ -95,13 +100,14 @@ namespace WITE::DB {
 	  if(slice_toBeAdded.size()) {
 	    for(auto i = slice_toBeAdded.begin();i != slice_toBeAdded.end();i++) {
 	      auto type = db->getType(i->second);
-	      (type->update ? slice_withUpdates : slice_withoutUpdates).push_back(i->first);
+	      (type->onUpdate ? slice_withUpdates : slice_withoutUpdates).push_back(i->first);
 	      typeIndex[type->typeId].append(i->first);
 	    }
 	    slice_toBeAdded.clear();
 	  }
 	}
-	if(!setState(state_maintaining, state_maintained) || !waitForState(state_maintained, state_updating)) break;
+	if(!setState(state_maintaining, state_maintained) || !waitForState(state_maintained, state_updating))
+	  break;
       }
       timer_delete(cpuTimer);
       semaphore = state_exited;
@@ -131,6 +137,7 @@ namespace WITE::DB {
   }
 
   void DBThread::join() {
+    if(semaphore == state_exited) return;
     semaphore = state_exiting;
     waitForState(state_exiting, state_exited);
   }

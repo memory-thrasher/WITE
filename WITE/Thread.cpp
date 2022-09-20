@@ -13,8 +13,8 @@ namespace WITE::Platform {
     pthread_key_t threadObjKey;
 
     void threadDestructorWrapper(void* thread) {
-      Thread* t = reinterpret_cast<Thread*>(thread);
-      delete t;
+      //Thread* t = reinterpret_cast<Thread*>(thread);
+      //TODO cleanup storage?
     }
 
     void putThreadRef(Thread* ref) {
@@ -23,7 +23,9 @@ namespace WITE::Platform {
     }
 
     void* pthreadCallback(void* param) {
-      Thread::initThisThread(Thread::threadEntry_t(param));
+      auto temp = reinterpret_cast<Thread::threadEntry_t*>(param);
+      Thread::initThisThread(*temp);
+      delete temp;
       return 0;
     }
 
@@ -47,18 +49,19 @@ namespace WITE::Platform {
 
   Thread* Thread::current() {
     void* ret = pthread_getspecific(ThreadInternal::threadObjKey);
-    if (!ret) CRASHRET(NULL, "Failed to fetch thread data by key. This should not happen.");
+    if (!ret) //CRASHRET_PREINIT(NULL, "Failed to fetch thread data by key. This should not happen.");
+      return NULL;
     return static_cast<Thread*>(ret);
   }
 
   void Thread::spawnThread(threadEntry_t entry) {//static
     pthread_t temp;
-    pthread_create(&temp, NULL, &ThreadInternal::pthreadCallback, (void*)entry);
+    pthread_create(&temp, NULL, &ThreadInternal::pthreadCallback, reinterpret_cast<void*>(new threadEntry_t(entry)));
   }
 
   //#endif posix
 
-  std::atomic<uint32_t> Thread::seed;//static
+  std::atomic<uint32_t> Thread::seed = 0;//static
   ThreadResource<Thread> Thread::threads(decltype(Thread::threads)::initAsEmpty());//static
 
   void Thread::initThisThread(threadEntry_t entry) {//static, entry defaults to null
@@ -71,7 +74,7 @@ namespace WITE::Platform {
     auto storage = threads.get(tid);
     new(storage)Thread(entry, tid);
     ThreadInternal::putThreadRef(storage);
-    if (storage->entry) storage->entry->call();
+    if (storage->entry) storage->entry();
   }
 
   uint32_t Thread::getTid() {
@@ -79,7 +82,10 @@ namespace WITE::Platform {
   }
 
   uint32_t Thread::getCurrentTid() {
-    return current()->getTid();
+    if (seed.load() == 0)
+      return 0;
+    auto c = current();
+    return c ? c->getTid() : -5;
   }
 
   Thread::Thread(threadEntry_t entry, uint32_t id) : entry(entry), tid(id) {}

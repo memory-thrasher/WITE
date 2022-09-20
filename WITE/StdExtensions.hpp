@@ -33,8 +33,17 @@ namespace WITE::Collections {
 
 namespace WITE {
 
-  template<typename D, typename S> inline void memcpy(D* dst, const S* src, size_t len) {
+  template<typename D, typename S> inline void memcpy(D* dst, const S* src, size_t len)
+    requires std::negation_v<std::is_volatile<D>> {
     std::memcpy(reinterpret_cast<void*>(dst), reinterpret_cast<const void*>(src), len);
+  }
+
+  template<typename D, typename S> inline void memcpy(D* dst, const S* src, size_t len)
+    requires std::is_volatile_v<D> {
+    for(size_t i = len;i;) {
+      --i;
+      dst[i] = src[i];
+    }
   }
 
   template<typename D, typename S> inline auto memcmp(const D* dst, const S* src, size_t len) {
@@ -43,6 +52,20 @@ namespace WITE {
 
   template<typename T> inline void memset(T* dst, const char value, const size_t len) {
     std::memset(reinterpret_cast<void*>(dst), value, len);
+  }
+
+  // template<typename CVT, typename T = std::remove_cv_t<CVT>> inline T cv_cast(CVT i) {
+  //   return const_cast<T>(i);
+  // }
+
+  template<typename CVT, typename T = std::remove_cv_t<CVT>> inline T* cv_remove(CVT* i) {
+    return const_cast<T*>(i);
+  }
+
+  template<typename CVT, typename T = std::remove_cv_t<CVT>>
+  inline T&& cv_remove(CVT i) requires std::is_trivially_copyable_v<T> {
+    T ret = i;
+    return std::move(ret);
   }
 
 }

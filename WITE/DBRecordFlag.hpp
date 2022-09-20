@@ -9,10 +9,10 @@ namespace WITE::DB {
   enum class DBRecordFlag : DBRecordFlag_t
     {
      none = 0,
-     all = std::numeric_limits<DBRecordFlag_t>::max(),
      allocated = (1 << 0),
      head_node = (1 << 1),
      has_next  = (1 << 2),
+     all = has_next | head_node | allocated,
     };
 
   constexpr inline DBRecordFlag operator|(DBRecordFlag L, DBRecordFlag R) {
@@ -49,6 +49,10 @@ namespace WITE::DB {
 
   inline bool operator==(DBRecordFlag L, int R) {
     return static_cast<int>(L) == R;
+  };
+
+  inline bool operator>>(const DBRecordFlag L, const DBRecordFlag R) {
+    return (L & R) == R;
   };
 
 }

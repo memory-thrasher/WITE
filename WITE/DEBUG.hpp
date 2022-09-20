@@ -37,14 +37,18 @@
 #ifdef DEBUG
 
 #include <iostream>
+#include "SyncLock.hpp"
+#include "Thread.hpp"
+
+::WITE::Util::SyncLock* LOG_MUTEX();
 
 #define WARN1(msg) { std::cerr << msg; }
 #define LOG1(msg) { std::cout << msg; }
 
-#define WARN(...) { MAP(WARN1, __VA_ARGS__, " (", __FILE__, ": ", __LINE__, ")", std::endl); }
-#define ERROR(...) { WARN(__VA_ARGS__); /*exit(1);*/ }//TODO set global failure flag that db should read to graceful stop
+#define WARN(...) { ::WITE::Util::ScopeLock lock(LOG_MUTEX()); MAP(WARN1, __VA_ARGS__, " (", std::dec, __FILE__, ": ", __LINE__, " tid: ", ::WITE::Platform::Thread::getCurrentTid(), ")", std::endl, std::flush); }
+#define ERROR(...) { WARN(__VA_ARGS__); asm("INT3"); }//TODO set global failure flag that db should read to graceful stop
 #define ASSERT_TRAP(cond, ...) { if(!(cond)) { WARN(__VA_ARGS__); asm("INT3"); } }
-#define LOG(...) { MAP(LOG1, __VA_ARGS__, " (", __FILE__, ": ", __LINE__, ")", std::endl); }
+#define LOG(...) { ::WITE::Util::ScopeLock lock(LOG_MUTEX()); MAP(LOG1, __VA_ARGS__, " (", std::dec, __FILE__, ": ", __LINE__, " tid: ", ::WITE::Platform::Thread::getCurrentTid(), ")", std::endl, std::flush); }
 
 #else //release
 
@@ -57,6 +61,7 @@
 #define CRASH_PREINIT(...) { ERROR(__VA_ARGS__); exit(EXIT_FAILURE); }
 #define CRASH(...) { ERROR(__VA_ARGS__); } //TODO set a global flag for dbs to graceul down
 #define CRASHRET(ret, ...) { CRASH(__VA_ARGS__); return ret; } //return will never happen but it satisfies the compiler
+#define CRASHRET_PREINIT(ret, ...) { ERROR(__VA_ARGS__); exit(EXIT_FAILURE); return ret; }
 
 template<class T> void hexdump(T* src) {
   uint8_t* data = reinterpret_cast<uint8_t*>(src);

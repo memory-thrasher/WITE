@@ -21,83 +21,94 @@ namespace WITE::Util {
     RET operator()(RArgs... rargs) const {
       return call(rargs...);
     };
-    virtual Callback_t* copy() const = 0;
+  };
+
+  template<class RET, class... RArgs> class CallbackConstexprWrapper : public Callback_t<RET, RArgs...> {
+    typedef Callback_t<RET, RArgs...> cbt;
+  private:
+    const cbt* cb;
+  public:
+    constexpr CallbackConstexprWrapper() : cb(NULL) {};
+    constexpr CallbackConstexprWrapper(const CallbackConstexprWrapper& src) : cb(src.cb) {};
+    constexpr CallbackConstexprWrapper(const cbt* src) : cb(src) {};
+    RET call(RArgs... rargs) const override { return cb->call(std::forward<RArgs>(rargs)...); };
+    constexpr operator bool() const { return cb; };
   };
 
   template<class RET, class... RArgs> class CallbackPtr {
   private:
-    const Callback_t<RET, RArgs...>* cb;
+    mutable std::shared_ptr<Callback_t<RET, RArgs...>> cb;
   public:
     // constexpr CallbackPtr(RET(*x)(RArgs...));
-    constexpr CallbackPtr() : cb(NULL) {};
-    constexpr CallbackPtr(Callback_t<RET, RArgs...>* cb) : cb(cb) {};
-    constexpr explicit CallbackPtr(void* cb) : CallbackPtr<RET, RArgs...>(reinterpret_cast<Callback_t<RET, RArgs...>*>(cb)) {};
-    //CallbackPtr(CallbackPtr&&) = delete;
-    constexpr CallbackPtr(const CallbackPtr& other) : cb(other ? other.cb->copy() : NULL) {};
-    ~CallbackPtr() {
-      if(cb) delete cb;
-    };
+    CallbackPtr() : cb() {};
+    CallbackPtr(Callback_t<RET, RArgs...>* cb) : cb(cb) {};
+    CallbackPtr(const CallbackPtr& other) : cb(other.cb) {};
     inline RET operator()(RArgs... rargs) const { return cb->call(std::forward<RArgs>(rargs)...); };
-    inline const Callback_t<RET, RArgs...>& operator*() const { return *cb; };
-    inline const Callback_t<RET, RArgs...>* operator->() const { return cb; };
-    inline operator bool() const { return cb; };
-    inline explicit operator void*() const { return reinterpret_cast<void*>(cb ? cb->copy() : NULL); };
+    inline const Callback_t<RET, RArgs...>* operator->() const { return cb.get(); };
+    inline operator bool() const { return (bool)cb; };
   };
 
   template<class RET, class... RArgs> class CallbackFactory {
   public:
     template<class T, class... CArgs> class Callback : public Callback_t<RET, RArgs...> {
     private:
-      RET(T::*x)(CArgs..., RArgs...);
-      T * owner;
+      RET(T::*const x)(CArgs..., RArgs...);
+      T *const owner;
       const std::tuple<CArgs...> cargs;
     public:
-      constexpr Callback(T* t, RET(T::*x)(CArgs..., RArgs...), CArgs... pda) :
+      constexpr Callback(T* t, RET(T::*const x)(CArgs..., RArgs...), CArgs... pda) :
 	x(x), owner(t), cargs(std::forward<CArgs>(pda)...) {};
       constexpr ~Callback() {};
       constexpr Callback(const Callback<T, CArgs...>& other) : x(other.x), owner(other.owner), cargs(other.cargs) {};
       RET call(RArgs... rargs) const override {
 	return std::apply(x, std::tuple_cat(std::tie(owner), cargs, std::tie(rargs...)));
       };
-      Callback_t<RET, RArgs...>* copy() const override {
-	return new Callback<T, CArgs...>(*this);
-      };
     };
     template<class... CArgs> class StaticCallback : public Callback_t<RET, RArgs...> {
     private:
-      RET(*x)(CArgs..., RArgs...);
+      RET(*const x)(CArgs..., RArgs...);
       std::tuple<CArgs...> cargs;
     public:
-      constexpr StaticCallback(RET(*x)(CArgs..., RArgs...), CArgs... pda) :
+      constexpr StaticCallback(RET(*const x)(CArgs..., RArgs...), CArgs... pda) :
 	x(x), cargs(std::forward<CArgs>(pda)...) {};
       constexpr ~StaticCallback() {};
       constexpr StaticCallback(const StaticCallback<CArgs...>& other): x(other.x), cargs(other.cargs) {};
       RET call(RArgs... rargs) const override {
 	return std::apply(x, std::tuple_cat(cargs, std::tie(rargs...)));
       };
-      Callback_t<RET, RArgs...>* copy() const override {
-	return new StaticCallback<CArgs...>(*this);
-      };
     };
     typedef CallbackPtr<RET, RArgs...> callback_t;
     template<class U, class... CArgs> constexpr static callback_t
-    make(U* owner, CArgs... cargs, RET(U::*func)(CArgs..., RArgs...));
+    make(U* owner, CArgs... cargs, RET(U::*const func)(CArgs..., RArgs...));
     template<class... CArgs> constexpr static callback_t
-    make(CArgs... cargs, RET(*func)(CArgs..., RArgs...));
+    make(CArgs... cargs, RET(*const func)(CArgs..., RArgs...));
   };
 
   template<class RET, class... RArgs> template<class U, class... CArgs> constexpr CallbackPtr<RET, RArgs...>
-  CallbackFactory<RET, RArgs...>::make(U* owner, CArgs... cargs, RET(U::*func)(CArgs..., RArgs...)) {
+  CallbackFactory<RET, RArgs...>::make(U*const owner, CArgs... cargs, RET(U::*const func)(CArgs..., RArgs...)) {
     return CallbackPtr(new CallbackFactory<RET, RArgs...>::Callback<U, CArgs...>(owner, func, std::forward<CArgs>(cargs)...));
   }
 
   template<class RET, class... RArgs> template<class... CArgs> constexpr CallbackPtr<RET, RArgs...>
-  CallbackFactory<RET, RArgs...>::make(CArgs... cargs, RET(*func)(CArgs..., RArgs...)) {
+  CallbackFactory<RET, RArgs...>::make(CArgs... cargs, RET(*const func)(CArgs..., RArgs...)) {
     return CallbackPtr(new CallbackFactory<RET, RArgs...>::StaticCallback<CArgs...>(func, std::forward<CArgs>(cargs)...));
   }
 
-#define typedefCB(name, ...) typedef WITE::Util::CallbackFactory<__VA_ARGS__> name## _F; typedef typename name## _F::callback_t name ;
+#define typedefCB(name, ...) typedef WITE::Util::CallbackFactory<__VA_ARGS__> name## _F; typedef typename name## _F::callback_t name ; typedef WITE::Util::CallbackConstexprWrapper<__VA_ARGS__> name## _ce ;
 
   typedefCB(rawDataSource, int, void*, size_t)
+
+#define COMMA ,
+#define MAKE_FUNC_TEST(type, name, sig, sig2)				\
+  template<class T> struct get_member_ ##name## _or_NULL {		\
+    static constexpr type## _ce value;					\
+  };									\
+  template<class T>							\
+  requires requires( sig ) { T::name ( sig2 ); }			\
+  struct get_member_ ##name## _or_NULL<T> {				\
+    static constexpr type## _F::StaticCallback<> cbt = &T::name;	\
+    static constexpr type## _ce value = &cbt;				\
+  }
+
 
 };

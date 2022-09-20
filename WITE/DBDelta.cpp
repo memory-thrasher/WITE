@@ -1,14 +1,15 @@
 #include "DBThread.hpp"
 #include "Database.hpp"
 #include "DEBUG.hpp"
+#include "StdExtensions.hpp"
 
 namespace WITE::DB {
 
-  void DBDelta::applyTo(DBRecord* out) {//may be in the data mmap, may be a temp during a read op
+  void DBDelta::applyTo(volatile DBRecord* out) const {//may be in the data mmap, may be a temp during a read op
     ASSERT_TRAP(!len || dstStart < MAX_DELTA_SIZE, "dstStart out of bounds");
     if(len)
       memcpy(&out->content[dstStart], content, len);
-    out->header.flags ^= flagWriteMask & (out->header.flags ^ flagWriteValues);
+    out->header.flags = out->header.flags ^ (flagWriteMask & (out->header.flags ^ flagWriteValues));
     if(write_nextGlobalId)
       out->header.nextGlobalId = new_nextGlobalId;
     if(write_type)

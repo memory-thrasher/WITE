@@ -85,10 +85,11 @@ int main (int argc, char** argv) {
   }
   Database* db = new Database(types, sizeof(types)/sizeof(types[0]), 37601);
   DBEntity* e = db->allocate(dummy_et.typeId);
+  assert(e);
   e->write(hw, strlen(hw));
   e->read(out, strlen(hw));
   assert(strcmp(hw, out) == 0);
-  db->allocate(timebomb_t::et);
+  assert(db->allocate(timebomb_t::et));
   std::cout << "Starting db" << std::endl;
   //timer stuff
   static const struct itimerspec MAX_TIME { { 0, 0 }, { 100, 0 } };

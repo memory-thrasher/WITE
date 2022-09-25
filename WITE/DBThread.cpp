@@ -24,7 +24,7 @@ namespace WITE::DB {
   bool DBThread::setState(const semaphoreState old, const semaphoreState desired) {
     ASSERT_TRAP(desired <= state_exited, "illegal semaphore state");
     semaphoreState state = old;
-    return semaphore.compare_exchange_strong(state, desired, std::memory_order_acq_rel, std::memory_order_consume);
+    return semaphore.compare_exchange_strong(state, desired, std::memory_order_relaxed, std::memory_order_relaxed);
   }
 
   bool DBThread::waitForState(semaphoreState desired) {

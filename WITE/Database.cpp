@@ -182,8 +182,7 @@ namespace WITE::DB {
     if(!ret) return NULL;
     if(started && ret->lastWrittenFrame == currentFrame)//the chosen entity was deallocated on this frame
       return NULL;
-    // if(started)
-    //   LOG("Allocated:  ", ret->getId(), " on frame ", currentFrame);
+    //LOG("Allocated:  ", ret->getId(), " on frame ", currentFrame);
 #ifdef DEBUG
     DBRecord::header_t header;
     readHeader(ret, &header);
@@ -258,7 +257,7 @@ namespace WITE::DB {
     if(started) {
       src->frame = metadata[src->targetEntityId].lastWrittenFrame = currentFrame;
       src->integrityCheck(this);
-      //LOG("Writing delta: ", src, *src);
+      // LOG("Writing delta: ", src, *src);
       auto threadLog = &getCurrentThread()->transactions;
       if(!threadLog->push(src)) {
 	flushTransactions(threadLog);
@@ -269,6 +268,7 @@ namespace WITE::DB {
 	#endif
       }
     } else {
+      // LOG("Pre-start writing delta: ", src, *src);
       //this is for setting up the game start or menus
       src->frame = 0;
       src->integrityCheck(this);
@@ -298,7 +298,7 @@ namespace WITE::DB {
     //TODO other stuff?
   };
 
-  bool Database::deltaIsInPast(DBDelta* t) {
+  bool Database::deltaIsInPast(const DBDelta* t) {
     return t->frame < currentFrame;
   }
 
@@ -313,6 +313,7 @@ namespace WITE::DB {
       auto transaction = log.transactionalPop(deltaIsInPast_cb);
       //#warning TODO make this faster, don't touch an atomic for every log entry moved!
       if(transaction) {
+	// LOG("Applying delta ", **transaction);
 	size_t id = transaction->targetEntityId;
 	ASSERT_TRAP(transaction->frame != currentFrame, "Attempted to apply log on its origin frame!");
 	DBEntity* dbe = &metadata[id];
@@ -321,7 +322,7 @@ namespace WITE::DB {
 	DBDelta* temp = dbe->log.pop();
 	ASSERT_TRAP(temp == *transaction, "Logs applied out of order!");
       } else if(ret == 0 && crashIfFail) {//ran out of deltas that belong to previous frames to flush, yet still don't have enough room in the log; this is fatal (for now)
-	if(log.freeSpacePending() || log.dirtyPeek().frame < currentFrame) {
+	if(log.freeSpace() || log.dirtyPeek().frame < currentFrame) {
 	  continue;
 	}
 	ERROR("Exiting due to insufficient transactional log space on frame ", currentFrame, " log: ", log);

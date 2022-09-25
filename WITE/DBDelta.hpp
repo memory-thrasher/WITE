@@ -29,7 +29,7 @@ namespace WITE::DB {
   };//size=190
 
   template<class T>
-  std::basic_ostream<T>& operator<<(std::basic_ostream<T>& str, DBDelta& db) {
+  std::basic_ostream<T>& operator<<(std::basic_ostream<T>& str, const DBDelta& db) {
     //for debugging
     str << "{ target: " << db.targetEntityId << ", frame: " << db.frame;
     if(db.len)

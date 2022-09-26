@@ -13,7 +13,9 @@ using namespace WITE::DB;
 
 const struct entity_type dummy_et = entity_type(1); //type1, no update just push it around
 
-std::atomic_uint64_t hits = 0, allocated, deallocated, spunUp, spunDown, skipped;
+std::atomic_uint64_t allocated, deallocated, spunUp, spunDown, skipped;
+
+WITE::Platform::ThreadResource<size_t> hitCounters;
 
 #define FRAME_COUNT 5000
 
@@ -22,7 +24,7 @@ private:
   uint64_t frameCounter;
 public:
   static void onUpdate(DBRecord* data, DBEntity* dbe) {
-    hits++;
+    (*hitCounters.get())++;
     Database* db = dbe->getDb();
     auto dbf = db->getFrame();
     timebomb_t dis;
@@ -69,6 +71,10 @@ struct entity_type types[] =
 const char* hw = "Hello World";
 char out[200];
 
+size_t sum(const size_t& a, const size_t& b) {
+  return a + b;
+};
+
 int main (int argc, char** argv) {
   assert(types[1].onUpdate);
   assert(WITE::Util::min(20, 200) == 20);
@@ -105,6 +111,7 @@ int main (int argc, char** argv) {
   assert(!timer_gettime(timer, &time));
   double timeR = 1.0 * (MAX_TIME.it_value.tv_sec - time.it_value.tv_sec) + (MAX_TIME.it_value.tv_nsec - time.it_value.tv_nsec) / 1000000000.0;
   delete db;
+  size_t hits = hitCounters.reduce(WITE::Util::CallbackFactory<size_t, const size_t&, const size_t&>::make(&sum));
   std::cout << std::dec << "Time: " << timeR << " (" << (FRAME_COUNT/timeR) << " FPS)" << std::endl;
   std::cout << std::dec << "Updates: " << hits << std::endl;
   std::cout << std::dec << "Allocated: " << allocated << std::endl;

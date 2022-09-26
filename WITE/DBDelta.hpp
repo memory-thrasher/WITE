@@ -26,6 +26,20 @@ namespace WITE::DB {
     void clear();
     DBDelta& operator=(const DBDelta& src) noexcept;
     void integrityCheck(Database* = NULL) const;
+    bool operator==(const DBDelta& other) const {
+      if(frame != other.frame || dstStart != other.dstStart || len != other.len || targetEntityId != other.targetEntityId ||
+	 write_nextGlobalId != other.write_nextGlobalId || write_type != other.write_type ||
+	 (flagWriteMask & flagWriteValues) != (other.flagWriteMask & other.flagWriteValues))
+	return false;
+      if(write_nextGlobalId && new_nextGlobalId != other.new_nextGlobalId)
+	return false;
+      if(write_type && new_type != other.new_type)
+	return false;
+      if(len && memcmp(content, other.content, len) != 0)
+	return false;
+      return true;
+    };
+    bool operator!=(const DBDelta& other) const { return !(*this == other); };
   };//size=190
 
   template<class T>

@@ -41,7 +41,6 @@ namespace WITE::DB {
     volatile bool shuttingDown = false, started = false;
     DBThread* threads;
     std::map<int, size_t> threadsByTid;
-    Collections::AtomicRollingQueue<DBDelta> log;
     size_t entityCount;
     std::unique_ptr<Collections::AtomicRollingQueue<DBEntity*>> free;
     typedefCB(deltaIsInPast_cb_t, bool, const DBDelta*)
@@ -55,8 +54,7 @@ namespace WITE::DB {
     bool anyThreadIs(DBThread::semaphoreState);
     bool anyThreadBroke();
     void signalThreads(DBThread::semaphoreState from, DBThread::semaphoreState to, DBThread::semaphoreState waitFor);
-    void applyAllOldTransactionsBlocking();
-    size_t applyLogTransactions(size_t min, bool crashIfFail);//applying a minimum of 0 attempts one batch
+    size_t applyLogTransactions(DBThread*);
     bool deltaIsInPast(const DBDelta*);
     DBThread* getLightestThread();
     DBThread* getCurrentThread();
@@ -80,8 +78,7 @@ namespace WITE::DB {
     const struct entity_type* getType(DBRecord::type_t);
     void start();
     void shutdown();
-    void flushTransactions(decltype(DBThread::transactions)*);
-    void idle(decltype(DBThread::transactions)*);//for worker threads to be productive while blocked
+    void idle(DBThread*);//for worker threads to be productive while blocked
 
     using threadTypeSearchIterator = typename Collections::IteratorMultiplexer<DBThread*, decltype(DBThread::typeIndex)::mapped_type::iterator>;
     threadTypeSearchIterator getByType(DBRecord::type_t type) const;

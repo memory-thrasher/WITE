@@ -59,6 +59,18 @@ namespace WITE::Platform {
           out[count++] = data[i];
       return count;
     }
+    T reduce(Util::CallbackPtr<T, const T&, const T&> cb) {
+      T ret;
+      if(typeInit) {
+	auto pre = typeInit();
+	ret = *pre;
+	free(pre);
+      }
+      for(size_t i = 0;i < MAX_THREADS;i++)
+	if(data[i])
+	  ret = cb(ret, *data[i]);
+      return ret;
+    }
   private:
     Initer typeInit;
     Destroyer typeDestroy;

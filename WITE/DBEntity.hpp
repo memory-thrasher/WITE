@@ -9,7 +9,7 @@ enttiy class contains metadata only, and is held internally by the db in ram to 
 #include "DBRecord.hpp"
 #include "RollingQueue.hpp"
 #include "DBDelta.hpp"
-#include "AtomicLinkedList.hpp"
+#include "LinkedList.hpp"
 
 namespace WITE::DB {
 
@@ -19,7 +19,7 @@ namespace WITE::DB {
   private:
     uint64_t lastWrittenFrame = 0;
     size_t masterThread;
-    Collections::AtomicLinkedList<DBDelta, &DBDelta::nextForEntity> log;
+    Collections::LinkedList<DBDelta, &DBDelta::nextForEntity> log;
     size_t idx;//location of the corrosponding record in the main db file
     Database* db;
     DBEntity* nextOfTypeInThread;//protected by owning thread

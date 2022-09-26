@@ -10,6 +10,8 @@
 #include "Database.hpp"
 #include "StdExtensions.hpp"
 
+#define MAX_DELTA_AGE 5
+
 namespace WITE::DB {
 
   DBThread::DBThread(Database* const db, size_t tid) :
@@ -19,7 +21,7 @@ namespace WITE::DB {
     slice_withoutUpdates(),
     slice_toBeRemoved(),
     slice_toBeAdded(),
-    transactions() {}
+    transactionPool() {}
 
   bool DBThread::setState(const semaphoreState old, const semaphoreState desired) {
     ASSERT_TRAP(desired <= state_exited, "illegal semaphore state");
@@ -34,7 +36,7 @@ namespace WITE::DB {
 	return true;
       if(state == state_exited || state == state_exiting || state == state_exploded)
 	return false;
-      db->idle(&transactions);
+      db->idle(this);
     }
   }
 
@@ -43,7 +45,7 @@ namespace WITE::DB {
     while(state != desired) {
       if(state != old)
 	return false;
-      db->idle(&transactions);
+      db->idle(this);
       state = semaphore.load(std::memory_order_consume);
     }
     return true;
@@ -78,7 +80,6 @@ namespace WITE::DB {
 	}
 	if(timer_gettime(cpuTimer, &frameTime))
 	  WARN("Timer get fail, thread balancing may be wrong");
-	db->flushTransactions(&transactions);
 	nsSpentOnLastFrame = (FRAME_MAX_TIME.it_value.tv_sec - frameTime.it_value.tv_sec) * 1000000000 +
 	  (FRAME_MAX_TIME.it_value.tv_nsec - frameTime.it_value.tv_nsec);
 	//state sync so changes to this thread's slice don't block other threads adding rows to this thread.
@@ -98,12 +99,32 @@ namespace WITE::DB {
 	    slice_toBeRemoved.clear();
 	  }
 	  if(slice_toBeAdded.size()) {
+	    DBDelta allocationEvent;
+	    allocationEvent.clear();
+	    allocationEvent.flagWriteValues = DBRecordFlag::allocated;
+	    allocationEvent.write_type = true;
+	    // allocationEvent.write_nextGlobalId//TODO head flag, any nextIds, put how many need to be allocated in type?
+	    allocationEvent.flagWriteMask = DBRecordFlag::all;
 	    for(auto i = slice_toBeAdded.begin();i != slice_toBeAdded.end();i++) {
 	      auto type = db->getType(i->second);
 	      (type->onUpdate ? slice_withUpdates : slice_withoutUpdates).push_back(i->first);
 	      typeIndex[type->typeId].append(i->first);
+	      allocationEvent.new_type = i->second;
+	      i->first->write(&allocationEvent);
+	      if(type->onAllocate)
+		type->onAllocate(i->first);
+	      if(type->onSpinUp)
+		type->onSpinUp(i->first);
 	    }
 	    slice_toBeAdded.clear();
+	  }
+	}
+	if(db->getFrame() > MAX_DELTA_AGE) {
+	  size_t oldFrame = db->getFrame() - MAX_DELTA_AGE;
+	  auto tx = transactionPool.peek();
+	  while(tx && tx->frame <= oldFrame) {
+	    db->idle(this);
+	    tx = transactionPool.peek();
 	  }
 	}
 	if(!setState(state_maintaining, state_maintained) || !waitForState(state_maintained, state_updating))
@@ -132,14 +153,17 @@ namespace WITE::DB {
 
   void DBThread::removeFromSlice(DBEntity* in) {
     Util::ScopeLock lock(&sliceAlterationPoolMutex);
-    in->masterThread = ~0;
     slice_toBeRemoved.push_back(in);
   }
 
   void DBThread::join() {
     if(semaphore == state_exited) return;
     semaphore = state_exiting;
-    waitForState(state_exiting, state_exited);
+    semaphoreState state = semaphore.load(std::memory_order_consume);
+    while(state != state_exited) {
+      ASSERT_TRAP(state == state_exiting, "semaphore left exiting state");
+      state = semaphore.load(std::memory_order_consume);
+    }
   }
 
   uint32_t DBThread::getCurrentTid() {

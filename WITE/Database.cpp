@@ -10,15 +10,14 @@
 #include "DBDelta.hpp"
 #include "DBThread.hpp"
 #include "DEBUG.hpp"
+#include "DBRecordFlag.hpp"
 
 #define PAGEPOW 23
 #define MAPTHRESH (2 << PAGEPOW)
 
 namespace WITE::DB {
 
-  Database::Database(struct entity_type* types, size_t typeCount, size_t entityCount, int backingStoreFd) :
-    log(entityCount*16)
-  {
+  Database::Database(struct entity_type* types, size_t typeCount, size_t entityCount, int backingStoreFd) {
     //entityCount param will yield to size of file if backing store is given and exists
     deltaIsInPast_cb = deltaIsInPast_cb_t_F::make(this, &Database::deltaIsInPast);
     threads = reinterpret_cast<DBThread*>(malloc(sizeof(DBThread) * DB_THREAD_COUNT));
@@ -87,10 +86,13 @@ namespace WITE::DB {
 
   Database::~Database() {
     stop();
-    for(size_t i = 0;i < DB_THREAD_COUNT;i++)
+    DBDelta transaction;
+    for(size_t i = 0;i < DB_THREAD_COUNT;i++) {
+      while(threads[i].transactionPool.popIf(&transaction, deltaIsInPast_cb))
+	transaction.applyTo(&data[i]);
       threads[i].~DBThread();
+    }
     ::free(threads);
-    applyAllOldTransactionsBlocking();
     ::free(metadata);
     msync(data_raw, sizeof(DBRecord) * entityCount, MS_SYNC);//flush
     munmap(data_raw, sizeof(DBRecord) * entityCount);
@@ -194,25 +196,6 @@ namespace WITE::DB {
     } else {
       ret->masterThread = ~0;
     }
-    DBDelta delta;//set allocated flag
-    delta.targetEntityId = ret->idx;
-    delta.flagWriteValues = DBRecordFlag::allocated | (isHead ? DBRecordFlag::head_node : DBRecordFlag::none);
-    delta.write_type = true;
-    delta.new_type = type;
-    delta.write_nextGlobalId = true;
-    if(count > 1) {
-      delta.flagWriteValues |= DBRecordFlag::has_next;
-      delta.new_nextGlobalId = allocate(type, count - 1, false)->idx;
-    } else delta.new_nextGlobalId = ~0;
-    delta.flagWriteMask = DBRecordFlag::all;
-    delta.len = delta.dstStart = 0;
-    delta.frame = 0;
-    write(&delta);
-    auto typeR = &types[type];
-    if(typeR->onAllocate)
-      typeR->onAllocate(ret);
-    if(typeR->onSpinUp)
-      typeR->onSpinUp(ret);
     return ret;
   }
 
@@ -246,7 +229,6 @@ namespace WITE::DB {
     delta.flagWriteMask = DBRecordFlag::all;
     delta.flagWriteValues = DBRecordFlag::none;
     write(&delta);
-    free->push(libre);
   }
 
   DBThread* Database::getCurrentThread() {
@@ -255,18 +237,13 @@ namespace WITE::DB {
 
   void Database::write(DBDelta* src) {
     if(started) {
+      ASSERT_TRAP((void*)this == (void*)liveDb, "I am a teapot");
+      ASSERT_TRAP(getEntity(src->targetEntityId)->masterThread == getCurrentThread()->dbId,
+		  "Write to entity from wrong thread!");
       src->frame = metadata[src->targetEntityId].lastWrittenFrame = currentFrame;
       src->integrityCheck(this);
       // LOG("Writing delta: ", src, *src);
-      auto threadLog = &getCurrentThread()->transactions;
-      if(!threadLog->push(src)) {
-	flushTransactions(threadLog);
-	#ifdef DEBUG
-	ASSERT_TRAP(threadLog->push(src), "Failed to write to thread log!");
-	#else
-	threadLog->push(src);//threadLog is now empty, no point in checking the result
-	#endif
-      }
+      getEntity(src->targetEntityId)->log.push(getCurrentThread()->transactionPool.push(src));
     } else {
       // LOG("Pre-start writing delta: ", src, *src);
       //this is for setting up the game start or menus
@@ -276,25 +253,10 @@ namespace WITE::DB {
     }
   }
 
-  void Database::flushTransactions(decltype(DBThread::transactions)* threadLog) {
-    ASSERT_TRAP((void*)this == (void*)liveDb, "I am a teapot");
-    DBDelta temp;
-    while(threadLog->pop(&temp)) {
-      DBEntity* e = getEntity(temp.targetEntityId);
-      DBDelta* newLast = log.push(&temp);
-      while(!newLast) {
-	applyLogTransactions(threadLog->count(), true);
-	newLast = log.push(&temp);
-      }
-      ASSERT_TRAP(newLast, "log full too soon");
-      ASSERT_TRAP(newLast->nextForEntity == NULL, "New last log for entity has baggage");
-      e->log.push(newLast);
-    }
-  }
-
-  void Database::idle(decltype(DBThread::transactions)* threadLog) {
-    flushTransactions(threadLog);
-    applyLogTransactions(1, false);
+  void Database::idle(DBThread* thread) {
+    for(size_t i = 0;i < 100;i++)
+      if(!applyLogTransactions(thread))
+	break;
     //TODO other stuff?
   };
 
@@ -302,40 +264,25 @@ namespace WITE::DB {
     return t->frame < currentFrame;
   }
 
-  void Database::applyAllOldTransactionsBlocking() {
-    while(log.count() && log.dirtyPeek().frame < currentFrame)
-      applyLogTransactions(4096, false);
-  }
-
-  size_t Database::applyLogTransactions(size_t idealApply, bool crashIfFail) {
+  size_t Database::applyLogTransactions(DBThread* thread) {
     size_t ret = 0;
-    do {
-      auto transaction = log.transactionalPop(deltaIsInPast_cb);
-      //#warning TODO make this faster, don't touch an atomic for every log entry moved!
-      if(transaction) {
-	// LOG("Applying delta ", **transaction);
-	size_t id = transaction->targetEntityId;
-	ASSERT_TRAP(transaction->frame != currentFrame, "Attempted to apply log on its origin frame!");
-	DBEntity* dbe = &metadata[id];
-	while(dbe->log.peek() != *transaction);
-	transaction->applyTo(&data[id]);
-	DBDelta* temp = dbe->log.pop();
-	ASSERT_TRAP(temp == *transaction, "Logs applied out of order!");
-      } else if(ret == 0 && crashIfFail) {//ran out of deltas that belong to previous frames to flush, yet still don't have enough room in the log; this is fatal (for now)
-	if(log.freeSpace() || log.dirtyPeek().frame < currentFrame) {
-	  continue;
-	}
-	ERROR("Exiting due to insufficient transactional log space on frame ", currentFrame, " log: ", log);
-	//this is actually the best possible time to crash: we have just finished writing an entire frame to the save
-	msync(data_raw, sizeof(DBRecord) * entityCount, MS_SYNC);//flush
-	shuttingDown = true;
-	exit(EXIT_FAILURE);
-	while(1);
-      } else {
-	break;
+    DBDelta transaction;
+    //TODO more dynamic batch size, and larger batches
+    if(thread->transactionPool.popIf(&transaction, deltaIsInPast_cb)) {
+      size_t id = transaction.targetEntityId;
+      ASSERT_TRAP(transaction.frame != currentFrame, "Attempted to apply log on its origin frame!");
+      DBEntity* dbe = &metadata[id];
+      transaction.applyTo(&data[id]);
+      DBDelta* temp = dbe->log.pop();
+      ASSERT_TRAP(*temp == transaction, "Logs applied out of order!");
+      if((transaction.flagWriteMask >> DBRecordFlag::allocated) &&
+	 !(transaction.flagWriteValues >> DBRecordFlag::allocated)) {
+	//on deallocate
+	dbe->masterThread = ~0;
+	free->push(dbe);
       }
       ret++;
-    } while(ret < idealApply);
+    };
     return ret;
   }
 

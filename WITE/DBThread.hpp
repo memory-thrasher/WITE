@@ -1,15 +1,30 @@
 #pragma once
 
-#include <map>
-
 #include "IteratorWrapper.hpp"
 #include "SyncLock.hpp"
 #include "DBDelta.hpp"
 #include "DBEntity.hpp"
-#include "RollingQueue.hpp"
+#include "DynamicRollingQueue.hpp"
 #include "LinkedList.hpp"
 
+#include <map>
+
 namespace WITE::Platform { class Thread; }
+
+/*
+  new plan: moving DBDelta priamry storage to the thread.
+  Only the thread owning the Entity can:
+    Apply transaction
+    Write to it (Create transactions)
+  Only the thread owning the Delta can:
+    Pop transactions
+    Malloc it
+    Free it
+    Iterate on all transactions
+  Any thread can:
+    Read transactions (by pointer)
+    Enumerate transactions that apply to an Entity
+ */
 
 namespace WITE::DB {
 
@@ -35,7 +50,7 @@ namespace WITE::DB {
     std::vector<DBRecord::type_t> temp_uniqTypes;
     std::map<DBRecord::type_t, Collections::LinkedList<DBEntity, &DBEntity::nextOfTypeInThread>> typeIndex;
     Util::SyncLock sliceAlterationPoolMutex;
-    Collections::RollingQueue<DBDelta, TRANSACTION_COUNT> transactions;
+    Collections::DynamicRollingQueue<DBDelta> transactionPool;
     uint64_t nsSpentOnLastFrame;
     friend class Database;
     void workLoop();

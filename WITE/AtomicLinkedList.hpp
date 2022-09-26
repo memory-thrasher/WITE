@@ -22,6 +22,7 @@ namespace WITE::Collections {
 	if(!previousLast)
 	  newRoot.first = gnu;
       } while(!root.compare_exchange_weak(temp, newRoot, std::memory_order_release, std::memory_order_relaxed));
+      ASSERT_TRAP(previousLast != gnu, "Attempted to self-reference linked list!");
       if(previousLast)
 	previousLast->*NodePtr = gnu;
     };

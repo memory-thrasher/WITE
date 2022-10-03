@@ -42,7 +42,6 @@ namespace WITE::DB {
       mmapFlags |= MAP_PRIVATE | MAP_ANONYMOUS;
     }
     this->entityCount = entityCount;
-    free = std::make_unique<Collections::AtomicRollingQueue<DBEntity*>>(entityCount);
     size_t mmapsize = sizeof(DBRecord) * entityCount;
     // if(mmapsize > MAPTHRESH)
     //   mmapFlags |= MAP_HUGETLB;// | (PAGEPOW << MAP_HUGE_SHIFT);
@@ -66,6 +65,7 @@ namespace WITE::DB {
 		      " flags ", mmapFlags, " and errno ", e);
     }
     DBEntity* entities = reinterpret_cast<DBEntity*>(malloc(sizeof(DBEntity) * entityCount));
+    Util::ScopeLock lock(&free_mutex);
     for(size_t i = 0;i < entityCount;i++) {
       //TODO progress report callback for loading bar?
       DBEntity* dbe = new(&entities[i])DBEntity(this, i);
@@ -78,7 +78,7 @@ namespace WITE::DB {
 	  threads[tid].addToSlice(dbe, type->typeId);
 	}
       } else {
-	free->push(dbe);
+	free.push(dbe);
       }
     }
     this->metadata = entities;
@@ -180,8 +180,13 @@ namespace WITE::DB {
 
   DBEntity* Database::allocate(DBRecord::type_t type, size_t count, bool isHead) {
     DBThread* t = getLightestThread();//TODO something cleverer
-    DBEntity* ret = free->pop();
-    if(!ret) return NULL;
+    DBEntity* ret;
+    {
+      Util::ScopeLock lock(&free_mutex);
+      if(free.empty()) return NULL;
+      ret = free.front();
+      free.pop();
+    }
     if(started && ret->lastWrittenFrame == currentFrame)//the chosen entity was deallocated on this frame
       return NULL;
     //LOG("Allocated:  ", ret->getId(), " on frame ", currentFrame);
@@ -189,8 +194,12 @@ namespace WITE::DB {
     DBRecord::header_t header;
     readHeader(ret, &header);
     ASSERT_TRAP(!(header.flags >> DBRecordFlag::allocated), "Allocated entity found in free queue! ent: ", ret->getId(), ", frame: ", currentFrame, ", last log: ", (ret->log.peekLast() ? ret->log.peekLast()->frame : 0), ", last write: ", ret->lastWrittenFrame);
+#ifdef DEBUG_THREAD_SLICES
+    ret->lastAllocatedFrame = currentFrame;
+#endif
 #endif
     ASSERT_TRAP(std::less()(metadata-1, ret) && std::less()(ret, metadata + entityCount), "Illegal entity returned from free");
+    ASSERT_TRAP(ret->masterThread == ~0, "Duplicate entity allocation.");
     if(isHead) {
       t->addToSlice(ret, type);
     } else {
@@ -217,6 +226,9 @@ namespace WITE::DB {
     if((state->flags & DBRecordFlag::has_next) != 0) {
       deallocate(getEntity(state->nextGlobalId));
     }
+#ifdef DEBUG_THREAD_SLICES
+    libre->lastDeallocatedFrame = currentFrame;
+#endif
     auto type = &types[state->type];
     if(type->onSpinDown)
       type->onSpinDown(libre);
@@ -279,7 +291,8 @@ namespace WITE::DB {
 	 !(transaction.flagWriteValues >> DBRecordFlag::allocated)) {
 	//on deallocate
 	dbe->masterThread = ~0;
-	free->push(dbe);
+	Util::ScopeLock lock(&free_mutex);
+	free.push(dbe);
       }
       ret++;
     };

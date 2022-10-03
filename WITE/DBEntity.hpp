@@ -11,6 +11,8 @@ enttiy class contains metadata only, and is held internally by the db in ram to 
 #include "DBDelta.hpp"
 #include "LinkedList.hpp"
 
+#define DEBUG_THREAD_SLICES
+
 namespace WITE::DB {
 
   class Database;
@@ -18,6 +20,10 @@ namespace WITE::DB {
   class DBEntity {
   private:
     uint64_t lastWrittenFrame = 0;
+#ifdef DEBUG_THREAD_SLICES
+    uint64_t lastAllocatedFrame, lastDeallocatedFrame, lastSliceAddedFrame, lastSliceRemovedFrame;
+    size_t lastMasterThread;
+#endif
     size_t masterThread;
     Collections::LinkedList<DBDelta, &DBDelta::nextForEntity> log;
     size_t idx;//location of the corrosponding record in the main db file

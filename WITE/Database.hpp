@@ -42,7 +42,8 @@ namespace WITE::DB {
     DBThread* threads;
     std::map<int, size_t> threadsByTid;
     size_t entityCount;
-    std::unique_ptr<Collections::AtomicRollingQueue<DBEntity*>> free;
+    std::queue<DBEntity*> free;
+    Util::SyncLock free_mutex;
     typedefCB(deltaIsInPast_cb_t, bool, const DBDelta*)
     deltaIsInPast_cb_t deltaIsInPast_cb;
     DBEntity* metadata;//TODO make this expandable IF a backing file was provided?

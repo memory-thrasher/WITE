@@ -113,7 +113,7 @@ int main (int argc, char** argv) {
   delete db;
   size_t hits = hitCounters.reduce(WITE::Util::CallbackFactory<size_t, const size_t&, const size_t&>::make(&sum));
   std::cout << std::dec << "Time: " << timeR << " (" << (FRAME_COUNT/timeR) << " FPS)" << std::endl;
-  std::cout << std::dec << "Updates: " << hits << std::endl;
+  std::cout << std::dec << "Updates: " << hits << " (" << (hits/timeR) << " per sec)" << std::endl;
   std::cout << std::dec << "Allocated: " << allocated << std::endl;
   std::cout << std::dec << "Deallocated: " << deallocated << std::endl;
   std::cout << std::dec << "Spun up: " << spunUp << std::endl;

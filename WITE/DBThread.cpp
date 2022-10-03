@@ -96,6 +96,12 @@ namespace WITE::DB {
 	    Collections::uniq(slice_toBeRemoved, [](DBEntity* dbe) { return dbe->getType(); }, temp_uniqTypes);
 	    for(int i = 0;i < temp_uniqTypes.size();i++)
 	      typeIndex[temp_uniqTypes[i]].remove_if(up);
+#ifdef DEBUG_THREAD_SLICES
+	    for(DBEntity* ent : slice_toBeRemoved) {
+	      ent->lastSliceRemovedFrame = db->getFrame();
+	      ent->lastMasterThread = ent->masterThread;
+	    }
+#endif
 	    slice_toBeRemoved.clear();
 	  }
 	  if(slice_toBeAdded.size()) {
@@ -106,6 +112,9 @@ namespace WITE::DB {
 	    // allocationEvent.write_nextGlobalId//TODO head flag, any nextIds, put how many need to be allocated in type?
 	    allocationEvent.flagWriteMask = DBRecordFlag::all;
 	    for(auto i = slice_toBeAdded.begin();i != slice_toBeAdded.end();i++) {
+#ifdef DEBUG_THREAD_SLICES
+	      i->first->lastSliceAddedFrame = db->getFrame();
+#endif
 	      auto type = db->getType(i->second);
 	      (type->onUpdate ? slice_withUpdates : slice_withoutUpdates).push_back(i->first);
 	      typeIndex[type->typeId].append(i->first);

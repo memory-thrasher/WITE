@@ -19,21 +19,19 @@ automatic transfer of objects between thread slices
 #include <memory>
 
 #include "IteratorMultiplexer.hpp"
-#include "IteratorWrapper.hpp"
 #include "SyncLock.hpp"
-#include "DBDelta.hpp"
 #include "DBRecord.hpp"
-#include "AtomicRollingQueue.hpp"
 #include "DBThread.hpp"
 #include "entity_type.hpp"
 
 #ifndef DB_THREAD_COUNT
-#define DB_THREAD_COUNT 32
+#define DB_THREAD_COUNT 16
 #endif
 
 namespace WITE::DB {
 
   class DBEntity;
+  class DBDelta;
 
   class Database {
   private:

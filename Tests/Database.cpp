@@ -31,12 +31,12 @@ public:
     dbe->completeRead(&dis, data);
     dis.frameCounter++;
     //LOG("Updating: ", dbe->getId(), ", frame: ", dbf, ", new value: ", dis.frameCounter);
-    if(dis.frameCounter % 50 == 7) {
+    if(dis.frameCounter % 10 == 7) {
       if(!db->allocate(et))
 	skipped++;
 	// std::cerr << "Failed to spawn, out of db space" << std::endl;
     }
-    if(dis.frameCounter >= 150) {
+    if(dis.frameCounter >= 50) {
       dbe->destroy(data);
     }
     dbe->write(&dis);
@@ -98,7 +98,7 @@ int main (int argc, char** argv) {
   assert(db->allocate(timebomb_t::et));
   std::cout << "Starting db" << std::endl;
   //timer stuff
-  static const struct itimerspec MAX_TIME { { 0, 0 }, { 100, 0 } };
+  static const struct itimerspec MAX_TIME { { 0, 0 }, { 10000, 0 } };
   timer_t timer;
   struct sigevent noop;
   noop.sigev_notify = SIGEV_NONE;

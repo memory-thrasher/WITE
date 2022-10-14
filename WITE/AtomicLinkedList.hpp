@@ -1,3 +1,5 @@
+#include "SyncLock.hpp"
+
 #include <atomic>
 
 namespace WITE::Collections {
@@ -6,45 +8,39 @@ namespace WITE::Collections {
 
   template<class Node, AtomicLinkedListNodeMember<Node> Node::*NodePtr> class AtomicLinkedList {
   private:
-    typedef struct { Node* first, *last; } root_t;
-    std::atomic<root_t> root;
+    Node* first, *last;
+    Util::SyncLock mutex;
     AtomicLinkedList(AtomicLinkedList&) = delete;
   public:
     AtomicLinkedList() {};
     void push(Node* gnu) {
       gnu->*NodePtr = NULL;
+      Util::ScopeLock lock(&mutex);
       Node* previousLast;
-      root_t newRoot, temp = root.load(std::memory_order_acquire);
-      do {
-	newRoot = temp;
-	previousLast = newRoot.last;
-	newRoot.last = gnu;
-	if(!previousLast)
-	  newRoot.first = gnu;
-      } while(!root.compare_exchange_weak(temp, newRoot, std::memory_order_release, std::memory_order_relaxed));
-      ASSERT_TRAP(previousLast != gnu, "Attempted to self-reference linked list!");
-      if(previousLast)
+      previousLast = last;
+      last = gnu;
+      if(!previousLast)
+	first = gnu;
+      else
 	previousLast->*NodePtr = gnu;
+      ASSERT_TRAP(previousLast != gnu, "Attempted to self-reference linked list!");
     };
     Node* pop() {
-      Node* ret;
-      root_t newRoot, temp = root.load(std::memory_order_acquire);
-      do {
-	newRoot = temp;
-	ret = newRoot.first;
-	if(!ret) return NULL;
-	Node* next = ret->*NodePtr;
-	newRoot.first = next;
-	if(!next)
-	  newRoot.last = NULL;
-      } while(!root.compare_exchange_weak(temp, newRoot, std::memory_order_release, std::memory_order_relaxed));
+      Util::ScopeLock lock(&mutex);
+      Node* ret = first;
+      if(!ret) return NULL;
+      Node* next = ret->*NodePtr;
+      first = next;
+      if(!next)
+	last = NULL;
       return ret;
     };
     Node* peek() const {
-      return root.load(std::memory_order_consume).first;
+      return first;
     };
     const Node* const peekLast() const {
-      return root.load(std::memory_order_consume).last;
+      Util::ScopeLock lock(&mutex);
+      return last;
     };
     const Node* const peekLastDirty() const {
       return peekLast();

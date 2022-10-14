@@ -21,8 +21,12 @@ namespace WITE::DB {
   private:
     uint64_t lastWrittenFrame = 0;
 #ifdef DEBUG_THREAD_SLICES
-    uint64_t lastAllocatedFrame, lastDeallocatedFrame, lastSliceAddedFrame, lastSliceRemovedFrame;
+    uint64_t lastAllocatedFrame, lastDeallocatedFrame, lastSliceAddedFrame, lastSliceRemovedFrame,
+      lastAppliedTranFrame, lastAppliedDeallocationTranFrame, lastAppliedAllocationTranFrame;
     size_t lastMasterThread;
+    std::atomic_uint64_t operationIdx;
+    uint64_t lastAllocatedOpIdx, lastDeallocatedOpIdx, lastSliceAddedOpIdx, lastSliceRemovedOpIdx,
+      lastAppliedTranOpIdx, lastAppliedDeallocationTranOpIdx, lastAppliedAllocationTranOpIdx;
 #endif
     size_t masterThread;
     Collections::LinkedList<DBDelta, &DBDelta::nextForEntity> log;

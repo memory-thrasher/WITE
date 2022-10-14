@@ -1,7 +1,7 @@
 BUILDLIBS="WITE"
 BUILDTESTS="Tests"
 BUILDAPP=""
-LINKOPTS="-lrt -latomic"
+LINKOPTS="-lrt -latomic -lvulkan"
 BOTHOPTS="-pthread -DDEBUG -g"
 BASEDIR="$(cd "$(dirname "$0")"; pwd -L)"
 OUTDIR="${BASEDIR}/build" #TODO not just WITE but all subdirs

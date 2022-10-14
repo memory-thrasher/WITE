@@ -185,18 +185,19 @@ namespace WITE::DB {
       Util::ScopeLock lock(&free_mutex);
       if(free.empty()) return NULL;
       ret = free.front();
+      if(started && ret->lastWrittenFrame == currentFrame)//the chosen entity was deallocated on this frame
+	return NULL;
       free.pop();
     }
-    if(started && ret->lastWrittenFrame == currentFrame)//the chosen entity was deallocated on this frame
-      return NULL;
     //LOG("Allocated:  ", ret->getId(), " on frame ", currentFrame);
 #ifdef DEBUG
     DBRecord::header_t header;
     readHeader(ret, &header);
     ASSERT_TRAP(!(header.flags >> DBRecordFlag::allocated), "Allocated entity found in free queue! ent: ", ret->getId(), ", frame: ", currentFrame, ", last log: ", (ret->log.peekLast() ? ret->log.peekLast()->frame : 0), ", last write: ", ret->lastWrittenFrame);
+#endif
 #ifdef DEBUG_THREAD_SLICES
     ret->lastAllocatedFrame = currentFrame;
-#endif
+    ret->lastAllocatedOpIdx = ret->operationIdx++;
 #endif
     ASSERT_TRAP(std::less()(metadata-1, ret) && std::less()(ret, metadata + entityCount), "Illegal entity returned from free");
     ASSERT_TRAP(ret->masterThread == ~0, "Duplicate entity allocation.");
@@ -228,6 +229,7 @@ namespace WITE::DB {
     }
 #ifdef DEBUG_THREAD_SLICES
     libre->lastDeallocatedFrame = currentFrame;
+    libre->lastDeallocatedOpIdx = libre->operationIdx++;
 #endif
     auto type = &types[state->type];
     if(type->onSpinDown)
@@ -284,6 +286,8 @@ namespace WITE::DB {
       size_t id = transaction.targetEntityId;
       ASSERT_TRAP(transaction.frame != currentFrame, "Attempted to apply log on its origin frame!");
       DBEntity* dbe = &metadata[id];
+      dbe->lastAppliedTranFrame = currentFrame;
+      dbe->lastAppliedTranOpIdx = dbe->operationIdx++;
       transaction.applyTo(&data[id]);
       DBDelta* temp = dbe->log.pop();
       ASSERT_TRAP(*temp == transaction, "Logs applied out of order!");
@@ -291,8 +295,16 @@ namespace WITE::DB {
 	 !(transaction.flagWriteValues >> DBRecordFlag::allocated)) {
 	//on deallocate
 	dbe->masterThread = ~0;
+	dbe->lastAppliedDeallocationTranFrame = currentFrame;
+	dbe->lastAppliedDeallocationTranOpIdx = dbe->operationIdx++;
 	Util::ScopeLock lock(&free_mutex);
 	free.push(dbe);
+      }
+      if((transaction.flagWriteMask >> DBRecordFlag::allocated) &&
+	 (transaction.flagWriteValues >> DBRecordFlag::allocated)) {
+	//on allocate
+	dbe->lastAppliedAllocationTranFrame = currentFrame;
+	dbe->lastAppliedAllocationTranOpIdx = dbe->operationIdx++;
       }
       ret++;
     };

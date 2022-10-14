@@ -63,6 +63,8 @@
 #define CRASHRET(ret, ...) { CRASH(__VA_ARGS__); return ret; } //return will never happen but it satisfies the compiler
 #define CRASHRET_PREINIT(ret, ...) { ERROR(__VA_ARGS__); exit(EXIT_FAILURE); return ret; }
 
+#define VK_ASSERT(cmd, ...) { auto _r = (cmd); if(_r != vk::Result::eSuccess) CRASH(__VA_ARGS__, _r); }
+
 template<class T> void hexdump(T* src) {
   uint8_t* data = reinterpret_cast<uint8_t*>(src);
   for(size_t i = 0;i < sizeof(T);i++)

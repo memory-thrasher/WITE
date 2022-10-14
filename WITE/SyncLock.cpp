@@ -9,8 +9,8 @@ namespace WITE::Util {
 
   void SyncLock::WaitForLock(bool busy) {
     uint64_t seed;
-    seed = queueSeed.fetch_add(1, std::memory_order_acq_rel);//take a number
-    while (seed > queueCurrent.load(std::memory_order_consume))
+    seed = queueSeed.fetch_add(1);//take a number
+    while (seed > queueCurrent.load())
       if(!busy)
 	Platform::Thread::sleepShort();
     owningThread = Platform::Thread::getCurrentTid();
@@ -18,15 +18,15 @@ namespace WITE::Util {
 
   void SyncLock::ReleaseLock() {
     owningThread = ~0;
-    queueCurrent.fetch_add(1, std::memory_order_release);
+    queueCurrent.fetch_add(1);
   }
 
   void SyncLock::yield() {
     uint64_t newSeed;
-    newSeed = queueSeed.fetch_add(1, std::memory_order_acq_rel);
+    newSeed = queueSeed.fetch_add(1);
     owningThread = ~0;
-    queueCurrent.fetch_add(1, std::memory_order_release);
-    while (newSeed > queueCurrent.load(std::memory_order_consume)) Platform::Thread::sleepShort();
+    queueCurrent.fetch_add(1);
+    while (newSeed > queueCurrent.load()) Platform::Thread::sleepShort();
     owningThread = Platform::Thread::getCurrentTid();
   }
 

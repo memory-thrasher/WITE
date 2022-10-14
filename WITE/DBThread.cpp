@@ -4,7 +4,6 @@
 #include <signal.h>
 
 #include "DBThread.hpp"
-
 #include "Thread.hpp"
 #include "DEBUG.hpp"
 #include "Database.hpp"
@@ -99,6 +98,7 @@ namespace WITE::DB {
 #ifdef DEBUG_THREAD_SLICES
 	    for(DBEntity* ent : slice_toBeRemoved) {
 	      ent->lastSliceRemovedFrame = db->getFrame();
+	      ent->lastSliceRemovedOpIdx = ent->operationIdx++;
 	      ent->lastMasterThread = ent->masterThread;
 	    }
 #endif
@@ -114,6 +114,7 @@ namespace WITE::DB {
 	    for(auto i = slice_toBeAdded.begin();i != slice_toBeAdded.end();i++) {
 #ifdef DEBUG_THREAD_SLICES
 	      i->first->lastSliceAddedFrame = db->getFrame();
+	      i->first->lastSliceAddedOpIdx = i->first->operationIdx++;
 #endif
 	      auto type = db->getType(i->second);
 	      (type->onUpdate ? slice_withUpdates : slice_withoutUpdates).push_back(i->first);

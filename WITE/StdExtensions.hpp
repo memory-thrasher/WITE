@@ -68,4 +68,8 @@ namespace WITE {
     return std::move(ret);
   }
 
+  template<typename T> inline T* calloc(size_t cnt) {
+    return reinterpret_cast<T*>(std::malloc(sizeof(T) * cnt));
+  }
+
 }

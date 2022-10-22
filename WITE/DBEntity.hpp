@@ -11,7 +11,7 @@ enttiy class contains metadata only, and is held internally by the db in ram to 
 #include "DBDelta.hpp"
 #include "LinkedList.hpp"
 
-#define DEBUG_THREAD_SLICES
+//#define DEBUG_THREAD_SLICES
 
 namespace WITE::DB {
 

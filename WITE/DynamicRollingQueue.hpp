@@ -1,5 +1,9 @@
+#pragma once
+
 #include <queue>
 #include <deque>
+
+#include "IteratorWrapper.hpp"
 
 namespace WITE::Collections {
 
@@ -42,7 +46,8 @@ namespace WITE::Collections {
       allocated.pop();
       free.push(ret);
       return true;
-    }
+    };
+    auto iterAll() { return IteratorWrapper<typename decltype(data)::iterator>(data); };
   };
 
 }

@@ -286,8 +286,10 @@ namespace WITE::DB {
       size_t id = transaction.targetEntityId;
       ASSERT_TRAP(transaction.frame != currentFrame, "Attempted to apply log on its origin frame!");
       DBEntity* dbe = &metadata[id];
+#ifdef DEBUG_THREAD_SLICES
       dbe->lastAppliedTranFrame = currentFrame;
       dbe->lastAppliedTranOpIdx = dbe->operationIdx++;
+#endif
       transaction.applyTo(&data[id]);
       DBDelta* temp = dbe->log.pop();
       ASSERT_TRAP(*temp == transaction, "Logs applied out of order!");
@@ -295,16 +297,20 @@ namespace WITE::DB {
 	 !(transaction.flagWriteValues >> DBRecordFlag::allocated)) {
 	//on deallocate
 	dbe->masterThread = ~0;
+#ifdef DEBUG_THREAD_SLICES
 	dbe->lastAppliedDeallocationTranFrame = currentFrame;
 	dbe->lastAppliedDeallocationTranOpIdx = dbe->operationIdx++;
+#endif
 	Util::ScopeLock lock(&free_mutex);
 	free.push(dbe);
       }
       if((transaction.flagWriteMask >> DBRecordFlag::allocated) &&
 	 (transaction.flagWriteValues >> DBRecordFlag::allocated)) {
 	//on allocate
+#ifdef DEBUG_THREAD_SLICES
 	dbe->lastAppliedAllocationTranFrame = currentFrame;
 	dbe->lastAppliedAllocationTranOpIdx = dbe->operationIdx++;
+#endif
       }
       ret++;
     };

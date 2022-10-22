@@ -1,15 +1,14 @@
 /*
 new database:
 one slice per thread
-every thread can create objects in their own slice any time without locking
-number of threads can be changed at runtime but expect lag (user setting or similar, stop all threads, realloc and spawn new)
-slice is fixed maximum number of objects
 in-ram table of objects (made of DBEntity instances), always readable by all threads (no resizing!)
 objects needn't be aware of which thread they are on
-if writes on the same frame overlap, call the associated resolution callback
 
 maybe:
 automatic transfer of objects between thread slices
+every thread can create objects in their own slice any time without locking
+slice is fixed maximum number of objects
+number of threads can be changed at runtime but expect lag (user setting or similar, stop all threads, realloc and spawn new)
 
  */
 

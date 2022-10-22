@@ -17,7 +17,7 @@ std::atomic_uint64_t allocated, deallocated, spunUp, spunDown, skipped;
 
 WITE::Platform::ThreadResource<size_t> hitCounters;
 
-#define FRAME_COUNT 5000
+#define FRAME_COUNT 500
 
 class timebomb_t {
 private:
@@ -83,7 +83,7 @@ int main (int argc, char** argv) {
   if(argc < 2) {
     struct rlimit rlim;
     getrlimit(RLIMIT_CPU, &rlim);
-    rlim.rlim_max = WITE::Util::min<uint64_t, uint64_t>(200*DB_THREAD_COUNT, rlim.rlim_max);
+    rlim.rlim_max = WITE::Util::min<uint64_t, uint64_t>(3600, rlim.rlim_max);
     rlim.rlim_cur = rlim.rlim_max - 5;
     setrlimit(RLIMIT_CPU, &rlim);
     getrlimit(RLIMIT_CPU, &rlim);

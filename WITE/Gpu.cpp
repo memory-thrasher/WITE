@@ -1,8 +1,12 @@
 #include <vector>
 #include <map>
+#include <bit>
 
 #include "Gpu.hpp"
+#include "Queue.hpp"
 #include "Image.hpp"
+#include "BitmaskIterator.hpp"
+#include "Math.hpp"
 #include "DEBUG.hpp"
 
 #include "Database.hpp" //for DB_THREAD_COUNT
@@ -71,9 +75,14 @@ const std::map<const WITE::GPU::ImageBase::ImageFormatFamily, const std::vector<
 
 namespace WITE::GPU {
 
+  //statics
   std::atomic_bool Gpu::inited = false;
   vk::Instance Gpu::vkInstance;
+  size_t Gpu::gpuCount;
   std::unique_ptr<Gpu[]> Gpu::gpus;
+  uint64_t Gpu::logicalPhysicalDeviceMatrix[64];
+  std::unique_ptr<struct Gpu::LogicalGpu[]> Gpu::logicalDevices;
+  size_t Gpu::logicalDeviceCount;
 
   Gpu::Gpu(size_t idx, vk::PhysicalDevice pv) : idx(idx), pv(pv) {
     pv.getProperties2(&pvp);
@@ -182,6 +191,13 @@ namespace WITE::GPU {
     dci.pNext = reinterpret_cast<void*>(&pdf11);
     VK_ASSERT(pv.createDevice(&dci, ALLOCCB, &dev), "Failed to create device");
 
+    queues = std::unique_ptr<Queue[]>(calloc<Queue>(cnt));
+    for(size_t i = 0;i < cnt;i++)
+      new(&queues[i])Queue(this, dqcis[i]);
+    this->graphics = &queues[go];
+    this->transfer = &queues[to];
+    this->compute = &queues[co];
+
     vk::FormatProperties fp;
     for(auto pair : formatsByFamily)
       for(auto format : pair.second) {
@@ -190,7 +206,7 @@ namespace WITE::GPU {
       }
   };
 
-  void Gpu::init() {//static
+  void Gpu::init(size_t logicalDeviceCount, const float* priorities) {//static
     if(inited.exchange(true))
       return;
     vk::ApplicationInfo appI("WITE Engine", 0, "WITE Engine", 0, (1 << 22) | (3 << 12) | (216));//TODO accept app name
@@ -209,6 +225,78 @@ namespace WITE::GPU {
     gpus = std::unique_ptr<Gpu[]>(calloc<Gpu>(cnt));
     for(size_t i = 0;i < cnt;i++)
       new(&gpus[i])Gpu(i, pds[i]);
+    gpuCount = cnt;
+    memset(logicalPhysicalDeviceMatrix, 0, sizeof(logicalPhysicalDeviceMatrix));
+    if(gpuCount < 1) {
+      CRASH("No gpu found.");
+    } else if(gpuCount == 1) {
+      for(size_t i = 0;i < logicalDeviceCount;i++)
+	logicalPhysicalDeviceMatrix[i] = 1;
+    } else {
+      //TODO find gpu performance ability and vary capacity for priority
+      float pPerRealGpu = Util::mangle<Util::Mangle_Sum<float>, float>(priorities, logicalDeviceCount) / gpuCount,
+	rollingSum = 0;
+      for(size_t i = 0;i < logicalDeviceCount;i++) {
+	size_t min = Util::floor<size_t>(rollingSum/pPerRealGpu + std::numeric_limits<float>::lowest());
+	rollingSum += priorities[i];
+	size_t max = Util::floor<size_t>(rollingSum/pPerRealGpu - std::numeric_limits<float>::lowest());
+	ASSERT_TRAP(min <= max, "Bah");
+	for(size_t j = min;j <= max;j++)
+	  logicalPhysicalDeviceMatrix[i] |= 1 << j;
+      }
+    }
+    logicalDevices = std::make_unique<struct LogicalGpu[]>(logicalDeviceCount);
+    Gpu::logicalDeviceCount = logicalDeviceCount;
+    struct LogicalGpu blank;
+    for(size_t i = 0;i < logicalDeviceCount;i++) {
+      struct LogicalGpu& l = logicalDevices[i];
+      Collections::IteratorWrapper<Collections::BitmaskIterator>
+	gpuIt((Collections::BitmaskIterator(logicalPhysicalDeviceMatrix[i])), (Collections::BitmaskIterator()));
+      for(auto kvp : gpus[*gpuIt].formatProperties) {
+	auto fp = kvp.second;
+	gpuIt++;
+	for(size_t gpuNext : gpuIt) {
+	  auto limiter = gpus[gpuNext].formatProperties[kvp.first];
+	  fp.linearTilingFeatures &= limiter.linearTilingFeatures;
+	  fp.optimalTilingFeatures &= limiter.optimalTilingFeatures;
+	  fp.bufferFeatures &= limiter.bufferFeatures;
+	}
+	l.formatProperties[kvp.first] = fp;
+      }
+    }
   };
+
+  Gpu& Gpu::get(size_t i) {//static
+    return gpus[i];
+  }
+
+  uint8_t Gpu::gpuCountByLdm(uint64_t ldm) {//static
+    return std::popcount(gpuMaskByLdm(ldm));
+  }
+
+  uint64_t Gpu::gpuMaskByLdm(uint64_t ldm) {//static
+    uint64_t ret = 0;
+    for(size_t i = 0;i < 64;i++)
+      if(ldm & (1 << i))
+	ret |= logicalPhysicalDeviceMatrix[i];
+    return ret;
+  }
+
+  vk::Format Gpu::getBestImageFormat(uint8_t comp, uint8_t compSize, uint64_t usage, uint64_t ldm) {
+    //TODO better definition of "best", for now just use first that checks all the boxes
+    vk::FormatFeatureFlags features = usageFeatures(usage);
+    for(vk::Format format : formatsByFamily.at({comp, compSize})) {
+      bool supported = true;
+      for(size_t i : Collections::IteratorWrapper(Collections::BitmaskIterator(ldm), {}))
+	if((logicalDevices[i].formatProperties[format].optimalTilingFeatures & features) != features) {
+	  supported = false;
+	  break;
+	}
+      if(supported)
+	return format;
+    }
+    WARN("Suitable format not found");
+    return vk::Format::eUndefined;
+  }
 
 }

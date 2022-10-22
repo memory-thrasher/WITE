@@ -92,6 +92,13 @@ namespace WITE::Util {
   typedef Mangle_MinVec<glm::vec3> Mangle_MinVec3;
   typedef Mangle_MinVec<glm::vec2> Mangle_MinVec2;
 
+  template<class T> class Mangle_Sum {
+  public:
+    inline T operator()(const T* a, const T* b) const {
+      return *a + *b;
+    };
+  };
+
   template<class Mangler, class T, class U> inline T mangle(const T* a, const U* b) {
     return Mangler()(a, b);
   };
@@ -113,6 +120,10 @@ namespace WITE::Util {
     T ret;
     mangle<Mangler, T>(in, count, &ret);
     return ret;
+  };
+
+  template<class R> R floor(double d) {
+    return static_cast<R>(d);
   };
 
 };

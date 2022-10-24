@@ -1,7 +1,9 @@
-#include <vector>
 #include <algorithm>
 
-namespace WITE::Gpu {
+#include "StructuralConstList.hpp"
+#include "StdExtensions.hpp"
+
+namespace WITE::GPU {
 
   // enum class ShaderResourceType { eBuffer, eImage };
   enum class ShaderStage { eDraw, eAssembler, eVertex, eTessellation, eGeometry, eFragmentDepth, eFragment, eBlending,
@@ -18,16 +20,22 @@ namespace WITE::Gpu {
 				  const ShaderResourceAccessType access = ShaderResourceAccessType::eUndefined) :
       write(write), stage(stage), access(access) {};
     constexpr ~ShaderResourceUsage() = default;
+    constexpr bool operator==(const ShaderResourceUsage& a) {
+      return a.write == this->write && a.stage == this->stage && a.access == this->access;
+    };
   };
 
   class ShaderResource {
+  public:
     // const ShaderResourceType type;
-    const std::vector<ShaderResourceUsage> usage;
+    const Collections::StructuralConstList<ShaderResourceUsage> usage;
     ShaderResource() = delete;
+    constexpr ShaderResource(const ShaderResource&) = default;
     constexpr ShaderResource(// const ShaderResourceType type, 
 			     const std::initializer_list<ShaderResourceUsage> usage) :
       // type(type), 
       usage(usage) {};
+    template<class Resource> constexpr bool accepts() { return false; };
   };
 
   struct ShaderData {
@@ -64,11 +72,11 @@ namespace WITE::Gpu {
       StorageImageToFragment = { true, ShaderStage::eFragment, ShaderResourceAccessType::eSampled },
       AttachmentToFragment = { false, ShaderStage::eFragment, ShaderResourceAccessType::eColorAtt },
     //DepthFragment
-      DepthAttachmentRO = { false, ShaderStage::eFragmentDepth, Accesstype::eDepthAtt },
-      DepthAttachment = { true, ShaderStage::eFragmentDepth, Accesstype::eDepthAtt },
+      DepthAttachmentRO = { false, ShaderStage::eFragmentDepth, ShaderResourceAccessType::eDepthAtt },
+      DepthAttachment = { true, ShaderStage::eFragmentDepth, ShaderResourceAccessType::eDepthAtt },
     //Blending
-      ColorAttachmentRO = { false, ShaderStage::eBlending, Accesstype::eColorAtt },
-      ColorAttachment = { true, ShaderStage::eBlending, Accesstype::eColorAtt },
+      ColorAttachmentRO = { false, ShaderStage::eBlending, ShaderResourceAccessType::eColorAtt },
+      ColorAttachment = { true, ShaderStage::eBlending, ShaderResourceAccessType::eColorAtt },
     //Task
       UniformToTask = { false, ShaderStage::eTask, ShaderResourceAccessType::eUniform },
       UniformTexelToTask = { false, ShaderStage::eTask, ShaderResourceAccessType::eUniformTexel },
@@ -91,15 +99,59 @@ namespace WITE::Gpu {
       StorageUniformTexelToCompute = { true, ShaderStage::eCompute, ShaderResourceAccessType::eUniformTexel },
       StorageImageToCompute = { true, ShaderStage::eCompute, ShaderResourceAccessType::eSampled };
 
-    const std::vector<ShaderResource> resources;
+    const Collections::StructuralConstList<ShaderResource> resources;
+    constexpr ~ShaderData() = default;
     constexpr ShaderData(const std::initializer_list<ShaderResource> resources) : resources(resources) {};
+    const ShaderResource& operator[](const size_t i) const {
+      return resources[i];
+    };
 
-    constexpr bool contains(const ShaderResourceUsage u) {
+    constexpr bool contains(const ShaderResourceUsage u) const {
       return std::any_of(resources.cbegin(), resources.cend(),
 			 [u](ShaderResource r) {
 			   return std::any_of(r.usage.cbegin(), r.usage.cend(),
 					      [u](ShaderResourceUsage cu) {
 						return cu == u;
+					      });
+			 });
+    };
+
+    constexpr bool contains(const ShaderStage stage) const {
+      return std::any_of(resources.cbegin(), resources.cend(),
+			 [stage](ShaderResource r) {
+			   return std::any_of(r.usage.cbegin(), r.usage.cend(),
+					      [stage](ShaderResourceUsage cu) {
+						return cu.stage == stage;
+					      });
+			 });
+    };
+
+    constexpr bool contains(const ShaderResourceAccessType access) const {
+      return std::any_of(resources.cbegin(), resources.cend(),
+			 [access](ShaderResource r) {
+			   return std::any_of(r.usage.cbegin(), r.usage.cend(),
+					      [access](ShaderResourceUsage cu) {
+						return cu.access == access;
+					      });
+			 });
+    };
+
+    constexpr bool containsWritable() const {
+      return std::any_of(resources.cbegin(), resources.cend(),
+			 [](ShaderResource r) {
+			   return std::any_of(r.usage.cbegin(), r.usage.cend(),
+					      [](ShaderResourceUsage cu) {
+						return cu.write;
+					      });
+			 });
+    };
+
+    constexpr bool containsOnly(const std::initializer_list<ShaderStage> stages) const {
+      return std::none_of(resources.cbegin(), resources.cend(),
+			 [stages](ShaderResource r) {
+			   return std::any_of(r.usage.cbegin(), r.usage.cend(),
+					      [stages](ShaderResourceUsage cu) {
+						return !Collections::contains(stages, cu.stage);
 					      });
 			 });
     };

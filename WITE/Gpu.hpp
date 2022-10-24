@@ -7,8 +7,12 @@
 #include "Image.hpp"
 #include "Queue.hpp"
 #include "Vulkan.hpp"
+#include "StructuralConstList.hpp"
 
 namespace WITE::GPU {
+
+  typedef uint64_t layer_t;
+  typedef Collections::StructuralConstList<layer_t> layerCollection_t;
 
   class Gpu {
   private:

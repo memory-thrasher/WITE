@@ -10,7 +10,7 @@ namespace WITE::Collections {
     t.erase(std::remove_if(t.begin(), t.end(), p), t.end());
   }
 
-  template<typename T, class C> inline bool contains(C& t, T e) {
+  template<typename T, class C> inline constexpr bool contains(C& t, T e) {
     return std::find(t.begin(), t.end(), e) != t.end();
   }
 
@@ -68,8 +68,10 @@ namespace WITE {
     return std::move(ret);
   }
 
-  template<typename T> inline T* calloc(size_t cnt) {
-    return reinterpret_cast<T*>(std::malloc(sizeof(T) * cnt));
+  template<typename T> [[nodiscard]] inline constexpr T* calloc(size_t cnt) {
+    std::allocator<T> a;
+    return std::allocator_traits<std::allocator<T>>::allocate(a, cnt);
+    //return reinterpret_cast<T*>(std::malloc(sizeof(T) * cnt));
   }
 
 }

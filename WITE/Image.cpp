@@ -3,12 +3,17 @@
 
 namespace WITE::GPU {
 
-  ImageBase::ImageBase(uint64_t usage, uint8_t dim, uint8_t comp, uint8_t comp_size, uint32_t al, uint32_t mip, uint8_t sam, uint64_t ldm)
-    : usage(usage), ldm(ldm), al(al), mip(mip), dim(dim), comp(comp), comp_size(comp_size), sam(sam),
-      format(Gpu::getBestImageFormat(comp, comp_size, usage, ldm))
-  {}
+  ImageBase::ImageBase(const ImageSlotData isd)
+    : slotData(isd),
+      format(Gpu::getBestImageFormat(isd.components, isd.componentsSize, isd.usage, isd.logicalDeviceMask))
+  {};
 
   void ImageBase::getCreateInfo(Gpu& gpu, void* out, size_t width, size_t height, size_t z) {
+    const auto usage = slotData.usage;
+    const auto dim = slotData.dimensions;
+    const auto sam = slotData.samples;
+    const auto al = slotData.arrayLayers;
+    const auto mip = slotData.mipLevels;
 #define has(x, r) ((usage & USAGE_ ##x) == USAGE_ ##x ? vk::ImageCreateFlagBits::e ##r : (vk::ImageCreateFlagBits)0)
 #define hasc(c, r) ((c) ? vk::ImageCreateFlagBits::e ##r : (vk::ImageCreateFlagBits)0)
     new(out)vk::ImageCreateInfo(has(IS_CUBE, CubeCompatible) |
@@ -29,6 +34,7 @@ namespace WITE::GPU {
   };
 
   vk::ImageUsageFlags ImageBase::getVkUsageFlags() {
+    const auto usage = slotData.usage;
 #define hasu(x, r) ((usage & USAGE_ ##x) == USAGE_ ##x ? vk::ImageUsageFlagBits::e ##r : (vk::ImageUsageFlagBits)0)
     return hasu(DS_SAMPLED, Sampled) |
       hasu(DS_WRITE, Storage) |

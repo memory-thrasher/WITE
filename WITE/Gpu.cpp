@@ -11,7 +11,7 @@
 
 #include "Database.hpp" //for DB_THREAD_COUNT
 
-const std::map<const WITE::GPU::ImageBase::ImageFormatFamily, const std::vector<vk::Format>> formatsByFamily =
+const std::map<const WITE::GPU::ImageFormatFamily, const std::vector<vk::Format>> formatsByFamily =
   {
    { { 2, 4 }, { vk::Format::eR4G4UnormPack8 } },
    { { 4, 4 }, { vk::Format::eR4G4B4A4UnormPack16 } },

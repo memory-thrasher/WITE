@@ -74,4 +74,14 @@ namespace WITE {
     //return reinterpret_cast<T*>(std::malloc(sizeof(T) * cnt));
   }
 
+  //I and O are either iterators or pointers
+  template<class I, class O, class Alloc> constexpr O const_copy(I start, I end, O out, Alloc& alloc) {
+    // if(start == end) return out;
+    // *out = *start;
+    // const_copy(start + 1, end, out + 1);
+    while(start != end)
+      std::allocator_traits<Alloc>::construct(alloc, &*out, *start++);//constructor or assignment call
+    return out;
+  }
+
 }

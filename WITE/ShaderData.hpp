@@ -2,6 +2,7 @@
 
 #include "StructuralConstList.hpp"
 #include "StdExtensions.hpp"
+#include "Image.hpp"
 
 namespace WITE::GPU {
 
@@ -35,13 +36,41 @@ namespace WITE::GPU {
 			     const std::initializer_list<ShaderResourceUsage> usage) :
       // type(type), 
       usage(usage) {};
-    template<class Resource> constexpr bool accepts() { return false; };
+    template<class Resource> struct acceptsTest { constexpr bool operator()(const ShaderResource*) { return false; }; };
+    template<ImageSlotData ISD> struct acceptsTest<Image<ISD>> {
+      constexpr bool operator()(const ShaderResource* s) {
+	return s->usage.every([](const ShaderResourceUsage u) {
+	  switch(u.access) {//TODO
+	  case ShaderResourceAccessType::eUndefined:
+	    switch(u.stage) {
+	    case ShaderStage::eDraw: if(!(ISD.usage & ImageBase::USAGE_INDIRECT)) return false; break;
+	    case ShaderStage::eAssembler: break;
+	    default: return false; break;
+	    }
+	    break;
+	  case ShaderResourceAccessType::eVertex: if(!(ISD.usage & ImageBase::USAGE_VERTEX)) return false; break;
+	  case ShaderResourceAccessType::eUniform:
+	  case ShaderResourceAccessType::eUniformTexel:
+	  case ShaderResourceAccessType::eSampled:
+	    if(!u.write && !(ISD.usage & (ImageBase::USAGE_DS_READ | ImageBase::USAGE_DS_SAMPLED |
+					  ImageBase::USAGE_ATT_INPUT))) return false;
+	    if(u.write && !(ISD.usage & ImageBase::USAGE_DS_WRITE)) return false;
+	    break;
+	  case ShaderResourceAccessType::eDepthAtt: if(!(ISD.usage & ImageBase::USAGE_ATT_DEPTH)) return false; break;
+	  case ShaderResourceAccessType::eColorAtt: if(!(ISD.usage & ImageBase::USAGE_ATT_OUTPUT)) return false; break;
+	  }
+	  return true;
+	});
+      };
+    };
+    template<class Resource> constexpr bool accepts() { return acceptsTest<Resource>::accepts(this); };
   };
 
   struct ShaderData {
   public:
     static constexpr ShaderResourceUsage Indirect = { false, ShaderStage::eDraw },
       Index = { false, ShaderStage::eAssembler },
+      Vertex = { false, ShaderStage::eAssembler, ShaderResourceAccessType::eVertex },
     //Vertex
       UniformToVertex = { false, ShaderStage::eVertex, ShaderResourceAccessType::eUniform },
       UniformTexelToVertex = { false, ShaderStage::eVertex, ShaderResourceAccessType::eUniformTexel },

@@ -41,7 +41,8 @@ namespace WITE::GPU {
       if(u & ImageBase::USAGE_HOST_READ) ret |= vk::FormatFeatureFlagBits::eTransferSrc;
       if(u & ImageBase::USAGE_HOST_WRITE) ret |= vk::FormatFeatureFlagBits::eTransferDst;
       return ret;
-    }
+    };
+    static Gpu* getGpuFor(uint64_t ldm);
 
     size_t idx;
     std::map<vk::Format, vk::FormatProperties> formatProperties;
@@ -55,18 +56,22 @@ namespace WITE::GPU {
     vk::Device dev;
     std::unique_ptr<class Queue[]> queues;
     Queue *graphics, *transfer, *compute;
+    vk::PipelineCache pipelineCache;
 
     Gpu(size_t idx, vk::PhysicalDevice);
 
   public:
     static void init(size_t logicalDeviceCount, const float* priorities);//TODO capabilities?
     static Gpu& get(size_t);
+    static inline size_t getGpuCount() { return gpuCount; };
     static uint8_t gpuCountByLdm(uint64_t ldm);
     static inline bool ldmHasMultiplePhysical(uint64_t ldm) { return gpuCountByLdm(ldm) > 1; };
     static vk::Format getBestImageFormat(uint8_t comp, uint8_t compSize, uint64_t usage, uint64_t ldm = 1);
 
     size_t getIndex() { return idx; };
     vk::Device getVkDevice() { return dev; };//vkHandle is an opaque handle
+    Queue* getQueue(QueueType qt);
+    vk::PipelineCache getPipelineCache() { return pipelineCache; };
   };
 
 }

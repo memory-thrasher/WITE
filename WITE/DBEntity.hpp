@@ -40,6 +40,7 @@ namespace WITE::DB {
     DBEntity() = delete;
     DBEntity(Database* db, size_t idx) : masterThread(~0), idx(idx), db(db), nextOfTypeInThread(NULL) {}
   public:
+    void* transientData;//optional, if used by type, type logic is responisble for allocating and freeing
     auto inline getId() { return idx; };
     void read(DBRecord* dst);
     void read(uint8_t* dst, size_t maxSize, size_t offset = 0);//maxSize because the record might be bigger than the stored data

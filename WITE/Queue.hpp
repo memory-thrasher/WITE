@@ -11,6 +11,9 @@
 namespace WITE::GPU {
 
   class Gpu;
+  class ElasticCommandBuffer;
+
+  enum class QueueType { eGraphics, eTransfer, eCompute };
 
   class Queue {
   private:
@@ -24,6 +27,7 @@ namespace WITE::GPU {
       uint32_t idx;
       struct Cmd {
 	vk::CommandBuffer cmd;
+	uint64_t ldm;
 	//TODO more stuff like fences and semaphores
 	//TODO default constructor
       };
@@ -32,9 +36,12 @@ namespace WITE::GPU {
     Platform::ThreadResource<PerThreadResources> pools;//TODO allocator/deallocator
     PerThreadResources* makePerThreadResources();
     void freePerThreadResources(PerThreadResources*);
+    [[nodiscard]] vk::CommandBuffer getNext();
+    friend class ElasticCommandBuffer;
   public:
     Queue(Gpu*, const struct vk::DeviceQueueCreateInfo&);
-    vk::CommandBuffer getAvailable();
+    ElasticCommandBuffer createBatch(uint64_t ldm);
+    Gpu* getGpu() { return gpu; };
   };
 
 }

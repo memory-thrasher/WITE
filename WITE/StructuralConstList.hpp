@@ -37,6 +37,12 @@ namespace WITE::Collections {
     constexpr inline bool contains(const T& t) const { return Collections::contains(*this, t); };
     template<class UP> constexpr inline bool contains(const UP up) const { return std::any_of(begin(), end(), up); };
     template<class UP> constexpr inline bool every(const UP up) const { return std::all_of(begin(), end(), up); };
+    template<class V> constexpr inline bool intersectsMap(const std::map<T, V>& o) const {
+      return std::any_of(begin(), end(), [o](T t) {
+	std::pair<T, V> temp(t, {});
+	return std::binary_search(o.begin(), o.end(), temp, o.value_comp());
+      });
+    };
   };
 
 };

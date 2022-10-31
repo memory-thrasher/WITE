@@ -204,6 +204,10 @@ namespace WITE::GPU {
 	pv.getFormatProperties(format, &fp);
 	formatProperties[format] = fp;//explicit assignment operator
       }
+
+    //TODO look into save/load the cache (create info takes pointer to loaded data))
+    vk::pipelineCacheCreateInfo pipecacheci((vk::PipelineCacheCreateFlags)0, 0, NULL);
+    dev.createPipelineCache(pipecacheci, ALLOCCB, &pipelineCache);
   };
 
   void Gpu::init(size_t logicalDeviceCount, const float* priorities) {//static

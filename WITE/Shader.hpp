@@ -2,77 +2,77 @@
 #include <map>
 
 #include "ShaderData.hpp"
-#include "Gpu.hpp"
 #include "StructuralConstList.hpp"
+#include "SyncLock.hpp"
+#include "FrameBufferedCollection.hpp"
+#include "Vulkan.hpp"
 
 namespace WITE::GPU {
 
   class Renderer;
   class RenderTarget;
   class GpuResource;
+  class ElasticCommandBuffer;
 
   class ShaderBase {
   private:
-    static std::vector<ShaderBase*> allShaders;
-    std::map<layer_t, std::vector<Renderer*>> renderersByLayer;//TODO synchronize this somehow
+    static std::vector<ShaderBase*> allShaders;//all shaders should be created before anything gets rendered, so no syncing
+    std::map<layer_t, Util::FrameBufferedCollection<Renderer*>> renderersByLayer;
+    Util::PerGpu<vk::Pipeline> pipeline;
+    const QueueType queueType;
   protected:
-    ShaderBase() = default;
+    ShaderBase(QueueType qt) : queueType(qt);
+    ~ShaderBase();
     ShaderBase(ShaderBase&) = delete;
     void Register(Renderer*);
     void Unregister(Renderer*);
+    void DestroyPipe(vk::Pipeline, size_t idx);
+    virtual vk::Pipeline CreatePipe(size_t idx) = 0;
+    virtual void RenderImpl(Renderer* r, ElasticCommandBuffer& cmd) = 0;
+    virtual void BindImpl(RenderTarget&, ElasticCommandBuffer& cmd) = 0;
   public:
-    void RenderAllTo(RenderTarget&, layerCollection_t);
-    void RenderTo(RenderTarget&, layerCollection_t);
+    static void Prewarm();//TODO call from Gpu::init after everything is created to create all on-demand objects
+    static void RenderAllTo(RenderTarget&, const layerCollection_t&, std::initializer_list<Renderer*> except = {});
+    void RenderTo(RenderTarget&, const layerCollection_t&, ElasticCommandBuffer& cmd, std::initializer_list<Renderer*> except);
   };
 
-  template<ShaderData D> class Shader : ShaderBase {
-    static_assert(D.containsWritable());
-    std::vector<GpuResource*> resources;//TODO make GpuResource, base class for image, buffer and n-buffer
-    template<class R1> void AddResource(size_t idx, R1 resource) {
+  template<ShaderData D> class Shader : public ShaderBase {
+  public:
+    template<size_t idx, class R1> inline void CheckResource(R1) {
       static_assert(D[idx].accepts<R1>());
-      resources.push_back(resource);
     };
-    template<class R1, class R2, class... R> void AddResource(size_t idx, R1 r1, R2 r2, R... resources) {
-      AddResource(r1);
-      AddResource(r2, std::forward<R...>(resources...));
+    template<size_t idx> inline void CheckResource<std::nullptr_t>(std::nullptr_t) {};
+    template<size_t idx, class R1, class R2, class... R> inline void CheckResource(R1 r1, R2 r2, R... resources) {
+      CheckResource<idx>(r1);
+      CheckResource<idx + 1>(r2, std::forward<R...>(resources...));
+    };
+    template<class R1, class... R> inline void CheckResource(R1 r1, R... resources) {
+      CheckResource<0>(std::forward<R...>(resources...));
+    };
+  private:
+    static_assert(D.containsWritable());
+    std::vector<GpuResource*> globalResources;//for anything all shader instances share
+    template<size_t idx, class R1> inline void SetResource(R1 resource) {
+      CheckResource<idx>(resource);
+      globalResources.push_back(resource);
+    };
+    template<size_t idx, class R1, class R2, class... R> inline void SetResource(R1 r1, R2 r2, R... resources) {
+      SetResource<idx>(r1);
+      SetResource<idx + 1>(r2, std::forward<R...>(resources...));
     };
   public:
     const ShaderData dataLayout = D;
+    template<class... R> void SetGlobalResources(R... resources) {
+      globalResources.clear();
+      SetResource<0>(std::forward<R...>(resources...));
+    };
     template<class... R> void Register(Renderer* r, R... resources) {//all shaders must have 1 resource (if not what's the point)
-      AddResource(0, std::forward<R...>(resources...));
+      CheckResource<0>(std::forward<R...>(resources...));
       Register(r);
     };
   };
 
-  template<ShaderData D> class VertexShader : Shader<D> {
-    static_assert(D.contains(ShaderData::ColorAttachment));
-    static_assert(D.containsOnly({
-	  ShaderStage::eDraw,
-	  ShaderStage::eAssembler,
-	  ShaderStage::eVertex,
-	  ShaderStage::eTessellation,
-	  ShaderStage::eGeometry,
-	  ShaderStage::eFragmentDepth,
-	  ShaderStage::eFragment,
-	  ShaderStage::eBlending
-	}));
-    //TODO public constructor that asks for modules for every stage
-  };
-
-  template<ShaderData D> class MeshShader : Shader<D> {
-    static_assert(D.containsOnly({
-	  ShaderStage::eTask,
-	  ShaderStage::eMesh,
-	  ShaderStage::eFragmentDepth,
-	  ShaderStage::eFragment,
-	  ShaderStage::eBlending
-	}));
-    //TODO public constructor that asks for modules for every stage
-  };
-
-  template<ShaderData D> class ComputeShader : Shader<D> {
-    static_assert(D.containsOnly({ ShaderStage::eCompute }));
-    //TODO public constructor that asks for modules for every stage
-  };
-
 }
+
+#include "ShaderImpl.hpp"
+

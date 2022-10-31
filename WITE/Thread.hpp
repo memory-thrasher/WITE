@@ -71,6 +71,11 @@ namespace WITE::Platform {
 	  ret = cb(ret, *data[i]);
       return ret;
     }
+    void each(Util::CallbackPtr<void, T&> cb) {
+      for(size_t i = 0;i < MAX_THREADS;i++)
+	if(data[i])
+	  cb(*data[i]);
+    }
   private:
     Initer typeInit;
     Destroyer typeDestroy;

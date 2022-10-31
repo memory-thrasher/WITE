@@ -86,7 +86,7 @@ namespace WITE::DB {
 	  break;
 	//shifts in slices should not count against this threads work units because they are unrelated to slice size
 	if(slice_toBeAdded.size() + slice_toBeRemoved.size()) {
-	  Util::ScopeLock lock(&sliceAlterationPoolMutex);
+	  Util::ScopeLock lock(&sliceAlterationPoolMutex);//TODO maybe this should be a FrameBufferedCollection
 	  if(slice_toBeRemoved.size()) {
 	    auto up = [this](auto e){ return Collections::contains(slice_toBeRemoved, e); };
 	    Collections::remove_if(slice_withUpdates, up);

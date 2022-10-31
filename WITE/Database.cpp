@@ -11,6 +11,7 @@
 #include "DBThread.hpp"
 #include "DEBUG.hpp"
 #include "DBRecordFlag.hpp"
+#include "FrameCounter.hpp"
 
 #define PAGEPOW 23
 #define MAPTHRESH (2 << PAGEPOW)
@@ -152,6 +153,7 @@ namespace WITE::DB {
 	break;
       }
       currentFrame++;
+      Util::FrameCounter::advanceFrame();
       signalThreads(DBThread::state_maintained, DBThread::state_updating, DBThread::state_updated);
     }
     for(auto& type : types)

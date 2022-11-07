@@ -8,11 +8,9 @@
 #include "Queue.hpp"
 #include "Vulkan.hpp"
 #include "StructuralConstList.hpp"
+#include "types.hpp"
 
 namespace WITE::GPU {
-
-  typedef uint64_t layer_t;
-  typedef Collections::StructuralConstList<layer_t> layerCollection_t;
 
   class Gpu {
   private:
@@ -42,7 +40,6 @@ namespace WITE::GPU {
       if(u & ImageBase::USAGE_HOST_WRITE) ret |= vk::FormatFeatureFlagBits::eTransferDst;
       return ret;
     };
-    static Gpu* getGpuFor(uint64_t ldm);
 
     size_t idx;
     std::map<vk::Format, vk::FormatProperties> formatProperties;
@@ -65,6 +62,7 @@ namespace WITE::GPU {
     static Gpu& get(size_t);
     static inline size_t getGpuCount() { return gpuCount; };
     static uint8_t gpuCountByLdm(uint64_t ldm);
+    static Gpu* getGpuFor(uint64_t ldm);
     static inline bool ldmHasMultiplePhysical(uint64_t ldm) { return gpuCountByLdm(ldm) > 1; };
     static vk::Format getBestImageFormat(uint8_t comp, uint8_t compSize, uint64_t usage, uint64_t ldm = 1);
 

@@ -13,8 +13,6 @@ namespace WITE::GPU {
   class Gpu;
   class ElasticCommandBuffer;
 
-  enum class QueueType { eGraphics, eTransfer, eCompute };
-
   class Queue {
   private:
     class Gpu* gpu;
@@ -38,6 +36,7 @@ namespace WITE::GPU {
     void freePerThreadResources(PerThreadResources*);
     [[nodiscard]] vk::CommandBuffer getNext();
     friend class ElasticCommandBuffer;
+    void submit(ElasticCommandBuffer* b);
   public:
     Queue(Gpu*, const struct vk::DeviceQueueCreateInfo&);
     ElasticCommandBuffer createBatch(uint64_t ldm);

@@ -187,4 +187,116 @@ namespace WITE::GPU {
 
   };
 
+  enum class PrimitiveNumberModel { eUnsigned, eTwosCompliment, eFloat, eFixed, eUnsignedFixed };
+
+  template<PrimitiveNumberModel M, size_t S> struct PrimitiveNumber {};
+  template<> struct PrimitiveNumber<PrimitiveNumberModel::eUnsigned, 1> { typedef uint8_t type; };
+  template<> struct PrimitiveNumber<PrimitiveNumberModel::eUnsigned, 2> { typedef uint16_t type; };
+  template<> struct PrimitiveNumber<PrimitiveNumberModel::eUnsigned, 4> { typedef uint32_t type; };
+  template<> struct PrimitiveNumber<PrimitiveNumberModel::eUnsigned, 8> { typedef uint64_t type; };
+  template<> struct PrimitiveNumber<PrimitiveNumberModel::eTwosCompliment, 1> { typedef int8_t type; };
+  template<> struct PrimitiveNumber<PrimitiveNumberModel::eTwosCompliment, 2> { typedef int16_t type; };
+  template<> struct PrimitiveNumber<PrimitiveNumberModel::eTwosCompliment, 4> { typedef int32_t type; };
+  template<> struct PrimitiveNumber<PrimitiveNumberModel::eTwosCompliment, 8> { typedef int64_t type; };
+  template<> struct PrimitiveNumber<PrimitiveNumberModel::eFloat, 4> { typedef float type; };
+  template<> struct PrimitiveNumber<PrimitiveNumberModel::eFloat, 8> { typedef double type; };
+  //TODO fill in some of these gaps, especially the fixed (normalized)
+  template<PrimitiveNumberModel M, size_t S> using PrimitiveNumber_t = PrimitiveNumber<M, S>::type;
+
+  struct VertexAspectSpecifier {
+    size_t count;
+    PrimitiveNumberModel model;
+    size_t size;
+    constexpr VertexAspectSpecifier(size_t c, PrimitiveNumberModel m, size_t s) : count(c), model(m), size(s) {};
+    vk::Format getFormat() const;
+    friend constexpr bool operator<(const VertexAspectSpecifier& l, const VertexAspectSpecifier& r) {
+      return l.count < r.count || (l.count == r.count && (l.size < r.size || (l.size == r.size && l.model < r.model)));
+    };
+  };
+
+  const std::map<VertexAspectSpecifier, vk::Format> formatsBySizeTypeQty {
+      { { 1, PrimitiveNumberModel::eUnsigned, 1 }, vk::Format::eR8Uint },
+      { { 2, PrimitiveNumberModel::eUnsigned, 1 }, vk::Format::eR8G8Uint },
+      { { 3, PrimitiveNumberModel::eUnsigned, 1 }, vk::Format::eR8G8B8Uint },
+      { { 4, PrimitiveNumberModel::eUnsigned, 1 }, vk::Format::eR8G8B8A8Uint },
+      { { 1, PrimitiveNumberModel::eUnsigned, 2 }, vk::Format::eR16Uint },
+      { { 2, PrimitiveNumberModel::eUnsigned, 2 }, vk::Format::eR16G16Uint },
+      { { 3, PrimitiveNumberModel::eUnsigned, 2 }, vk::Format::eR16G16B16Uint },
+      { { 4, PrimitiveNumberModel::eUnsigned, 2 }, vk::Format::eR16G16B16A16Uint },
+      { { 1, PrimitiveNumberModel::eUnsigned, 4 }, vk::Format::eR32Uint },
+      { { 2, PrimitiveNumberModel::eUnsigned, 4 }, vk::Format::eR32G32Uint },
+      { { 3, PrimitiveNumberModel::eUnsigned, 4 }, vk::Format::eR32G32B32Uint },
+      { { 4, PrimitiveNumberModel::eUnsigned, 4 }, vk::Format::eR32G32B32A32Uint },
+      { { 1, PrimitiveNumberModel::eUnsigned, 8 }, vk::Format::eR64Uint },
+      { { 2, PrimitiveNumberModel::eUnsigned, 8 }, vk::Format::eR64G64Uint },
+      { { 3, PrimitiveNumberModel::eUnsigned, 8 }, vk::Format::eR64G64B64Uint },
+      { { 4, PrimitiveNumberModel::eUnsigned, 8 }, vk::Format::eR64G64B64A64Uint },
+      { { 1, PrimitiveNumberModel::eTwosCompliment, 1 }, vk::Format::eR8Sint },
+      { { 2, PrimitiveNumberModel::eTwosCompliment, 1 }, vk::Format::eR8G8Sint },
+      { { 3, PrimitiveNumberModel::eTwosCompliment, 1 }, vk::Format::eR8G8B8Sint },
+      { { 4, PrimitiveNumberModel::eTwosCompliment, 1 }, vk::Format::eR8G8B8A8Sint },
+      { { 1, PrimitiveNumberModel::eTwosCompliment, 2 }, vk::Format::eR16Sint },
+      { { 2, PrimitiveNumberModel::eTwosCompliment, 2 }, vk::Format::eR16G16Sint },
+      { { 3, PrimitiveNumberModel::eTwosCompliment, 2 }, vk::Format::eR16G16B16Sint },
+      { { 4, PrimitiveNumberModel::eTwosCompliment, 2 }, vk::Format::eR16G16B16A16Sint },
+      { { 1, PrimitiveNumberModel::eTwosCompliment, 4 }, vk::Format::eR32Sint },
+      { { 2, PrimitiveNumberModel::eTwosCompliment, 4 }, vk::Format::eR32G32Sint },
+      { { 3, PrimitiveNumberModel::eTwosCompliment, 4 }, vk::Format::eR32G32B32Sint },
+      { { 4, PrimitiveNumberModel::eTwosCompliment, 4 }, vk::Format::eR32G32B32A32Sint },
+      { { 1, PrimitiveNumberModel::eTwosCompliment, 8 }, vk::Format::eR64Sint },
+      { { 2, PrimitiveNumberModel::eTwosCompliment, 8 }, vk::Format::eR64G64Sint },
+      { { 3, PrimitiveNumberModel::eTwosCompliment, 8 }, vk::Format::eR64G64B64Sint },
+      { { 4, PrimitiveNumberModel::eTwosCompliment, 8 }, vk::Format::eR64G64B64A64Sint },
+      { { 1, PrimitiveNumberModel::eFloat, 4 }, vk::Format::eR32Sfloat },
+      { { 2, PrimitiveNumberModel::eFloat, 4 }, vk::Format::eR32G32Sfloat },
+      { { 3, PrimitiveNumberModel::eFloat, 4 }, vk::Format::eR32G32B32Sfloat },
+      { { 4, PrimitiveNumberModel::eFloat, 4 }, vk::Format::eR32G32B32A32Sfloat },
+      { { 1, PrimitiveNumberModel::eFloat, 8 }, vk::Format::eR64Sfloat },
+      { { 2, PrimitiveNumberModel::eFloat, 8 }, vk::Format::eR64G64Sfloat },
+      { { 3, PrimitiveNumberModel::eFloat, 8 }, vk::Format::eR64G64B64Sfloat },
+      { { 4, PrimitiveNumberModel::eFloat, 8 }, vk::Format::eR64G64B64A64Sfloat },
+    };
+
+  vk::Format VertexAspectSpecifier::getFormat() const { return formatsBySizeTypeQty.at(*this); };
+
+  typedef Collections::StructuralConstList<VertexAspectSpecifier> VertexModel;//count, type, size (bytes)
+
+  template<size_t CNT, PrimitiveNumberModel M, size_t S> struct VertexAspect {
+    static_assert(CNT>1, "illegal count");
+    typedef PrimitiveNumber_t<M, S> T;
+    union {
+      std::array<T, CNT> data;
+      struct { T value; VertexAspect<CNT-1, M, S> next; };
+      glm::vec<CNT, T> glmvec;
+    };
+    static_assert(sizeof(data) == sizeof(glmvec));
+    static_assert(sizeof(data) == sizeof(T) + sizeof(next));
+    //TODO some operators (alias glmvec)
+    //TODO to vk::Format
+  };
+  template<PrimitiveNumberModel M, size_t S> struct VertexAspect<1, M, S> {
+    typedef PrimitiveNumber_t<M, S> T;
+    T value;
+  };
+  template<VertexAspectSpecifier U> using VertexAspect_t = VertexAspect<U.count, U.model, U.size>;
+
+  template<VertexModel M, size_t CNT = M.count()> struct Vertex {
+    typedef VertexAspect_t<M[0]> T;
+    T value;
+    Vertex<M.skip(1), CNT-1> rest;
+    static constexpr size_t attributes = CNT;
+    template<size_t SKIP> auto sub() { if constexpr(SKIP == 0) return value; else return rest.template sub<SKIP-1>(); };
+  };
+
+  template<VertexModel M> struct Vertex<M, 1> {
+    typedef VertexAspect_t<M[0]> T;
+    T value;
+    static constexpr size_t attributes = 1;
+    template<size_t SKIP> auto sub() { static_assert(SKIP == 0); return value; };
+  };
+
 }
+
+
+
+

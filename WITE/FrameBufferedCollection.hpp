@@ -12,12 +12,12 @@ namespace WITE::Collections {
     struct bucket_t {
       std::vector<T> toBeAdded, toBeRemoved;
     };
-    ThreadResource<bucket_t> buckets;
+    Platform::ThreadResource<bucket_t> buckets;
     std::vector<T> live;
     std::atomic_uint64_t lastFrameFetch, lastFrameRelease;
     void applyNow(bucket_t& b) {;
       Collections::remove_if(live, [b](auto e){ return Collections::contains(b.toBeRemoved, e); });
-      live.addRange(b.toBeAdded.begin(), b.toBeAdded.end());
+      live.insert(live.end(), b.toBeAdded.begin(), b.toBeAdded.end());
       b.toBeAdded.clear();
       b.toBeRemoved.clear();
     };
@@ -25,8 +25,10 @@ namespace WITE::Collections {
   public:
     FrameBufferedCollection() :
       applyNow_cb(Util::CallbackFactory<void, bucket_t&>::make(this, &FrameBufferedCollection::applyNow)) {};
+    FrameBufferedCollection(const FrameBufferedCollection<T>& o) : live(o.live),
+      applyNow_cb(Util::CallbackFactory<void, bucket_t&>::make(this, &FrameBufferedCollection::applyNow)) {};
     void checkFrame(bool blockIfInProgress = true) {
-      auto frame = FrameCounter::getFrame();
+      auto frame = Util::FrameCounter::getFrame();
       if(lastFrameFetch.exchange(frame) != frame) {
 	buckets.each(applyNow_cb);
 	lastFrameRelease = frame;
@@ -39,20 +41,20 @@ namespace WITE::Collections {
     };
     void remove(T doomed) {
       checkFrame();
-      buckets.get()->toBeRemoved.push_back(gnu);
+      buckets.get()->toBeRemoved.push_back(doomed);
     };
     auto count() {
       checkFrame();
-      live.count();
+      return live.size();
     };
     auto begin() {
       checkFrame();
-      live.begin();
+      return live.begin();
     };
     auto end() {
       checkFrame();
-      live.end();
+      return live.end();
     };
-  }
+  };
 
 };

@@ -1,3 +1,5 @@
+#pragma once
+
 #include "Callback.hpp"
 #include "DEBUG.hpp"
 

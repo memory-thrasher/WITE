@@ -7,8 +7,10 @@ BASEDIR="$(cd "$(dirname "$0")"; pwd -L)"
 OUTDIR="${BASEDIR}/build" #TODO not just WITE but all subdirs
 LOGFILE="${OUTDIR}/buildlog.txt"
 ERRLOG="${OUTDIR}/builderrs.txt"
+ERRLOGBIT="errors.txt"
+ERRLOGBITDIR="${OUTDIR}/file_errors"
 rm "${LOGFILE}" "${ERRLOG}" 2>/dev/null
-mkdir -p "${OUTDIR}" 2>/dev/null
+mkdir -p "${OUTDIR}" "${ERRLOGBITDIR}" 2>/dev/null
 if [ -z "${VK_SDK_PATH}" ]; then
     VK_SDK_PATH="${VULKAN_SDK}"
 fi
@@ -40,14 +42,20 @@ find $BUILDLIBS $BUILDAPP $BUILDTESTS -name '*.cpp' -type f -print0 |
 	    $COMPILER $VK_INCLUDE -E -o /dev/null -H "${SRCFILE}" 2>&1 | grep -o '[^[:space:]]*$' >"${DEPENDENCIES}"
 	fi
 	rm "${DEPENDENCIES}"
-	if ! $COMPILER $VK_INCLUDE --std=c++20 -D_POSIX_C_SOURCE=200112L -fPIC $BOTHOPTS -Werror -Wall "${SRCFILE}" -c -o "${DSTFILE}" >>"${LOGFILE}" 2>>"${ERRLOG}"; then
-	    touch "${SRCFILE}";
-	    break;
-	fi
-	echo "Built: ${SRCFILE}"
+	THISERRLOG="${ERRLOGBITDIR}/$(echo "${SRCFILE}" | tr '/' '-')-${ERRLOGBIT}"
+	rm "${THISERRLOG}"
+	(
+	    if ! $COMPILER $VK_INCLUDE --std=c++20 -D_POSIX_C_SOURCE=200112L -fPIC $BOTHOPTS -Werror -Wall "${SRCFILE}" -c -o "${DSTFILE}" >>"${LOGFILE}" 2>>"${THISERRLOG}"; then
+		touch "${SRCFILE}";
+	    fi
+	    echo "Built: ${SRCFILE}"
+	) &
     done
 
 #TODO other file types (shaders etc.)
+
+while pgrep $COMPILER &>/dev/null; do sleep 0.2s; done
+cat ${ERRLOGBITDIR}/*-${ERRLOGBIT} >"${ERRLOG}"
 
 #libs
 if ! [ -f "${ERRLOG}" ] || [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
@@ -70,11 +78,13 @@ if ! [ -f "${ERRLOG}" ] || [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
 		#TODO VK_LIB ?
 		TESTNAME="${OFILE%.*}"
 		echo running test $TESTNAME
+		cp "${TESTNAME}" "${TESTNAME}.bak"
 		$COMPILER "$OFILE" -o "$TESTNAME" -L "${OUTDIR}" "-Wl,-rpath,$OUTDIR" $BUILTLIBS $LINKOPTS $BOTHOPTS 2>>"${ERRLOG}" >>"${LOGFILE}"
 		echo running test "${TESTNAME}" >>"${LOGFILE}"
 		time $TESTNAME 2>>"${ERRLOG}" >>"${LOGFILE}"
 		code=$?
 		if [ $code -ne 0 ]; then echo "Exit code: " $code >>"${ERRLOG}"; fi;
+		test -f "${TESTNAME}.bak" && ! test -f "${TESTNAME}" && cp "${TESTNAME}.bak" "${TESTNAME}"
 	    done
     done
 fi
@@ -93,7 +103,7 @@ fi
 if [ -f "${ERRLOG}" ] && [ "$(stat -c %s "${ERRLOG}")" -gt 0 ]; then
     echo "${ERRLOG}"
     let i=0; while [ $i -lt 10 ]; do echo; let i++; done;
-    head -n 60 "${ERRLOG}"
+    head -n 40 "${ERRLOG}"
 else
     echo "Success"
     tail "${LOGFILE}"

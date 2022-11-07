@@ -1,8 +1,9 @@
 #pragma once
 
-#include "Callback.hpp"
-
 #include <set>
+
+#include "Callback.hpp"
+#include "types.hpp"
 
 namespace WITE::GPU {
 
@@ -14,6 +15,7 @@ namespace WITE::GPU {
     std::vector<GpuResource*> resources;//null for anything not specific to the renderer instance (attachments and globals
   public:
     const layer_t layer;
+    Renderer(layer_t layer) : layer(layer) {};
   };
 
 }

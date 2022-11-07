@@ -33,7 +33,16 @@ Host_Write
 Is_Cube
  */
 
+#include <cstdint>
+
 namespace WITE::GPU {
+
+  class RenderTarget {
+  public:
+    const uint64_t ldm;
+    RenderTarget(uint64_t ldm) : ldm(ldm) {};
+    void dirtyOutputs();
+  };
 
 }
 

@@ -64,6 +64,7 @@
 #define CRASHRET_PREINIT(ret, ...) { ERROR(__VA_ARGS__); exit(EXIT_FAILURE); return ret; }
 
 #define VK_ASSERT(cmd, ...) { auto _r = (cmd); if(_r != vk::Result::eSuccess) CRASH(__VA_ARGS__, _r); }
+#define VK_ASSERT_TUPLE(out, cmd, ...) { vk::Result _r; std::tie(_r, out) = (cmd); if(_r != vk::Result::eSuccess) CRASH(__VA_ARGS__, _r); }
 
 template<class T> void hexdump(T* src) {
   uint8_t* data = reinterpret_cast<uint8_t*>(src);

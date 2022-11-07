@@ -6,6 +6,8 @@
 #include "SyncLock.hpp"
 #include "FrameBufferedCollection.hpp"
 #include "Vulkan.hpp"
+#include "types.hpp"
+#include "PerGpu.hpp"
 
 namespace WITE::GPU {
 
@@ -17,11 +19,11 @@ namespace WITE::GPU {
   class ShaderBase {
   private:
     static std::vector<ShaderBase*> allShaders;//all shaders should be created before anything gets rendered, so no syncing
-    std::map<layer_t, Util::FrameBufferedCollection<Renderer*>> renderersByLayer;
-    Util::PerGpu<vk::Pipeline> pipeline;
+    std::map<layer_t, Collections::FrameBufferedCollection<Renderer*>> renderersByLayer;
+    PerGpu<vk::Pipeline> pipeline;
     const QueueType queueType;
   protected:
-    ShaderBase(QueueType qt) : queueType(qt);
+    ShaderBase(QueueType qt);
     ~ShaderBase();
     ShaderBase(ShaderBase&) = delete;
     void Register(Renderer*);
@@ -39,9 +41,8 @@ namespace WITE::GPU {
   template<ShaderData D> class Shader : public ShaderBase {
   public:
     template<size_t idx, class R1> inline void CheckResource(R1) {
-      static_assert(D[idx].accepts<R1>());
+      static_assert(std::is_same<std::nullptr_t, R1>() || D[idx].accepts<R1>());
     };
-    template<size_t idx> inline void CheckResource<std::nullptr_t>(std::nullptr_t) {};
     template<size_t idx, class R1, class R2, class... R> inline void CheckResource(R1 r1, R2 r2, R... resources) {
       CheckResource<idx>(r1);
       CheckResource<idx + 1>(r2, std::forward<R...>(resources...));

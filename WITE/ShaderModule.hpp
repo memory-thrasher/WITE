@@ -20,7 +20,7 @@ namespace WITE::GPU {
     const size_t codeLen;
     ShaderModule(const void* code, size_t len,
 		 std::initializer_list<std::pair<vk::ShaderStageFlagBits, const char*>> entryPoints);
-    const vk::PipelineShaderStageCreateInfo* getCI(vk::ShaderStageFlagBits stage, size_t gpuIdx);
+    const vk::PipelineShaderStageCreateInfo&& getCI(vk::ShaderStageFlagBits stage, size_t gpuIdx);
     bool has(vk::ShaderStageFlagBits b) const { return stageInfos.contains(b); };
   };
 

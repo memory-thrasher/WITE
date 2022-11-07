@@ -3,14 +3,14 @@
 
 namespace WITE::GPU {
 
-  ElasticCommandBuffer::ElasticCommandBuffer(Queue* q) : owner(q), cmd(q->getNext()) {};
+  ElasticCommandBuffer::ElasticCommandBuffer(Queue* q) : cmd(q->getNext()), owner(q) {};
 
   ElasticCommandBuffer::~ElasticCommandBuffer() {
-    if(q)
-      q->submit(cmd);
+    if(owner)
+      owner->submit(this);
   };
 
-  ElasticCommandBuffer::ElasticCommandBuffer(ElasticCommandBuffer& o) : owner(o.owner), cmd(o.cmd) {
+  ElasticCommandBuffer::ElasticCommandBuffer(ElasticCommandBuffer& o) : cmd(o.cmd), owner(o.owner) {
     o.owner = NULL;
   };
 

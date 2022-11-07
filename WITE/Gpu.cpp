@@ -206,8 +206,8 @@ namespace WITE::GPU {
       }
 
     //TODO look into save/load the cache (create info takes pointer to loaded data))
-    vk::pipelineCacheCreateInfo pipecacheci((vk::PipelineCacheCreateFlags)0, 0, NULL);
-    dev.createPipelineCache(pipecacheci, ALLOCCB, &pipelineCache);
+    vk::PipelineCacheCreateInfo pipecacheci((vk::PipelineCacheCreateFlags)0, 0, NULL);
+    VK_ASSERT(dev.createPipelineCache(&pipecacheci, ALLOCCB, &pipelineCache), "failed to create pipeline cache");
   };
 
   void Gpu::init(size_t logicalDeviceCount, const float* priorities) {//static
@@ -278,6 +278,11 @@ namespace WITE::GPU {
     return std::popcount(gpuMaskByLdm(ldm));
   }
 
+  // Gpu* Gpu::getGpuFor(uint64_t ldm) {//static
+  //   //TODO
+  //   return NULL;
+  // };
+
   uint64_t Gpu::gpuMaskByLdm(uint64_t ldm) {//static
     uint64_t ret = 0;
     for(size_t i = 0;i < 64;i++)
@@ -301,6 +306,14 @@ namespace WITE::GPU {
     }
     WARN("Suitable format not found");
     return vk::Format::eUndefined;
-  }
+  };
+
+  Queue* Gpu::getQueue(QueueType qt) {
+    switch(qt) {
+    case QueueType::eCompute: return compute;
+    case QueueType::eGraphics: return graphics;
+    case QueueType::eTransfer: return transfer;
+    }
+  };
 
 }

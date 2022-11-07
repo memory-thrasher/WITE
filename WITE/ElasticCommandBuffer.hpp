@@ -15,7 +15,7 @@ namespace WITE::GPU {
     ~ElasticCommandBuffer();
     ElasticCommandBuffer(const ElasticCommandBuffer&) = delete;
     ElasticCommandBuffer(ElasticCommandBuffer&);
-    inline vk::CommandBuffer operator vk::CommandBuffer() { return cmd; };
+    inline operator vk::CommandBuffer() { return cmd; };
     Gpu* getGpu();
   };
 

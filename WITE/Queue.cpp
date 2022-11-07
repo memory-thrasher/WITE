@@ -1,6 +1,7 @@
 #include "Queue.hpp"
 #include "Thread.hpp"
 #include "Gpu.hpp"
+#include "ElasticCommandBuffer.hpp"
 
 namespace WITE::GPU {
 
@@ -41,5 +42,18 @@ namespace WITE::GPU {
     // }
     dev.destroyCommandPool(o->pool);//this frees all cmdbuffers
   };
+
+  // void Queue::submit(ElasticCommandBuffer* buf) {
+  //   //TODO
+  // };
+
+  // ElasticCommandBuffer Queue::createBatch(uint64_t ldm) {
+  //   //TODO
+  //   return { this };
+  // };
+
+  // vk::CommandBuffer Queue::getNext() {
+  //   return nullptr;
+  // };
 
 }

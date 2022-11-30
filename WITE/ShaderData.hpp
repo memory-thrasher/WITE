@@ -1,6 +1,10 @@
+#pragma once
+
 #include <algorithm>
+#include <compare>
 
 #include "StructuralConstList.hpp"
+#include "LiteralMap.hpp"
 #include "StdExtensions.hpp"
 #include "Image.hpp"
 
@@ -11,18 +15,58 @@ namespace WITE::GPU {
 			   eTask, eMesh, eCompute };
   enum class ShaderResourceAccessType { eUndefined, eVertex, eUniform, eUniformTexel, eSampled, eDepthAtt, eColorAtt };
 
+  defineLiteralMap(ShaderStage, vk::ShaderStageFlags, shaderStageMap,
+		   Collections::StructuralPair<ShaderStage, vk::ShaderStageFlags>(ShaderStage::eVertex, vk::ShaderStageFlagBits::eVertex),
+		   Collections::StructuralPair<ShaderStage, vk::ShaderStageFlags>(ShaderStage::eTessellation, vk::ShaderStageFlagBits::eTessellationControl | vk::ShaderStageFlagBits::eTessellationEvaluation),
+		   Collections::StructuralPair<ShaderStage, vk::ShaderStageFlags>(ShaderStage::eGeometry, vk::ShaderStageFlagBits::eGeometry),
+		   Collections::StructuralPair<ShaderStage, vk::ShaderStageFlags>(ShaderStage::eFragment, vk::ShaderStageFlagBits::eFragment),
+		   Collections::StructuralPair<ShaderStage, vk::ShaderStageFlags>(ShaderStage::eFragmentDepth, vk::ShaderStageFlagBits::eFragment),
+		   Collections::StructuralPair<ShaderStage, vk::ShaderStageFlags>(ShaderStage::eTask, vk::ShaderStageFlagBits::eTaskNV),
+		   Collections::StructuralPair<ShaderStage, vk::ShaderStageFlags>(ShaderStage::eMesh, vk::ShaderStageFlagBits::eMeshNV),
+		   Collections::StructuralPair<ShaderStage, vk::ShaderStageFlags>(ShaderStage::eCompute, vk::ShaderStageFlagBits::eCompute));
+
   class ShaderResourceUsage {
   public:
     const bool write;
     const ShaderStage stage;
     const ShaderResourceAccessType access;
+
     ShaderResourceUsage() = delete;
     constexpr ShaderResourceUsage(const bool write, const ShaderStage stage,
 				  const ShaderResourceAccessType access = ShaderResourceAccessType::eUndefined) :
       write(write), stage(stage), access(access) {};
     constexpr ~ShaderResourceUsage() = default;
-    constexpr bool operator==(const ShaderResourceUsage& a) {
+
+    constexpr bool operator==(const ShaderResourceUsage& a) const {
       return a.write == this->write && a.stage == this->stage && a.access == this->access;
+    };
+
+    constexpr std::strong_ordering operator<=>(const ShaderResourceUsage& o) const {
+      if(write ^ o.write) return write ? std::strong_ordering::less : std::strong_ordering::greater;
+      std::strong_ordering cmp = stage <=> o.stage;
+      if(cmp != 0) return cmp;
+      cmp = access <=> o.access;
+      if(cmp != 0) return cmp;
+      return std::strong_ordering::equal;
+    };
+
+    constexpr bool isDS() const {
+      return access == ShaderResourceAccessType::eUniform ||
+	access == ShaderResourceAccessType::eUniformTexel ||
+	access == ShaderResourceAccessType::eSampled;
+    };
+
+    constexpr vk::DescriptorType getVkDSType() const {
+      switch(access) {
+      case ShaderResourceAccessType::eUniform: return write ? vk::DescriptorType::eStorageBuffer : vk::DescriptorType::eUniformBuffer;
+      case ShaderResourceAccessType::eUniformTexel: return write ? vk::DescriptorType::eStorageTexelBuffer : vk::DescriptorType::eUniformTexelBuffer;
+      case ShaderResourceAccessType::eSampled: return write ? vk::DescriptorType::eStorageImage : vk::DescriptorType::eSampledImage;
+      default: throw "illegal access"; break;
+      };
+    };
+
+    constexpr vk::ShaderStageFlags getVkStages() const {
+      return shaderStageMap[stage];
     };
   };
 
@@ -36,7 +80,19 @@ namespace WITE::GPU {
 			     const std::initializer_list<ShaderResourceUsage> usage) :
       // type(type), 
       usage(usage) {};
+
     template<class Resource> struct acceptsTest { constexpr bool operator()(const ShaderResource*) { return false; }; };
+
+    constexpr std::strong_ordering operator<=>(const ShaderResource& o) const {
+      std::strong_ordering cmp = usage.count() <=> o.usage.count();
+      if(cmp != 0) return cmp;
+      for(size_t i = 0;i < usage.count();i++) {
+	cmp = usage[i] <=> o.usage[i];
+	if(cmp != 0) return cmp;
+      }
+      return std::strong_ordering::equal;
+    };
+
     template<ImageSlotData ISD> struct acceptsTest<Image<ISD>> {
       constexpr bool operator()(const ShaderResource* s) {
 	return s->usage.every([](const ShaderResourceUsage u) {
@@ -63,7 +119,14 @@ namespace WITE::GPU {
 	});
       };
     };
+
+    //TODO ^for buffers?
     template<class Resource> constexpr bool accepts() { return acceptsTest<Resource>::accepts(this); };
+
+    constexpr bool contains(const ShaderResourceAccessType access, const bool write) const {
+      return std::any_of(usage.cbegin(), usage.cend(),
+			 [access, write](ShaderResourceUsage u) { return u.write == write && u.access == access; });
+    };
   };
 
   struct ShaderData {
@@ -135,6 +198,17 @@ namespace WITE::GPU {
       return resources[i];
     };
 
+    constexpr std::strong_ordering operator<=>(const ShaderData& o) const {
+      std::strong_ordering cmp = resources.count() <=> o.resources.count();
+      if(cmp != 0) return cmp;
+      for(size_t i = 0;i < resources.count();i++) {
+	cmp = resources[i] <=> o.resources[i];
+	if(cmp != 0) return cmp;
+      }
+      return std::strong_ordering::equal;
+    };
+
+    //TODO convert these lambda monsters to foreaches
     constexpr bool contains(const ShaderResourceUsage u) const {
       return std::any_of(resources.cbegin(), resources.cend(),
 			 [u](ShaderResource r) {
@@ -156,13 +230,20 @@ namespace WITE::GPU {
     };
 
     constexpr bool contains(const ShaderResourceAccessType access) const {
-      return std::any_of(resources.cbegin(), resources.cend(),
-			 [access](ShaderResource r) {
-			   return std::any_of(r.usage.cbegin(), r.usage.cend(),
-					      [access](ShaderResourceUsage cu) {
-						return cu.access == access;
-					      });
-			 });
+      for(ShaderResource r : resources)
+	for(ShaderResourceUsage cu : r.usage)
+	  if(cu.access == access)
+	    return true;
+      return false;
+    };
+
+    constexpr size_t countDescriptorSetResources() const {
+      size_t ret = 0;
+      for(ShaderResource r : resources)
+	for(ShaderResourceUsage cu : r.usage)
+	  if(cu.isDS())
+	    ret++;
+      return ret;
     };
 
     constexpr bool containsWritable() const {
@@ -183,6 +264,17 @@ namespace WITE::GPU {
 						return !Collections::contains(stages, cu.stage);
 					      });
 			 });
+    };
+
+    template<size_t retCount>
+    constexpr auto getDescriptorSetLayoutBindings() {
+      vk::DescriptorSetLayoutBinding ret[retCount];
+      uint32_t i = 0;
+      for(ShaderResource r : resources)
+	for(ShaderResourceUsage cu : r.usage)
+	  if(cu.isDS())
+	    ret[i] = { i++, cu.getVkDSType(), 1, cu.getVkStages() };
+      return ret;
     };
 
   };
@@ -257,8 +349,6 @@ namespace WITE::GPU {
       { { 4, PrimitiveNumberModel::eFloat, 8 }, vk::Format::eR64G64B64A64Sfloat },
     };
 
-  vk::Format VertexAspectSpecifier::getFormat() const { return formatsBySizeTypeQty.at(*this); };
-
   typedef Collections::StructuralConstList<VertexAspectSpecifier> VertexModel;//count, type, size (bytes)
 
   template<size_t CNT, PrimitiveNumberModel M, size_t S> struct VertexAspect {
@@ -296,7 +386,4 @@ namespace WITE::GPU {
   };
 
 }
-
-
-
 

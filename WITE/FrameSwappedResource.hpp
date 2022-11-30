@@ -17,6 +17,7 @@ namespace WITE::Util {
     std::atomic_uint64_t lastFrameFetch, lastFrameRelease;
   public:
     FrameSwappedResource(const std::array<T, N>& data, onFrameSwitch_cb onSwitch) : data(data), onSwitch(onSwitch) {}
+    FrameSwappedResource(T* data, onFrameSwitch_cb onSwitch) : data(data), onSwitch(onSwitch) {}
     FrameSwappedResource(const std::initializer_list<T> data, onFrameSwitch_cb onSwitch) : data(data), onSwitch(onSwitch) {}
     FrameSwappedResource(onFrameSwitch_cb onSwitch) : data(), onSwitch(onSwitch) {}
     FrameSwappedResource(const FrameSwappedResource&) = delete;
@@ -37,6 +38,7 @@ namespace WITE::Util {
     }
     inline T& getWrite() { return get(0); };
     inline T& getRead() { return get(1); };
+    inline std::array<T, N>& all() { return data; };
   };
 
 }

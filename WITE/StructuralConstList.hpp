@@ -37,7 +37,7 @@ namespace WITE::Collections {
     constexpr inline pointer end() { return data + len; };
     constexpr inline cref operator[](Alloc::size_type len) const { return *(data + len); };
     constexpr inline bool contains(const T& t) const { return Collections::contains(*this, t); };
-    constexpr inline auto skip(size_t w) const { return StructuralConstList<T, Alloc>(&data[1], &data[len]); };
+    constexpr inline auto skip(size_t w) const { return StructuralConstList<T, Alloc>(&data[w], &data[len]); };
     template<class UP> constexpr inline bool contains(const UP up) const { return std::any_of(begin(), end(), up); };
     template<class UP> constexpr inline bool every(const UP up) const { return std::all_of(begin(), end(), up); };
     template<class V> constexpr inline bool intersectsMap(const std::map<T, V>& o) const {

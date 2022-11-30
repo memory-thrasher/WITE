@@ -1,47 +1,47 @@
-/*
-
-Shader object (template class), tracks all Renderers using that shader so they can be batched to a single pipeline binding cycle per target.
-Shader template includes any descriptor set definitions and push constants.
-One Material to one or more Shaders
-
-RenderTarget tracks the target state and type (dimensionality, resolution etc) and owns certain common resources.
-Color attachment, depth/stencil, framebuffer?.
-
-Material defines one or more shaders, render passes, subpasses etc that define how objects using it will look and what factors may affect them (and how those factors are passed in, but how exactly they affect the appearance is only in the shader code)
-template class
-
-Buffer
-bool shaderRead, shaderWrite, texel //make these template somehow... derive from Material template args live?
-
-Image
-includes a Buffer
-tracks the "current" image loadout and queues trnascoding barriers automatically
-
-enum ShaderType { Draw, Mesh, Compute } //, eventually raytracing etc
-
-bitmask for Buffer and Image, reused for Shader/Material templates:
-Indirect
-Vertex
-DS_Read
-DS_Sampled (sampled image or uniform texel buffer
-DS_Write (Storage *)
-Att_Depth
-Att_Input
-Att_Output
-Host_Read
-Host_Write
-Is_Cube
- */
+#pragma once
 
 #include <cstdint>
 
+#include "PerGpu.hpp"
+#include "Vulkan.hpp"
+#include "types.hpp"
+#include "FrameBufferedMap.hpp"
+
 namespace WITE::GPU {
+
+  class Renderer;
+  class ShaderBase;
+
+  struct RenderStep {
+    layerCollection_t layers;
+    QueueType type;
+    //TODO some way to distinguish ray tracing and other bind points from generic graphics
+    Collections::StructuralConstList<usage_t> resourceUsages;//sensical subset of ImageBase::USAGE_*
+    RenderStep(layerCollection_t layers, QueueType type, std::initializer_list<usage_t> usages) :
+      layers(layers), type(type), resourceUsages(usages) {};
+  };
 
   class RenderTarget {
   public:
-    const uint64_t ldm;
-    RenderTarget(uint64_t ldm) : ldm(ldm) {};
-    void dirtyOutputs();
+    const logicalDeviceMask_t ldm;
+  private:
+    typedef PerGpu<std::map<pipelineId_t, vk::Pipeline>> pipelinesByShaderId_t;//only one thread may render a RenderTarget at a time (and only once per frame), therefore unsynchronized access is safe
+    pipelinesByShaderId_t pipelinesByShaderId;
+    typedef PerGpu<vk::RenderPass> renderPasses_t;
+    renderPasses_t renderPasses;
+  protected:
+    //protected data members to be filled by implementing child
+    vk::RenderPassCreateInfo2 ci;
+    RenderTarget(logicalDeviceMask_t ldm);
+    vk::RenderPass makeRenderPass(size_t gpu);
+    void destroyRenderPass(vk::RenderPass&, size_t);
+    virtual const Collections::StructuralConstList<RenderStep>& getRenderSteps() = 0;
+    virtual void getRenderInfo(vk::RenderPassBeginInfo* out, size_t gpuIdx) const = 0;
+    friend class ShaderBase;
+  public:
+    RenderTarget() = delete;
+    RenderTarget(const RenderTarget&) = delete;
+    void render(std::initializer_list<Renderer*> except);
   };
 
 }

@@ -9,10 +9,7 @@ namespace WITE::GPU {
 
   std::vector<ShaderBase*> ShaderBase::allShaders; //static
 
-  ShaderBase::ShaderBase(QueueType qt) :
-    pipeline(decltype(pipeline)::creator_t_F::make(this, &ShaderBase::CreatePipe),//might need proxy method, createpip is virtual
-	     decltype(pipeline)::destroyer_t_F::make(this, &ShaderBase::DestroyPipe)),
-    queueType(qt)
+  ShaderBase::ShaderBase(QueueType qt) : queueType(qt)
   {
     allShaders.push_back(this);
   };
@@ -29,37 +26,50 @@ namespace WITE::GPU {
     renderersByLayer[r->layer].remove(r);
   };
 
-  void ShaderBase::RenderAllTo(RenderTarget& target, const layerCollection_t& layers,
-			       std::initializer_list<Renderer*> except) {// static
-    //TODO make target.ldm exist
-    auto gpu = Gpu::getGpuFor(target.ldm);
-    auto computeBatch = gpu->getQueue(QueueType::eCompute)->createBatch(target.ldm),
-      graphicsBatch = gpu->getQueue(QueueType::eGraphics)->createBatch(target.ldm);
+  void ShaderBase::RenderAllOfTypeTo(RenderTarget& target, ElasticCommandBuffer& cmd, QueueType qt, layerCollection_t& layers, std::initializer_list<Renderer*>& except) {// static
     for(ShaderBase* s : allShaders)
-      s->RenderTo(target, layers, s->queueType == QueueType::eCompute ? computeBatch : graphicsBatch, except);
+      if(s->queueType == qt)
+	s->RenderTo(target, cmd, layers, except);
   };
 
-  void ShaderBase::RenderTo(RenderTarget& target, const layerCollection_t& layers, ElasticCommandBuffer& cmd,
-			    std::initializer_list<Renderer*> except) {
+  void ShaderBase::RenderTo(RenderTarget& target, ElasticCommandBuffer& cmd, layerCollection_t& layers, std::initializer_list<Renderer*>& except) {
     if(!layers.intersectsMap(renderersByLayer)) return;
     bool found = false;
-    for(auto& pair : renderersByLayer)
-      if(layers.contains(pair.first) && pair.second.count()) {
+    for(auto& layer : layers)
+      if(renderersByLayer.contains(layer) && renderersByLayer.at(layer).count()) {
 	found = true;
 	break;
       }
     if(!found) return;
-    BindImpl(target, cmd);
+    auto gpuIdx = cmd.getGpu()->getIndex();
+    vk::Pipeline pipe;
+    if(!target.pipelinesByShaderId.contains(gpuIdx, id))
+      pipe = target.pipelinesByShaderId.get(gpuIdx, id) = CreatePipe(gpuIdx, target.renderPasses.get(gpuIdx));
+    else
+      pipe = target.pipelinesByShaderId.get(gpuIdx, id);
+    cmd->bindPipeline(getBindPoint(), pipe);
     for(auto& pair : renderersByLayer)
       if(layers.contains(pair.first))
 	for(Renderer* renderer : pair.second)
 	  if(!Collections::contains(except, renderer))
 	    RenderImpl(renderer, cmd);
-    target.dirtyOutputs();
   };
 
-  void ShaderBase::DestroyPipe(vk::Pipeline pipe, size_t idx) {
-    Gpu::get(idx).getVkDevice().destroyPipeline(pipe, ALLOCCB);
+  PerGpu<std::map<ShaderData, vk::PipelineLayout>> ShaderBase::layoutsByData;
+
+  vk::PipelineLayout ShaderBase::getLayout(const ShaderData& d, const vk::PipelineLayoutCreateInfo* pipeCI, size_t gpu) { //static
+    Util::ScopeLock lock(&layoutsByData_mutex);
+    if(!layoutsByData.contains(gpu, d))
+      layoutsByData.get(gpu, d) = ShaderBase::makeLayout(pipeCI, gpu);
+    return layoutsByData.get(gpu, d);
   };
+
+  vk::PipelineLayout ShaderBase::makeLayout(const vk::PipelineLayoutCreateInfo* pipeCI, size_t gpuIdx) { //static
+    vk::PipelineLayout ret;
+    VK_ASSERT(Gpu::get(gpuIdx).getVkDevice().createPipelineLayout(pipeCI, ALLOCCB, &ret), "failed pipeline layout");
+    return ret;
+  };
+
+  vk::Format VertexAspectSpecifier::getFormat() const { return formatsBySizeTypeQty.at(*this); };
 
 };

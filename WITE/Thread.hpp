@@ -6,9 +6,10 @@
 
 namespace WITE::Platform {
 
+  static constexpr size_t MAX_THREADS = 256;
+
   template<class T> class ThreadResource {
   public:
-    static constexpr size_t MAX_THREADS = 256;
     typedef T* Tentry;
     typedefCB(Initer, Tentry)
     typedefCB(Destroyer, void, Tentry);

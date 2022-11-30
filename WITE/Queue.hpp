@@ -5,7 +5,7 @@
 #include "Thread.hpp"
 #include "DynamicRollingQueue.hpp"
 #include "SyncLock.hpp"
-
+#include "types.hpp"
 #include "Vulkan.hpp"
 
 namespace WITE::GPU {
@@ -17,7 +17,6 @@ namespace WITE::GPU {
   private:
     class Gpu* gpu;
     size_t queueInstanceCount;
-    uint32_t family;
     std::unique_ptr<vk::Queue[]> queueInstances;
     std::unique_ptr<Util::SyncLock[]> queueMutexes;
     struct PerThreadResources {
@@ -25,7 +24,7 @@ namespace WITE::GPU {
       uint32_t idx;
       struct Cmd {
 	vk::CommandBuffer cmd;
-	uint64_t ldm;
+	logicalDeviceMask_t ldm;
 	//TODO more stuff like fences and semaphores
 	//TODO default constructor
       };
@@ -38,8 +37,9 @@ namespace WITE::GPU {
     friend class ElasticCommandBuffer;
     void submit(ElasticCommandBuffer* b);
   public:
+    const uint32_t family;
     Queue(Gpu*, const struct vk::DeviceQueueCreateInfo&);
-    ElasticCommandBuffer createBatch(uint64_t ldm);
+    ElasticCommandBuffer createBatch(ElasticCommandBuffer* previousLink = NULL);
     Gpu* getGpu() { return gpu; };
   };
 

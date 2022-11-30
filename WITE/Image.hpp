@@ -2,59 +2,51 @@
 
 #include "GpuResource.hpp"
 #include "Vulkan.hpp"
+#include "PerGpuPerThread.hpp"
+#include "PerGpu.hpp"
 
 namespace WITE::GPU {
 
   class Gpu;
 
-  struct ImageFormatFamily {
-    uint8_t components, componentsSize;
-    constexpr ImageFormatFamily(uint8_t comp, uint8_t comp_size) : components(comp), componentsSize(comp_size) {};
-    friend constexpr auto operator<(const ImageFormatFamily& l, const ImageFormatFamily& r) {
-      return l.components < r.components || (l.components == r.components && l.componentsSize < r.componentsSize);
-    };
-  };
-
-  struct ImageSlotData : public ImageFormatFamily {
-    uint8_t dimensions, samples;
-    uint32_t arrayLayers, mipLevels;
-    uint64_t logicalDeviceMask, usage;
-    constexpr ImageSlotData(uint8_t comp, uint8_t comp_size, uint8_t dim, uint8_t sam,
-			    uint32_t al, uint32_t mip, uint64_t ldm, uint64_t usage) :
-      ImageFormatFamily(comp, comp_size),
-      dimensions(dim), samples(sam), arrayLayers(al), mipLevels(mip), logicalDeviceMask(ldm), usage(usage) {};
-  };
-
   class ImageBase : public GpuResource {
+  private:
+    typedef Collections::PerGpuPerThread<vk::ImageView> views_t;
+    views_t views;
+    PerGpu<vk::Image> images;
+    uint32_t w, h, z;
+
+    vk::Image makeImage(size_t gpu);
+    static void destroyImage(vk::Image&, size_t gpu);
   public:
-
-    static constexpr uint32_t
-    USAGE_INDIRECT = 1,
-      USAGE_VERTEX = 2,
-      USAGE_DS_READ = 4,
-      USAGE_DS_WRITE = 8,
-      USAGE_DS_SAMPLED = 0X10,
-      USAGE_ATT_DEPTH = 0X20,
-      USAGE_ATT_INPUT = 0X40,
-      USAGE_ATT_OUTPUT = 0X80,
-      USAGE_HOST_READ = 0X100,
-      USAGE_HOST_WRITE = 0X200,
-      USAGE_IS_CUBE = 0X1000;
-
     const ImageSlotData slotData;
     const vk::Format format;
+    const bool transfersRequired;//if this image is to be transferred from it's device: ie if it's used by multiple phys devs
 
     virtual ~ImageBase() = default;
     ImageBase(ImageBase&) = delete;
     ImageBase(ImageSlotData isd);
-    void getCreateInfo(Gpu&, void* out, size_t width, size_t height, size_t z = 1);
+    void getCreateInfo(Gpu&, vk::ImageCreateInfo* out, size_t width, size_t height, size_t z = 1);
     vk::ImageUsageFlags getVkUsageFlags();
+    vk::AttachmentDescription getAttachmentDescription(bool clear = true);
+    virtual vk::Image getVkImage(size_t gpuIdx) = 0;
+    vk::ImageView getVkImageView(size_t gpuIdx);
+    void makeImageView(vk::ImageView*, size_t gpu);
+    static void destroyImageView(vk::ImageView& doomed, size_t gpu);
+    void resize(size_t w, size_t h, size_t z);//TODO for each existing image, blit it to the new one. Crash if not transfer-enabled (maybe make a resizable usage flag?).
+    inline vk::Extent2D getVkSize() { return { w, h }; };
   };
 
   //MIP and SAM might be less than requested if the platform does not support it
   template<ImageSlotData ISD> class Image : ImageBase {
   public:
     Image() : ImageBase(ISD) {};
+    ~Image() override = default;
+  };
+
+  template<ImageSlotData ISD> struct GpuResourceFactory<ISD> {
+    typedef Image<ISD> type;
+    auto operator()() { return Image<ISD>(); };
   };
 
 }

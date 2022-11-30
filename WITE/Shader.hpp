@@ -18,24 +18,28 @@ namespace WITE::GPU {
 
   class ShaderBase {
   private:
+    static std::atomic<pipelineId_t> idSeed;
     static std::vector<ShaderBase*> allShaders;//all shaders should be created before anything gets rendered, so no syncing
+    static PerGpu<std::map<ShaderData, vk::PipelineLayout>> layoutsByData;
+    static Util::SyncLock layoutsByData_mutex;
     std::map<layer_t, Collections::FrameBufferedCollection<Renderer*>> renderersByLayer;
-    PerGpu<vk::Pipeline> pipeline;
     const QueueType queueType;
+    static void RenderAllOfTypeTo(RenderTarget&, ElasticCommandBuffer& cmd, QueueType, layerCollection_t&, std::initializer_list<Renderer*>& except);
+    void RenderTo(RenderTarget&, ElasticCommandBuffer& cmd, layerCollection_t&, std::initializer_list<Renderer*>& except);
+    friend class RenderTarget;
   protected:
     ShaderBase(QueueType qt);
     ~ShaderBase();
     ShaderBase(ShaderBase&) = delete;
     void Register(Renderer*);
     void Unregister(Renderer*);
-    void DestroyPipe(vk::Pipeline, size_t idx);
-    virtual vk::Pipeline CreatePipe(size_t idx) = 0;
     virtual void RenderImpl(Renderer* r, ElasticCommandBuffer& cmd) = 0;
-    virtual void BindImpl(RenderTarget&, ElasticCommandBuffer& cmd) = 0;
+    virtual vk::PipelineBindPoint getBindPoint() = 0;
+    static vk::PipelineLayout getLayout(const ShaderData& d, const vk::PipelineLayoutCreateInfo* pipeCI, size_t gpuIdx);
+    static vk::PipelineLayout makeLayout(const vk::PipelineLayoutCreateInfo* pipeCI, size_t gpuIdx);
   public:
-    static void Prewarm();//TODO call from Gpu::init after everything is created to create all on-demand objects
-    static void RenderAllTo(RenderTarget&, const layerCollection_t&, std::initializer_list<Renderer*> except = {});
-    void RenderTo(RenderTarget&, const layerCollection_t&, ElasticCommandBuffer& cmd, std::initializer_list<Renderer*> except);
+    virtual vk::Pipeline CreatePipe(size_t idx, vk::RenderPass rp) = 0;
+    const pipelineId_t id = idSeed++;//for RenderTarget to map pipelines against
   };
 
   template<ShaderData D> class Shader : public ShaderBase {

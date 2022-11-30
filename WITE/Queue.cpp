@@ -8,11 +8,11 @@ namespace WITE::GPU {
   Queue::Queue(Gpu* gpu, const struct vk::DeviceQueueCreateInfo& ci) :
     gpu(gpu),
     queueInstanceCount(ci.queueCount),
-    family(ci.queueFamilyIndex),
     queueInstances(std::make_unique<vk::Queue[]>(queueInstanceCount)),
     queueMutexes(std::make_unique<Util::SyncLock[]>(queueInstanceCount)),
     pools(Platform::ThreadResource<PerThreadResources>::Initer_F::make(this, &Queue::makePerThreadResources),
-	  Platform::ThreadResource<PerThreadResources>::Destroyer_F::make(this, &Queue::freePerThreadResources))
+	  Platform::ThreadResource<PerThreadResources>::Destroyer_F::make(this, &Queue::freePerThreadResources)),
+    family(ci.queueFamilyIndex)
   {
     auto dev = gpu->getVkDevice();
     // queueInstances = std::make_unique<vk::Queue[]>(queueInstanceCount);
@@ -47,7 +47,7 @@ namespace WITE::GPU {
   //   //TODO
   // };
 
-  // ElasticCommandBuffer Queue::createBatch(uint64_t ldm) {
+  // ElasticCommandBuffer Queue::createBatch() {
   //   //TODO
   //   return { this };
   // };

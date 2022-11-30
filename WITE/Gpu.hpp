@@ -4,11 +4,12 @@
 #include <memory>
 #include <atomic>
 
-#include "Image.hpp"
+#include "GpuResource.hpp"
 #include "Queue.hpp"
 #include "Vulkan.hpp"
 #include "StructuralConstList.hpp"
 #include "types.hpp"
+#include "constants.hpp"
 
 namespace WITE::GPU {
 
@@ -22,22 +23,22 @@ namespace WITE::GPU {
     static vk::Instance vkInstance;
     static size_t gpuCount;
     static std::unique_ptr<Gpu[]> gpus;
-    static uint64_t logicalPhysicalDeviceMatrix[64];//bitmask, which Gpu instances are included in each logical device
+    static deviceMask_t logicalPhysicalDeviceMatrix[MAX_LDMS];//bitmask, which Gpu instances are included in each logical device
     static std::unique_ptr<struct LogicalGpu[]> logicalDevices;
     static size_t logicalDeviceCount;
 
-    static uint64_t gpuMaskByLdm(uint64_t ldm);
-    static constexpr vk::FormatFeatureFlags usageFeatures(uint64_t u) {
+    static deviceMask_t gpuMaskByLdm(deviceMask_t ldm);
+    static constexpr vk::FormatFeatureFlags usageFeatures(usage_t u) {
       vk::FormatFeatureFlags ret = (vk::FormatFeatureFlags)0;
-      if(u & ImageBase::USAGE_VERTEX) ret |= vk::FormatFeatureFlagBits::eVertexBuffer;
-      if(u & ImageBase::USAGE_DS_SAMPLED) {
+      if(u & GpuResource::USAGE_VERTEX) ret |= vk::FormatFeatureFlagBits::eVertexBuffer;
+      if(u & GpuResource::USAGE_DS_SAMPLED) {
 	ret |= vk::FormatFeatureFlagBits::eSampledImage;
-	if(u & ImageBase::USAGE_DS_WRITE) ret |= vk::FormatFeatureFlagBits::eStorageImage;
+	if(u & GpuResource::USAGE_DS_WRITE) ret |= vk::FormatFeatureFlagBits::eStorageImage;
       }
-      if(u & ImageBase::USAGE_ATT_DEPTH) ret |= vk::FormatFeatureFlagBits::eDepthStencilAttachment;
-      if(u & ImageBase::USAGE_ATT_OUTPUT) ret |= vk::FormatFeatureFlagBits::eColorAttachment;
-      if(u & ImageBase::USAGE_HOST_READ) ret |= vk::FormatFeatureFlagBits::eTransferSrc;
-      if(u & ImageBase::USAGE_HOST_WRITE) ret |= vk::FormatFeatureFlagBits::eTransferDst;
+      if(u & GpuResource::USAGE_ATT_DEPTH) ret |= vk::FormatFeatureFlagBits::eDepthStencilAttachment;
+      if(u & GpuResource::USAGE_ATT_OUTPUT) ret |= vk::FormatFeatureFlagBits::eColorAttachment;
+      if(u & GpuResource::USAGE_HOST_READ) ret |= vk::FormatFeatureFlagBits::eTransferSrc;
+      if(u & GpuResource::USAGE_HOST_WRITE) ret |= vk::FormatFeatureFlagBits::eTransferDst;
       return ret;
     };
 
@@ -61,14 +62,17 @@ namespace WITE::GPU {
     static void init(size_t logicalDeviceCount, const float* priorities);//TODO capabilities?
     static Gpu& get(size_t);
     static inline size_t getGpuCount() { return gpuCount; };
-    static uint8_t gpuCountByLdm(uint64_t ldm);
-    static Gpu* getGpuFor(uint64_t ldm);
-    static inline bool ldmHasMultiplePhysical(uint64_t ldm) { return gpuCountByLdm(ldm) > 1; };
-    static vk::Format getBestImageFormat(uint8_t comp, uint8_t compSize, uint64_t usage, uint64_t ldm = 1);
+    static uint8_t gpuCountByLdm(logicalDeviceMask_t ldm);
+    static Gpu* getGpuFor(logicalDeviceMask_t ldm);//TODO distribute by weight, atomic seed over low modulo
+    static inline bool ldmHasMultiplePhysical(logicalDeviceMask_t ldm) { return gpuCountByLdm(ldm) > 1; };
+    static vk::Format getBestImageFormat(uint8_t comp, uint8_t compSize, usage_t usage, logicalDeviceMask_t ldm = 1);
 
-    size_t getIndex() { return idx; };
+    inline size_t getIndex() { return idx; };
     vk::Device getVkDevice() { return dev; };//vkHandle is an opaque handle
     Queue* getQueue(QueueType qt);
+    inline Queue* getGraphics() { return graphics; };
+    inline Queue* getCompute() { return compute; };
+    inline Queue* getTransfer() { return transfer; };
     vk::PipelineCache getPipelineCache() { return pipelineCache; };
   };
 

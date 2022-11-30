@@ -21,7 +21,7 @@ namespace WITE::GPU {
     return ret;
   };
 
-  void ShaderModule::destroy(vk::ShaderModule doomed, size_t gpuIdx) {
+  void ShaderModule::destroy(vk::ShaderModule& doomed, size_t gpuIdx) {
     Gpu::get(gpuIdx).getVkDevice().destroyShaderModule(doomed, ALLOCCB);
   };
 

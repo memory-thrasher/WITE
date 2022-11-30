@@ -4,7 +4,6 @@
 
 #include "Gpu.hpp"
 #include "Queue.hpp"
-#include "Image.hpp"
 #include "BitmaskIterator.hpp"
 #include "Math.hpp"
 #include "DEBUG.hpp"
@@ -80,7 +79,7 @@ namespace WITE::GPU {
   vk::Instance Gpu::vkInstance;
   size_t Gpu::gpuCount;
   std::unique_ptr<Gpu[]> Gpu::gpus;
-  uint64_t Gpu::logicalPhysicalDeviceMatrix[64];
+  deviceMask_t logicalPhysicalDeviceMatrix[MAX_LDMS];
   std::unique_ptr<struct Gpu::LogicalGpu[]> Gpu::logicalDevices;
   size_t Gpu::logicalDeviceCount;
 
@@ -95,45 +94,39 @@ namespace WITE::GPU {
       qfp[i].p.pNext = reinterpret_cast<void*>(&qfp[i].gpp);
     }
     pv.getQueueFamilyProperties2(&cnt, temp_qfp.get());
-    bool hasGraphics, hasTransfer, hasCompute;
+    bool hasGraphics = false, hasTransfer = false, hasCompute = false;
     uint32_t graphics, transfer, compute;
     for(size_t i = 0;i < cnt;i++) {
       bool g = (uint32_t)(qfp[i].p.queueFamilyProperties.queueFlags & vk::QueueFlagBits::eGraphics);
       bool t = (uint32_t)(qfp[i].p.queueFamilyProperties.queueFlags & vk::QueueFlagBits::eTransfer);
       bool c = (uint32_t)(qfp[i].p.queueFamilyProperties.queueFlags & vk::QueueFlagBits::eCompute);
-      if(g && t) {
-	hasGraphics = hasTransfer = true;
-	graphics = transfer = i;
-	if(c) {
-	  hasCompute = true;
-	  compute = i;
+      hasGraphics |= g;
+      hasTransfer |= t;
+      hasCompute |= c;
+      if(g && c) {
+	graphics = compute = i;//prefer g+c so a single render pass can have both options
+	if(t) {
+	  transfer = i;
 	  break;//all 3 = optimal
 	}
-      } else if(g && c) {
-	if(!hasGraphics || !hasTransfer || transfer != graphics) {
-	  hasGraphics = hasCompute = true;
-	  graphics = compute = i;
-	} else if(!hasCompute) {
-	  hasCompute = true;
-	  compute = i;
-	}
-      } else {
-	if(g && !hasGraphics) {
-	  hasGraphics = true;
-	  graphics = i;
-	}
-	if(c && !hasCompute) {
-	  hasCompute = true;
-	  compute = i;
-	}
-	if(t && !hasTransfer) {
-	  hasTransfer = true;
+      } else if(g && t) {
+	if(!hasGraphics || !hasCompute || compute != graphics)
+	  graphics = transfer = i;
+        else if(!hasTransfer)
 	  transfer = i;
-	}
+      } else {
+	if(g && !hasGraphics)
+	  graphics = i;
+	if(c && !hasCompute)
+	  compute = i;
+	if(t && !hasTransfer)
+	  transfer = i;
       }
     }
     if(!hasGraphics || !hasTransfer || !hasCompute)
       CRASH_PREINIT("Cannot find one queue of each type on gpu");
+    if(graphics != compute)
+      WARN("WARN: gpu does not have a queue that supports both graphics and compute capability, render passes that include both cannot happen.");//ATM this case will cause a crash if/when such an RP happens. Even once that is implemented, this case has potential log value.
     cnt = 3;
     if(graphics == transfer || graphics == compute) cnt--;
     if(transfer == compute) cnt--;
@@ -223,8 +216,8 @@ namespace WITE::GPU {
     //TODO other extensions. Doesn't present require an extension?
 #endif
     VK_ASSERT(vk::createInstance(&ci, ALLOCCB, &vkInstance), "Failed to create vulkan instance.");
-    uint32_t cnt = 64;
-    vk::PhysicalDevice pds[64];//hard coded to maximum 64 discrete gpus, seriously safe at least until they change what a gpu is.
+    uint32_t cnt = MAX_GPUS;
+    vk::PhysicalDevice pds[MAX_GPUS];
     VK_ASSERT(vkInstance.enumeratePhysicalDevices(&cnt, pds), "Failed to enumerate gpus");
     gpus = std::unique_ptr<Gpu[]>(calloc<Gpu>(cnt));
     for(size_t i = 0;i < cnt;i++)
@@ -274,7 +267,7 @@ namespace WITE::GPU {
     return gpus[i];
   }
 
-  uint8_t Gpu::gpuCountByLdm(uint64_t ldm) {//static
+  uint8_t Gpu::gpuCountByLdm(logicalDeviceMask_t ldm) {//static
     return std::popcount(gpuMaskByLdm(ldm));
   }
 
@@ -283,15 +276,15 @@ namespace WITE::GPU {
   //   return NULL;
   // };
 
-  uint64_t Gpu::gpuMaskByLdm(uint64_t ldm) {//static
-    uint64_t ret = 0;
-    for(size_t i = 0;i < 64;i++)
+  deviceMask_t Gpu::gpuMaskByLdm(logicalDeviceMask_t ldm) {//static
+    deviceMask_t ret = 0;
+    for(size_t i = 0;i < MAX_LDMS;i++)
       if(ldm & (1 << i))
 	ret |= logicalPhysicalDeviceMatrix[i];
     return ret;
   }
 
-  vk::Format Gpu::getBestImageFormat(uint8_t comp, uint8_t compSize, uint64_t usage, uint64_t ldm) {
+  vk::Format Gpu::getBestImageFormat(uint8_t comp, uint8_t compSize, usage_t usage, logicalDeviceMask_t ldm) {
     //TODO better definition of "best", for now just use first that checks all the boxes
     vk::FormatFeatureFlags features = usageFeatures(usage);
     for(vk::Format format : formatsByFamily.at({comp, compSize})) {

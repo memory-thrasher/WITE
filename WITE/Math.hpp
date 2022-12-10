@@ -126,4 +126,23 @@ namespace WITE::Util {
     return static_cast<R>(d);
   };
 
+  //opposite of roll operator. In a = 1 << c, find c given a. Index of the lowest bit that is set in the input.
+  constexpr size_t unroll(uint64_t v) {
+    if(!v) return ~0;
+    for(size_t i = 0;i < 64;i++)
+      if(v & (1 << i))
+	return i;
+    return ~1;//impossible
+  };
+
+  //opposite of roll operator. In a = 1 << c, find c given a. Index of the Nth lowest bit that is set in the input.
+  constexpr size_t unrollNth(uint64_t v, size_t n) {
+    if(!v) return ~0;
+    for(size_t i = 0;i < 64;i++)
+      if(v & (1 << i))
+	if(n-- == 0)
+	  return i;
+    return ~1;
+  };
+
 };

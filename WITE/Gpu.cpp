@@ -6,6 +6,7 @@
 #include "Queue.hpp"
 #include "BitmaskIterator.hpp"
 #include "Math.hpp"
+#include "RenderTarget.hpp"
 #include "DEBUG.hpp"
 
 #include "Database.hpp" //for DB_THREAD_COUNT
@@ -79,9 +80,10 @@ namespace WITE::GPU {
   vk::Instance Gpu::vkInstance;
   size_t Gpu::gpuCount;
   std::unique_ptr<Gpu[]> Gpu::gpus;
-  deviceMask_t logicalPhysicalDeviceMatrix[MAX_LDMS];
+  deviceMask_t Gpu::logicalPhysicalDeviceMatrix[MAX_LDMS];
   std::unique_ptr<struct Gpu::LogicalGpu[]> Gpu::logicalDevices;
   size_t Gpu::logicalDeviceCount;
+  bool Gpu::running;
 
   Gpu::Gpu(size_t idx, vk::PhysicalDevice pv) : idx(idx), pv(pv) {
     pv.getProperties2(&pvp);
@@ -136,17 +138,20 @@ namespace WITE::GPU {
     size_t i = 0;
     size_t go, co, to = go = co = 0;
     dqcis[i] = vk::DeviceQueueCreateInfo((vk::DeviceQueueCreateFlags)0, graphics,
-					 Util::min(qfp[i].p.queueFamilyProperties.queueCount, DB_THREAD_COUNT), priorities);
+					 Util::min(qfp[graphics].p.queueFamilyProperties.queueCount, DB_THREAD_COUNT),
+					 priorities);
     i++;
     if(graphics != compute) {
       dqcis[i] = vk::DeviceQueueCreateInfo((vk::DeviceQueueCreateFlags)0, compute,
-					   Util::min(qfp[i].p.queueFamilyProperties.queueCount, DB_THREAD_COUNT), priorities);
+					   Util::min(qfp[compute].p.queueFamilyProperties.queueCount, DB_THREAD_COUNT),
+					   priorities);
       co = i++;
       if(compute == transfer) to = co;
     }
     if(transfer != graphics && transfer != compute) {
       dqcis[i] = vk::DeviceQueueCreateInfo((vk::DeviceQueueCreateFlags)0, transfer,
-					   Util::min(qfp[i].p.queueFamilyProperties.queueCount, DB_THREAD_COUNT), priorities);
+					   Util::min(qfp[transfer].p.queueFamilyProperties.queueCount, DB_THREAD_COUNT),
+					   priorities);
       to = i++;
     }
 
@@ -186,7 +191,7 @@ namespace WITE::GPU {
 
     queues = std::unique_ptr<Queue[]>(calloc<Queue>(cnt));
     for(size_t i = 0;i < cnt;i++)
-      new(&queues[i])Queue(this, dqcis[i]);
+      new(&queues[i])Queue(this, dqcis[i], qfp[dqcis[i].queueFamilyIndex].p.queueFamilyProperties);
     this->graphics = &queues[go];
     this->transfer = &queues[to];
     this->compute = &queues[co];
@@ -203,9 +208,14 @@ namespace WITE::GPU {
     VK_ASSERT(dev.createPipelineCache(&pipecacheci, ALLOCCB, &pipelineCache), "failed to create pipeline cache");
   };
 
+  void Gpu::shutdown() {
+    running = false;
+  };
+
   void Gpu::init(size_t logicalDeviceCount, const float* priorities) {//static
     if(inited.exchange(true))
       return;
+    running = true;
     vk::ApplicationInfo appI("WITE Engine", 0, "WITE Engine", 0, (1 << 22) | (3 << 12) | (216));//TODO accept app name
     vk::InstanceCreateInfo ci((vk::InstanceCreateFlags)0, &appI);
 #ifdef DEBUG
@@ -261,6 +271,7 @@ namespace WITE::GPU {
 	l.formatProperties[kvp.first] = fp;
       }
     }
+    RenderTarget::SpawnTruckThread();
   };
 
   Gpu& Gpu::get(size_t i) {//static
@@ -271,10 +282,15 @@ namespace WITE::GPU {
     return std::popcount(gpuMaskByLdm(ldm));
   }
 
-  // Gpu* Gpu::getGpuFor(uint64_t ldm) {//static
-  //   //TODO
-  //   return NULL;
-  // };
+  Platform::ThreadResource<uint64_t> ldmSalt;
+
+  Gpu* Gpu::getGpuFor(logicalDeviceMask_t ldm) {//static
+    deviceMask_t options = gpuMaskByLdm(ldm);
+    auto pc = std::popcount(options);
+    if(pc <= 0) return NULL;
+    if(pc == 1) return &get(Util::unroll(options));
+    return &get(Util::unrollNth(options, (*ldmSalt.get())++ % pc));
+  };
 
   deviceMask_t Gpu::gpuMaskByLdm(logicalDeviceMask_t ldm) {//static
     deviceMask_t ret = 0;

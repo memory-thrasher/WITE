@@ -15,17 +15,15 @@ namespace WITE::GPU {
       transfersRequired(Gpu::gpuCountByLdm(isd.logicalDeviceMask) > 1)
   {};
 
-  vk::Image ImageBase::makeImage(size_t gpu) {
-    vk::Image ret;
+  void ImageBase::makeImage(vk::Image* ret, size_t gpu) {
     vk::ImageCreateInfo ci;
     Gpu& g = Gpu::get(gpu);
     getCreateInfo(g, &ci, w, h, z);
-    VK_ASSERT(g.getVkDevice().createImage(&ci, ALLOCCB, &ret), "Failed to create image");
-    return ret;
+    VK_ASSERT(g.getVkDevice().createImage(&ci, ALLOCCB, ret), "Failed to create image");
   };
 
-  void ImageBase::destroyImage(vk::Image& d, size_t gpu) {//static
-    Gpu::get(gpu).getVkDevice().destroyImage(d);
+  void ImageBase::destroyImage(vk::Image* d, size_t gpu) {//static
+    Gpu::get(gpu).getVkDevice().destroyImage(*d);
   };
 
   void ImageBase::getCreateInfo(Gpu& gpu, vk::ImageCreateInfo* out, size_t width, size_t height, size_t z) {
@@ -46,7 +44,7 @@ namespace WITE::GPU {
 			       mip,//TODO reduce dynamically based on format capabilities
 			       al,
 			       (vk::SampleCountFlagBits)sam,
-			       vk::ImageTiling::eOptimal,
+			       usage & USAGE_ANY_HOST ? vk::ImageTiling::eLinear : vk::ImageTiling::eOptimal,
 			       getVkUsageFlags(),
 			       vk::SharingMode::eExclusive //TODO? concurrent access images (on readonly cycle)?
 			       );//default: layout as undefined
@@ -77,6 +75,10 @@ namespace WITE::GPU {
 
   vk::ImageView ImageBase::getVkImageView(size_t gpuIdx) {
     return views[gpuIdx];
+  };
+
+  void ImageBase::copy(size_t gpuSrc, size_t gpuDst, ElasticCommandBuffer& cmd) {
+    #error TODO
   };
 
 }

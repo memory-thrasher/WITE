@@ -13,8 +13,8 @@ namespace WITE::GPU {
     //TODO views? (requires texel buffer, so probably belongs in a subclass)
     PerGpu<vk::Buffer> buffers;
 
-    vk::Buffer makeBuffer(size_t gpu);
-    static void destroyBuffer(vk::Buffer&, size_t gpu);
+    void makeBuffer(vk::Buffer*, size_t gpu);
+    static void destroyBuffer(vk::Buffer*, size_t gpu);
   public:
     const BufferSlotData slotData;
     const bool transfersRequired;//if this image is to be transferred from it's device: ie if it's used by multiple phys devs

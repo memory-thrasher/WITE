@@ -37,21 +37,20 @@ namespace WITE::GPU {
 #undef MAPRW
   };
 
-  vk::Buffer BufferBase::makeBuffer(size_t gpuIdx) {
-    vk::Buffer ret;
+  void BufferBase::makeBuffer(vk::Buffer* ret, size_t gpuIdx) {
     vk::BufferCreateInfo ci;
     Gpu& gpu = Gpu::get(gpuIdx);
     getCreateInfo(gpu, &ci);
-    VK_ASSERT(gpu.getVkDevice().createBuffer(&ci, ALLOCCB, &ret), "Failed to create buffer");
-    return ret;
+    VK_ASSERT(gpu.getVkDevice().createBuffer(&ci, ALLOCCB, ret), "Failed to create buffer");
+#error TODO allocate device memory
   };
 
   vk::Buffer BufferBase::getVkBuffer(size_t gpuIdx) {
     return buffers[gpuIdx];
   };
 
-  void BufferBase::destroyBuffer(vk::Buffer& d, size_t gpu) {//static
-    Gpu::get(gpu).getVkDevice().destroyBuffer(d);
+  void BufferBase::destroyBuffer(vk::Buffer* d, size_t gpu) {//static
+    Gpu::get(gpu).getVkDevice().destroyBuffer(*d);
   };
 
 };

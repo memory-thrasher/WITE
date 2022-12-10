@@ -29,7 +29,7 @@ namespace WITE::GPU {
     friend class RenderTarget;
   protected:
     ShaderBase(QueueType qt);
-    ~ShaderBase();
+    virtual ~ShaderBase();
     ShaderBase(ShaderBase&) = delete;
     void Register(Renderer*);
     void Unregister(Renderer*);

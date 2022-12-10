@@ -10,6 +10,7 @@
 #include "StructuralConstList.hpp"
 #include "types.hpp"
 #include "constants.hpp"
+#include "BitmaskIterator.hpp"
 
 namespace WITE::GPU {
 
@@ -60,11 +61,14 @@ namespace WITE::GPU {
 
   public:
     static void init(size_t logicalDeviceCount, const float* priorities);//TODO capabilities?
+    static void shutdown();
+    static bool running;
     static Gpu& get(size_t);
     static inline size_t getGpuCount() { return gpuCount; };
     static uint8_t gpuCountByLdm(logicalDeviceMask_t ldm);
     static Gpu* getGpuFor(logicalDeviceMask_t ldm);//TODO distribute by weight, atomic seed over low modulo
     static inline bool ldmHasMultiplePhysical(logicalDeviceMask_t ldm) { return gpuCountByLdm(ldm) > 1; };
+    static Collections::BitmaskIterator gpusForLdm(logicalDeviceMask_t ldm);
     static vk::Format getBestImageFormat(uint8_t comp, uint8_t compSize, usage_t usage, logicalDeviceMask_t ldm = 1);
 
     inline size_t getIndex() { return idx; };

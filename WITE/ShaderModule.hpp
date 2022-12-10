@@ -10,8 +10,8 @@ namespace WITE::GPU {
   private:
     typedef PerGpu<vk::ShaderModule> handles_t;
     handles_t handles;
-    vk::ShaderModule create(size_t gpu);
-    void destroy(vk::ShaderModule&, size_t gpu);
+    void create(vk::ShaderModule*, size_t gpu);
+    void destroy(vk::ShaderModule*, size_t gpu);
     const vk::ShaderModuleCreateInfo createInfo;
     static constexpr vk::PipelineShaderStageCreateFlags psscf_none = (vk::PipelineShaderStageCreateFlags)0;
     std::map<vk::ShaderStageFlagBits, vk::PipelineShaderStageCreateInfo> stageInfos;

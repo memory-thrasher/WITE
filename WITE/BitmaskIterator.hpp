@@ -1,3 +1,5 @@
+#pragma once
+
 namespace WITE::Collections {
 
   class BitmaskIterator {
@@ -24,6 +26,8 @@ namespace WITE::Collections {
       return old;
     };
     inline bool operator==(const BitmaskIterator& o) const { return (!*this && !o) || (i == o.i && value == o.value); };
+    inline BitmaskIterator begin() const { return *this; };
+    inline BitmaskIterator end() const { return 0; };
   };
 
 }

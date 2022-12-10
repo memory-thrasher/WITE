@@ -32,7 +32,7 @@ find $BUILDLIBS $BUILDAPP $BUILDTESTS -name '*.cpp' -type f -print0 |
 		$COMPILER $VK_INCLUDE -E -o /dev/null -H "${SRCFILE}" 2>&1 | grep -o '[^[:space:]]*$' >"${DEPENDENCIES}"
 	    fi
 	    while read depend; do
-		if [ "${depend}" -nt "${DSTFILE}" ]; then
+		if ! [ -f "${depend}" ] || [ "${depend}" -nt "${DSTFILE}" ]; then
 		    echo "rebuilding ${SRCFILE} because ${depend} is newer";
 		    break;
 		fi
@@ -47,8 +47,10 @@ find $BUILDLIBS $BUILDAPP $BUILDTESTS -name '*.cpp' -type f -print0 |
 	(
 	    if ! $COMPILER $VK_INCLUDE --std=c++20 -D_POSIX_C_SOURCE=200112L -fPIC $BOTHOPTS -Werror -Wall "${SRCFILE}" -c -o "${DSTFILE}" >>"${LOGFILE}" 2>>"${THISERRLOG}"; then
 		touch "${SRCFILE}";
+		echo "Failed Build: ${SRCFILE}"
+	    else
+		echo "Built: ${SRCFILE}"
 	    fi
-	    echo "Built: ${SRCFILE}"
 	) &
     done
 
@@ -65,6 +67,7 @@ if ! [ -f "${ERRLOG}" ] || [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
 	LIBNAME="$OUTDIR/$(basename "${DIRNAME}").so"
 	if [ -f "$LIBNAME" ] && [ $(find "$OUTDIR/$DIRNAME" -iname '*.o' -newer "$LIBNAME" | wc -l) -eq 0 ]; then continue; fi;
 	#TODO VK_LIB ?
+	test -f "${DIRNAME}.so" && cp "${DIRNAME}.so" "${DIRNAME}.so.bak.$(date '+%y%m%d%H%M')"
 	echo "Linking $LIBNAME"
 	$COMPILER -shared $BOTHOPTS $LINKOPTS $(find "$OUTDIR/$DIRNAME" -name '*.o') -o $LIBNAME >>"${LOGFILE}" 2>>"${ERRLOG}"
     done
@@ -78,7 +81,7 @@ if ! [ -f "${ERRLOG}" ] || [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
 		#TODO VK_LIB ?
 		TESTNAME="${OFILE%.*}"
 		echo running test $TESTNAME
-		cp "${TESTNAME}" "${TESTNAME}.bak"
+		cp "${TESTNAME}" "${TESTNAME}.bak.$(date '+%y%m%d%H%M')"
 		$COMPILER "$OFILE" -o "$TESTNAME" -L "${OUTDIR}" "-Wl,-rpath,$OUTDIR" $BUILTLIBS $LINKOPTS $BOTHOPTS 2>>"${ERRLOG}" >>"${LOGFILE}"
 		echo running test "${TESTNAME}" >>"${LOGFILE}"
 		time $TESTNAME 2>>"${ERRLOG}" >>"${LOGFILE}"

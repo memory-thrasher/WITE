@@ -1,25 +1,41 @@
+#pragma once
+
 #include <map>
 
 #include "GpuResource.hpp"
 #include "StdExtensions.hpp"
 #include "StructuralConstList.hpp"
 #include "LiteralLookup.hpp"
+#include "LiteralMap.hpp"
 
 namespace WITE::GPU {
 
-  vk::ImageViewType getViewTypeForWhole(const ImageSlotData& isd) {
+  defineLiteralMap(vk::QueueFlagBits, QueueType, queueTypeByFlagBit,
+		   Collections::StructuralPair<vk::QueueFlagBits, QueueType>(vk::QueueFlagBits::eTransfer, QueueType::eTransfer),
+		   Collections::StructuralPair<vk::QueueFlagBits, QueueType>(vk::QueueFlagBits::eCompute , QueueType::eCompute ),
+		   Collections::StructuralPair<vk::QueueFlagBits, QueueType>(vk::QueueFlagBits::eGraphics, QueueType::eGraphics)
+		   );
+
+  defineLiteralMap(QueueType, vk::QueueFlagBits, queueBitByType,
+		   Collections::StructuralPair<QueueType, vk::QueueFlagBits>(QueueType::eTransfer, vk::QueueFlagBits::eTransfer),
+		   Collections::StructuralPair<QueueType, vk::QueueFlagBits>(QueueType::eCompute , vk::QueueFlagBits::eCompute ),
+		   Collections::StructuralPair<QueueType, vk::QueueFlagBits>(QueueType::eGraphics, vk::QueueFlagBits::eGraphics)
+		   );
+
+  constexpr vk::ImageViewType getViewTypeForWhole(const ImageSlotData& isd) {
     size_t dimensions = isd.dimensions;
     bool isCube = isd.usage & GpuResource::USAGE_IS_CUBE;
     bool isArray = isd.arrayLayers > 1;
-    ASSERT_TRAP(!isCube || dimensions == 2, "Cube must be 2D (array optional)");
-    ASSERT_TRAP(dimensions <= 3, "Too many dimensions");
-    ASSERT_TRAP(!isArray || dimensions <= 2, "Too many dimensions for array");
+    // ASSERT_TRAP(!isCube || dimensions == 2, "Cube must be 2D (array optional)");
+    // ASSERT_TRAP(dimensions <= 3, "Too many dimensions");
+    // ASSERT_TRAP(!isArray || dimensions <= 2, "Too many dimensions for array");
     if(isCube) return isArray ? vk::ImageViewType::eCube : vk::ImageViewType::eCubeArray;
     switch(dimensions) {
     case 1: return isArray ? vk::ImageViewType::e1D : vk::ImageViewType::e1DArray;
     case 2: return isArray ? vk::ImageViewType::e2D : vk::ImageViewType::e2DArray;
     case 3: return vk::ImageViewType::e3D;
-    default: CRASHRET(vk::ImageViewType::e3D, "Illegal image");
+    default: return vk::ImageViewType::e1D;//invalid dimensionality
+    // default: CRASHRET(vk::ImageViewType::e3D, "Illegal image");
     }
   };
 

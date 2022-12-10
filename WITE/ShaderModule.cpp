@@ -15,14 +15,12 @@ namespace WITE::GPU {
       stageInfos[pair.first] = vk::PipelineShaderStageCreateInfo(psscf_none, pair.first, nullptr, pair.second, NULL);
   };
 
-  vk::ShaderModule ShaderModule::create(size_t gpuIdx) {
-    vk::ShaderModule ret;
-    VK_ASSERT(Gpu::get(gpuIdx).getVkDevice().createShaderModule(&createInfo, ALLOCCB, &ret), "Failed to compile shader");
-    return ret;
+  void ShaderModule::create(vk::ShaderModule* ret, size_t gpuIdx) {
+    VK_ASSERT(Gpu::get(gpuIdx).getVkDevice().createShaderModule(&createInfo, ALLOCCB, ret), "Failed to compile shader");
   };
 
-  void ShaderModule::destroy(vk::ShaderModule& doomed, size_t gpuIdx) {
-    Gpu::get(gpuIdx).getVkDevice().destroyShaderModule(doomed, ALLOCCB);
+  void ShaderModule::destroy(vk::ShaderModule* doomed, size_t gpuIdx) {
+    Gpu::get(gpuIdx).getVkDevice().destroyShaderModule(*doomed, ALLOCCB);
   };
 
   const vk::PipelineShaderStageCreateInfo&& ShaderModule::getCI(vk::ShaderStageFlagBits stage, size_t gpuIdx) {

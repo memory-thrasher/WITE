@@ -2,8 +2,13 @@
 
 #include "Vulkan.hpp"
 #include "types.hpp"
+#include "FrameBufferedCollection.hpp"
+#include "Semaphore.hpp"
+#include "Thread.hpp"
 
 namespace WITE::GPU {
+
+  class ElasticCommandBuffer;
 
   struct ImageFormatFamily {
     uint8_t components, componentsSize;
@@ -15,7 +20,7 @@ namespace WITE::GPU {
 
   struct ImageSlotData : public ImageFormatFamily {
     uint8_t dimensions, samples;
-    usage_t usage;
+    usage_t usage, externalUsage;//external usage is for render passes to decide what layout to leave it in etc
     logicalDeviceMask_t logicalDeviceMask;
     uint32_t arrayLayers, mipLevels;
     constexpr ImageSlotData(uint8_t comp, uint8_t comp_size, uint8_t dim, uint8_t sam,
@@ -33,6 +38,8 @@ namespace WITE::GPU {
   //base class for buffers and images and whatever else might come up
   //all gpu resources shall include a PerGpu and manage any scynchronization between them
   class GpuResource {
+  private:
+    // static FrameBufferedCollection<GpuResource*> allGpuResources;//TODO garbage collect? Check for leaks and warn? debug only?
   public:
     static constexpr usage_t
     USAGE_INDIRECT = 1,
@@ -53,7 +60,12 @@ namespace WITE::GPU {
       MUSAGE_ANY_WRITE = USAGE_DS_WRITE | USAGE_ATT_DEPTH | USAGE_ATT_OUTPUT | USAGE_HOST_WRITE,
       MUSAGE_ANY_READ = USAGE_INDIRECT | USAGE_VERTEX | USAGE_DS_READ | USAGE_DS_SAMPLED | USAGE_ATT_INPUT | USAGE_HOST_READ,
       MUSAGE_ANY_ATTACH = USAGE_ATT_DEPTH | USAGE_ATT_INPUT | USAGE_ATT_OUTPUT,
-      MUSAGE_ANY_SHADER_READ = USAGE_INDIRECT | USAGE_VERTEX | USAGE_DS_READ | USAGE_DS_SAMPLED;
+      MUSAGE_ANY_SHADER_READ = USAGE_INDIRECT | USAGE_VERTEX | USAGE_DS_READ | USAGE_DS_SAMPLED,
+      MUSAGE_ANY_HOST = USAGE_HOST_READ | USAGE_HOST_WRITE;
+    GpuResource(const GpuResource&) = delete;
+    GpuResource() = default;
+    virtual ~GpuResource() = default;
+    virtual void copy(size_t gpuSrc, size_t gpuDst, ElasticCommandBuffer& cmd) = 0;
   };
 
   enum class GpuResourceType { eImage, eBuffer };
@@ -64,8 +76,10 @@ namespace WITE::GPU {
       ImageSlotData imageData;
       BufferSlotData bufferData;
     };
-    constexpr GpuResourceSlotInfo(ImageSlotData isd) : type(GpuResourceType::eImage), imageData(isd) {};
-    constexpr GpuResourceSlotInfo(BufferSlotData bsd) : type(GpuResourceType::eBuffer), bufferData(bsd) {};
+    constexpr GpuResourceSlotInfo(ImageSlotData isd) :
+      type(GpuResourceType::eImage), imageData(isd) {};
+    constexpr GpuResourceSlotInfo(BufferSlotData bsd) :
+      type(GpuResourceType::eBuffer), bufferData(bsd) {};
   };
 
   template<GpuResourceSlotInfo CI> struct GpuResourceFactory {};

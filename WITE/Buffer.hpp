@@ -21,7 +21,7 @@ namespace WITE::GPU {
 
     BufferBase(BufferBase&) = delete;
     BufferBase(BufferSlotData bsd);
-    virtual ~BufferBase();
+    virtual ~BufferBase() = default;
     vk::Buffer getVkBuffer(size_t gpuIdx);
     void getCreateInfo(Gpu& gpu, vk::BufferCreateInfo* out);
   };

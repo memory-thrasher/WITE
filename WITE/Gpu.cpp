@@ -11,6 +11,18 @@
 
 #include "Database.hpp" //for DB_THREAD_COUNT
 
+const std::map<vk::MemoryPropertyFlags, int64_t> memoryScoreByFlag =
+  {
+    { vk::MemoryPropertyFlagBits::eDeviceLocal      ,   256 },
+    { vk::MemoryPropertyFlagBits::eHostVisible      ,   -64 },
+    { vk::MemoryPropertyFlagBits::eHostCoherent     ,     8 },
+    { vk::MemoryPropertyFlagBits::eHostCached       ,    16 },
+    { vk::MemoryPropertyFlagBits::eLazilyAllocated  ,  -128 },
+    { vk::MemoryPropertyFlagBits::eProtected        ,     0 },
+    { vk::MemoryPropertyFlagBits::eDeviceCoherentAMD,   256 },
+    { vk::MemoryPropertyFlagBits::eDeviceUncachedAMD,   -32 }
+  };
+
 const std::map<const WITE::GPU::ImageFormatFamily, const std::vector<vk::Format>> formatsByFamily =
   {
    { { 2, 4 }, { vk::Format::eR4G4UnormPack8 } },
@@ -206,6 +218,40 @@ namespace WITE::GPU {
     //TODO look into save/load the cache (create info takes pointer to loaded data))
     vk::PipelineCacheCreateInfo pipecacheci((vk::PipelineCacheCreateFlags)0, 0, NULL);
     VK_ASSERT(dev.createPipelineCache(&pipecacheci, ALLOCCB, &pipelineCache), "failed to create pipeline cache");
+
+    pdmp.pNext = &pdmbp;
+    pv.getMemoryProperties2(&pdmp);
+    for(size_t i = 0;i < pdmp.memoryProperties.memoryTypeCount;i++) {
+      int64_t score = 0;
+      Collections::BitmaskIterator j(vk::MemoryPropertyFlags::MaskType(pdmp.memoryProperties.memoryTypes[i].propertyFlags));
+      while(j) {
+	auto flag = j.asMask<vk::MemoryPropertyFlags>();
+	if(memoryScoreByFlag.contains(flag))
+	  score += memoryScoreByFlag.at(flag);
+	++j;
+      };
+      memoryScoreByType[i] = score;
+    }
+    for(size_t i = 0;i < pdmp.memoryProperties.memoryHeapCount;i++)
+      freeMemoryByHeap[i] = pdmbp.heapBudget[i] - pdmbp.heapUsage[i];
+  };
+
+  void Gpu::allocate(const vk::MemoryRequirements& mr, VRam* out) {
+    uint8_t type;
+    int64_t bestScore = std::numeric_limits<int64_t>::lowest();
+    for(auto t : Collections::BitmaskIterator(mr.memoryTypeBits)) {
+      if(memoryScoreByType[t] > bestScore && freeMemoryByHeap[pdmp.memoryProperties.memoryTypes[t].heapIndex] > mr.size) {
+	bestScore = memoryScoreByType[t];
+	type = t;
+      }
+    }
+    new(out)VRam(mr, type, this);
+    freeMemoryByHeap[pdmp.memoryProperties.memoryTypes[type].heapIndex] -= mr.size;
+  };
+
+  void Gpu::deallocate(VRam* doom) {
+    doom->~VRam();
+    freeMemoryByHeap[pdmp.memoryProperties.memoryTypes[doom->mai.memoryTypeIndex].heapIndex] += doom->mai.allocationSize;
   };
 
   void Gpu::shutdown() {

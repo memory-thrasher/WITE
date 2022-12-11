@@ -8,6 +8,9 @@
 namespace WITE::GPU {
 
   std::vector<ShaderBase*> ShaderBase::allShaders; //static
+  std::atomic<pipelineId_t> ShaderBase::idSeed;
+  PerGpu<std::map<ShaderData, vk::PipelineLayout>> ShaderBase::layoutsByData;
+  Util::SyncLock ShaderBase::layoutsByData_mutex;
 
   ShaderBase::ShaderBase(QueueType qt) : queueType(qt)
   {
@@ -54,8 +57,6 @@ namespace WITE::GPU {
 	  if(!Collections::contains(except, renderer))
 	    RenderImpl(renderer, cmd);
   };
-
-  PerGpu<std::map<ShaderData, vk::PipelineLayout>> ShaderBase::layoutsByData;
 
   vk::PipelineLayout ShaderBase::getLayout(const ShaderData& d, const vk::PipelineLayoutCreateInfo* pipeCI, size_t gpu) { //static
     Util::ScopeLock lock(&layoutsByData_mutex);

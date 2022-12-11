@@ -48,7 +48,7 @@ namespace WITE::GPU {
     virtual void getRenderInfo(vk::RenderPassBeginInfo* out, size_t gpuIdx) const = 0;
     friend class ShaderBase;
     virtual void renderQueued(ElasticCommandBuffer& cmd) = 0;//implementation is expected to do something with the rendered image
-    virtual void truckResourcesTo(size_t srcGpu, size_t dstGpu, ElasticCommandBuffer&) = 0;
+    virtual void truckResourcesTo(size_t srcGpu, size_t dstGpu) = 0;
   public:
     static void SpawnTruckThread();//internal use only called by gpu init
     RenderTarget() = delete;

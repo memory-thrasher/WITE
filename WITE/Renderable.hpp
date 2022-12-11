@@ -1,10 +1,13 @@
-/*
-new rendering system:
-any object update can call render (async) i.e. reflection map
+#include "Vulkan.hpp"
+#include "ShaderData.hpp"
+#include "Renderer.hpp"
 
-maybe:
-always renders to offscreen image and then blit to presentation
-every renderable must provide a depthmap-only shader
-system produces a map of object ids via depth-only and then renders specific objects to specific pixels
+namespace WITE::GPU {
 
-*/
+  //renderer renders something. renderable renders itself. I need caffeine.
+  template<ShaderData D> class Renderable : public Renderer {
+  private:
+  public:
+  };
+
+};

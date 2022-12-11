@@ -43,7 +43,7 @@ namespace WITE::Platform {
     }
     T* get();
     T* get(uint32_t tid) {
-      if(!data[tid]) {
+      if(typeInit && !data[tid]) {
 	Util::ScopeLock contextHold(&lock);
         if(typeInit && !data[tid])
           data[tid] = typeInit->call();

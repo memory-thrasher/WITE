@@ -4,6 +4,7 @@
 #include "Vulkan.hpp"
 #include "PerGpuPerThread.hpp"
 #include "PerGpu.hpp"
+#include "VRam.hpp"
 
 namespace WITE::GPU {
 
@@ -36,7 +37,6 @@ namespace WITE::GPU {
     void resize(size_t w, size_t h, size_t z);//TODO for each existing image, blit it to the new one. Crash if not transfer-enabled (maybe make a resizable usage flag?).
     inline vk::Extent2D getVkSize() { return { w, h }; };
     vk::ImageSubresourceRange getAllInclusiveSubresource();
-    virtual void copy(size_t gpuSrc, size_t gpuDst, ElasticCommandBuffer& cmd) override;
   };
 
   //MIP and SAM might be less than requested if the platform does not support it

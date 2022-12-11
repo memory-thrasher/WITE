@@ -9,6 +9,9 @@
 
 namespace WITE::GPU {
 
+  std::vector<std::unique_ptr<RenderTarget>> RenderTarget::allRTs;//iterated by truck thread
+  Util::SyncLock RenderTarget::allRTs_mutex;
+
   RenderTarget::RenderTarget(logicalDeviceMask_t ldm) :
     ldm(ldm),
     renderPasses(renderPasses_t::creator_t_F::make(this, &RenderTarget::makeRenderPass),
@@ -88,10 +91,9 @@ namespace WITE::GPU {
 	  if(maxTruck > minPromise) {
 	    for(size_t gpuIdx : devices) {
 	      if(gpuIdx == maxTruckIdx || rt->sem[gpuIdx].getCurrentValue() >= maxTruck) continue;
-	      ElasticCommandBuffer cmd = Gpu::get(gpuIdx).getTransfer()->createBatch(maxTruck);
-	      rt->truckResourcesTo(maxTruckIdx, gpuIdx, cmd);
-	      cmd.addSignal(&rt->sem[gpuIdx]);
-	      cmd.addSignal(&rt->truckSem[gpuIdx]);
+	      rt->truckResourcesTo(maxTruckIdx, gpuIdx);
+	      rt->sem[gpuIdx].signalNow(maxTruck);
+	      rt->truckSem[gpuIdx].signalNow(maxTruck);
 	    }
 	  }
 	}

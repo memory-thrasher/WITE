@@ -5,6 +5,8 @@
 #include "FrameBufferedCollection.hpp"
 #include "Semaphore.hpp"
 #include "Thread.hpp"
+#include "PerGpu.hpp"
+#include "VRam.hpp"
 
 namespace WITE::GPU {
 
@@ -40,6 +42,9 @@ namespace WITE::GPU {
   class GpuResource {
   private:
     // static FrameBufferedCollection<GpuResource*> allGpuResources;//TODO garbage collect? Check for leaks and warn? debug only?
+    PerGpu<void*> maps;
+  protected:
+    PerGpu<VRam> mem;//TODO PerGpu default constructor that just uses T default constructor
   public:
     static constexpr usage_t
     USAGE_INDIRECT = 1,
@@ -61,11 +66,13 @@ namespace WITE::GPU {
       MUSAGE_ANY_READ = USAGE_INDIRECT | USAGE_VERTEX | USAGE_DS_READ | USAGE_DS_SAMPLED | USAGE_ATT_INPUT | USAGE_HOST_READ,
       MUSAGE_ANY_ATTACH = USAGE_ATT_DEPTH | USAGE_ATT_INPUT | USAGE_ATT_OUTPUT,
       MUSAGE_ANY_SHADER_READ = USAGE_INDIRECT | USAGE_VERTEX | USAGE_DS_READ | USAGE_DS_SAMPLED,
-      MUSAGE_ANY_HOST = USAGE_HOST_READ | USAGE_HOST_WRITE;
+      MUSAGE_ANY_HOST = USAGE_HOST_READ | USAGE_HOST_WRITE,
+      MUSAGE_ANY_INTERMEDIATE = MUSAGE_ANY_SHADER_READ | USAGE_ATT_INPUT;//denotes which images need synced when multiple gpus
     GpuResource(const GpuResource&) = delete;
     GpuResource() = default;
     virtual ~GpuResource() = default;
-    virtual void copy(size_t gpuSrc, size_t gpuDst, ElasticCommandBuffer& cmd) = 0;
+    void copy(size_t gpuSrc, size_t gpuDst);
+    void* map(size_t gpuIdx);
   };
 
   enum class GpuResourceType { eImage, eBuffer };

@@ -22,6 +22,7 @@ namespace WITE::GPU {
   public:
     PerGpu(creator_t creator, destroyer_t destroyer) : creator(creator), destroyer(destroyer) {};
     PerGpu(creator_t creator) : creator(creator) {};
+    PerGpu() {};
     ~PerGpu() {
       if(destroyer)
 	for(size_t i = 0;i < MAX_GPUS;i++)
@@ -34,7 +35,8 @@ namespace WITE::GPU {
       if(dataAllocationMask & (1 << idx))
 	ret = data[idx];
       else {
-	creator(&data[idx], idx);
+	if(creator)
+	  creator(&data[idx], idx);
 	ret = data[idx];
 	dataAllocationMask |= (1 << idx);
       }
@@ -43,7 +45,8 @@ namespace WITE::GPU {
     inline T& getRef(size_t idx) {
       ASSERT_TRAP(idx < MAX_GPUS, "out of bounds");
       if(!(dataAllocationMask & (1 << idx))) {
-	creator(&data[idx], idx);
+	if(creator)
+	  creator(&data[idx], idx);
 	dataAllocationMask |= (1 << idx);
       }
       return data[idx];

@@ -12,18 +12,26 @@ namespace WITE::GPU {
       w(512), h(isd.dimensions > 1 ? 512 : 1), z(1),
       slotData(isd),
       format(Gpu::getBestImageFormat(isd.components, isd.componentsSize, isd.usage, isd.logicalDeviceMask)),
-      transfersRequired(Gpu::gpuCountByLdm(isd.logicalDeviceMask) > 1)
+      transfersRequired(Gpu::gpuCountByLdm(isd.logicalDeviceMask) > 1 && (isd.externalUsage & MUSAGE_ANY_INTERMEDIATE))
   {};
 
   void ImageBase::makeImage(vk::Image* ret, size_t gpu) {
     vk::ImageCreateInfo ci;
     Gpu& g = Gpu::get(gpu);
+    auto vkDev = g.getVkDevice();
     getCreateInfo(g, &ci, w, h, z);
-    VK_ASSERT(g.getVkDevice().createImage(&ci, ALLOCCB, ret), "Failed to create image");
+    VK_ASSERT(vkDev.createImage(&ci, ALLOCCB, ret), "Failed to create image");
+    vk::MemoryRequirements mr;
+    vkDev.getImageMemoryRequirements(*ret, &mr);
+    VRam* vram = &mem.getRef(gpu);
+    g.allocate(mr, vram);
+    vkDev.bindImageMemory(*ret, *vram, 0);
   };
 
-  void ImageBase::destroyImage(vk::Image* d, size_t gpu) {//static
-    Gpu::get(gpu).getVkDevice().destroyImage(*d);
+  void ImageBase::destroyImage(vk::Image* d, size_t gpuIdx) {//static
+    Gpu& gpu = Gpu::get(gpuIdx);
+    auto vkDev = gpu.getVkDevice();
+    vkDev.destroyImage(*d);//NOTE vram deallocated by VRam destructor
   };
 
   void ImageBase::getCreateInfo(Gpu& gpu, vk::ImageCreateInfo* out, size_t width, size_t height, size_t z) {
@@ -44,7 +52,7 @@ namespace WITE::GPU {
 			       mip,//TODO reduce dynamically based on format capabilities
 			       al,
 			       (vk::SampleCountFlagBits)sam,
-			       usage & USAGE_ANY_HOST ? vk::ImageTiling::eLinear : vk::ImageTiling::eOptimal,
+			       usage & MUSAGE_ANY_HOST ? vk::ImageTiling::eLinear : vk::ImageTiling::eOptimal,
 			       getVkUsageFlags(),
 			       vk::SharingMode::eExclusive //TODO? concurrent access images (on readonly cycle)?
 			       );//default: layout as undefined
@@ -75,10 +83,6 @@ namespace WITE::GPU {
 
   vk::ImageView ImageBase::getVkImageView(size_t gpuIdx) {
     return views[gpuIdx];
-  };
-
-  void ImageBase::copy(size_t gpuSrc, size_t gpuDst, ElasticCommandBuffer& cmd) {
-    #error TODO
   };
 
 }

@@ -9,7 +9,7 @@ LOGFILE="${OUTDIR}/buildlog.txt"
 ERRLOG="${OUTDIR}/builderrs.txt"
 ERRLOGBIT="errors.txt"
 ERRLOGBITDIR="${OUTDIR}/file_errors"
-rm "${LOGFILE}" "${ERRLOG}" 2>/dev/null
+rm "${LOGFILE}" "${ERRLOG}" ${ERRLOGBITDIR}/*-${ERRLOGBIT} 2>/dev/null
 mkdir -p "${OUTDIR}" "${ERRLOGBITDIR}" 2>/dev/null
 if [ -z "${VK_SDK_PATH}" ]; then
     VK_SDK_PATH="${VULKAN_SDK}"
@@ -24,6 +24,7 @@ fi
 #compile to static
 find $BUILDLIBS $BUILDAPP $BUILDTESTS -name '*.cpp' -type f -print0 |
     while IFS= read -d '' SRCFILE; do
+	if [ $(cat ${ERRLOGBITDIR}/*-${ERRLOGBIT} | wc -l) -gt 0 ]; then break; fi;
 	DSTFILE="${OUTDIR}/${SRCFILE%.*}.o"
 	DEPENDENCIES="${OUTDIR}/${SRCFILE%.*}.d"
 	mkdir -p "$(dirname "$DSTFILE")";
@@ -43,7 +44,7 @@ find $BUILDLIBS $BUILDAPP $BUILDTESTS -name '*.cpp' -type f -print0 |
 	fi
 	rm "${DEPENDENCIES}"
 	THISERRLOG="${ERRLOGBITDIR}/$(echo "${SRCFILE}" | tr '/' '-')-${ERRLOGBIT}"
-	rm "${THISERRLOG}"
+	rm "${THISERRLOG}" 2>/dev/null
 	(
 	    if ! $COMPILER $VK_INCLUDE --std=c++20 -D_POSIX_C_SOURCE=200112L -fPIC $BOTHOPTS -Werror -Wall "${SRCFILE}" -c -o "${DSTFILE}" >>"${LOGFILE}" 2>>"${THISERRLOG}"; then
 		touch "${SRCFILE}";

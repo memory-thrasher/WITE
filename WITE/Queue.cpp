@@ -21,6 +21,10 @@ namespace WITE::GPU {
       dev.getQueue(family, i, &queueInstances[i]);
   };
 
+  Queue::~Queue() {
+    //TODO destroy command pools? or does destroying the device do that?
+  };
+
   Queue::PerThreadResources* Queue::makePerThreadResources() {
     auto ret = new PerThreadResources();
     uint32_t i = Platform::Thread::getCurrentTid() % queueInstanceCount;
@@ -50,6 +54,7 @@ namespace WITE::GPU {
   Platform::ThreadResource<qSubmitStaging_t> qSubmitStaging;
 
   void Queue::submit(Cmd* cmd, uint64_t frame) {
+    cmd->cmd.end();
     qSubmitStaging_t* staging = qSubmitStaging.get();
     staging->waits.clear();
     staging->waits.reserve(cmd->waits.size());
@@ -90,8 +95,18 @@ namespace WITE::GPU {
     return { this, Util::FrameCounter::getFrame() };
   };
 
-  // vk::CommandBuffer Queue::getNext() {
-  //   return nullptr;
-  // };
+  Queue::Cmd* Queue::getNext() {
+    auto ptr = pools.get();
+    Cmd* ret = ptr->cmdPool.allocate();
+    if(!ret->cmd) {
+      vk::CommandBufferAllocateInfo ai { ptr->pool, vk::CommandBufferLevel::ePrimary, 1 };
+      VK_ASSERT(gpu->getVkDevice().allocateCommandBuffers(&ai, &ret->cmd), "failed to allocate command buffer");
+    } else {
+      ret->cmd.reset({});
+    }
+    vk::CommandBufferBeginInfo bi { vk::CommandBufferUsageFlagBits::eOneTimeSubmit };
+    ret->cmd.begin(bi);
+    return ret;
+  };
 
 }

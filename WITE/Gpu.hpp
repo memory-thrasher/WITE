@@ -56,6 +56,10 @@ namespace WITE::GPU {
     std::unique_ptr<class Queue[]> queues;
     Queue *graphics, *transfer, *compute;
     vk::PipelineCache pipelineCache;
+    vk::PhysicalDeviceMemoryProperties2 pdmp;
+    vk::PhysicalDeviceMemoryBudgetPropertiesEXT pdmbp;
+    std::array<int64_t, VK_MAX_MEMORY_TYPES> memoryScoreByType;
+    std::array<std::atomic_uint64_t, VK_MAX_MEMORY_HEAPS> freeMemoryByHeap;
 
     Gpu(size_t idx, vk::PhysicalDevice);
 
@@ -68,7 +72,7 @@ namespace WITE::GPU {
     static uint8_t gpuCountByLdm(logicalDeviceMask_t ldm);
     static Gpu* getGpuFor(logicalDeviceMask_t ldm);//TODO distribute by weight, atomic seed over low modulo
     static inline bool ldmHasMultiplePhysical(logicalDeviceMask_t ldm) { return gpuCountByLdm(ldm) > 1; };
-    static Collections::BitmaskIterator gpusForLdm(logicalDeviceMask_t ldm);
+    static inline Collections::BitmaskIterator gpusForLdm(logicalDeviceMask_t ldm) { return { gpuMaskByLdm(ldm) }; };
     static vk::Format getBestImageFormat(uint8_t comp, uint8_t compSize, usage_t usage, logicalDeviceMask_t ldm = 1);
 
     inline size_t getIndex() { return idx; };
@@ -78,6 +82,8 @@ namespace WITE::GPU {
     inline Queue* getCompute() { return compute; };
     inline Queue* getTransfer() { return transfer; };
     vk::PipelineCache getPipelineCache() { return pipelineCache; };
+    void allocate(const vk::MemoryRequirements&, VRam* out);
+    void deallocate(VRam*);
   };
 
 }

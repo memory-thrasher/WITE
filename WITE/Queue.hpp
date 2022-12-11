@@ -43,6 +43,7 @@ namespace WITE::GPU {
     const uint32_t family;
     const vk::QueueFamilyProperties qfp;
     Queue(Gpu*, const struct vk::DeviceQueueCreateInfo&, vk::QueueFamilyProperties& qfp);
+    ~Queue();
     //no destructor bc the global destroy will handle that
     ElasticCommandBuffer createBatch();
     ElasticCommandBuffer createBatch(uint64_t frame);

@@ -41,8 +41,13 @@ namespace WITE::GPU {
     vk::BufferCreateInfo ci;
     Gpu& gpu = Gpu::get(gpuIdx);
     getCreateInfo(gpu, &ci);
-    VK_ASSERT(gpu.getVkDevice().createBuffer(&ci, ALLOCCB, ret), "Failed to create buffer");
-#error TODO allocate device memory
+    auto vkDev = gpu.getVkDevice();
+    VK_ASSERT(vkDev.createBuffer(&ci, ALLOCCB, ret), "Failed to create buffer");
+    vk::MemoryRequirements mr;
+    vkDev.getBufferMemoryRequirements(*ret, &mr);
+    VRam* vram = &mem.getRef(gpuIdx);
+    gpu.allocate(mr, vram);
+    vkDev.bindBufferMemory(*ret, *vram, 0);
   };
 
   vk::Buffer BufferBase::getVkBuffer(size_t gpuIdx) {

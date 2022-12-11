@@ -72,6 +72,7 @@ namespace WITE::GPU {
     VertexShader(ShaderModule* v, ShaderModule* g, ShaderModule* f) : VertexShader(v, NULL, NULL, g, f) {};
     VertexShader(ShaderModule* v, ShaderModule* f) : VertexShader(v, NULL, NULL, NULL, f) {};
     VertexShader(ShaderModule* f) : VertexShader(NULL, NULL, NULL, NULL, f) {};
+    //TODO factory that just grabs whatever stages a single module has
   };
 
   template<ShaderData D> class MeshShader : public Shader<D> {

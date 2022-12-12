@@ -18,14 +18,19 @@ namespace WITE::GPU {
 
   class ShaderBase {
   private:
+    struct layout_t {
+      vk::PipelineLayout pipeLayout;
+      vk::DescriptorSetLayout dsLayout;
+    };
     static std::atomic<pipelineId_t> idSeed;
     static std::vector<ShaderBase*> allShaders;//all shaders should be created before anything gets rendered, so no syncing
-    static PerGpu<std::map<ShaderData, vk::PipelineLayout>> layoutsByData;
+    static PerGpu<std::map<ShaderData, layout_t>> layoutsByData;
     static Util::SyncLock layoutsByData_mutex;
     std::map<layer_t, Collections::FrameBufferedCollection<Renderer*>> renderersByLayer;
     const QueueType queueType;
     static void RenderAllOfTypeTo(RenderTarget&, ElasticCommandBuffer& cmd, QueueType, layerCollection_t&, std::initializer_list<Renderer*>& except);
     void RenderTo(RenderTarget&, ElasticCommandBuffer& cmd, layerCollection_t&, std::initializer_list<Renderer*>& except);
+    static layout_t makeLayout(const vk::PipelineLayoutCreateInfo* pipeCI, size_t gpuIdx);
     friend class RenderTarget;
   protected:
     ShaderBase(QueueType qt);
@@ -35,8 +40,7 @@ namespace WITE::GPU {
     void Unregister(Renderer*);
     virtual void RenderImpl(Renderer* r, ElasticCommandBuffer& cmd) = 0;
     virtual vk::PipelineBindPoint getBindPoint() = 0;
-    static vk::PipelineLayout getLayout(const ShaderData& d, const vk::PipelineLayoutCreateInfo* pipeCI, size_t gpuIdx);
-    static vk::PipelineLayout makeLayout(const vk::PipelineLayoutCreateInfo* pipeCI, size_t gpuIdx);
+    static vk::PipelineLayout getLayout(const ShaderData& d, const vk::DescriptorSetLayoutCreateInfo* dslCI, size_t gpuIdx);
   public:
     virtual vk::Pipeline CreatePipe(size_t idx, vk::RenderPass rp) = 0;
     const pipelineId_t id = idSeed++;//for RenderTarget to map pipelines against
@@ -65,6 +69,12 @@ namespace WITE::GPU {
       SetResource<idx>(r1);
       SetResource<idx + 1>(r2, std::forward<R...>(resources...));
     };
+  protected:
+    constexpr static uint32_t descriptorSetResourceCount = D.countDescriptorSetResources();
+    constexpr static vk::DescriptorSetLayoutBinding dsBindings[descriptorSetResourceCount] =
+		D.getDescriptorSetLayoutBindings<descriptorSetResourceCount>();
+    constexpr static vk::DescriptorSetLayoutCreateInfo dslCI { {}, descriptorSetResourceCount, dsBindings };
+    static vk::PipelineLayout getLayout(size_t gpuIdx) { return ShaderBase::getLayout(D, &dslCI, gpuIdx); };
   public:
     const ShaderData dataLayout = D;
     template<class... R> void SetGlobalResources(R... resources) {

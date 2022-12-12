@@ -21,10 +21,6 @@ namespace WITE::GPU {
 	  ShaderStage::eFragment,
 	  ShaderStage::eBlending
 	}));
-    constexpr static uint32_t descriptorSetResourceCount = D.countDescriptorSetResources();
-    constexpr static vk::DescriptorSetLayoutBinding dsBindings[descriptorSetResourceCount] =
-		D.getDescriptorSetLayoutBindings<descriptorSetResourceCount>();
-    constexpr static vk::PipelineLayoutCreateInfo pipeCI { {}, descriptorSetResourceCount, dsBindings };//defaulted no push constants
     vk::VertexInputBindingDescription viBinding { 0, sizeof(vertex_t), vk::VertexInputRate::eVertex };
     vk::VertexInputAttributeDescription viAttributes[VM.count()];
     vk::PipelineVertexInputStateCreateInfo vi { (vk::PipelineVertexInputStateCreateFlags)0,
@@ -106,10 +102,10 @@ namespace WITE::GPU {
       stageCIs[stageCnt++] = tessellationEvaluation->getCI(vk::ShaderStageFlagBits::eTessellationEvaluation, idx);
     if(geometry) stageCIs[stageCnt++] = geometry->getCI(vk::ShaderStageFlagBits::eGeometry, idx);
     stageCIs[stageCnt++] = fragment->getCI(vk::ShaderStageFlagBits::eFragment, idx);
-    gpci.layout = ShaderBase::getLayout(D, &pipeCI, idx);
+    gpci.layout = Shader<D>::getLayout(idx);
     gpci.renderPass = rp;
     gpci.pStages = stageCIs;
-    VK_ASSERT_TUPLE(ret, vkDev.createGraphicsPipeline(dev.getPipelineCache(), ci, ALLOCCB), "Failed to create pipe");
+    VK_ASSERT_TUPLE(ret, vkDev.createGraphicsPipeline(dev.getPipelineCache(), gpci, ALLOCCB), "Failed to create pipe");
     return ret;
   };
 

@@ -32,8 +32,8 @@ namespace WITE::GPU {
 		    "only images can be attached, and only attachments are provided by the RP.");
       static_assert((REZ[i].imageData.usage & GpuResource::USAGE_ATT_INPUT) != 0,
 		    "NYI feedback loop, requires device feature test");
-      GpuResourceFactory<REZ[i]>::type rez[2];
-      GpuResourceFactory<{ TODO make a resource slot based on REZ[i] and the need to transfer to/from host mem (tiling=linear) }>::type stagingRez;
+      GpuResourceFactory<REZ[i].externallyStagedResourceSlot()>::type rez[2];
+      GpuResourceFactory<RES[i].stagingResourceSlot()>::type stagingRez;
       //all gpu resources shall include a PerGpu and manage any scynchronization between them
       std::array<GpuResource*, 2> rezPtr { &rez[0], &rez[1] };
       resource_ct() : resource_bt(rezPtr, &stagingRez) {};
@@ -57,8 +57,8 @@ namespace WITE::GPU {
     std::array<vk::AttachmentDescription2, resourceCount> attachments;
     std::array<vk::SubpassDescription2, stepCount> subpasses;
     std::array<vk::SubpassDependency2, (stepCount-1)*resourceCount*2> depends;//might not all be used, track size seperately
-    std::array<stepAttachmentReferences, stepCount> attachmentReferences;
     size_t dependsCount = 0;
+    std::array<stepAttachmentReferences, stepCount> attachmentReferences;
     std::array<vk::ClearValue, resourceCount> clears;
     typedef PerGpu<FrameSwappedResource<vk::Framebuffer>> fbs_t;
     fbs_t fbs;

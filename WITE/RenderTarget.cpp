@@ -31,7 +31,7 @@ namespace WITE::GPU {
     Gpu::get(idx).getVkDevice().destroyRenderPass(*rp, ALLOCCB);
   };
 
-  void RenderTarget::render(std::initializer_list<Renderer*> except) {
+  void RenderTarget::render(std::initializer_list<Renderable*> except) {
     auto steps = getRenderSteps();
     Gpu* gpu = Gpu::getGpuFor(ldm);
     size_t gpuIdx = gpu->getIndex();

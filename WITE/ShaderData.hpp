@@ -15,6 +15,8 @@ namespace WITE::GPU {
 			   eTask, eMesh, eCompute };
   enum class ShaderResourceAccessType { eUndefined, eVertex, eUniform, eUniformTexel, eSampled, eDepthAtt, eColorAtt };
 
+  enum class ShaderResourceProvider { eRenderable, eRenderTarget, eShaderInstance };
+
   defineLiteralMap(ShaderStage, vk::ShaderStageFlags, shaderStageMap,
 		   Collections::StructuralPair<ShaderStage, vk::ShaderStageFlags>(ShaderStage::eVertex, vk::ShaderStageFlagBits::eVertex),
 		   Collections::StructuralPair<ShaderStage, vk::ShaderStageFlags>(ShaderStage::eTessellation, vk::ShaderStageFlagBits::eTessellationControl | vk::ShaderStageFlagBits::eTessellationEvaluation),
@@ -24,6 +26,8 @@ namespace WITE::GPU {
 		   Collections::StructuralPair<ShaderStage, vk::ShaderStageFlags>(ShaderStage::eTask, vk::ShaderStageFlagBits::eTaskNV),
 		   Collections::StructuralPair<ShaderStage, vk::ShaderStageFlags>(ShaderStage::eMesh, vk::ShaderStageFlagBits::eMeshNV),
 		   Collections::StructuralPair<ShaderStage, vk::ShaderStageFlags>(ShaderStage::eCompute, vk::ShaderStageFlagBits::eCompute));
+
+  //TODO look into VkDescriptorSetVariableDescriptorCountAllocateInfo
 
   class ShaderResourceUsage {
   public:
@@ -74,29 +78,24 @@ namespace WITE::GPU {
   public:
     // const ShaderResourceType type;
     const Collections::StructuralConstList<ShaderResourceUsage> usage;
+    const ShaderResourceProvider providedBy;
     ShaderResource() = delete;
     constexpr ShaderResource(const ShaderResource&) = default;
     constexpr ShaderResource(// const ShaderResourceType type, 
-			     const std::initializer_list<ShaderResourceUsage> usage) :
-      // type(type), 
-      usage(usage) {};
+			     const std::initializer_list<ShaderResourceUsage> usage,
+			     const ShaderResourceProvider provider) :
+      // type(type),
+      usage(usage),
+      providedBy(provider)
+    {};
 
     template<class Resource> struct acceptsTest { constexpr bool operator()(const ShaderResource*) { return false; }; };
 
-    constexpr std::strong_ordering operator<=>(const ShaderResource& o) const {
-      std::strong_ordering cmp = usage.count() <=> o.usage.count();
-      if(cmp != 0) return cmp;
-      for(size_t i = 0;i < usage.count();i++) {
-	cmp = usage[i] <=> o.usage[i];
-	if(cmp != 0) return cmp;
-      }
-      return std::strong_ordering::equal;
-    };
-
     template<ImageSlotData ISD> struct acceptsTest<Image<ISD>> {
+      //TODO convert from lamda to foreach
       constexpr bool operator()(const ShaderResource* s) {
 	return s->usage.every([](const ShaderResourceUsage u) {
-	  switch(u.access) {//TODO
+	  switch(u.access) {
 	  case ShaderResourceAccessType::eUndefined:
 	    switch(u.stage) {
 	    case ShaderStage::eDraw: if(!(ISD.usage & ImageBase::USAGE_INDIRECT)) return false; break;
@@ -122,6 +121,16 @@ namespace WITE::GPU {
 
     //TODO ^for buffers?
     template<class Resource> constexpr bool accepts() { return acceptsTest<Resource>::accepts(this); };
+
+    constexpr std::strong_ordering operator<=>(const ShaderResource& o) const {
+      std::strong_ordering cmp = usage.count() <=> o.usage.count();
+      if(cmp != 0) return cmp;
+      for(size_t i = 0;i < usage.count();i++) {
+	cmp = usage[i] <=> o.usage[i];
+	if(cmp != 0) return cmp;
+      }
+      return std::strong_ordering::equal;
+    };
 
     constexpr bool contains(const ShaderResourceAccessType access, const bool write) const {
       return std::any_of(usage.cbegin(), usage.cend(),

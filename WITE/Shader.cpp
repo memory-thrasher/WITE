@@ -1,5 +1,5 @@
 #include "Shader.hpp"
-#include "Renderer.hpp"
+#include "Renderable.hpp"
 #include "RenderTarget.hpp"
 #include "GpuResource.hpp"
 #include "Gpu.hpp"
@@ -21,25 +21,25 @@ namespace WITE::GPU {
     Collections::remove(allShaders, this);
   };
 
-  void ShaderBase::Register(Renderer* r) {
-    renderersByLayer[r->layer].push(r);
+  void ShaderBase::Register(Renderable* r) {
+    renderablesByLayer[r->layer].push(r);
   };
 
-  void ShaderBase::Unregister(Renderer* r) {
-    renderersByLayer[r->layer].remove(r);
+  void ShaderBase::Unregister(Renderable* r) {
+    renderablesByLayer[r->layer].remove(r);
   };
 
-  void ShaderBase::RenderAllOfTypeTo(RenderTarget& target, ElasticCommandBuffer& cmd, QueueType qt, layerCollection_t& layers, std::initializer_list<Renderer*>& except) {// static
+  void ShaderBase::RenderAllOfTypeTo(RenderTarget& target, ElasticCommandBuffer& cmd, QueueType qt, layerCollection_t& layers, std::initializer_list<Renderable*>& except) {// static
     for(ShaderBase* s : allShaders)
       if(s->queueType == qt)
 	s->RenderTo(target, cmd, layers, except);
   };
 
-  void ShaderBase::RenderTo(RenderTarget& target, ElasticCommandBuffer& cmd, layerCollection_t& layers, std::initializer_list<Renderer*>& except) {
-    if(!layers.intersectsMap(renderersByLayer)) return;
+  void ShaderBase::RenderTo(RenderTarget& target, ElasticCommandBuffer& cmd, layerCollection_t& layers, std::initializer_list<Renderable*>& except) {
+    if(!layers.intersectsMap(renderablesByLayer)) return;
     bool found = false;
     for(auto& layer : layers)
-      if(renderersByLayer.contains(layer) && renderersByLayer.at(layer).count()) {
+      if(renderablesByLayer.contains(layer) && renderablesByLayer.at(layer).count()) {
 	found = true;
 	break;
       }
@@ -51,23 +51,26 @@ namespace WITE::GPU {
     else
       pipe = target.pipelinesByShaderId.get(gpuIdx, id);
     cmd->bindPipeline(getBindPoint(), pipe);
-    for(auto& pair : renderersByLayer)
+    for(auto& pair : renderablesByLayer)
       if(layers.contains(pair.first))
-	for(Renderer* renderer : pair.second)
-	  if(!Collections::contains(except, renderer))
-	    RenderImpl(renderer, cmd);
+	for(Renderable* renderable : pair.second)
+	  if(!Collections::contains(except, renderable))
+	    RenderImpl(renderable, cmd);
   };
 
-  vk::PipelineLayout ShaderBase::getLayout(const ShaderData& d, const vk::PipelineLayoutCreateInfo* pipeCI, size_t gpu) { //static
+  vk::PipelineLayout ShaderBase::getLayout(const ShaderData& d, const vk::DescriptorSetLayoutCreateInfo* dslCI, size_t gpu) { //static
     Util::ScopeLock lock(&layoutsByData_mutex);
     if(!layoutsByData.contains(gpu, d))
-      layoutsByData.get(gpu, d) = ShaderBase::makeLayout(pipeCI, gpu);
-    return layoutsByData.get(gpu, d);
+      layoutsByData.get(gpu, d) = ShaderBase::makeLayout(dslCI, gpu);
+    return layoutsByData.get(gpu, d).pipeLayout;
   };
 
-  vk::PipelineLayout ShaderBase::makeLayout(const vk::PipelineLayoutCreateInfo* pipeCI, size_t gpuIdx) { //static
-    vk::PipelineLayout ret;
-    VK_ASSERT(Gpu::get(gpuIdx).getVkDevice().createPipelineLayout(pipeCI, ALLOCCB, &ret), "failed pipeline layout");
+  layout_t ShaderBase::makeLayout(const vk::DescriptorSetLayoutCreateInfo* dslCI, size_t gpuIdx) { //static
+    layout_t ret;
+    auto vkDev = Gpu::get(gpuIdx).getVkDevice();
+    VK_ASSERT(vkDev.createDescriptorSetLayout(dslCI, ALLOCCB, &ret.dsLayout), "failed to create dsl");
+    vk::PipelineLayoutCreateInfo pipeCI { {}, 1, &ret.dsLayout };//defaulted no push constants
+    VK_ASSERT(vkDev.createPipelineLayout(&pipeCI, ALLOCCB, &ret.pipeLayout), "failed pipeline layout");
     return ret;
   };
 

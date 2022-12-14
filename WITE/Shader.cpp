@@ -58,19 +58,17 @@ namespace WITE::GPU {
 	    RenderImpl(renderable, cmd);
   };
 
-  vk::PipelineLayout ShaderBase::getLayout(const ShaderData& d, const vk::DescriptorSetLayoutCreateInfo* dslCI, size_t gpu) { //static
+  vk::PipelineLayout ShaderBase::getLayout(const ShaderData& d, vk::PipelineLayoutCreateInfo* pipeCI, size_t gpu) { //static
     Util::ScopeLock lock(&layoutsByData_mutex);
     if(!layoutsByData.contains(gpu, d))
-      layoutsByData.get(gpu, d) = ShaderBase::makeLayout(dslCI, gpu);
-    return layoutsByData.get(gpu, d).pipeLayout;
+      layoutsByData.get(gpu, d) = ShaderBase::makeLayout(pipeCI, gpu);
+    return layoutsByData.get(gpu, d);
   };
 
-  layout_t ShaderBase::makeLayout(const vk::DescriptorSetLayoutCreateInfo* dslCI, size_t gpuIdx) { //static
-    layout_t ret;
+  vk::PipelineLayout ShaderBase::makeLayout(const vk::PipelineLayoutCreateInfo* pipeCI, size_t gpuIdx) { //static
+    vk::PipelineLayout ret;
     auto vkDev = Gpu::get(gpuIdx).getVkDevice();
-    VK_ASSERT(vkDev.createDescriptorSetLayout(dslCI, ALLOCCB, &ret.dsLayout), "failed to create dsl");
-    vk::PipelineLayoutCreateInfo pipeCI { {}, 1, &ret.dsLayout };//defaulted no push constants
-    VK_ASSERT(vkDev.createPipelineLayout(&pipeCI, ALLOCCB, &ret.pipeLayout), "failed pipeline layout");
+    VK_ASSERT(vkDev.createPipelineLayout(pipeCI, ALLOCCB, &ret), "failed pipeline layout");
     return ret;
   };
 

@@ -25,7 +25,7 @@ namespace WITE::Collections {
     static constexpr size_t getIdx(size_t gpuId, uint32_t threadId) { return threadId * MAX_GPUS + gpuId; };
     static constexpr size_t idxToGpu(size_t idx) { return idx % MAX_GPUS; };
   public:
-    PerGpuPerThread(creator_t c, destroyer_t d = NULL) : creator(c), destroyer(d) {};
+    PerGpuPerThread(creator_t c = NULL, destroyer_t d = NULL) : creator(c), destroyer(d) {};
 
     T& operator[](size_t gpu) {
       uint32_t tid = Platform::Thread::getCurrentTid();

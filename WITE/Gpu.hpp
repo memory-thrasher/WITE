@@ -29,19 +29,6 @@ namespace WITE::GPU {
     static size_t logicalDeviceCount;
 
     static deviceMask_t gpuMaskByLdm(deviceMask_t ldm);
-    static constexpr vk::FormatFeatureFlags usageFeatures(usage_t u) {
-      vk::FormatFeatureFlags ret = (vk::FormatFeatureFlags)0;
-      if(u & GpuResource::USAGE_VERTEX) ret |= vk::FormatFeatureFlagBits::eVertexBuffer;
-      if(u & GpuResource::USAGE_DS_SAMPLED) {
-	ret |= vk::FormatFeatureFlagBits::eSampledImage;
-	if(u & GpuResource::USAGE_DS_WRITE) ret |= vk::FormatFeatureFlagBits::eStorageImage;
-      }
-      if(u & GpuResource::USAGE_ATT_DEPTH) ret |= vk::FormatFeatureFlagBits::eDepthStencilAttachment;
-      if(u & GpuResource::USAGE_ATT_OUTPUT) ret |= vk::FormatFeatureFlagBits::eColorAttachment;
-      if(u & GpuResource::USAGE_HOST_READ) ret |= vk::FormatFeatureFlagBits::eTransferSrc;
-      if(u & GpuResource::USAGE_HOST_WRITE) ret |= vk::FormatFeatureFlagBits::eTransferDst;
-      return ret;
-    };
 
     size_t idx;
     std::map<vk::Format, vk::FormatProperties> formatProperties;

@@ -48,7 +48,7 @@ namespace WITE::GPU {
     vk::PipelineBindPoint getBindPoint() override;
 
     VertexShader(ShaderModule* v, ShaderModule* tc, ShaderModule* te, ShaderModule* g, ShaderModule* f) :
-      vertex(v), tessellationControl(tc), tessellationEvaluation(te), geometry(g), fragment(f)
+      Shader<D>(QueueType::eGraphics), vertex(v), tessellationControl(tc), tessellationEvaluation(te), geometry(g), fragment(f)
     {
       ASSERT_TRAP(!v || v->has(vk::ShaderStageFlagBits::eVertex), "no entry point provided for that shader module");
       ASSERT_TRAP(!tc || tc->has(vk::ShaderStageFlagBits::eTessellationControl),

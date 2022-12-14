@@ -39,6 +39,7 @@ namespace WITE::GPU {
     }
   };
 
+  //NOTE USAGE_TRANSFER is not respected here because there is no one layout that always works with it
   defineLiteralLookup(usage_t, vk::ImageLayout, layoutUsageCompatibility,
 		      Collections::StructuralPair<usage_t, std::initializer_list<vk::ImageLayout>>(GpuResource::USAGE_DS_SAMPLED, { vk::ImageLayout::eShaderReadOnlyOptimal, vk::ImageLayout::eReadOnlyOptimal, vk::ImageLayout::eDepthStencilReadOnlyOptimal, vk::ImageLayout::eDepthReadOnlyStencilAttachmentOptimal, vk::ImageLayout::eDepthAttachmentStencilReadOnlyOptimal, vk::ImageLayout::eDepthReadOnlyOptimal, vk::ImageLayout::eStencilReadOnlyOptimal, vk::ImageLayout::eAttachmentFeedbackLoopOptimalEXT } ),
 		      Collections::StructuralPair<usage_t, std::initializer_list<vk::ImageLayout>>(GpuResource::USAGE_ATT_INPUT, { vk::ImageLayout::eShaderReadOnlyOptimal, vk::ImageLayout::eReadOnlyOptimal, vk::ImageLayout::eAttachmentOptimal, vk::ImageLayout::eDepthStencilReadOnlyOptimal, vk::ImageLayout::eDepthReadOnlyOptimal, vk::ImageLayout::eDepthAttachmentStencilReadOnlyOptimal, vk::ImageLayout::eDepthReadOnlyOptimal, vk::ImageLayout::eStencilReadOnlyOptimal, vk::ImageLayout::eAttachmentFeedbackLoopOptimalEXT }),
@@ -47,6 +48,21 @@ namespace WITE::GPU {
 		      Collections::StructuralPair<usage_t, std::initializer_list<vk::ImageLayout>>(GpuResource::USAGE_HOST_READ, { vk::ImageLayout::eTransferSrcOptimal }),
 		      Collections::StructuralPair<usage_t, std::initializer_list<vk::ImageLayout>>(GpuResource::USAGE_HOST_WRITE, { vk::ImageLayout::eTransferDstOptimal }),
 		      Collections::StructuralPair<usage_t, std::initializer_list<vk::ImageLayout>>(GpuResource::USAGE_PRESENT, { vk::ImageLayout::ePresentSrcKHR }));
+
+  static constexpr vk::FormatFeatureFlags usageFormatFeatures(usage_t u) {
+    vk::FormatFeatureFlags ret = (vk::FormatFeatureFlags)0;
+    if(u & GpuResource::USAGE_VERTEX) ret |= vk::FormatFeatureFlagBits::eVertexBuffer;
+    if(u & GpuResource::USAGE_DS_SAMPLED) {
+      ret |= vk::FormatFeatureFlagBits::eSampledImage;
+      if(u & GpuResource::USAGE_DS_WRITE) ret |= vk::FormatFeatureFlagBits::eStorageImage;
+    }
+    if(u & GpuResource::USAGE_ATT_DEPTH) ret |= vk::FormatFeatureFlagBits::eDepthStencilAttachment;
+    if(u & GpuResource::USAGE_ATT_OUTPUT) ret |= vk::FormatFeatureFlagBits::eColorAttachment;
+    if(u & GpuResource::USAGE_HOST_READ) ret |= vk::FormatFeatureFlagBits::eTransferSrc;
+    if(u & GpuResource::USAGE_HOST_WRITE) ret |= vk::FormatFeatureFlagBits::eTransferDst;
+    if(u & GpuResource::USAGE_TRANSFER) ret |= vk::FormatFeatureFlagBits::eTransferSrc | vk::FormatFeatureFlagBits::eTransferDst;
+    return ret;
+  };
 
   constexpr static vk::ImageLayout optimalLayoutForUsage(usage_t usage) {
     //TODO performance test what happens when we use general all the time (no transitions)
@@ -86,6 +102,7 @@ namespace WITE::GPU {
     // if(usage & GpuResource::USAGE_HOST_WRITE) ret |= vk::AccessFlagBits2::eTransferWrite;
     if(usage & GpuResource::USAGE_HOST_READ) ret |= vk::AccessFlagBits2::eTransferRead;
     if(usage & GpuResource::USAGE_HOST_WRITE) ret |= vk::AccessFlagBits2::eTransferWrite;
+    if(usage & GpuResource::USAGE_TRANSFER) ret |= vk::AccessFlagBits2::eTransferRead | vk::AccessFlagBits2::eTransferWrite;
     return ret;
   };
 

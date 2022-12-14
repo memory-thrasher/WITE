@@ -9,8 +9,8 @@ namespace WITE::Util {
     static std::atomic_uint64_t frame;
   public:
     FrameCounter() = delete;
-    static void advanceFrame() { frame++; };
-    static uint64_t getFrame() { return frame; };
+    static inline void advanceFrame() { frame++; };
+    static inline uint64_t getFrame() { return frame; };
   };
 
 };

@@ -57,19 +57,18 @@ namespace WITE::GPU {
       USAGE_ATT_OUTPUT = 0X80,
       USAGE_HOST_READ = 0X100,
       USAGE_HOST_WRITE = 0X200,
-      USAGE_PRESENT = 0x400,
-      USAGE_TRANSFER = 0x800,
+      USAGE_TRANSFER = 0x400,
+      USAGE_PRESENT = 0x800,
       USAGE_IS_CUBE = 0X1000,
       USAGE_GRAPHICS = 0x2000,//for buffers, implied for images
       USAGE_COMPUTE = 0x4000,//ignored for images, except may affect backing buffer if any
     //meta masks
       MUSAGE_ANY_WRITE = USAGE_DS_WRITE | USAGE_ATT_DEPTH | USAGE_ATT_OUTPUT | USAGE_HOST_WRITE,
-      MUSAGE_ANY_READ = USAGE_INDIRECT | USAGE_VERTEX | USAGE_DS_READ | USAGE_DS_SAMPLED | USAGE_ATT_INPUT | USAGE_HOST_READ,
+      MUSAGE_ANY_READ = USAGE_INDIRECT | USAGE_VERTEX | USAGE_DS_READ | USAGE_DS_SAMPLED | USAGE_ATT_INPUT | USAGE_HOST_READ | USAGE_TRANSFER,
       MUSAGE_ANY_ATTACH = USAGE_ATT_DEPTH | USAGE_ATT_INPUT | USAGE_ATT_OUTPUT,
       MUSAGE_ANY_SHADER_READ = USAGE_INDIRECT | USAGE_VERTEX | USAGE_DS_READ | USAGE_DS_SAMPLED,
       MUSAGE_ANY_HOST = USAGE_HOST_READ | USAGE_HOST_WRITE,
       MUSAGE_ANY_INTERMEDIATE = MUSAGE_ANY_SHADER_READ | USAGE_ATT_INPUT;//denotes which images need synced when multiple gpus
-#error TODO implement USAGE_TRANSFER in vk usage logic
     GpuResource(const GpuResource&) = delete;
     GpuResource() = default;
     virtual ~GpuResource() = default;

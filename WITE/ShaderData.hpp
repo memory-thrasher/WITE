@@ -203,8 +203,17 @@ namespace WITE::GPU {
     const Collections::StructuralConstList<ShaderResource> resources;
     constexpr ~ShaderData() = default;
     constexpr ShaderData(const std::initializer_list<ShaderResource> resources) : resources(resources) {};
+    template<Iter> constexpr ShaderData(const Iter B, const Iter E) : resources(B, E) {};
     const ShaderResource& operator[](const size_t i) const {
       return resources[i];
+    };
+
+    constexpr ShaderData SubsetFrom(ShaderResourceProvider p) const {
+      std::vector<ShaderResource> resources;
+      for(auto r : resources)
+	if(r.providedBy == p)
+	  resources.push_back(r);
+      return ShaderData(resources.begin(), resources.end());
     };
 
     constexpr std::strong_ordering operator<=>(const ShaderData& o) const {
@@ -215,9 +224,10 @@ namespace WITE::GPU {
 	if(cmp != 0) return cmp;
       }
       return std::strong_ordering::equal;
+      #error WAY too much data to be a map key TODO make this a hashcode
     };
 
-    //TODO convert these lambda monsters to foreaches
+#error TODO convert these lambda monsters to foreaches
     constexpr bool contains(const ShaderResourceUsage u) const {
       return std::any_of(resources.cbegin(), resources.cend(),
 			 [u](ShaderResource r) {
@@ -246,15 +256,6 @@ namespace WITE::GPU {
       return false;
     };
 
-    constexpr size_t countDescriptorSetResources() const {
-      size_t ret = 0;
-      for(ShaderResource r : resources)
-	for(ShaderResourceUsage cu : r.usage)
-	  if(cu.isDS())
-	    ret++;
-      return ret;
-    };
-
     constexpr bool containsWritable() const {
       return std::any_of(resources.cbegin(), resources.cend(),
 			 [](ShaderResource r) {
@@ -275,7 +276,16 @@ namespace WITE::GPU {
 			 });
     };
 
-    template<size_t retCount>
+    constexpr size_t countDescriptorSetResources() const {
+      size_t ret = 0;
+      for(ShaderResource r : resources)
+	for(ShaderResourceUsage cu : r.usage)
+	  if(cu.isDS())
+	    ret++;
+      return ret;
+    };
+
+    template<size_t retCount = countDescriptorSetResources()>
     constexpr auto getDescriptorSetLayoutBindings() {
       vk::DescriptorSetLayoutBinding ret[retCount];
       uint32_t i = 0;
@@ -283,6 +293,27 @@ namespace WITE::GPU {
 	for(ShaderResourceUsage cu : r.usage)
 	  if(cu.isDS())
 	    ret[i] = { i++, cu.getVkDSType(), 1, cu.getVkStages() };
+      return ret;
+    };
+
+    constexpr std::map<vk::DescriptorType, uint32_t> poolSizesHelper() {
+      std::map<vk::DescriptorType, uint32_t> ret;
+      auto bindings = getDescriptorSetLayoutBindings();
+      for(auto binding : bindings)
+	ret[binding.descriptorType]++;
+      return ret;
+    }
+
+    constexpr uint32_t countDistinctTypes() {
+      return poolSizesHelper().size();
+    };
+
+    template<size_t retCount = countDistinctTypes()> constexpr auto getDescriptorPoolSizes() {
+      vk::DescriptorPoolSize ret[retCount];
+      size_t i = 0;
+      auto sizes = poolSizesHelper();
+      for(auto pair : sizes)
+	ret[i++] = { pair.first, pair.second };
       return ret;
     };
 

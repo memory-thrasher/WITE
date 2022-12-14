@@ -17,7 +17,7 @@ namespace WITE::GPU {
     uint32_t qCount = 0;
     if(usage & USAGE_GRAPHICS) queues[qCount++] = gpu.getGraphics()->family;
     if(usage & USAGE_COMPUTE) queues[qCount++] = gpu.getCompute()->family;
-    if(usage & (USAGE_HOST_READ | USAGE_HOST_WRITE)) queues[qCount++] = gpu.getTransfer()->family;
+    if(usage & (USAGE_HOST_READ | USAGE_HOST_WRITE | USAGE_TRANSFER)) queues[qCount++] = gpu.getTransfer()->family;
     if(qCount == 3 && (queues[0] == queues[1] || queues[2] == queues[1])) {
       queues[1] = queues[2];
       qCount = 2;
@@ -29,6 +29,7 @@ namespace WITE::GPU {
 #define MAPU(x, r) ((usage & USAGE_ ##x) ? vk::BufferUsageFlagBits::e ##r : (vk::BufferUsageFlags)0)
 #define MAPRW(x, r, w) ((usage & USAGE_ ##x) ? (dsWrite ? vk::BufferUsageFlagBits::e ##r : vk::BufferUsageFlagBits::e ##w) : (vk::BufferUsageFlags)0)
     *out = { {}, slotData.size,
+      MAPU(TRANSFER, TransferSrc) | MAPU(TRANSFER, TransferDst) |
       MAPU(HOST_READ, TransferSrc) | MAPU(HOST_WRITE, TransferDst) |
       MAPU(DS_READ, UniformBuffer) | MAPU(DS_WRITE, StorageBuffer) | MAPRW(DS_SAMPLED, UniformTexelBuffer, StorageTexelBuffer) |
       MAPU(VERTEX, VertexBuffer) | MAPU(INDIRECT, IndirectBuffer),

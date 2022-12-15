@@ -3,7 +3,7 @@
 
 namespace WITE::GPU {
 
-  Collections::PerGpuPerThread<std::map<ShaderData, ShaderDescriptorLifeguard>> all; //static
+  Collections::PerGpuPerThread<std::map<ShaderData::hashcode_t, ShaderDescriptorLifeguard>> all; //static
 
   ShaderDesctorLifeguard::ShaderDesctorLifeguard(const vk::DescriptorSetLayoutCreateInfo* dslCI,
 						 const vk::DescriptorPoolCreateInfo* poolCI,

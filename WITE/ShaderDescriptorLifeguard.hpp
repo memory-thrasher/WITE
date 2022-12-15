@@ -3,6 +3,7 @@
 #include "ShaderData.hpp"
 #include "PerGpuPerThread.hpp"
 #include "Vulkan.hpp"
+#include "FrameSwappedResource.hpp"
 
 /*
 one descriptor set per provider type PerGpu.
@@ -22,14 +23,14 @@ namespace WITE::GPU {
     constexpr static uint32_t resourceCount = D.countDescriptorSetResources();
     constexpr static vk::DescriptorSetLayoutBinding dsBindings[resourceCount] = D.getDescriptorSetLayoutBindings<resourceCount>();
     constexpr static vk::DescriptorSetLayoutCreateInfo dslCI { {}, resourceCount, dsBindings };
-    constexpr static uint32_t typeCount = D.countDistinctTypes();
-    constexpr static vk::DescriptorPoolSize types[typeCount] = D.getDescriptorPoolSizes();
+    constexpr static uint32_t typeCount = D.countDistinctTypes<resourceCount>();
+    constexpr static vk::DescriptorPoolSize types[typeCount] = D.getDescriptorPoolSizes<typeCount, resourceCount>();
     constexpr static vk::DescriptorPoolCreateInfo poolCI { {}, setsPerPool, typeCount, types };
   };
 
   class ShaderDescriptorLifeguard { //manager of the pool. ha.
   private:
-    static Collections::PerGpuPerThread<std::map<ShaderData, ShaderDescriptorLifeguard>> all;
+    static Collections::PerGpuPerThread<std::unique_ptr<std::map<ShaderData::hashcode_t, ShaderDescriptorLifeguard>>> all;
 
     std::vector<vk::DescriptorPool> poolPool;
     std::stack<vk::DescriptorSet> free;//MAY contains DescriptorSets from a pool NOT associated with this thread, though it will have an identical layout.
@@ -38,32 +39,42 @@ namespace WITE::GPU {
     Gpu* gpu;
     size_t currentPool = 0;
 
-    ShaderDesctorLifeguard() = delete;
-    ShaderDesctorLifeguard(ShaderDesctorLifeguard&) = delete;
-    ShaderDesctorLifeguard(const vk::DescriptorSetLayoutCreateInfo* dslCI,
-			   const vk::DescriptorPoolCreateInfo* poolCI,
-			   size_t gpuIdx);
+    ShaderDescriptorLifeguard() = delete;
+    ShaderDescriptorLifeguard(ShaderDescriptorLifeguard&) = delete;
+    ShaderDescriptorLifeguard(const vk::DescriptorSetLayoutCreateInfo* dslCI,
+			      const vk::DescriptorPoolCreateInfo* poolCI,
+			      size_t gpuIdx);
     void allocatePool();
     vk::DescriptorSet allocate();
-    void free(vk::DescriptorSet r);
+    void deallocate(vk::DescriptorSet r);
+
+    template<ShaderData FD>
+    static ShaderDescriptorLifeguard* get(size_t gpuIdx) {
+      static constexpr auto hc = FD.hashCode();
+      auto map = all[gpuIdx];
+      ShaderDescriptorLifeguard* sdl;
+      if(!map->contains(hc)) {
+	sdl = map->emplace(FD, &ShaderDescriptorPoolLayout<FD>::dslCI, &ShaderDescriptorPoolLayout<FD>::poolCI, gpuIdx).first;
+      } else {
+	sdl = &map->operator[](hc);
+      }
+      return sdl;
+    };
 
   public:
     template<ShaderData D, ShaderResourceProvider P>
     static void allocate(vk::DescriptorSet* ret, size_t gpuIdx) {
-      static constexpr ShaderData FD = D.SubsetFrom(P);
-      auto& map = all[gpuIdx];
-      ShaderDescriptorLifeguard& sdl
-      if(!map.contains(FD)) {
-	sdl = *map.emplace(FD, &ShaderDescriptorPoolLayout<FD>::dslCI, &ShaderDescriptorPoolLayout<FD>::poolCI, gpuIdx).first;
-      } else {
-	sdl = map[FD];
-      }
-      *ret = sdl.allocate();
+      *ret = get<D.SubsetFrom(P)>(gpuIdx)->allocate();
     };
 
-    template<ShaderData D, ShaderResourceProvider P, ShaderData FD = D.SubsetFrom(P)>
+    template<ShaderData D, ShaderResourceProvider P>
     static void deallocate(size_t gpuIdx, vk::DescriptorSet* r) {
-      all[gpuIdx][FD].free(*r);
+      get<D.SubsetFrom(P)>(gpuIdx)->deallocate(*r);
+    };
+
+    template<ShaderData D, ShaderResourceProvider P>
+    static vk::DescriptorSetLayout getDSLayout(size_t gpuIdx) {
+      return get<D.SubsetFrom(P)>(gpuIdx)->dsl;
     };
 
   };
@@ -71,6 +82,7 @@ namespace WITE::GPU {
   template<ShaderData D, ShaderResourceProvider P> class ShaderDescriptor {
   private:
     static constexpr ShaderData FD = D.SubsetFrom(P);
+    static constexpr auto FDC = FD.hashCode();
     struct perGpu {
       Util::FrameSwappedResource<vk::DescriptorSet, 3> ds;
       uint64_t lastUpdated;
@@ -83,7 +95,7 @@ namespace WITE::GPU {
     };
     PerGpu<std::unique_ptr<perGpu>> data;
     uint64_t lastResourceUpdated;
-    GpuResource* resources[ShaderDescriptorPoolLayout<FD>.resourceCount];
+    GpuResource* resources[ShaderDescriptorPoolLayout<FD>::resourceCount];
     template<size_t idx, class R1, class R2, class... R> inline void SetResource(R1 r1, R2 r2, R... resources) {
       SetResource<idx>(r1);
       SetResource<idx + 1>(r2, std::forward<R...>(resources...));
@@ -94,13 +106,18 @@ namespace WITE::GPU {
   public:
     static constexpr bool empty = false;
     ShaderDescriptor(ShaderDescriptor&) = delete;
-    ShaderDescriptor() : ds(decltype(ds)::creator_t_F::make(&ShaderDescriptor<D, P>::makePG)) {};
-    inline vk::DescriptorSet get(size_t gpu) { return ds.get(gpu); };
+    ShaderDescriptor() : data(decltype(data)::creator_t_F::make(&ShaderDescriptor<D, P>::makePG)) {};
+    inline vk::DescriptorSet get(size_t gpu) {
+#error TODO lastUpdated, lastResourceUpdated actually update. Maybe move lastUpdated into the frameswappedresource
+      return data.get(gpu).ds.get();
+    };
+
     template<size_t idx, class R1> inline void SetResource(R1 resource) {
       static_assert(FD.accepts<R1>());
       resources[idx] = resource;
       lastResourceUpdated = Util::FrameCounter::getFrame();
     };
+
     template<class... R> inline void SetResources(R... resources) {
       SetResource<0>(std::forward<R...>(resources...));
     };

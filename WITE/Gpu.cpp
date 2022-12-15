@@ -348,7 +348,7 @@ namespace WITE::GPU {
 
   vk::Format Gpu::getBestImageFormat(uint8_t comp, uint8_t compSize, usage_t usage, logicalDeviceMask_t ldm) {
     //TODO better definition of "best", for now just use first that checks all the boxes
-    vk::FormatFeatureFlags features = usageFeatures(usage);
+    vk::FormatFeatureFlags features = usageFormatFeatures(usage);
     for(vk::Format format : formatsByFamily.at({comp, compSize})) {
       bool supported = true;
       for(size_t i : Collections::IteratorWrapper(Collections::BitmaskIterator(ldm), {}))

@@ -15,7 +15,10 @@ namespace WITE::Collections {
   }
 
   template<typename T, class C> inline constexpr bool contains(C& t, T e) {
-    return std::find(t.begin(), t.end(), e) != t.end();
+    for(auto v : t)
+      if(v == e)
+	return true;
+    return false;
   }
 
   template<typename T, class C> inline void concat_move(C& dst, C& src) {

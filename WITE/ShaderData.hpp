@@ -7,15 +7,17 @@
 #include "LiteralMap.hpp"
 #include "StdExtensions.hpp"
 #include "Image.hpp"
+#include "StructuralMap.hpp"
 
 namespace WITE::GPU {
 
   // enum class ShaderResourceType { eBuffer, eImage };
   enum class ShaderStage { eDraw, eAssembler, eVertex, eTessellation, eGeometry, eFragmentDepth, eFragment, eBlending,
-			   eTask, eMesh, eCompute };
-  enum class ShaderResourceAccessType { eUndefined, eVertex, eUniform, eUniformTexel, eSampled, eDepthAtt, eColorAtt };
+    eTask, eMesh, eCompute, last = eCompute };
+  enum class ShaderResourceAccessType { eUndefined, eVertex, eUniform, eUniformTexel, eSampled, eDepthAtt, eColorAtt,
+    last = eColorAtt };
 
-  enum class ShaderResourceProvider { eRenderable, eRenderTarget, eShaderInstance };
+  enum class ShaderResourceProvider { eRenderable, eRenderTarget, eShaderInstance, last = eShaderInstance };
 
   defineLiteralMap(ShaderStage, vk::ShaderStageFlags, shaderStageMap,
 		   Collections::StructuralPair<ShaderStage, vk::ShaderStageFlags>(ShaderStage::eVertex, vk::ShaderStageFlagBits::eVertex),
@@ -28,6 +30,11 @@ namespace WITE::GPU {
 		   Collections::StructuralPair<ShaderStage, vk::ShaderStageFlags>(ShaderStage::eCompute, vk::ShaderStageFlagBits::eCompute));
 
   //TODO look into VkDescriptorSetVariableDescriptorCountAllocateInfo
+
+  constexpr uint64_t hashCode(bool write, ShaderStage stage, ShaderResourceAccessType access) {
+    return (static_cast<uint64_t>(stage) * (static_cast<uint64_t>(ShaderStage::last) + 1) +
+	    static_cast<uint64_t>(access)) * (static_cast<uint64_t>(ShaderResourceAccessType::last) + 1) * 2 + write;
+  };
 
   class ShaderResourceUsage {
   public:
@@ -45,14 +52,21 @@ namespace WITE::GPU {
       return a.write == this->write && a.stage == this->stage && a.access == this->access;
     };
 
-    constexpr std::strong_ordering operator<=>(const ShaderResourceUsage& o) const {
-      if(write ^ o.write) return write ? std::strong_ordering::less : std::strong_ordering::greater;
-      std::strong_ordering cmp = stage <=> o.stage;
-      if(cmp != 0) return cmp;
-      cmp = access <=> o.access;
-      if(cmp != 0) return cmp;
-      return std::strong_ordering::equal;
-    };
+    //guaranteed unique
+    constexpr uint64_t hashCode() const {
+      return GPU::hashCode(write, stage, access);
+    }
+
+    static constexpr uint64_t maxHashCode = GPU::hashCode(true, ShaderStage::last, ShaderResourceAccessType::last)+1;
+
+    // constexpr std::strong_ordering operator<=>(const ShaderResourceUsage& o) const {
+    //   if(write ^ o.write) return write ? std::strong_ordering::less : std::strong_ordering::greater;
+    //   std::strong_ordering cmp = stage <=> o.stage;
+    //   if(cmp != 0) return cmp;
+    //   cmp = access <=> o.access;
+    //   if(cmp != 0) return cmp;
+    //   return std::strong_ordering::equal;
+    // };
 
     constexpr bool isDS() const {
       return access == ShaderResourceAccessType::eUniform ||
@@ -94,7 +108,7 @@ namespace WITE::GPU {
     template<ImageSlotData ISD> struct acceptsTest<Image<ISD>> {
       //TODO convert from lamda to foreach
       constexpr bool operator()(const ShaderResource* s) {
-	return s->usage.every([](const ShaderResourceUsage u) {
+	for(auto u : s->usage) {
 	  switch(u.access) {
 	  case ShaderResourceAccessType::eUndefined:
 	    switch(u.stage) {
@@ -114,27 +128,37 @@ namespace WITE::GPU {
 	  case ShaderResourceAccessType::eDepthAtt: if(!(ISD.usage & ImageBase::USAGE_ATT_DEPTH)) return false; break;
 	  case ShaderResourceAccessType::eColorAtt: if(!(ISD.usage & ImageBase::USAGE_ATT_OUTPUT)) return false; break;
 	  }
-	  return true;
-	});
+	}
+	return true;
       };
     };
 
     //TODO ^for buffers?
     template<class Resource> constexpr bool accepts() { return acceptsTest<Resource>::accepts(this); };
 
-    constexpr std::strong_ordering operator<=>(const ShaderResource& o) const {
-      std::strong_ordering cmp = usage.count() <=> o.usage.count();
-      if(cmp != 0) return cmp;
-      for(size_t i = 0;i < usage.count();i++) {
-	cmp = usage[i] <=> o.usage[i];
-	if(cmp != 0) return cmp;
-      }
-      return std::strong_ordering::equal;
+    //guaranteed unique
+    constexpr uint64_t hashCode() const {
+      uint64_t ret = static_cast<uint64_t>(providedBy);
+      for(ShaderResourceUsage u : usage)
+	ret = ret * ShaderResourceUsage::maxHashCode + u.hashCode();
+      return ret;
     };
 
+    // constexpr std::strong_ordering operator<=>(const ShaderResource& o) const {
+    //   std::strong_ordering cmp = usage.count() <=> o.usage.count();
+    //   if(cmp != 0) return cmp;
+    //   for(size_t i = 0;i < usage.count();i++) {
+    // 	cmp = usage[i] <=> o.usage[i];
+    // 	if(cmp != 0) return cmp;
+    //   }
+    //   return std::strong_ordering::equal;
+    // };
+
     constexpr bool contains(const ShaderResourceAccessType access, const bool write) const {
-      return std::any_of(usage.cbegin(), usage.cend(),
-			 [access, write](ShaderResourceUsage u) { return u.write == write && u.access == access; });
+      for(auto c : usage)
+	if(c.write == write && c.access == access)
+	  return true;
+      return false;
     };
   };
 
@@ -203,7 +227,7 @@ namespace WITE::GPU {
     const Collections::StructuralConstList<ShaderResource> resources;
     constexpr ~ShaderData() = default;
     constexpr ShaderData(const std::initializer_list<ShaderResource> resources) : resources(resources) {};
-    template<Iter> constexpr ShaderData(const Iter B, const Iter E) : resources(B, E) {};
+    template<class Iter> constexpr ShaderData(const Iter B, const Iter E) : resources(B, E) {};
     const ShaderResource& operator[](const size_t i) const {
       return resources[i];
     };
@@ -216,36 +240,42 @@ namespace WITE::GPU {
       return ShaderData(resources.begin(), resources.end());
     };
 
-    constexpr std::strong_ordering operator<=>(const ShaderData& o) const {
-      std::strong_ordering cmp = resources.count() <=> o.resources.count();
-      if(cmp != 0) return cmp;
-      for(size_t i = 0;i < resources.count();i++) {
-	cmp = resources[i] <=> o.resources[i];
-	if(cmp != 0) return cmp;
-      }
-      return std::strong_ordering::equal;
-      #error WAY too much data to be a map key TODO make this a hashcode
+    typedef uint64_t hashcode_t;//used in maps to cache descriptor info
+    //uniqueness likely but not gauranteed
+    constexpr hashcode_t hashCode() const {
+      uint64_t ret;
+      for(ShaderResource r : resources)
+	ret = ret * 5021 + r.hashCode();
+      return ret;
     };
 
-#error TODO convert these lambda monsters to foreaches
+    constexpr inline operator hashcode_t() { return hashCode(); };
+
+    // constexpr std::strong_ordering operator<=>(const ShaderData& o) const {
+    //   std::strong_ordering cmp = resources.count() <=> o.resources.count();
+    //   if(cmp != 0) return cmp;
+    //   for(size_t i = 0;i < resources.count();i++) {
+    // 	cmp = resources[i] <=> o.resources[i];
+    // 	if(cmp != 0) return cmp;
+    //   }
+    //   return std::strong_ordering::equal;
+    //   #error WAY too much data to be a map key TODO make this a hashcode
+    // };
+
     constexpr bool contains(const ShaderResourceUsage u) const {
-      return std::any_of(resources.cbegin(), resources.cend(),
-			 [u](ShaderResource r) {
-			   return std::any_of(r.usage.cbegin(), r.usage.cend(),
-					      [u](ShaderResourceUsage cu) {
-						return cu == u;
-					      });
-			 });
+      for(auto r : resources)
+	for(auto cu : r.usage)
+	  if(cu == u)
+	    return true;
+      return false;
     };
 
     constexpr bool contains(const ShaderStage stage) const {
-      return std::any_of(resources.cbegin(), resources.cend(),
-			 [stage](ShaderResource r) {
-			   return std::any_of(r.usage.cbegin(), r.usage.cend(),
-					      [stage](ShaderResourceUsage cu) {
-						return cu.stage == stage;
-					      });
-			 });
+      for(auto r : resources)
+	for(auto cu : r.usage)
+	  if(cu.stage == stage)
+	    return true;
+      return false;
     };
 
     constexpr bool contains(const ShaderResourceAccessType access) const {
@@ -257,23 +287,19 @@ namespace WITE::GPU {
     };
 
     constexpr bool containsWritable() const {
-      return std::any_of(resources.cbegin(), resources.cend(),
-			 [](ShaderResource r) {
-			   return std::any_of(r.usage.cbegin(), r.usage.cend(),
-					      [](ShaderResourceUsage cu) {
-						return cu.write;
-					      });
-			 });
+      for(auto r : resources)
+	for(auto cu : r.usage)
+	  if(cu.write)
+	    return true;
+      return false;
     };
 
     constexpr bool containsOnly(const std::initializer_list<ShaderStage> stages) const {
-      return std::none_of(resources.cbegin(), resources.cend(),
-			 [stages](ShaderResource r) {
-			   return std::any_of(r.usage.cbegin(), r.usage.cend(),
-					      [stages](ShaderResourceUsage cu) {
-						return !Collections::contains(stages, cu.stage);
-					      });
-			 });
+      for(auto r : resources)
+	for(auto cu : r.usage)
+	  if(Collections::contains(stages, cu.stage))
+	    return true;
+      return false;
     };
 
     constexpr size_t countDescriptorSetResources() const {
@@ -285,8 +311,8 @@ namespace WITE::GPU {
       return ret;
     };
 
-    template<size_t retCount = countDescriptorSetResources()>
-    constexpr auto getDescriptorSetLayoutBindings() {
+    template<size_t retCount> //must always = countDescriptorSetResources()
+    constexpr auto getDescriptorSetLayoutBindings() const {
       vk::DescriptorSetLayoutBinding ret[retCount];
       uint32_t i = 0;
       for(ShaderResource r : resources)
@@ -296,24 +322,28 @@ namespace WITE::GPU {
       return ret;
     };
 
-    constexpr std::map<vk::DescriptorType, uint32_t> poolSizesHelper() {
-      std::map<vk::DescriptorType, uint32_t> ret;
-      auto bindings = getDescriptorSetLayoutBindings();
+    template<size_t bindingCount> //must always = countDescriptorSetResources()
+    constexpr void poolSizesHelper(Collections::StructuralMap<vk::DescriptorType, uint32_t>& ret) const {
+      auto bindings = getDescriptorSetLayoutBindings<bindingCount>();
       for(auto binding : bindings)
 	ret[binding.descriptorType]++;
-      return ret;
     }
 
-    constexpr uint32_t countDistinctTypes() {
-      return poolSizesHelper().size();
+    template<size_t bindingCount> //must always = countDescriptorSetResources()
+    constexpr uint32_t countDistinctTypes() const {
+      Collections::StructuralMap<vk::DescriptorType, uint32_t> helper;
+      poolSizesHelper<bindingCount>(helper);
+      return helper.size();
     };
 
-    template<size_t retCount = countDistinctTypes()> constexpr auto getDescriptorPoolSizes() {
+    template<size_t retCount, size_t bindingCount> //must always = countDistinctTypes(), countDescriptorSetResources()
+    constexpr auto getDescriptorPoolSizes() const {
       vk::DescriptorPoolSize ret[retCount];
       size_t i = 0;
-      auto sizes = poolSizesHelper();
+      Collections::StructuralMap<vk::DescriptorType, uint32_t> sizes;
+      poolSizesHelper<bindingCount>(sizes);
       for(auto pair : sizes)
-	ret[i++] = { pair.first, pair.second };
+	ret[i++] = { pair.k, pair.v };
       return ret;
     };
 

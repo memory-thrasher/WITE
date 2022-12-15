@@ -89,7 +89,7 @@ namespace WITE::GPU {
     constexpr GpuResourceSlotInfo(BufferSlotData bsd) :
       type(GpuResourceType::eBuffer), bufferData(bsd) {};
     constexpr GpuResourceSlotInfo mutateUsage(usage_t add, usage_t remove = ~0) const {
-      GpuResource ret = *this;;
+      GpuResourceSlotInfo ret = *this;;
       switch(type) {
       case GpuResourceType::eImage: ret.imageData.usage = (ret.imageData.usage & ~remove) | add; break;
       case GpuResourceType::eBuffer: ret.bufferData.usage = (ret.bufferData.usage & ~remove) | add; break;
@@ -98,11 +98,11 @@ namespace WITE::GPU {
     };
     constexpr inline GpuResourceSlotInfo stagingResourceSlot() const {
       //replace usage with those flags needed to move data in and out for staging
-      return mutateUsage(USAGE_TRANSFER | MUSAGE_ANY_HOST);
+      return mutateUsage(GpuResource::USAGE_TRANSFER | GpuResource::MUSAGE_ANY_HOST);
     };
     constexpr inline GpuResourceSlotInfo externallyStagedResourceSlot() const {
       //remove host access flags, add transfer flag, because transfer will be used to copy to/from staging
-      return mutateUsage(USAGE_TRANSFER, MUSAGE_ANY_HOST);
+      return mutateUsage(GpuResource::USAGE_TRANSFER, GpuResource::MUSAGE_ANY_HOST);
     };
   };
 

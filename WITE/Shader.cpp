@@ -9,7 +9,7 @@ namespace WITE::GPU {
 
   std::vector<ShaderBase*> ShaderBase::allShaders; //static
   std::atomic<pipelineId_t> ShaderBase::idSeed;
-  PerGpu<std::map<ShaderData, vk::PipelineLayout>> ShaderBase::layoutsByData;
+  PerGpu<std::map<ShaderData::hashcode_t, vk::PipelineLayout>> ShaderBase::layoutsByData;
   Util::SyncLock ShaderBase::layoutsByData_mutex;
 
   ShaderBase::ShaderBase(QueueType qt) : queueType(qt)
@@ -58,17 +58,24 @@ namespace WITE::GPU {
 	    RenderImpl(renderable, cmd);
   };
 
-  vk::PipelineLayout ShaderBase::getLayout(const ShaderData& d, vk::PipelineLayoutCreateInfo* pipeCI, size_t gpu) { //static
+  vk::PipelineLayout ShaderBase::hasLayout(ShaderData::hashcode_t d, size_t gpuIdx) { //static
     Util::ScopeLock lock(&layoutsByData_mutex);
-    if(!layoutsByData.contains(gpu, d))
-      layoutsByData.get(gpu, d) = ShaderBase::makeLayout(pipeCI, gpu);
+    return layoutsByData.contains(gpuIdx, d);
+  };
+
+  vk::PipelineLayout ShaderBase::getLayout(ShaderData::hashcode_t d, size_t gpu) { //static
+    Util::ScopeLock lock(&layoutsByData_mutex);
     return layoutsByData.get(gpu, d);
   };
 
-  vk::PipelineLayout ShaderBase::makeLayout(const vk::PipelineLayoutCreateInfo* pipeCI, size_t gpuIdx) { //static
+  vk::PipelineLayout ShaderBase::makeLayout(ShaderData::hashcode_t d, const vk::PipelineLayoutCreateInfo* pipeCI, size_t gpuIdx) { //static
     vk::PipelineLayout ret;
     auto vkDev = Gpu::get(gpuIdx).getVkDevice();
     VK_ASSERT(vkDev.createPipelineLayout(pipeCI, ALLOCCB, &ret), "failed pipeline layout");
+    {
+      Util::ScopeLock lock(&layoutsByData_mutex);
+      layoutsByData.get(gpu, d) = ret;
+    }
     return ret;
   };
 

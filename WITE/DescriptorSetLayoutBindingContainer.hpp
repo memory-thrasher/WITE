@@ -1,5 +1,0 @@
-//nah
-
-namepsace WITE::GPU {
-
-};

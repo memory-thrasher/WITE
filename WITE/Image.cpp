@@ -5,8 +5,8 @@
 namespace WITE::GPU {
 
   ImageBase::ImageBase(const ImageSlotData isd)
-    : views(views_t::creator_t_F::make(this, &ImageBase::makeImageView),
-	    views_t::destroyer_t_F::make(&ImageBase::destroyImageView)),
+    : accessors(accessors_t::creator_t_F::make(this, &ImageBase::makeAccessors),
+		accessors_t::destroyer_t_F::make(&ImageBase::destroyAccessors)),
       images(PerGpu<vk::Image>::creator_t_F::make(this, &ImageBase::makeImage),
 	     PerGpu<vk::Image>::destroyer_t_F::make(&ImageBase::destroyImage)),
       w(512), h(isd.dimensions > 1 ? 512 : 1), z(1),
@@ -71,18 +71,37 @@ namespace WITE::GPU {
 #undef hasu
   };
 
-  void ImageBase::makeImageView(vk::ImageView* ret, size_t gpu) {
+  void ImageBase::makeAccessors(accessObject* ret, size_t gpu) {
+    auto vkDev = Gpu::get(gpu).getVkDevice();
     vk::ImageViewCreateInfo ivci { {}, getVkImage(gpu), getViewTypeForWhole(slotData), format, {}, {
 	aspectMaskForUsage(slotData.usage), 0, slotData.mipLevels, 0, slotData.arrayLayers } };
-    VK_ASSERT(Gpu::get(gpu).getVkDevice().createImageView(&ivci, ALLOCCB, ret), "Failed to create image view");
+    VK_ASSERT(vkDev.createImageView(&ivci, ALLOCCB, &ret->view), "Failed to create image view");
+    vk::SamplerCreateinfo sci { {}, vk::Filter::eLinear, vk::Filter::eLinear, vk::SamplerMipmapMode::eLinear,
+      vk::SamplerAddressMode::eClampToEdge, vk::SamplerAddressMode::eClampToEdge, vk::SamplerAddressMode::eClampToEdge,
+      0, true, 1.0f, false, vk::CompareOp::eNever, 0, static_cast<float>(slotData.mipLevels),
+      vk::BorderColor::eFloatTransparentBlack, false };
+    //TODO research and maybe options for filter, anisotropic filter, compare
+    VK_ASSERT(vkDev.createSampler(&sci, ALLOCCB, &ret->sampler));
+#error TODO populate dsImageInfo
+    ret->dsImageInfo = { ret->sampler, ret->view,
+      slotData.usage & MUSAGE_ANY_HOST ? vk::ImageTiling::eLinear : vk::ImageTiling::eOptimal
+    };
   };
 
-  void ImageBase::destroyImageView(vk::ImageView& doomed, size_t gpu) {//static
-    Gpu::get(gpu).getVkDevice().destroyImageView(doomed, ALLOCCB);
+  void ImageBase::destroyAccessors(accessObject* doomed, size_t gpu) {//static
+    auto vkDev = Gpu::get(gpu).getVkDevice();
+    vkDev.destroyImageView(doomed->view, ALLOCCB);
+    vkDev.destroySampler(doomed->sampler, ALLOCCB);
   };
 
   vk::ImageView ImageBase::getVkImageView(size_t gpuIdx) {
-    return views[gpuIdx];
+    return accessors[gpuIdx].view;
+  };
+
+  void populateDSWrite(vk::WriteDescriptorSet* out, size_t gpuIdx) {
+    out->pImageInfo = accessors[gpuIdx].dsImageInfo;
+    out->descriptorCount = 1;
+    out->arrayElement = 0;
   };
 
 }

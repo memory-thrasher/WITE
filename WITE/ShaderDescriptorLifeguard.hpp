@@ -79,43 +79,80 @@ namespace WITE::GPU {
 
   };
 
+  #error TODO make this frameswap-aware or exclusive
   template<ShaderData D, ShaderResourceProvider P> class ShaderDescriptor {
   private:
     static constexpr ShaderData FD = D.SubsetFrom(P);
     static constexpr auto FDC = FD.hashCode();
-    struct perGpu {
-      Util::FrameSwappedResource<vk::DescriptorSet, 3> ds;
+
+    struct DescriptorSetContainer {
+      vk::DescriptorSet ds;
       uint64_t lastUpdated;
-      perGpu() : ds({ ShaderDescriptorLifeguard::allocate<D, P>(),
-	  ShaderDescriptorLifeguard::allocate<D, P>(), ShaderDescriptorLifeguard::allocate<D, P>() })
-      {};
-      ~perGpu() {
-	for(auto ds : ds.all()) ShaderDescriptorLifeguard::deallocate<D, P>(ds);
+      Util::SyncLock lock;
+      DescriptorSetContainer() : ds(ShaderDescriptorLifeguard::allocate<D, P>()) {
+      };
+      ~DescriptorSetContainer() {
+	ShaderDescriptorLifeguard::deallocate<D, P>(ds);
       };
     };
+
+    struct perGpu {
+      Util::FrameSwappedResource<DescriptorSetContainer, 3> ds;
+    };
+
     PerGpu<std::unique_ptr<perGpu>> data;
-    uint64_t lastResourceUpdated;
-    GpuResource* resources[ShaderDescriptorPoolLayout<FD>::resourceCount];
+    std::atomic_uint64_t lastResourceUpdated;
+    static constexpr uint32_t resourceCount = ShaderDescriptorPoolLayout<FD>::resourceCount;
+    GpuResource* resources[resourceCount];
+
     template<size_t idx, class R1, class R2, class... R> inline void SetResource(R1 r1, R2 r2, R... resources) {
       SetResource<idx>(r1);
       SetResource<idx + 1>(r2, std::forward<R...>(resources...));
     };
+
     static void makePG(std::unique_ptr<perGpu>* ret, size_t gpu) {
       *ret = std::make_unique<perGpu>();
     };
+
+    void markUpdated() {
+      uint64_t frame = Util::FrameCounter::getFrame();
+      uint64_t oldValue = lastResourceUpdated;
+      while(oldValue < frame && !lastResourceUpdated.compare_exchange_weak(oldValue, frame));
+    };
+
   public:
     static constexpr bool empty = false;
     ShaderDescriptor(ShaderDescriptor&) = delete;
     ShaderDescriptor() : data(decltype(data)::creator_t_F::make(&ShaderDescriptor<D, P>::makePG)) {};
+
+    //gets the READABLE DS. Will first bind resources against it if out of date.
     inline vk::DescriptorSet get(size_t gpu) {
-#error TODO lastUpdated, lastResourceUpdated actually update. Maybe move lastUpdated into the frameswappedresource
-      return data.get(gpu).ds.get();
+      uint64_t ldu = lastResourceUpdated,
+	frame = Util::FrameCounter::getFrame();
+      auto& dsc = data.get(gpu).ds.get();
+      if(dsc.lastUpdated < frame - 1 && dsc.lastUpdated < ldu) {
+	Util::ScopeLock lock(dsc.lock);
+	if(dsc.lastUpdated < frame - 1 && dsc.lastUpdated < ldu) {
+	  vk::WriteDescriptorSet dsw[resourceCount];
+	  for(uint32_t i = 0;i < resourceCount;i++) {
+	    dsw[i].dstSet = dsc.ds;
+	    dsw[i].dstBinding = i;
+	    //populated by resource.populateDSWrite: arrayElement, descriptorCount, p*Info
+	    dsw[i].descriptorType = ShaderDescriptorPoolLayout<FD>::dsBindings[i].descriptorType;
+	    resources[i].populateDSWrite(&dsw[i], gpu);
+	  }
+	  Gpu::get(gpu).getVkDevice().updateDescriptorSets(resourceCount, &dsw, 0, NULL);
+	  dsc.lastUpdated = ldu;
+	}
+      }
+      return dsc.ds;
     };
 
     template<size_t idx, class R1> inline void SetResource(R1 resource) {
       static_assert(FD.accepts<R1>());
+      ASSERT_TRAP(resource, "null resource given to descriptor");
       resources[idx] = resource;
-      lastResourceUpdated = Util::FrameCounter::getFrame();
+      makrUpdated();
     };
 
     template<class... R> inline void SetResources(R... resources) {

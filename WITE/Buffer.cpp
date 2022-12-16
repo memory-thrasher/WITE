@@ -59,4 +59,11 @@ namespace WITE::GPU {
     Gpu::get(gpu).getVkDevice().destroyBuffer(*d);
   };
 
+  void populateDSWrite(vk::WriteDescriptorSet* out, size_t gpuIdx) {//note: texel buffers have a different type struct
+    #error TODO finish adapting this
+    out->pBufferInfo = accessors[gpuIdx].dsImageInfo;
+    out->descriptorCount = 1;
+    out->arrayElement = 0;
+  };
+
 };

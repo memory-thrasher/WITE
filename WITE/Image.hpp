@@ -12,8 +12,13 @@ namespace WITE::GPU {
 
   class ImageBase : public GpuResource {
   private:
-    typedef Collections::PerGpuPerThread<vk::ImageView> views_t;
-    views_t views;
+    struct accessObject {
+      vk::ImageView view;
+      vk::Sampler sampler;
+      vk::DescriptorImageInfo dsImageInfo;
+    };
+    typedef Collections::PerGpuPerThread<accessObject> accessors_t;
+    accessors_t accessors;
     PerGpu<vk::Image> images;
     uint32_t w, h, z;
 
@@ -32,11 +37,12 @@ namespace WITE::GPU {
     vk::AttachmentDescription getAttachmentDescription(bool clear = true);
     virtual vk::Image getVkImage(size_t gpuIdx) = 0;
     vk::ImageView getVkImageView(size_t gpuIdx);
-    void makeImageView(vk::ImageView*, size_t gpu);
-    static void destroyImageView(vk::ImageView& doomed, size_t gpu);
+    void makeAccessors(accessObject*, size_t gpu);
+    static void destroyAccessors(accessObject& doomed, size_t gpu);
     void resize(size_t w, size_t h, size_t z);//TODO for each existing image, blit it to the new one. Crash if not transfer-enabled (maybe make a resizable usage flag?).
     inline vk::Extent2D getVkSize() { return { w, h }; };
     vk::ImageSubresourceRange getAllInclusiveSubresource();
+    void populateDSWrite(vk::WriteDescriptorSet* out, size_t gpuIdx) override;
   };
 
   //MIP and SAM might be less than requested if the platform does not support it

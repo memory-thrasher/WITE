@@ -88,6 +88,9 @@ namespace WITE::GPU {
     };
   };
 
+  /*
+    multiple usages per resources should be rare. Each usage where isDS()=true gets it's own descriptor slot!
+   */
   class ShaderResource {
   public:
     // const ShaderResourceType type;

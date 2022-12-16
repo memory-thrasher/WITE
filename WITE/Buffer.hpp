@@ -24,6 +24,7 @@ namespace WITE::GPU {
     virtual ~BufferBase() = default;
     vk::Buffer getVkBuffer(size_t gpuIdx);
     void getCreateInfo(Gpu& gpu, vk::BufferCreateInfo* out);
+    void populateDSWrite(vk::WriteDescriptorSet* out, size_t gpuIdx) override;
   };
 
   template<BufferSlotData BSD> class Buffer : public BufferBase {

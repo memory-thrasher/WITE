@@ -5,10 +5,9 @@
 
 #include "StructuralPair.hpp"
 #include "StdExtensions.hpp"
+#include "LiteralList.hpp" //for countIL
 
 namespace WITE::Collections {
-
-  template<class T> constexpr size_t countIL(const std::initializer_list<T> il) { return std::distance(il.begin(), il.end()); };
 
   template<class K, class V>
   constexpr size_t countIlOfPairsOfIl(const std::initializer_list<StructuralPair<K, std::initializer_list<V>>> il) {

@@ -17,7 +17,7 @@ namespace WITE::GPU {
       vk::Sampler sampler;
       vk::DescriptorImageInfo dsImageInfo;
     };
-    typedef Collections::PerGpuPerThread<accessObject> accessors_t;
+    typedef Collections::PerGpuPerThread<std::unique_ptr<accessObject>> accessors_t;
     accessors_t accessors;
     PerGpu<vk::Image> images;
     uint32_t w, h, z;
@@ -38,7 +38,7 @@ namespace WITE::GPU {
     virtual vk::Image getVkImage(size_t gpuIdx) = 0;
     vk::ImageView getVkImageView(size_t gpuIdx);
     void makeAccessors(accessObject*, size_t gpu);
-    static void destroyAccessors(accessObject& doomed, size_t gpu);
+    static void destroyAccessors(accessObject* doomed, size_t gpu);
     void resize(size_t w, size_t h, size_t z);//TODO for each existing image, blit it to the new one. Crash if not transfer-enabled (maybe make a resizable usage flag?).
     inline vk::Extent2D getVkSize() { return { w, h }; };
     vk::ImageSubresourceRange getAllInclusiveSubresource();

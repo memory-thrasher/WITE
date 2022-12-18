@@ -23,7 +23,7 @@ namespace WITE::GPU {
     VK_ASSERT(vkDev.createImage(&ci, ALLOCCB, ret), "Failed to create image");
     vk::MemoryRequirements mr;
     vkDev.getImageMemoryRequirements(*ret, &mr);
-    VRam* vram = &mem.getRef(gpu);
+    VRam* vram = mem.getRef(gpu).get();
     g.allocate(mr, vram);
     vkDev.bindImageMemory(*ret, *vram, 0);
   };
@@ -76,16 +76,13 @@ namespace WITE::GPU {
     vk::ImageViewCreateInfo ivci { {}, getVkImage(gpu), getViewTypeForWhole(slotData), format, {}, {
 	aspectMaskForUsage(slotData.usage), 0, slotData.mipLevels, 0, slotData.arrayLayers } };
     VK_ASSERT(vkDev.createImageView(&ivci, ALLOCCB, &ret->view), "Failed to create image view");
-    vk::SamplerCreateinfo sci { {}, vk::Filter::eLinear, vk::Filter::eLinear, vk::SamplerMipmapMode::eLinear,
+    vk::SamplerCreateInfo sci { {}, vk::Filter::eLinear, vk::Filter::eLinear, vk::SamplerMipmapMode::eLinear,
       vk::SamplerAddressMode::eClampToEdge, vk::SamplerAddressMode::eClampToEdge, vk::SamplerAddressMode::eClampToEdge,
       0, true, 1.0f, false, vk::CompareOp::eNever, 0, static_cast<float>(slotData.mipLevels),
       vk::BorderColor::eFloatTransparentBlack, false };
     //TODO research and maybe options for filter, anisotropic filter, compare
-    VK_ASSERT(vkDev.createSampler(&sci, ALLOCCB, &ret->sampler));
-#error TODO populate dsImageInfo
-    ret->dsImageInfo = { ret->sampler, ret->view,
-      slotData.usage & MUSAGE_ANY_HOST ? vk::ImageTiling::eLinear : vk::ImageTiling::eOptimal
-    };
+    VK_ASSERT(vkDev.createSampler(&sci, ALLOCCB, &ret->sampler), "Failed to create sampler");
+    ret->dsImageInfo = { ret->sampler, ret->view, optimalLayoutForUsage(slotData.externalUsage) };
   };
 
   void ImageBase::destroyAccessors(accessObject* doomed, size_t gpu) {//static
@@ -95,13 +92,13 @@ namespace WITE::GPU {
   };
 
   vk::ImageView ImageBase::getVkImageView(size_t gpuIdx) {
-    return accessors[gpuIdx].view;
+    return accessors[gpuIdx]->view;
   };
 
-  void populateDSWrite(vk::WriteDescriptorSet* out, size_t gpuIdx) {
-    out->pImageInfo = accessors[gpuIdx].dsImageInfo;
+  void ImageBase::populateDSWrite(vk::WriteDescriptorSet* out, size_t gpuIdx) {
+    out->pImageInfo = &accessors[gpuIdx]->dsImageInfo;
     out->descriptorCount = 1;
-    out->arrayElement = 0;
+    out->dstArrayElement = 0;
   };
 
 }

@@ -79,88 +79,104 @@ namespace WITE::GPU {
 
   };
 
-  #error TODO make this frameswap-aware or exclusive
   template<ShaderData D, ShaderResourceProvider P> class ShaderDescriptor {
   private:
     static constexpr ShaderData FD = D.SubsetFrom(P);
     static constexpr auto FDC = FD.hashCode();
-
-    struct DescriptorSetContainer {
-      vk::DescriptorSet ds;
-      uint64_t lastUpdated;
-      Util::SyncLock lock;
-      DescriptorSetContainer() : ds(ShaderDescriptorLifeguard::allocate<D, P>()) {
-      };
-      ~DescriptorSetContainer() {
-	ShaderDescriptorLifeguard::deallocate<D, P>(ds);
-      };
-    };
-
-    struct perGpu {
-      Util::FrameSwappedResource<DescriptorSetContainer, 3> ds;
-    };
-
-    PerGpu<std::unique_ptr<perGpu>> data;
-    std::atomic_uint64_t lastResourceUpdated;
     static constexpr uint32_t resourceCount = ShaderDescriptorPoolLayout<FD>::resourceCount;
-    GpuResource* resources[resourceCount];
+
+    struct descriptorSetContainer {
+      vk::DescriptorSet ds;
+      size_t gpuIdx;
+      std::atomic_uint64_t lastDSUpdated;
+      static void makeDSC(descriptorSetContainer* ret, size_t gpuIdx) {
+	ret->gpuIdx = gpuIdx;
+	ret->ds = ShaderDescriptorLifeguard::allocate<D, P>(gpuIdx);
+      };
+      ~descriptorSetContainer() {
+	if(ds)
+	  ShaderDescriptorLifeguard::deallocate<D, P>(ds);
+      };
+    };
+
+    struct perFrame {
+      Util::SyncLock lock;
+      PerGpu<descriptorSetContainer> dsContainers;
+      GpuResource* resources[resourceCount];
+      uint64_t lastResourceUpdated; //NOTE limitation: if SetResource is called every frame, it'll never acutally update
+      perFrame() : dsContainers(decltype(dsContainers)::creator_t_F::make(&descriptorSetContainer::makeDSC)) {};
+
+    };
+
+    Util::FrameSwappedResource<perFrame, 2> data;
 
     template<size_t idx, class R1, class R2, class... R> inline void SetResource(R1 r1, R2 r2, R... resources) {
       SetResource<idx>(r1);
       SetResource<idx + 1>(r2, std::forward<R...>(resources...));
     };
 
-    static void makePG(std::unique_ptr<perGpu>* ret, size_t gpu) {
-      *ret = std::make_unique<perGpu>();
-    };
-
-    void markUpdated() {
-      uint64_t frame = Util::FrameCounter::getFrame();
-      uint64_t oldValue = lastResourceUpdated;
-      while(oldValue < frame && !lastResourceUpdated.compare_exchange_weak(oldValue, frame));
-    };
-
   public:
     static constexpr bool empty = false;
     ShaderDescriptor(ShaderDescriptor&) = delete;
-    ShaderDescriptor() : data(decltype(data)::creator_t_F::make(&ShaderDescriptor<D, P>::makePG)) {};
+    ShaderDescriptor() {};
 
     //gets the READABLE DS. Will first bind resources against it if out of date.
     inline vk::DescriptorSet get(size_t gpu) {
-      uint64_t ldu = lastResourceUpdated,
-	frame = Util::FrameCounter::getFrame();
-      auto& dsc = data.get(gpu).ds.get();
-      if(dsc.lastUpdated < frame - 1 && dsc.lastUpdated < ldu) {
-	Util::ScopeLock lock(dsc.lock);
-	if(dsc.lastUpdated < frame - 1 && dsc.lastUpdated < ldu) {
+      perFrame& pf = data.get();
+      descriptorSetContainer& dsc = pf.dsContainers[gpu];
+      uint64_t frame = Util::FrameCounter::getFrame();
+      //NOTE limitation: if SetResource is called every frame, it'll never acutally update
+      if(pf.lastResourceUpdated < frame && dsc.lastDSUpdated < pf.lastResourceUpdated) {
+	Util::ScopeLock lock(pf.lock);
+	uint64_t lru = pf.lastResourceUpdated;
+	if(lru < frame && dsc.lastDSUpdated < lru) {
+	  dsc.lastDSUpdated = lru;
 	  vk::WriteDescriptorSet dsw[resourceCount];
 	  for(uint32_t i = 0;i < resourceCount;i++) {
 	    dsw[i].dstSet = dsc.ds;
 	    dsw[i].dstBinding = i;
 	    //populated by resource.populateDSWrite: arrayElement, descriptorCount, p*Info
 	    dsw[i].descriptorType = ShaderDescriptorPoolLayout<FD>::dsBindings[i].descriptorType;
-	    resources[i].populateDSWrite(&dsw[i], gpu);
+	    pf.resources[i].populateDSWrite(&dsw[i], gpu);
 	  }
 	  Gpu::get(gpu).getVkDevice().updateDescriptorSets(resourceCount, &dsw, 0, NULL);
-	  dsc.lastUpdated = ldu;
 	}
       }
       return dsc.ds;
     };
 
+    //NOTE: use SetResource(s) sparringly
     template<size_t idx, class R1> inline void SetResource(R1 resource) {
-      static_assert(FD.accepts<R1>());
+      static_assert(FD[idx].accepts<R1>());
       ASSERT_TRAP(resource, "null resource given to descriptor");
-      resources[idx] = resource;
-      makrUpdated();
+      uint64_t frame = Util::FrameCounter::getFrame();
+      for(perFrame& pf : data.all()) {
+	Util::ScopeLock lock(&pf.lock);
+	pf.lastResourceUpdated = frame;
+	pf.resources[idx] = resource;
+      }
+    };
+
+    template<size_t idx, class R1> inline void SetResource(Util::FrameSwappedResource<R1, 2>* resource) {
+      static_assert(FD[idx].accepts<R1>());
+      ASSERT_TRAP(resource, "null resource given to descriptor (frame swapped overload)");
+      uint64_t frame = Util::FrameCounter::getFrame();
+      auto& resources = resource->all();
+      for(size_t i = 0;i < 2;i++) {
+	perFrame& pf = data.all()[i];
+	Util::ScopeLock lock(&pf.lock);
+	pf.lastResourceUpdated = frame;
+	pf.resources[idx] = resources[i];
+      }
     };
 
     template<class... R> inline void SetResources(R... resources) {
       SetResource<0>(std::forward<R...>(resources...));
     };
+
   };
 
-  template<ShaderResourceProvider P> class ShaderDescriptor<{}, P> {//empty D
+  template<ShaderResourceProvider P> class ShaderDescriptor<ShaderData({}), P> {//empty D
     static constexpr bool empty = true;
   };
 

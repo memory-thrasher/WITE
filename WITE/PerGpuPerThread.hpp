@@ -14,7 +14,7 @@ namespace WITE::Collections {
     static_assert(sizeof(T) <= 2*sizeof(T*));
   public:
     typedefCB(creator_t, void, T*, size_t);//size is gpu idx
-    typedefCB(destroyer_t, void, T&, size_t);
+    typedefCB(destroyer_t, void, T*, size_t);
   private:
     static constexpr size_t capacity = MAX_GPUS * Platform::MAX_THREADS;
     std::array<T, capacity> data;
@@ -47,7 +47,7 @@ namespace WITE::Collections {
       Util::ScopeLock lock(&allocationLock);
       if(allocationMask[idx]) {
 	if(destroyer)
-	  destroyer(data[idx], gpu);
+	  destroyer(&data[idx], gpu);
 	allocationMask[idx] = false;
       }
     };
@@ -56,14 +56,14 @@ namespace WITE::Collections {
       Util::ScopeLock lock(&allocationLock);
       for(size_t i = 0;i < capacity;i++)
 	if(allocationMask[i])
-	  destroyer(data[i], idxToGpu(i));
+	  destroyer(&data[i], idxToGpu(i));
     };
   };
 
   template<class T> class PerGpuPerThread<std::unique_ptr<T>> {
   public:
     typedefCB(creator_t, void, T*, size_t);//size is gpu idx
-    typedefCB(destroyer_t, void, T&, size_t);
+    typedefCB(destroyer_t, void, T*, size_t);
     typedef std::unique_ptr<T> U;
   private:
     static constexpr size_t capacity = MAX_GPUS * Platform::MAX_THREADS;
@@ -86,7 +86,7 @@ namespace WITE::Collections {
 	Util::ScopeLock lock(&allocationLock);
 	if(!allocationMask[idx]) {
 	  if(creator) {
-	    data[idx] = std::unique_ptr((T*)malloc(sizeof(T)));
+	    data[idx].reset((T*)malloc(sizeof(T)));
 	    creator(data[idx].get(), gpu);
 	  } else {
 	    data[idx] = std::make_unique<T>();
@@ -113,7 +113,7 @@ namespace WITE::Collections {
       if(destroyer)
 	for(size_t i = 0;i < capacity;i++)
 	  if(allocationMask[i])
-	    destroyer(data[i], idxToGpu(i));
+	    destroyer(data[i].get(), idxToGpu(i));
     };
   };
 

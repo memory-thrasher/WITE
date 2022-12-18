@@ -12,6 +12,7 @@ namespace WITE::GPU {
   private:
     //TODO views? (requires texel buffer, so probably belongs in a subclass)
     PerGpu<vk::Buffer> buffers;
+    PerGpu<vk::DescriptorBufferInfo> accessors;
 
     void makeBuffer(vk::Buffer*, size_t gpu);
     static void destroyBuffer(vk::Buffer*, size_t gpu);

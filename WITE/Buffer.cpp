@@ -46,7 +46,7 @@ namespace WITE::GPU {
     VK_ASSERT(vkDev.createBuffer(&ci, ALLOCCB, ret), "Failed to create buffer");
     vk::MemoryRequirements mr;
     vkDev.getBufferMemoryRequirements(*ret, &mr);
-    VRam* vram = &mem.getRef(gpuIdx);
+    VRam* vram = mem.getRef(gpuIdx).get();
     gpu.allocate(mr, vram);
     vkDev.bindBufferMemory(*ret, *vram, 0);
   };
@@ -59,11 +59,16 @@ namespace WITE::GPU {
     Gpu::get(gpu).getVkDevice().destroyBuffer(*d);
   };
 
-  void populateDSWrite(vk::WriteDescriptorSet* out, size_t gpuIdx) {//note: texel buffers have a different type struct
-    #error TODO finish adapting this
-    out->pBufferInfo = accessors[gpuIdx].dsImageInfo;
+  void BufferBase::populateDSWrite(vk::WriteDescriptorSet* out, size_t gpuIdx) {//note: texel buffers have a different type struct
+    vk::DescriptorBufferInfo* bi;
+    out->pBufferInfo = bi = &accessors[gpuIdx];
+    if(!bi->buffer) {//no point in syncing this, both threads will be writing the same thing
+      bi->buffer = buffers[gpuIdx];
+      bi->offset = 0;
+      bi->range = VK_WHOLE_SIZE;
+    }
     out->descriptorCount = 1;
-    out->arrayElement = 0;
+    out->dstArrayElement = 0;
   };
 
 };

@@ -10,7 +10,7 @@ namespace WITE::GPU {
   //T should always be a trivial and tiny. If that's not the case just make T be a pointer
   template<class T> requires std::is_constructible_v<T> class PerGpu {
   public:
-    static_assert(sizeof(T) <= 2*sizeof(std::unique_ptr<T>));
+    static_assert(sizeof(T) <= 4096);
     typedefCB(creator_t, void, T*, size_t);
     typedefCB(destroyer_t, void, T*, size_t);
     typedef T value_t;
@@ -23,7 +23,7 @@ namespace WITE::GPU {
     PerGpu(creator_t creator, destroyer_t destroyer) : creator(creator), destroyer(destroyer) {};
     PerGpu(creator_t creator) : creator(creator) {};
     PerGpu() {};
-    ~PerGpu() {
+    virtual ~PerGpu() {
       if(destroyer)
 	for(size_t i = 0;i < MAX_GPUS;i++)
 	  if(dataAllocationMask & (1 << i))
@@ -64,6 +64,13 @@ namespace WITE::GPU {
 	return NULL;
       }
     };
+  };
+
+  template<class T, class ST = std::unique_ptr<T>> class PerGpuUP : public PerGpu<ST> {
+  public:
+    static void makeUP(ST* ret, size_t gpu) { *ret = std::make_unique<T>(); };
+    PerGpuUP() : PerGpu<ST>(PerGpu<ST>::creator_t_F::make(PerGpuUP<T>::makeUP)) {};
+    ~PerGpuUP() = default;
   };
 
 };

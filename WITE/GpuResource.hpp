@@ -44,7 +44,7 @@ namespace WITE::GPU {
     // static FrameBufferedCollection<GpuResource*> allGpuResources;//TODO garbage collect? Check for leaks and warn? debug only?
     PerGpu<void*> maps;
   protected:
-    PerGpu<VRam> mem;//TODO PerGpu default constructor that just uses T default constructor
+    PerGpuUP<VRam> mem;
   public:
     static constexpr usage_t
     USAGE_INDIRECT = 1,

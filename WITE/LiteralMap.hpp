@@ -5,7 +5,7 @@
 
 #include "StructuralPair.hpp"
 #include "StdExtensions.hpp"
-#include "LiteralLookup.hpp" //for countIL
+#include "LiteralList.hpp" //for countIL
 
 namespace WITE::Collections {
 

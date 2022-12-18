@@ -352,6 +352,8 @@ namespace WITE::GPU {
 
   };
 
+  // static constexpr ShaderData emptyShaderData = ShaderData({});
+
   enum class PrimitiveNumberModel { eUnsigned, eTwosCompliment, eFloat, eFixed, eUnsignedFixed };
 
   template<PrimitiveNumberModel M, size_t S> struct PrimitiveNumber {};

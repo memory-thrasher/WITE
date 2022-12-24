@@ -14,6 +14,7 @@ namespace WITE::GPU {
   // enum class ShaderResourceType { eBuffer, eImage };
   enum class ShaderStage { eDraw, eAssembler, eVertex, eTessellation, eGeometry, eFragmentDepth, eFragment, eBlending,
     eTask, eMesh, eCompute, last = eCompute };
+
   enum class ShaderResourceAccessType { eUndefined, eVertex, eUniform, eUniformTexel, eSampled, eDepthAtt, eColorAtt,
     last = eColorAtt };
 

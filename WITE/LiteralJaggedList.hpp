@@ -2,40 +2,12 @@
 
 #include <array>
 #include <stddef.h>
+#include <type_traits>
 
+#include "StructuralPair.hpp"
 #include "LiteralList.hpp"
 
 namespace WITE::Collections {
-
-  template<size_t layers, class T> constexpr std::array<size_t, 1> countIlRecursive(const std::initializer_list<T> il) {
-    return { countIL(il) };
-  };
-
-  template<size_t layers, class T> constexpr std::array<size_t, layers> countIlRecursive(const std::initializer_list<std::initializer_list<T>> il) {
-    std::array<size_t, layers> ret = {};
-    for(const auto il2 : il) {
-      std::array<size_t, layers-1> temp = countIlRecursive<layers-1>(il2);
-      for(size_t i = 1;i < layers;i++)
-	ret[i] += temp[i-1];
-      ret[0]++;
-    }
-    return ret;
-  };
-
-  template<size_t start, size_t len, class T, size_t srcLen> requires (start + len <= srcLen)
-    constexpr std::array<T, len> subArray(const std::array<T, srcLen> src) {
-    std::array<T, len> ret = {};
-    for(size_t i = 0;i < len;i++)
-      ret[i] = src[start+i];
-    return ret;
-  };
-
-  template<size_t N> constexpr size_t sum(std::array<size_t, N> src) {
-    size_t ret = 0;
-    for(size_t v : src)
-      ret += v;
-    return ret;
-  };
 
   //cannot call a macro with first argument begin with { so in practice the first list element must be typed by `layers` copies of `std::initializer_list<` followed by the inner type. So helper macros:
 
@@ -56,7 +28,9 @@ namespace WITE::Collections {
     using SPECULUM = LiteralJaggedList<T, dimensions, volume>;
     static constexpr size_t indexCount = sum(subArray<0, dimensions-1>(volume)),
       indexDimensions = dimensions-1,
-      dataCount = volume[dimensions-1];
+      dataCount = sum(volume);
+    static constexpr std::array<size_t, dimensions+1> layerBoundaries = cumulativeSum(volume);
+    static constexpr auto VOLUME = volume;
     T data[dataCount];//all the data in the jagged array flattened
     size_t indexes[indexCount];//some of these point to data some back into indexes
 
@@ -70,20 +44,26 @@ namespace WITE::Collections {
     constexpr void populate(T* data, size_t* indexes, size_t* writeHeads,
 			    const std::initializer_list<std::initializer_list<U>> in) {
       for(auto il : in) {
+	data[writeHeads[0]] = {};
 	indexes[writeHeads[0]++] = writeHeads[1];
 	populate(data, indexes, writeHeads+1, il);
+      }
+    };
+
+    template<class U, class V> //implicitly requires V convertible to T
+    constexpr void populate(T* data, size_t* indexes, size_t* writeHeads,
+			    const std::initializer_list<StructuralPair<std::initializer_list<U>, V>> in) {
+      for(auto pair : in) {
+	data[writeHeads[0]] = pair.v;
+	indexes[writeHeads[0]++] = writeHeads[1];
+	populate(data, indexes, writeHeads+1, pair.k);
       }
     };
 
     template<class U>
     constexpr LiteralJaggedList(const std::initializer_list<U> in) {
       size_t writeHeads[dimensions];
-      size_t runningOffset = 0;
-      for(size_t i = 0;i < indexDimensions;i++) {
-	writeHeads[i] = runningOffset;
-	runningOffset += volume[i];//skip last element cuz it points into data starting at 0
-      }
-      writeHeads[0] = writeHeads[dimensions-1] = 0;
+      std::copy(layerBoundaries.begin(), layerBoundaries.begin()+dimensions, writeHeads);
       size_t indexesTemp[indexCount];
       T dataTemp[dataCount];
       populate(dataTemp, indexesTemp, writeHeads, in);
@@ -91,44 +71,38 @@ namespace WITE::Collections {
       std::copy(indexesTemp, indexesTemp+indexCount, indexes);
     };
 
-    constexpr auto get(size_t... path) {
-      constexpr size_t len = sizeof...(path);
-      std::array<size_t, len> pa(std::forward<size_t>(path)...);
-      return get<len>(pa);
+    constexpr auto get(size_t path) const {
+      return get(tie(path));
     };
 
-    template<size_t N> require N <= dimensions && N > 0 constexpr auto get(const std::array<size_t, N>& path) {
+    template<class... args> constexpr auto get(size_t f, args... path) const {
+      return get(tie<size_t, args...>(f, std::forward<args>(path)...));
+    };
+
+    template<size_t N> requires (N <= dimensions && N > 0) constexpr auto get(const std::array<size_t, N>& path) const {
       size_t r = path[0];
       for(size_t i = 1;i < N;i++)
 	r = indexes[r] + path[i];
-      if constexpr(N == dimensions) {
-	return (T&)data[r];
+      if constexpr(sizeof(T) > sizeof(void*)) {
+	return (const T&)data[r];
       } else {
-	return indexes[r];
+	return data[r];//primitive
       }
     };
 
-    template<size_t layer> struct iterator {
-      static constexpr length = layer+1;
-      SPECULUM* owner;
-      std::array<size_t, length> path;
-      template<> require layer == 0 constexpr iterator(SPECULUM* owner, size_t i) : owner(owner), path({i}) {};
-      template<> require layer > 0 constexpr iterator(SPECULUM* owner, const iterator<layer-1>& previous, size_t next) :
-				 owner(owner) {
-	std::copy(previous.path.begin(), previous.path.end(), path.begin());
-	path[length-1] = i;
+    template<size_t layer> requires (layer < dimensions) struct iterator {
+      const SPECULUM* owner;
+      size_t target;//either an index into data or indexes, depending on layer == dimensions-1
+      constexpr iterator(const SPECULUM* owner, size_t i) : owner(owner), target(i) {};
+      constexpr const iterator<layer>& operator*() const
+      {//note: nonstandard iterator
+	return *this;
       };
-      constexpr iterator(SPECULUM* owner, std::array<size_t, length> data) : owner(owner) {
-	std::copy(data.begin(), data.end(), path.begin());
-      };
-      template<> require layer < dimensions constexpr iterator<layer+1> operator*() const {
-	return iterator<layer+1>(*this, 0);
-      };
-      template<> require layer == dimensions constexpr T& operator*() const {
-	return owner->get(path);
+      constexpr auto& get() const {
+	return owner->data[target];
       };
       constexpr auto operator++() {
-	path[length-1]++;
+	target++;
 	return *this;
       };
       constexpr auto operator++(int) {
@@ -136,20 +110,66 @@ namespace WITE::Collections {
 	operator++();
 	return old;
       };
-      template<> require layer < dimensions constexpr inline auto begin() { return this->operator*(); };
-      template<> require layer < dimensions constexpr inline auto end() {
-	//
+      constexpr inline auto begin() const requires (layer < dimensions-1) {//next layer of jagged array
+	return iterator<layer+1>(owner, owner->indexes[target]);
       };
+      constexpr inline auto end() const requires (layer < dimensions-1) {//past-the-end iterator of next layer
+	return iterator<layer+1>(owner,
+				 target == layerBoundaries[layer+1]-1 ? layerBoundaries[layer+2] : owner->indexes[target+1]);
+      };
+      // template<size_t BN> constexpr inline std::strong_ordering operator<=>(const iterator<BN>& o) const {
+      constexpr inline std::strong_ordering operator<=>(const iterator<layer>& o) const {
+	return target<=>o.target;
+      };
+      constexpr inline bool operator!=(const iterator<layer>& o) const { return (*this <=> o) != 0; };
     };
 
-    constexpr bool contains(const T& t) {
-      //TODO iterate directlyon data
+    //only use iterators if you care how the inner arrays are grouped. If you care euqally of all descendents, iterate on data
+    constexpr iterator<0> begin() const {
+      return { this, 0 };
+    };
+
+    constexpr iterator<0> end() const {
+      return { this, layerBoundaries[1] };
+    };
+
+    template<size_t N> requires (N < dimensions)
+      constexpr inline iterator<N-1> getIterator(const std::array<size_t, N>& path) const {
+      size_t target = path[0];
+      for(size_t i = 1;i < N;i++)
+	target = indexes[target] + path[i];
+      return { this, target };
+    };
+
+    template<class... args> constexpr inline iterator<sizeof...(args)> getIterator(size_t f, args... path) const {
+      return getIterator(tie_cast<size_t, args...>(f, std::forward<args>(path)...));
+    };
+
+    template<size_t layer = dimensions-1, class Compare = std::less<T>>
+    constexpr bool contains(const T& t, Compare c = Compare()) const {
+      for(size_t i = layerBoundaries[layer];i < layerBoundaries[layer+1];i++) {
+	const T& v = data[i];
+	if(!c(v, t) && !c(t, v))
+	  return true;
+      }
+      return false;
     };
 
   };
 
+  //use in global or name space
 #define defineLiteralJaggedList(T, DIM, NOM, ...) constexpr auto NOM = ::WITE::Collections::LiteralJaggedList<T, DIM, ::WITE::Collections::countIlRecursive<DIM>({ __VA_ARGS__ })>({ __VA_ARGS__ });
 
-  //TODO more defines for template declaration and definition
+  //use in a class template declaration
+#define acceptLiteralJaggedList(T, DIM, NOM) std::array<size_t, DIM> witeJaggedListVolume_ ##NOM, ::WITE::Collections::LiteralJaggedList<T, DIM, witeJaggedListVolume_ ##NOM> NOM
+
+  //use to pass a JL to a template
+#define passLiteralJaggedList(NOM) NOM.VOLUME, NOM
+
+#define defineLiteralJaggedListAliasType(T, DIM, NOM_T) constexpr size_t ::WITE::LJLA_DIM_ ##NOM_T = DIM; template<std::array<size_t, DIM> VOL> using NOM_T = ::WITE::Collections::LiteralJaggedList<T, DIM, VOL>
+
+#define acceptsLiteralJaggedListAlias(NOM_T, NOM) std::array<size_t, ::WITE::LJLA_DIM_ ##NOM_T> witeJaggedListVolume_ ##NOM, NOM_T <witeJaggedListVolume_ ##NOM> NOM
+
+  //alias types should make their own definitions
 
 };

@@ -1,4 +1,5 @@
 #include <iostream>
+#include <cassert>
 
 #include "../WITE/LiteralJaggedList.hpp"
 #include "../WITE/ConstexprString.hpp"
@@ -26,7 +27,7 @@ template< acceptLiteralJaggedList(int, 4, JL) > requires(JL.contains(5)) struct 
     for(auto l1 : JL.getIterator(l0))
       for(auto l2 : l1)
 	for(auto l3 : l2)
-	  ret += l3;
+	  ret += l3.get();
     return ret;
   };
   // static constexpr size_t s1 = ;
@@ -58,34 +59,33 @@ template< acceptLiteralJaggedList(int, 4, JL) > requires(JL.contains(5)) struct 
 
 using Bar = Foo< passLiteralJaggedList(test) >;
 
-//TODO move this to tests
 int main(int argc, char** argv) {
-  for(size_t i = 0;i < test.dataCount;i++)
-    std::cout << "data[" << i << "] = " << test.data[i] << std::endl;
-  std::cout << std::endl;
-  for(size_t i = 0;i < test.indexCount;i++)
-    std::cout << "indexes[" << i << "] = " << test.indexes[i] << std::endl;
-  std::cout << "get 0, 1, 1, 0 = " << test.get(0, 1, 1, 0) << std::endl << std::endl;
-  for(size_t i = 0;i < test.layerBoundaries.size();i++)
-    std::cout << "layerBoundaries[" << i << "] = " << test.layerBoundaries[i] << std::endl;
-  std::cout << std::endl;
-  for(auto l0 : test) {
-    std::cout << "{" << std::endl;
-    for(auto l1 : l0) {
-      std::cout << "  {" << std::endl;
-      for(auto l2 : l1) {
-	std::cout << "    { ";
-	for(auto l3 : l2) {
-	  std::cout << l3 << " ";
-	}
-	std::cout << "}" << std::endl;;
-      }
-      std::cout << "  }" << std::endl;
-    }
-    std::cout << "}" << std::endl;
-  }
-  std::cout << Bar::debug.data() << std::endl;
-  std::cout << "L1: " << sizeof(Bar::F) << std::endl;
-  std::cout << "L2: " << sizeof(Bar::S) << std::endl;
+  // for(size_t i = 0;i < test.dataCount;i++)
+  //   std::cout << "data[" << i << "] = " << test.data[i] << std::endl;
+  // std::cout << std::endl;
+  // for(size_t i = 0;i < test.indexCount;i++)
+  //   std::cout << "indexes[" << i << "] = " << test.indexes[i] << std::endl;
+  // std::cout << "get 0, 1, 1, 0 = " << test.get(0, 1, 1, 0) << std::endl << std::endl;
+  // for(size_t i = 0;i < test.layerBoundaries.size();i++)
+  //   std::cout << "layerBoundaries[" << i << "] = " << test.layerBoundaries[i] << std::endl;
+  // std::cout << std::endl;
+  // for(auto l0 : test) {
+  //   std::cout << "{" << std::endl;
+  //   for(auto l1 : l0) {
+  //     std::cout << "  {" << std::endl;
+  //     for(auto l2 : l1) {
+  // 	std::cout << "    { ";
+  // 	for(auto l3 : l2) {
+  // 	  std::cout << l3.get() << " ";
+  // 	}
+  // 	std::cout << "}" << std::endl;;
+  //     }
+  //     std::cout << "  }" << std::endl;
+  //   }
+  //   std::cout << "}" << std::endl;
+  // }
+  // std::cout << Bar::debug.data() << std::endl;
+  assert(sizeof(Bar::F) == 66);
+  assert(sizeof(Bar::S) == 41);
 }
 

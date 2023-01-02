@@ -31,7 +31,7 @@ namespace WITE::GPU {
     Gpu::get(idx).getVkDevice().destroyRenderPass(*rp, ALLOCCB);
   };
 
-  void RenderTarget::render(std::initializer_list<Renderable*> except) {
+  void RenderTarget::render(std::initializer_list<RenderableBase*> except) {
     auto steps = getRenderSteps();
     Gpu* gpu = Gpu::getGpuFor(ldm);
     size_t gpuIdx = gpu->getIndex();
@@ -52,7 +52,7 @@ namespace WITE::GPU {
       } else {
 	cmd->nextSubpass(vk::SubpassContents::eInline);
       }
-      ShaderBase::RenderAllOfTypeTo(*this, cmd, step.type, step.layers, except);
+      ShaderBase::renderAllOfTypeTo(*this, cmd, step.type, step.layers, except);
       lastQueue = queue;
     }
     if(lastQueue) {
@@ -112,7 +112,7 @@ namespace WITE::GPU {
     }
   };
 
-  void RenderTarget::SpawnTruckThread() {//static
+  void RenderTarget::spawnTruckThread() {//static
     Platform::Thread::spawnThread(Platform::Thread::threadEntry_t_F::make(&truckThread));
   };
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <initializer_list>
+#include <array>
 
 namespace WITE::Collections {
 
@@ -24,7 +25,7 @@ namespace WITE::Collections {
   };
 
   template<size_t start, size_t len, class T, size_t srcLen> requires (start + len <= srcLen)
-    constexpr std::array<T, len> subArray(const std::array<T, srcLen> src) {
+  constexpr std::array<T, len> subArray(const std::array<T, srcLen> src) {
     std::array<T, len> ret = {};
     for(size_t i = 0;i < len;i++)
       ret[i] = src[start+i];

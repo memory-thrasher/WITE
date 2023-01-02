@@ -1,30 +1,33 @@
 #pragma once
 
+#include <stack>
+
 #include "ShaderData.hpp"
 #include "PerGpuPerThread.hpp"
 #include "Vulkan.hpp"
 #include "FrameSwappedResource.hpp"
+#include "Gpu.hpp"
 
 /*
-one descriptor set per provider type PerGpu.
+one descriptor set per provider PerGpu.
 Each provider will store their descriptor for their lifetime.
 Pool bucket PerGpuPerThread.
 None of the pool buckets should be specific to the entire ShaderData object.
 Frameswapped DS PerGpu should be all a provider needs, allocated on constructor.
 Renderable check compatibility with associated shader pipeline, bind at each render.
-RenderTarget binds at start of render (verify binding before the pipeline is possible, or else rebind in renderto)
+RenderTarget binds with shader, because the descriptor depends on the shader usage. Multiple DS may be needed per frame. Cache in RenderTarget on filtered shaderdata hashcode, framebuffered cache
 Shader instance bind after the pipeline.
  */
 
 namespace WITE::GPU {
 
-  template<ShaderData D> struct ShaderDescriptorPoolLayout {
+  template<acceptShaderData(D)> struct ShaderDescriptorPoolLayout {
     constexpr static uint32_t setsPerPool = 100;
-    constexpr static uint32_t resourceCount = D.countDescriptorSetResources();
-    constexpr static vk::DescriptorSetLayoutBinding dsBindings[resourceCount] = D.getDescriptorSetLayoutBindings<resourceCount>();
+    constexpr static uint32_t resourceCount = ParseShaderData<D>().countDescriptorSetResources();
+    constexpr static vk::DescriptorSetLayoutBinding dsBindings[resourceCount] = ParseShaderData<D>().template getDescriptorSetLayoutBindings<resourceCount>();
     constexpr static vk::DescriptorSetLayoutCreateInfo dslCI { {}, resourceCount, dsBindings };
-    constexpr static uint32_t typeCount = D.countDistinctTypes<resourceCount>();
-    constexpr static vk::DescriptorPoolSize types[typeCount] = D.getDescriptorPoolSizes<typeCount, resourceCount>();
+    constexpr static uint32_t typeCount = ParseShaderData<D>().template countDistinctTypes<resourceCount>();
+    constexpr static vk::DescriptorPoolSize types[typeCount] = ParseShaderData<D>().template getDescriptorPoolSizes<typeCount, resourceCount>();
     constexpr static vk::DescriptorPoolCreateInfo poolCI { {}, setsPerPool, typeCount, types };
   };
 
@@ -36,7 +39,7 @@ namespace WITE::GPU {
     std::stack<vk::DescriptorSet> free;//MAY contains DescriptorSets from a pool NOT associated with this thread, though it will have an identical layout.
     vk::DescriptorSetLayout dsl;
     const vk::DescriptorPoolCreateInfo* poolCI;
-    Gpu* gpu;
+    Gpu& gpu;
     size_t currentPool = 0;
 
     ShaderDescriptorLifeguard() = delete;
@@ -48,42 +51,45 @@ namespace WITE::GPU {
     vk::DescriptorSet allocate();
     void deallocate(vk::DescriptorSet r);
 
-    template<ShaderData FD>
+    template<acceptShaderData(FD)>
     static ShaderDescriptorLifeguard* get(size_t gpuIdx) {
-      static constexpr auto hc = FD.hashCode();
+      static constexpr auto hc = parseShaderData<FD>().hashCode();
       auto map = all[gpuIdx];
       ShaderDescriptorLifeguard* sdl;
       if(!map->contains(hc)) {
-	sdl = map->emplace(FD, &ShaderDescriptorPoolLayout<FD>::dslCI, &ShaderDescriptorPoolLayout<FD>::poolCI, gpuIdx).first;
+	sdl = map->emplace(hc,
+			   &ShaderDescriptorPoolLayout<passLiteralJaggedList(FD)>::dslCI,
+			   &ShaderDescriptorPoolLayout<passLiteralJaggedList(FD)>::poolCI,
+			   gpuIdx).first;
       } else {
-	sdl = &map->operator[](hc);
+	sdl = &map->at(hc);
       }
       return sdl;
     };
 
   public:
-    template<ShaderData D, ShaderResourceProvider P>
+    template<acceptShaderData(D), ShaderResourceProvider P>
     static void allocate(vk::DescriptorSet* ret, size_t gpuIdx) {
       *ret = get<D.SubsetFrom(P)>(gpuIdx)->allocate();
     };
 
-    template<ShaderData D, ShaderResourceProvider P>
+    template<acceptShaderData(D), ShaderResourceProvider P>
     static void deallocate(size_t gpuIdx, vk::DescriptorSet* r) {
       get<D.SubsetFrom(P)>(gpuIdx)->deallocate(*r);
     };
 
-    template<ShaderData D, ShaderResourceProvider P>
+    template<acceptShaderData(D), ShaderResourceProvider P>
     static vk::DescriptorSetLayout getDSLayout(size_t gpuIdx) {
       return get<D.SubsetFrom(P)>(gpuIdx)->dsl;
     };
 
   };
 
-  template<ShaderData D, ShaderResourceProvider P> class ShaderDescriptor {
+  template<acceptShaderData(D), ShaderResourceProvider P> class ShaderDescriptor {
   private:
-    static constexpr ShaderData FD = D.SubsetFrom(P);
+    static constexpr auto FD = SubsetShaderData<passLiteralJaggedList(D), P>();
     static constexpr auto FDC = FD.hashCode();
-    static constexpr uint32_t resourceCount = ShaderDescriptorPoolLayout<FD>::resourceCount;
+    static constexpr uint32_t resourceCount = ShaderDescriptorPoolLayout<passLiteralJaggedList(FD)>::resourceCount;
 
     struct descriptorSetContainer {
       vk::DescriptorSet ds;
@@ -110,9 +116,9 @@ namespace WITE::GPU {
 
     Util::FrameSwappedResource<perFrame, 2> data;
 
-    template<size_t idx, class R1, class R2, class... R> inline void SetResource(R1 r1, R2 r2, R... resources) {
-      SetResource<idx>(r1);
-      SetResource<idx + 1>(r2, std::forward<R...>(resources...));
+    template<size_t idx, class R1, class R2, class... R> inline void setResource(R1 r1, R2 r2, R... resources) {
+      setResource<idx>(r1);
+      setResource<idx + 1>(r2, std::forward<R...>(resources...));
     };
 
   public:
@@ -136,7 +142,7 @@ namespace WITE::GPU {
 	    dsw[i].dstSet = dsc.ds;
 	    dsw[i].dstBinding = i;
 	    //populated by resource.populateDSWrite: arrayElement, descriptorCount, p*Info
-	    dsw[i].descriptorType = ShaderDescriptorPoolLayout<FD>::dsBindings[i].descriptorType;
+	    dsw[i].descriptorType = ShaderDescriptorPoolLayout<passLiteralJaggedList(FD)>::dsBindings[i].descriptorType;
 	    pf.resources[i].populateDSWrite(&dsw[i], gpu);
 	  }
 	  Gpu::get(gpu).getVkDevice().updateDescriptorSets(resourceCount, &dsw, 0, NULL);
@@ -146,8 +152,8 @@ namespace WITE::GPU {
     };
 
     //NOTE: use SetResource(s) sparringly
-    template<size_t idx, class R1> inline void SetResource(R1 resource) {
-      static_assert(FD[idx].accepts<R1>());
+    template<size_t idx, class R1> inline void setResource(R1 resource) {
+      static_assert(FD[idx].template accepts<R1>());
       ASSERT_TRAP(resource, "null resource given to descriptor");
       uint64_t frame = Util::FrameCounter::getFrame();
       for(perFrame& pf : data.all()) {
@@ -157,8 +163,8 @@ namespace WITE::GPU {
       }
     };
 
-    template<size_t idx, class R1> inline void SetResource(Util::FrameSwappedResource<R1, 2>* resource) {
-      static_assert(FD[idx].accepts<R1>());
+    template<size_t idx, class R1> inline void setResource(Util::FrameSwappedResource<R1, 2>* resource) {
+      static_assert(FD[idx].template accepts<R1>());
       ASSERT_TRAP(resource, "null resource given to descriptor (frame swapped overload)");
       uint64_t frame = Util::FrameCounter::getFrame();
       auto& resources = resource->all();
@@ -170,13 +176,13 @@ namespace WITE::GPU {
       }
     };
 
-    template<class... R> inline void SetResources(R... resources) {
-      SetResource<0>(std::forward<R...>(resources...));
+    template<class... R> inline void setResources(R... resources) {
+      setResource<0>(std::forward<R...>(resources...));
     };
 
   };
 
-  template<ShaderResourceProvider P> class ShaderDescriptor<ShaderData({}), P> {//empty D
+  template<ShaderResourceProvider P> class ShaderDescriptor<passEmptyJaggedListAliasXNS(GPU, NormalizedShaderData), P> {
     static constexpr bool empty = true;
   };
 

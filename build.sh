@@ -15,6 +15,7 @@ if [ -z "${VK_SDK_PATH}" ]; then
     VK_SDK_PATH="${VULKAN_SDK}"
 fi
 COMPILER=clang++
+WORKNICE=nice -n10
 
 #config
 if [ -z "$VK_INCLUDE" -a ! -z "$VK_SDK_PATH" ]; then
@@ -24,29 +25,31 @@ fi
 #compile to static
 find $BUILDLIBS $BUILDAPP $BUILDTESTS -name '*.cpp' -type f -print0 |
     while IFS= read -d '' SRCFILE; do
-	if [ $(cat ${ERRLOGBITDIR}/*-${ERRLOGBIT} | wc -l) -gt 0 ]; then break; fi;
+	if [ $(cat ${ERRLOGBITDIR}/*-${ERRLOGBIT} 2>/dev/null | wc -l) -gt 0 ]; then break; fi;
 	DSTFILE="${OUTDIR}/${SRCFILE%.*}.o"
 	DEPENDENCIES="${OUTDIR}/${SRCFILE%.*}.d"
-	mkdir -p "$(dirname "$DSTFILE")";
-	if [ -f "${DSTFILE}" ] && [ "${DSTFILE}" -nt "$0" ] && [ "${DSTFILE}" -nt "${SRCFILE}" ]; then
-	    if ! test -f "${DEPENDENCIES}" || test "${SRCFILE}" -nt "${DEPENDENCIES}"; then
-		$COMPILER $VK_INCLUDE -E -o /dev/null -H "${SRCFILE}" 2>&1 | grep -o '[^[:space:]]*$' >"${DEPENDENCIES}"
-	    fi
-	    while read depend; do
-		if ! [ -f "${depend}" ] || [ "${depend}" -nt "${DSTFILE}" ]; then
-		    echo "rebuilding ${SRCFILE} because ${depend} is newer";
-		    break;
-		fi
-	    done <"${DEPENDENCIES}" | grep -F rebuild || continue;
-	else
-	    # echo skipped new check for $DSTFILE
-	    $COMPILER $VK_INCLUDE -E -o /dev/null -H "${SRCFILE}" 2>&1 | grep -o '[^[:space:]]*$' >"${DEPENDENCIES}"
-	fi
-	rm "${DEPENDENCIES}"
 	THISERRLOG="${ERRLOGBITDIR}/$(echo "${SRCFILE}" | tr '/' '-')-${ERRLOGBIT}"
 	rm "${THISERRLOG}" 2>/dev/null
+	mkdir -p "$(dirname "$DSTFILE")";
 	(
-	    if ! $COMPILER $VK_INCLUDE --std=c++20 -D_POSIX_C_SOURCE=200112L -fPIC $BOTHOPTS -Werror -Wall "${SRCFILE}" -c -o "${DSTFILE}" >>"${LOGFILE}" 2>>"${THISERRLOG}"; then
+	    if [ -f "${DSTFILE}" ] && [ "${DSTFILE}" -nt "$0" ] && [ "${DSTFILE}" -nt "${SRCFILE}" ]; then
+		if ! test -f "${DEPENDENCIES}" || test "${SRCFILE}" -nt "${DEPENDENCIES}"; then
+		    $WORKNICE $COMPILER $VK_INCLUDE -E -o /dev/null -w -ferror-limit=1 -H "${SRCFILE}" 2>&1 | grep '^\.' | grep -o '[^[:space:]]*$' | sort -u &>"${DEPENDENCIES}"
+		fi
+		while read depend; do
+		    if ! [ -f "${depend}" ]; then
+			echo "rebuilding ${SRCFILE} because ${depend} not found (dependencies: ${DEPENDENCIES})";
+			break;
+		    elif [ "${depend}" -nt "${DSTFILE}" ]; then
+			echo "rebuilding ${SRCFILE} because ${depend} is newer";
+			break;
+		    fi
+		done <"${DEPENDENCIES}" | grep -F rebuild || exit 0;
+	    else
+		echo "building ${DSTFILE}"
+	    fi
+	    rm "${DEPENDENCIES}" &>/dev/null
+	    if ! $WORKNICE $COMPILER $VK_INCLUDE --std=c++20 -D_POSIX_C_SOURCE=200112L -fPIC $BOTHOPTS -Werror -Wall "${SRCFILE}" -c -o "${DSTFILE}" >>"${LOGFILE}" 2>>"${THISERRLOG}"; then
 		touch "${SRCFILE}";
 		echo "Failed Build: ${SRCFILE}"
 	    else
@@ -64,13 +67,13 @@ cat ${ERRLOGBITDIR}/*-${ERRLOGBIT} >"${ERRLOG}"
 if ! [ -f "${ERRLOG}" ] || [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
     BUILTLIBS=
     for DIRNAME in $BUILDLIBS; do
-	BUILTLIBS="-l:${DIRNAME}.so "
+	BUILTLIBS="${BUILTLIBS} -l:${DIRNAME}.so"
 	LIBNAME="$OUTDIR/$(basename "${DIRNAME}").so"
 	if [ -f "$LIBNAME" ] && [ $(find "$OUTDIR/$DIRNAME" -iname '*.o' -newer "$LIBNAME" | wc -l) -eq 0 ]; then continue; fi;
 	#TODO VK_LIB ?
-	test -f "${DIRNAME}.so" && cp "${DIRNAME}.so" "${DIRNAME}.so.bak.$(date '+%y%m%d%H%M')"
+	test -f "$OUTDIR/${DIRNAME}.so" && cp "$OUTDIR/${DIRNAME}.so" "$OUTDIR/${DIRNAME}.so.bak.$(date '+%y%m%d%H%M')"
 	echo "Linking $LIBNAME"
-	$COMPILER -shared $BOTHOPTS $LINKOPTS $(find "$OUTDIR/$DIRNAME" -name '*.o') -o $LIBNAME >>"${LOGFILE}" 2>>"${ERRLOG}"
+	$WORKNICE $COMPILER -shared $BOTHOPTS $LINKOPTS $(find "$OUTDIR/$DIRNAME" -name '*.o') -o $LIBNAME >>"${LOGFILE}" 2>>"${ERRLOG}"
     done
 fi
 
@@ -82,10 +85,10 @@ if ! [ -f "${ERRLOG}" ] || [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
 		#TODO VK_LIB ?
 		TESTNAME="${OFILE%.*}"
 		echo running test $TESTNAME
-		cp "${TESTNAME}" "${TESTNAME}.bak.$(date '+%y%m%d%H%M')"
-		$COMPILER "$OFILE" -o "$TESTNAME" -L "${OUTDIR}" "-Wl,-rpath,$OUTDIR" $BUILTLIBS $LINKOPTS $BOTHOPTS 2>>"${ERRLOG}" >>"${LOGFILE}"
+		test -f "${TESTNAME}" && cp "${TESTNAME}" "${TESTNAME}.bak.$(date '+%y%m%d%H%M')"
+		$WORKNICE $COMPILER "$OFILE" -o "$TESTNAME" -L "${OUTDIR}" "-Wl,-rpath,$OUTDIR" $BUILTLIBS $LINKOPTS $BOTHOPTS 2>>"${ERRLOG}" >>"${LOGFILE}"
 		echo running test "${TESTNAME}" >>"${LOGFILE}"
-		time $TESTNAME 2>>"${ERRLOG}" >>"${LOGFILE}"
+		$WORKNICE time $TESTNAME 2>>"${ERRLOG}" >>"${LOGFILE}"
 		code=$?
 		if [ $code -ne 0 ]; then echo "Exit code: " $code >>"${ERRLOG}"; fi;
 		test -f "${TESTNAME}.bak" && ! test -f "${TESTNAME}" && cp "${TESTNAME}.bak" "${TESTNAME}"
@@ -100,7 +103,7 @@ if ! [ -f "${ERRLOG}" ] || [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
 	APPNAME="$DIRNAME/$(basename "${DIRNAME}").so"
 	#TODO VK_LIB ?
 	echo "Linking $APPNAME"
-	$COMPILER $(find "$DIRNAME" -name '*.o') -o $APPNAME $BOTHOPTS >>"${LOGFILE}" 2>>"${ERRLOG}"
+	$WORKNICE $COMPILER $(find "$DIRNAME" -name '*.o') -o $APPNAME $BOTHOPTS >>"${LOGFILE}" 2>>"${ERRLOG}"
     done
 fi
 

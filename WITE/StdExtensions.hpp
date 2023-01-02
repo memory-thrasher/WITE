@@ -83,9 +83,30 @@ namespace WITE {
 
   //I and O are either iterators or pointers
   template<class I, class O, class Alloc> constexpr O const_copy(I start, I end, O out, Alloc& alloc) {
+    auto o = out;
     while(start != end)
-      std::allocator_traits<Alloc>::construct(alloc, &*out, *start++);//constructor or assignment call
+      std::allocator_traits<Alloc>::construct(alloc, &*o++, *start++);//constructor or assignment call
     return out;
   }
+
+  template<class U, class T> concept is_collection_of = requires(U u) { {*u.begin()} -> std::convertible_to<T>; };
+
+  template<class T> concept collection = requires(T t) { *t.begin(); };
+
+  template<class U> concept multidimensionalCollection = requires(U u) { {*u.begin()->begin()}; };
+
+  // template<class T> struct beginAlias {
+  //   auto operator()(T t) { return t.begin(); };
+  // };
+
+  // template<class T> struct remove_collection {
+  //   typedef T type;
+  // };
+
+  // template<collection T> struct remove_collection<T> {
+  //   typedef remove_collection<typename std::remove_ref<typename std::invoke_result<beginAlias<T>, T>::type>::type>::type type;
+  // };
+
+  // template<class U, class T> concept is_collection_of_recursive = std::convertible_to<typename remove_collection<U>::type, T>;
 
 }

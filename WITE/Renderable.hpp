@@ -10,16 +10,25 @@ namespace WITE::GPU {
 
   class RenderTarget;
   class GpuResource;
+  template<acceptShaderData(D)> class Shader;
 
- //renderer renders something. renderable renders itself. I need caffeine.
-  template<ShaderData D> class Renderable : public Renderer {
-  private:
-    std::vector<GpuResource*> resources;//null for anything not specific to the renderer instance (attachments and globals
-    Shader<D>* shader;
+  class RenderableBase {
+  protected:
+    RenderableBase(layer_t layer) : layer(layer) {};
   public:
     const layer_t layer;
-    Renderer(layer_t layer, Shader<D>* s) : shader(s), layer(layer) {};
-    //TODO function to bind resources (statically validated)
+    virtual void bind(size_t gpu, ElasticCommandBuffer& cmd) = 0;
+  };
+
+  template<acceptShaderData(D)> class Renderable : public RenderableBase {
+  private:
+    Shader<passShaderData(D)>* shader;
+    typedef ShaderDescriptor<passShaderData(D), ShaderResourceProvider::eRenderable> data_t;
+    data_t data;
+  public:
+    Renderable(layer_t layer, Shader<passShaderData(D)>* s) : RenderableBase(layer), shader(s) {};
+    //TODO function to bind resources to data (statically validated)
+    //TODO implement bind
   };
 
 };

@@ -317,7 +317,7 @@ namespace WITE::GPU {
 	l.formatProperties[kvp.first] = fp;
       }
     }
-    RenderTarget::SpawnTruckThread();
+    RenderTarget::spawnTruckThread();
   };
 
   Gpu& Gpu::get(size_t i) {//static

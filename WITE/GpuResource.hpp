@@ -74,7 +74,7 @@ namespace WITE::GPU {
     virtual ~GpuResource() = default;
     void copy(size_t gpuSrc, size_t gpuDst);
     void* map(size_t gpuIdx);
-    virtual void populateDSWrite(vk::WriteDescriptorSet* out, size_t gpuIdx);//implementation must not overwrite descriptor set, binding or type
+    virtual void populateDSWrite(vk::WriteDescriptorSet* out, size_t gpuIdx) = 0;//implementation must not overwrite descriptor set, binding or type
   };
 
   enum class GpuResourceType { eImage, eBuffer };

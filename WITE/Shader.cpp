@@ -21,21 +21,21 @@ namespace WITE::GPU {
     Collections::remove(allShaders, this);
   };
 
-  void ShaderBase::Register(Renderable* r) {
+  void ShaderBase::add(RenderableBase* r) {
     renderablesByLayer[r->layer].push(r);
   };
 
-  void ShaderBase::Unregister(Renderable* r) {
+  void ShaderBase::remove(RenderableBase* r) {
     renderablesByLayer[r->layer].remove(r);
   };
 
-  void ShaderBase::RenderAllOfTypeTo(RenderTarget& target, ElasticCommandBuffer& cmd, QueueType qt, layerCollection_t& layers, std::initializer_list<Renderable*>& except) {// static
+  void ShaderBase::renderAllOfTypeTo(RenderTarget& target, ElasticCommandBuffer& cmd, QueueType qt, layerCollection_t& layers, std::initializer_list<RenderableBase*>& except) {// static
     for(ShaderBase* s : allShaders)
       if(s->queueType == qt)
-	s->RenderTo(target, cmd, layers, except);
+	s->renderTo(target, cmd, layers, except);
   };
 
-  void ShaderBase::RenderTo(RenderTarget& target, ElasticCommandBuffer& cmd, layerCollection_t& layers, std::initializer_list<Renderable*>& except) {
+  void ShaderBase::renderTo(RenderTarget& target, ElasticCommandBuffer& cmd, layerCollection_t& layers, std::initializer_list<RenderableBase*>& except) {
     if(!layers.intersectsMap(renderablesByLayer)) return;
     bool found = false;
     for(auto& layer : layers)
@@ -47,18 +47,18 @@ namespace WITE::GPU {
     auto gpuIdx = cmd.getGpu()->getIndex();
     vk::Pipeline pipe;
     if(!target.pipelinesByShaderId.contains(gpuIdx, id))
-      pipe = target.pipelinesByShaderId.get(gpuIdx, id) = CreatePipe(gpuIdx, target.renderPasses.get(gpuIdx));
+      pipe = target.pipelinesByShaderId.get(gpuIdx, id) = createPipe(gpuIdx, target.renderPasses.get(gpuIdx));
     else
       pipe = target.pipelinesByShaderId.get(gpuIdx, id);
     cmd->bindPipeline(getBindPoint(), pipe);
     for(auto& pair : renderablesByLayer)
       if(layers.contains(pair.first))
-	for(Renderable* renderable : pair.second)
+	for(RenderableBase* renderable : pair.second)
 	  if(!Collections::contains(except, renderable))
-	    RenderImpl(renderable, cmd);
+	    renderImpl(renderable, cmd);
   };
 
-  vk::PipelineLayout ShaderBase::hasLayout(ShaderData::hashcode_t d, size_t gpuIdx) { //static
+  bool ShaderBase::hasLayout(ShaderData::hashcode_t d, size_t gpuIdx) { //static
     Util::ScopeLock lock(&layoutsByData_mutex);
     return layoutsByData.contains(gpuIdx, d);
   };
@@ -74,7 +74,7 @@ namespace WITE::GPU {
     VK_ASSERT(vkDev.createPipelineLayout(pipeCI, ALLOCCB, &ret), "failed pipeline layout");
     {
       Util::ScopeLock lock(&layoutsByData_mutex);
-      layoutsByData.get(gpu, d) = ret;
+      layoutsByData.get(gpuIdx, d) = ret;
     }
     return ret;
   };

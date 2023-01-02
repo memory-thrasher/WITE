@@ -8,6 +8,7 @@
 #include "StdExtensions.hpp"
 #include "Image.hpp"
 #include "StructuralMap.hpp"
+#include "LiteralJaggedList.hpp"
 
 namespace WITE::GPU {
 
@@ -99,6 +100,10 @@ namespace WITE::GPU {
     const ShaderResourceProvider providedBy;
     ShaderResource() = delete;
     constexpr ShaderResource(const ShaderResource&) = default;
+    template<class Iter> constexpr ShaderResource(const ShaderResourceProvider provider, Iter B, Iter E) :
+      usage(B, E), providedBy(provider) {};
+    template<class Container> constexpr ShaderResource(const ShaderResourceProvider provider, Container C) :
+      ShaderResource(provider, C.begin(), C.end()) {};
     constexpr ShaderResource(// const ShaderResourceType type, 
 			     const std::initializer_list<ShaderResourceUsage> usage,
 			     const ShaderResourceProvider provider) :
@@ -232,16 +237,17 @@ namespace WITE::GPU {
     constexpr ~ShaderData() = default;
     constexpr ShaderData(const std::initializer_list<ShaderResource> resources) : resources(resources) {};
     template<class Iter> constexpr ShaderData(const Iter B, const Iter E) : resources(B, E) {};
+    template<class Container> constexpr ShaderData(const Container C) : ShaderData(C.begin(), C.end()) {};
     const ShaderResource& operator[](const size_t i) const {
       return resources[i];
     };
 
     constexpr ShaderData SubsetFrom(ShaderResourceProvider p) const {
-      std::vector<ShaderResource> resources;
+      std::vector<ShaderResource> retResources;
       for(auto r : resources)
 	if(r.providedBy == p)
-	  resources.push_back(r);
-      return ShaderData(resources.begin(), resources.end());
+	  retResources.push_back(r);
+      return ShaderData(retResources);
     };
 
     typedef uint64_t hashcode_t;//used in maps to cache descriptor info
@@ -308,21 +314,33 @@ namespace WITE::GPU {
 
     constexpr size_t countDescriptorSetResources() const {
       size_t ret = 0;
-      for(ShaderResource r : resources)
-	for(ShaderResourceUsage cu : r.usage)
-	  if(cu.isDS())
+      std::vector<vk::DescriptorType> types;
+      for(ShaderResource r : resources) {
+	types.clear();
+	for(ShaderResourceUsage cu : r.usage) {
+	  auto dst = cu.getVkDSType();
+	  if(cu.isDS() && !Collections::contains(types, dst)) {
 	    ret++;
+	    types.push_back(dst);
+	  }
+	}
+      }
       return ret;
     };
 
     template<size_t retCount> //must always = countDescriptorSetResources()
     constexpr auto getDescriptorSetLayoutBindings() const {
+      Collections::StructuralMap<vk::DescriptorType, vk::ShaderStageFlags> flags;
       vk::DescriptorSetLayoutBinding ret[retCount];
       uint32_t i = 0;
-      for(ShaderResource r : resources)
+      for(ShaderResource r : resources) {
+	flags.clear();
 	for(ShaderResourceUsage cu : r.usage)
 	  if(cu.isDS())
-	    ret[i] = { i++, cu.getVkDSType(), 1, cu.getVkStages() };
+	    flags[cu.getVkDSType()] |= cu.getVkStages();
+	for(auto p : flags)
+	  ret[i] = { i++, p.k, 1, p.v };
+      }
       return ret;
     };
 
@@ -351,6 +369,67 @@ namespace WITE::GPU {
       return ret;
     };
 
+  };
+
+  union ShaderDataDatumBundle {
+  public:
+    ShaderResourceUsage usage;
+    ShaderResourceProvider provider;
+    constexpr ShaderDataDatumBundle() : provider(ShaderResourceProvider::last) {};
+    constexpr ShaderDataDatumBundle(ShaderResourceProvider p) : provider(p) {};
+    constexpr ShaderDataDatumBundle(bool write, ShaderStage stage,
+				    ShaderResourceAccessType access = ShaderResourceAccessType::eUndefined) :
+      usage(write, stage, access) {};
+    constexpr ~ShaderDataDatumBundle() = default;
+  };
+
+  defineLiteralJaggedListAliasType(ShaderDataDatumBundle, 2, NormalizedShaderData);
+#define passShaderData(SD) passLiteralJaggedList(SD)
+#define acceptShaderData(SD) acceptLiteralJaggedListAliasXNS(::WITE::GPU, NormalizedShaderData, SD)
+
+  template<acceptShaderData(JL)> constexpr ShaderData parseShaderData() {
+    std::vector<ShaderResource> resources;
+    std::vector<ShaderResourceUsage> usages;
+    for(auto resource : JL) {
+      usages.clear();
+      for(auto usage : resource) {
+	usages.push_back(usage.usage);
+      }
+      resources.emplace_back(resource.get().provider, usages);
+    };
+    return ShaderData(resources);
+  };
+
+  //TODO maybe make this generic
+  template<acceptShaderData(D), ShaderResourceProvider P>
+  constexpr auto SubsetShaderDataVolume() {
+    std::array<size_t, D.DIM> ret;
+    for(size_t i = 0;i < D.DIM;i++) ret[i] = 0;
+    for(auto r : D) {
+      auto p = r.get().provider;
+      if(p != P) continue;
+      ret[0]++;
+      for(auto u : r) {
+	ret[1]++;
+      }
+    }
+    return ret;
+  };
+
+  template<acceptShaderData(D), ShaderResourceProvider P>
+  constexpr auto SubsetShaderData() {
+    constexpr auto V = SubsetShaderDataVolume<passLiteralJaggedList(D), P>();
+    std::vector<Collections::StructuralPair<std::vector<ShaderResourceUsage>, ShaderResourceProvider>> ret;
+    for(auto r : D) {
+      auto p = r.get().provider;
+      if(p != P) continue;
+      auto& pair = ret.emplace_back();
+      pair.v = P;
+      for(auto u : r) {
+	pair.k.push_back(u.get());
+      }
+    }
+    return LJLA::NormalizedShaderData<V>(ret);
   };
 
   // static constexpr ShaderData emptyShaderData = ShaderData({});

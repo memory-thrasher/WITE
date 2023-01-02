@@ -3,18 +3,28 @@
 
 namespace WITE::GPU {
 
+  struct BackedRenderTargetData {
+    static constexpr size_t MAX_RESOURCES = 16, MAX_STEPS = 64;
+    size_t resourceCount, stepCount;
+    GpuResourceSlotInfo resources[MAX_RESOURCES];
+    RenderStep steps[MAX_STEPS];
+    ~BackedRenderTargetData() = default;
+    BackedRenderTargetData(std::initializer_list<GpuResourceSlotInfo> rez, std::initializer_list<RenderStep> steps) :
+      resourceCount(countIL(rez)), stepCount(countIL(steps)), resources(rez), steps(steps) {};
+  };
+
   //TODO if there are attachments, and STEPS contains a compute step, add DS storage image access to the attachments
   #error TODO Make RT only creatable via factory and destroy (flag for later destruction) with dispose function
-  template<StructuralConstList<GpuResourceSlotInfo> REZ, StructuralConstList<RenderStep> STEPS, logicalDeviceMask_t LDM>
+  template<BackedRenderTargetData DATA, logicalDeviceMask_t LDM>
   class BackedRenderTarget : public RenderTarget {
   public:
-    typedef BackedRenderTarget<REZ, STEPS, LDM> SPECULUM;
-    static constexpr size_t resourceCount = REZ.count();
-    static constexpr size_t stepCount = STEPS.count();
-    static constexpr StructuralConstList<GpuResourceSlotInfo> resourceSlots;
-    static constexpr StructuralConstList<RenderStep> steps = STEPS;
+    typedef BackedRenderTarget<DATA, LDM> SPECULUM;
+    static constexpr size_t resourceCount = DATA.resourceCount;
+    static constexpr size_t stepCount = DATA.stepCount;
+    static constexpr std::array<GpuResourceSlotInfo, resourceCount> REZ = subArray<0, resourceCount>(DATA.resources);
+    static constexpr std::array<RenderStep, stepCount> STEPS = subArray<0, stepCount>(DATA.steps);
   protected:
-    virtual const StructuralConstList<RenderStep>& getRenderSteps() override const { return steps; };
+    virtual const Collections::IteratorWrapper<const RenderStep*>& getRenderSteps() override const { return { steps }; };
     virtual void getRenderInfo(vk::RenderPassBeginInfo* out, size_t gpuIdx) override const {
       *out = { rp, fbs[gpuIdx].getWrite(), { { 0, 0 }, { width, height } }, resourceCount, clears };
     };
@@ -52,7 +62,7 @@ namespace WITE::GPU {
       std::array<uint32_t, resourceCount> preserves;
       uint32_t inputCount, colorCount, depthCount, preserveCount;
     };
-    resource_t<REZ.count()-1> resourceStorage;
+    resource_t<resourceCount-1> resourceStorage;
     std::array<resource_bt*, resourceCount> resources;
     std::array<vk::AttachmentDescription2, resourceCount> attachments;
     std::array<vk::SubpassDescription2, stepCount> subpasses;
@@ -65,12 +75,12 @@ namespace WITE::GPU {
 
     FrameSwappedResource<vk::Framebuffer> makeFBs(size_t idx, vk::RenderPass rp) {
       vk::Framebuffer ret[2];
-      vk::ImageView views[REZ.count()];//FIXME move this to a struct backing fbs and destroy them later if image destruction doesn't destroy them anyway
+      vk::ImageView views[resourceCount];//FIXME move this to a struct backing fbs and destroy them later if image destruction doesn't destroy them anyway
       Gpu& gpu = get(idx);
       auto vkgpu = gpu.GetVkDevice();
-      vk::FramebufferCreateInfo fbci { {}, rp, REZ.count(), views, width, height, 1 };
+      vk::FramebufferCreateInfo fbci { {}, rp, resourceCount, views, width, height, 1 };
       for(size_t i = 0;i < 2;i++) {
-	for(size_t j = 0;j < REZ.count();j++) {
+	for(size_t j = 0;j < resourceCount;j++) {
 	  static_cast<ImageBase*>(resourcees[j]->swapper.all()[i])->makeImageView(&views[j], idx);
 	}
 	VK_ASSERT(vkgpu.createFramebuffer(&fbci, &ret[i]), "Failed to create framebuffer");

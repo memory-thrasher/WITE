@@ -10,7 +10,7 @@
 
 namespace WITE::GPU {
 
-  class Renderer;
+  class RenderableBase;
   class ShaderBase;
   class ElasticCommandBuffer;
 
@@ -44,17 +44,17 @@ namespace WITE::GPU {
     RenderTarget(logicalDeviceMask_t ldm);
     void makeRenderPass(vk::RenderPass*, size_t gpu);
     void destroyRenderPass(vk::RenderPass*, size_t);
-    virtual const Collections::StructuralConstList<RenderStep>& getRenderSteps() = 0;
+    virtual const Collections::IteratorWrapper<const RenderStep*>& getRenderSteps() = 0;
     virtual void getRenderInfo(vk::RenderPassBeginInfo* out, size_t gpuIdx) const = 0;
     friend class ShaderBase;
     virtual void renderQueued(ElasticCommandBuffer& cmd) = 0;//implementation is expected to do something with the rendered image
     virtual void truckResourcesTo(size_t srcGpu, size_t dstGpu) = 0;
   public:
-    static void SpawnTruckThread();//internal use only called by gpu init
+    static void spawnTruckThread();//internal use only called by gpu init
     RenderTarget() = delete;
     RenderTarget(const RenderTarget&) = delete;
     virtual ~RenderTarget() = default;
-    void render(std::initializer_list<Renderer*> except);
+    void render(std::initializer_list<RenderableBase*> except);
     virtual void cull() = 0;
     void destroy();//actual destruction may be deferred to a future frame when nothing is using associated resources
   };

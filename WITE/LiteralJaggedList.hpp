@@ -6,6 +6,7 @@
 
 #include "StructuralPair.hpp"
 #include "LiteralList.hpp"
+#include "StdExtensions.hpp"
 
 namespace WITE::Collections {
 
@@ -28,21 +29,22 @@ namespace WITE::Collections {
     using SPECULUM = LiteralJaggedList<T, dimensions, volume>;
     static constexpr size_t indexCount = sum(subArray<0, dimensions-1>(volume)),
       indexDimensions = dimensions-1,
-      dataCount = sum(volume);
+      dataCount = sum(volume),
+      DIM = dimensions;
     static constexpr std::array<size_t, dimensions+1> layerBoundaries = cumulativeSum(volume);
     static constexpr auto VOLUME = volume;
     T data[dataCount];//all the data in the jagged array flattened
     size_t indexes[indexCount];//some of these point to data some back into indexes
 
-    constexpr void populate(T* data, size_t* indexes, size_t* writeHeads,
-			    const std::initializer_list<T> in) {
-      for(T t : in)
+    //U is an iterable collection, eg initializer_list or vector, of something convertible to T
+    template<class U> requires is_collection_of<U, T>
+    constexpr void populate(T* data, size_t* indexes, size_t* writeHeads, const U in) {
+      for(auto t : in)
 	data[writeHeads[0]++] = t;
     };
 
-    template<class U>
-    constexpr void populate(T* data, size_t* indexes, size_t* writeHeads,
-			    const std::initializer_list<std::initializer_list<U>> in) {
+    //U is a collection of collections
+    template<multidimensionalCollection U> constexpr void populate(T* data, size_t* indexes, size_t* writeHeads, const U in) {
       for(auto il : in) {
 	data[writeHeads[0]] = {};
 	indexes[writeHeads[0]++] = writeHeads[1];
@@ -50,9 +52,12 @@ namespace WITE::Collections {
       }
     };
 
-    template<class U, class V> //implicitly requires V convertible to T
-    constexpr void populate(T* data, size_t* indexes, size_t* writeHeads,
-			    const std::initializer_list<StructuralPair<std::initializer_list<U>, V>> in) {
+    //U is a collection of StructuralPair<collection for recursion, convertible to T>
+    template<class U> requires requires(U u) {
+      {u.begin()->v} -> std::convertible_to<T>;
+      {*u.begin()->k.begin()};
+    }
+    constexpr void populate(T* data, size_t* indexes, size_t* writeHeads, const U in) {
       for(auto pair : in) {
 	data[writeHeads[0]] = pair.v;
 	indexes[writeHeads[0]++] = writeHeads[1];
@@ -70,6 +75,9 @@ namespace WITE::Collections {
       std::copy(dataTemp, dataTemp+dataCount, data);
       std::copy(indexesTemp, indexesTemp+indexCount, indexes);
     };
+
+    constexpr LiteralJaggedList() requires(sum(volume) == 0) {//empty
+    }
 
     constexpr auto get(size_t path) const {
       return get(tie(path));
@@ -166,9 +174,18 @@ namespace WITE::Collections {
   //use to pass a JL to a template
 #define passLiteralJaggedList(NOM) NOM.VOLUME, NOM
 
-#define defineLiteralJaggedListAliasType(T, DIM, NOM_T) constexpr size_t ::WITE::LJLA_DIM_ ##NOM_T = DIM; template<std::array<size_t, DIM> VOL> using NOM_T = ::WITE::Collections::LiteralJaggedList<T, DIM, VOL>
+#define passEmptyJaggedList(T, DIM) std::array<size_t, DIM>(), ::WITE::Collections::LiteralJaggedList<T, DIM, std::array<size_t, DIM>()>();
 
-#define acceptsLiteralJaggedListAlias(NOM_T, NOM) std::array<size_t, ::WITE::LJLA_DIM_ ##NOM_T> witeJaggedListVolume_ ##NOM, NOM_T <witeJaggedListVolume_ ##NOM> NOM
+#define defineLiteralJaggedListAliasType(T, DIM, NOM_T) namespace LJLA { constexpr size_t DIM_ ##NOM_T = DIM; template<std::array<size_t, DIM> VOL> using NOM_T = ::WITE::Collections::LiteralJaggedList<T, DIM, VOL>; }
+
+#define acceptLiteralJaggedListAlias(NOM_T, NOM) std::array<size_t, LJLA::DIM_ ##NOM_T> witeJaggedListVolume_ ##NOM, LJLA::NOM_T <witeJaggedListVolume_ ##NOM> NOM
+
+#define passEmptyJaggedListAlias(NOM_T) std::array<size_t, LJLA::DIM_ ##NOM_T>(), LJLA::NOM_T<std::array<size_t, LJLA::DIM_ ##NOM_T >{}>()
+
+  //cross-namespace versions
+#define acceptLiteralJaggedListAliasXNS(NS, NOM_T, NOM) std::array<size_t, NS::LJLA::DIM_ ##NOM_T> witeJaggedListVolume_ ##NOM, NS::LJLA::NOM_T <witeJaggedListVolume_ ##NOM> NOM
+
+#define passEmptyJaggedListAliasXNS(NS, NOM_T) std::array<size_t, NS::LJLA::DIM_ ##NOM_T>{}, NS::LJLA::NOM_T<std::array<size_t, NS::LJLA::DIM_ ##NOM_T >{}>{}
 
   //alias types should make their own definitions
 

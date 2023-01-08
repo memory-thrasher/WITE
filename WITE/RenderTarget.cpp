@@ -32,6 +32,7 @@ namespace WITE::GPU {
   };
 
   void RenderTarget::render(std::initializer_list<RenderableBase*> except) {
+    lastRendered = Util::FrameCounter::getFrame();
     auto steps = getRenderSteps();
     Gpu* gpu = Gpu::getGpuFor(ldm);
     size_t gpuIdx = gpu->getIndex();
@@ -64,7 +65,7 @@ namespace WITE::GPU {
   void RenderTarget::truckThread() {//static
     // std::vector<vk::Semaphore> waitTargets;//backburnering this cuz waitAny requires all sems be on the same device, yielding busy wait is better
     // std::vector<uint64_t> waitValues;
-    while(Gpu::running) {//TODO shutdown flag
+    while(Gpu::running) {
       auto frame = Util::FrameCounter::getFrame();
       // waitTargets.clear();
       {
@@ -114,6 +115,10 @@ namespace WITE::GPU {
 
   void RenderTarget::spawnTruckThread() {//static
     Platform::Thread::spawnThread(Platform::Thread::threadEntry_t_F::make(&truckThread));
+  };
+
+  void RenderTarget::destroy() {
+    destroyOnFrame = FrameCounter::getFrame()+1;
   };
 
 }

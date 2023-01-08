@@ -10,7 +10,6 @@ namespace WITE::GPU {
   private:
     typedef Collections::StructuralPair<size_t, K> pair;
     std::map<pair, V> data;
-    //TODO destroyer?
   public:
     PerGpu() {};
     inline V& get(size_t t, const K& k) { return data[{t, k}]; };

@@ -21,6 +21,8 @@ Shader instance bind after the pipeline.
 
 namespace WITE::GPU {
 
+  class GpuResource;
+
   template<acceptShaderData(D)> struct ShaderDescriptorPoolLayout {
     constexpr static uint32_t setsPerPool = 100;
     constexpr static uint32_t resourceCount = ParseShaderData<D>().countDescriptorSetResources();
@@ -85,7 +87,21 @@ namespace WITE::GPU {
 
   };
 
-  template<acceptShaderData(D), ShaderResourceProvider P> class ShaderDescriptor {
+  class ShaderDescriptorBase {
+  protected:
+    ShaderDescriptorBase() = default;
+    ShaderDescriptorBase(const ShaderDescriptorBase&) = delete;
+  public:
+    virtual ~ShaderDescriptorBase() = default;
+
+    //bypasses compiler check, for RenderTarget because what shaders are on what layer is not presently described at compile time
+    //data = c-array of GpuResource* of length deduced via ShaderData templates
+    virtual void bindResourcesUnchecked(const GpuResource** data) = 0;
+
+    virtual vk::DescriptorSet get(size_t gpu) = 0;
+  };
+
+  template<acceptShaderData(D), ShaderResourceProvider P> class ShaderDescriptor : public ShaderDescriptorBase {
   private:
     static constexpr auto FD = SubsetShaderData<passLiteralJaggedList(D), P>();
     static constexpr auto FDC = FD.hashCode();
@@ -111,7 +127,6 @@ namespace WITE::GPU {
       GpuResource* resources[resourceCount];
       uint64_t lastResourceUpdated; //NOTE limitation: if SetResource is called every frame, it'll never acutally update
       perFrame() : dsContainers(decltype(dsContainers)::creator_t_F::make(&descriptorSetContainer::makeDSC)) {};
-
     };
 
     Util::FrameSwappedResource<perFrame, 2> data;
@@ -126,8 +141,23 @@ namespace WITE::GPU {
     ShaderDescriptor(ShaderDescriptor&) = delete;
     ShaderDescriptor() {};
 
+    void bindResourcesUnchecked(const GpuResource** resources) override {
+      ASSERT_TRAP(resources, "null resource given to descriptor");
+      uint64_t frame = Util::FrameCounter::getFrame();
+      size_t fIdx = 0;
+      for(perFrame& pf : data.call()) {
+	Util::ScopeLock lock(&pf.lock);
+	pf.lastResourceUpdated = frame;
+	for(size_t i = 0;i < resourceCount;i++) {
+	  ASSERT_TRAP(resources[i * 2 + fIdx], "null resource given to descriptor");
+	  pf.resources[i] = resources[i * 2 + fIdx];
+	}
+	fIdx++;
+      }
+    };
+
     //gets the READABLE DS. Will first bind resources against it if out of date.
-    inline vk::DescriptorSet get(size_t gpu) {
+    vk::DescriptorSet get(size_t gpu) {
       perFrame& pf = data.get();
       descriptorSetContainer& dsc = pf.dsContainers[gpu];
       uint64_t frame = Util::FrameCounter::getFrame();

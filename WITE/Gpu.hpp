@@ -57,7 +57,7 @@ namespace WITE::GPU {
     static Gpu& get(size_t);
     static inline size_t getGpuCount() { return gpuCount; };
     static uint8_t gpuCountByLdm(logicalDeviceMask_t ldm);
-    static Gpu* getGpuFor(logicalDeviceMask_t ldm);//TODO distribute by weight, atomic seed over low modulo
+    static Gpu* getGpuFor(logicalDeviceMask_t ldm);
     static inline bool ldmHasMultiplePhysical(logicalDeviceMask_t ldm) { return gpuCountByLdm(ldm) > 1; };
     static inline Collections::BitmaskIterator gpusForLdm(logicalDeviceMask_t ldm) { return { gpuMaskByLdm(ldm) }; };
     static vk::Format getBestImageFormat(uint8_t comp, uint8_t compSize, usage_t usage, logicalDeviceMask_t ldm = 1);

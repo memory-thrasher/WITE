@@ -14,7 +14,6 @@ namespace WITE::GPU {
   };
 
   //TODO if there are attachments, and STEPS contains a compute step, add DS storage image access to the attachments
-  #error TODO Make RT only creatable via factory and destroy (flag for later destruction) with dispose function
   template<BackedRenderTargetData DATA, logicalDeviceMask_t LDM>
   class BackedRenderTarget : public RenderTarget {
   public:
@@ -98,17 +97,18 @@ namespace WITE::GPU {
       size_t gpuIdx = cmd->getGpu()->getIndex();
       size_t mbCnt = 0;
       vk::ImageMemoryBarrier mbs[resourceCount*2];
-      std::bitset<resourceCount> transferMask[resourceCount];
+      std::bitset<resourceCount> transferMask;
       for(size_t i = 0;i < resourceCount;i++) {
 	resource_bt* r = resources[i];
-	if(r->staging.transfersRequired && REZ[i].externalUsage) {
+	if(REZ[i].externalUsage) {
+	  //copy even images not set to be used by another gpu so the staging image can be used as the source should the next frame be culled while the rendered image is in the external usage applicable layout (likely shader read optimal)
 	  transferMask[i] = true;
 	  //NOTE: render pass has already transitioned the rendered image to transfer src optimal
 	  mbs[mbCnt++] = { //memory barrier: discard staging image into transfer dst
 	    vk::PipelineStageFlagBits::eNone, vk::AccessFlagBits::eNone,
 	    vk::PipelineStageFlagBits::eTransfer, vk::AccessFlagBits::eTransferWrite,
 	    vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal,
-	    cmd.getQueue()->family, transferCmd->getQueue()->family,
+	    transferCmd->getQueue()->family, transferCmd->getQueue()->family,
 	    r->staging->getVkImage(gpuIdx),
 	    r->staging->getAllInclusiveSubresource()
 	  };
@@ -130,6 +130,7 @@ namespace WITE::GPU {
       mbCnt = 0;
       for(size_t i = 0;i < resourceCount;i++) {
 	if(!transferMask[i]) continue;
+	resource_bt* r = resources[i];
 	mbs[mbCnt++] = { //memory barrier: image to external usage optimal
 	  vk::PipelineStageFlagBits::eTransfer, vk::AccessFlagBits::eTransferRead,
 	  vk::PipelineStageFlagBits::eAllCommands, vk::AccessFlagBits::eShaderRead,
@@ -142,7 +143,7 @@ namespace WITE::GPU {
 	  vk::PipelineStageFlagBits::eTransfer, vk::AccessFlagBits::eTransferWrite,
 	  vk::PipelineStageFlagBits::eHost, vk::AccessFlagBits::eHostRead,
 	  vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eTransferSrcOptimal,
-	  transferCmd->getQueue()->family, cmd.getQueue()->family, //assumption: cmd = graphics queue
+	  transferCmd->getQueue()->family, transferCmd->getQueue()->family,
 	  r->staging->getVkImage(gpuIdx),
 	  r->staging->getAllInclusiveSubresource()
 	};
@@ -158,6 +159,7 @@ namespace WITE::GPU {
 	r->staging->copy(gpuSrc, gpuDst, cmd);
     }
 
+    //TODO move most of this to constexpr if possible
     BackedRenderTarget() : RenderTarget(LDM),
 			   width(512), height(512),
 			   fbs(fbs_t::creator_t_F::make(this, &SPECULUM::makeFBs),
@@ -263,10 +265,76 @@ namespace WITE::GPU {
       ci = { {}, resourceCount, attachments.data(), stepCount, subpasses.data(), dependsCount, depends };//NYI correlated views
     };
 
+    void bindResourcesTo(ShaderDescriptorBase* sdb) override {
+      GpuResource* resourcePackage[2*resourceCount];//TODO move this to constructor/constexpr
+      for(size_t i = 0;i < resourceCount;i++)
+	for(size_t f = 0;f < 2;f++)
+	  resourcePackage[i * 2 + f] = resources[i].swapper.all()[f];
+      sdb->bindResourcesUnchecked(resourcePackage);
+    };
+
   public:
     const bool multiGpu;
     static SPECULUM* make() {
       return new SPECULUM();//instance owned by internal collection
+    };
+
+    //called by owning object implementation on each frame where this target is not to be rendered to, to update the new frame's write resources with the previous frame's data
+    void cull() override {
+      auto frame = Util::FrameCounter::getFrame();
+      if(frame - 1 > lastRendered || frame == 0 || lastRendered == 0) {
+	//images already synced
+	for(auto gpuIdx : Gpu::gpusForLdm(LDM)) {
+	  sem[gpuIdx].signalNow();
+	}
+	return;
+      }
+      size_t mbCnt = 0;
+      vk::ImageMemoryBarrier mbs[resourceCount];
+      for(auto gpuIdx : Gpu::gpusForLdm(LDM)) {
+	Gpu* gpu = Gpu::get(gpuIdx);
+	ElasticCommandBuffer cmd = gpu->getQueue(QueueType::eTransfer)->createBatch();
+	cmd.addDependency(sem[gpuIdx]);
+	auto graphicsFam = gpu->getQueue(QueueType::eGraphics)->family;
+	std::bitset<resourceCount> transferMask;
+	for(size_t i = 0;i < resourceCount;i++) {
+	  resource_bt* r = resources[i];
+	  if(REZ[i].externalUsage) {
+	    transferMask[i] = true;
+	    mbs[mbCnt++] = { //discard write image content, into transfer dst optimal layout
+	      vk::PipelineStageFlagBits::eNone, vk::AccessFlagBits::eNone,
+	      vk::PipelineStageFlagBits::eTransfer, vk::AccessFlagBits::eTransferWrite,
+	      vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal,
+	      graphicsFam, cmd.getQueue()->family,
+	      r->swapper->getWrite().getVkImage(gpuIdx),
+	      r->swapper->getWrite().getAllInclusiveSubresource()
+	    };
+	  }
+	}
+	vk::DependencyInfo di { {}, 0, NULL, 0, NULL, mbCnt, mbs };
+	cmd->pipelineBarrier2(&di);
+	mbCnt = 0;
+	for(size_t i = 0;i < resourceCount;i++) {
+	  if(!transferMask[i]) continue;
+	  vk::ImageCopy imageCopy {
+	    r->swapper->getWrite().getAllInclusiveSubResource(), {},
+	    r->staging->getAllInclusiveSubResource(), {}, { width, height, REZ[i].imageData.arrayLayers }
+	  };
+	  transferCmd->copyImage(r->staging->getVkImage(gpuIdx), vk::ImageLayout::eTransferSrcOptimal,
+				 r->swapper->getWrite().getVkImage(gpuIdx), vk::ImageLayout::eTransferDstOptimal,
+				 1, &imageCopy);
+	  mbs[mbCnt++] = { //transition write image into external
+	    vk::PipelineStageFlagBits::eTransfer, vk::AccessFlagBits::eTransferWrite,
+	    vk::PipelineStageFlagBits::eAllCommands, vk::AccessFlagBits::eShaderRead,
+	    vk::ImageLayout::eTransferDstOptimal, optimalLayoutForUsage(REZ[i].externalUsage),
+	    cmd->getQueue()->family, graphicsFam,
+	    r->swapper->getWrite().getVkImage(gpuIdx),
+	    r->swapper->getWrite().getAllInclusiveSubresource()
+	  };
+	}
+	di.imageMemoryBarrierCount = mbCnt;
+	cmd->pipelineBarrier2(&di);
+	cmd.addSignal(sem[gpuIdx]);
     };
 
   };

@@ -42,7 +42,7 @@ namespace WITE::GPU {
     Util::ScopeLock lock(&queueMutexes[i]);
     auto dev = gpu->getVkDevice();
     // for(auto cmd : o->cachedCmds.iterAll()) {
-    //TODO if needed by anything else in PerThreadResources::Cmd
+    //if needed by anything else in PerThreadResources::Cmd
     // }
     dev.destroyCommandPool(o->pool);//this frees all cmdbuffers
   };

@@ -33,7 +33,7 @@ namespace WITE::GPU {
       uint32_t idx;
       Collections::RecyclingPool<Cmd, false> cmdPool;
     };
-    Platform::ThreadResource<PerThreadResources> pools;//TODO allocator/deallocator
+    Platform::ThreadResource<PerThreadResources> pools;
     PerThreadResources* makePerThreadResources();
     void freePerThreadResources(PerThreadResources*);
     [[nodiscard]] Cmd* getNext();

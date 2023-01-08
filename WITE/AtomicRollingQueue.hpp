@@ -125,7 +125,7 @@ namespace WITE::Collections {
       return size - count();
     }
 
-    class PoppingTransaction {//TODO bulk pop with transaction
+    class PoppingTransaction {
     private:
       AtomicRollingQueue<T>* super;
       size_t target;
@@ -161,7 +161,6 @@ namespace WITE::Collections {
     };
 
     friend std::ostream& operator<<(std::ostream& str, const AtomicRollingQueue<T>& arq) {
-      //TODO dynamically sense if T can be <<‘d to stdout
       // str << "{ nextCommit: " << arq.nextCommit.load() << ", nextIn: " << arq.nextIn.load() << ", nextPopRead: " <<
       // 	arq.nextPopRead.load() << ", nextPopDrop: " << arq.nextPopDrop.load() << " }";
       size_t ocl = arq.nextOut.claimed, oco = arq.nextOut.committed, icl = arq.nextIn.claimed, ico = arq.nextIn.committed;

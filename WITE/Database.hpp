@@ -64,7 +64,7 @@ namespace WITE::DB {
     // void mainLoop();
     void write(DBDelta*);//appends to the current thread's transaction queue, flushing it if out of space
     void read(DBEntity* src, DBRecord* dst);
-    void read(DBEntity* src, DBRecord* dst, size_t offset, size_t len);//TODO for DBEntities::read(dst, size, offset)
+    void read(DBEntity* src, DBRecord* dst, size_t offset, size_t len);
     void readHeader(DBEntity* src, DBRecord::header_t* out, bool readNext = true, bool readType = true, bool readFlags = true);
     DBEntity* getEntity(size_t id);
     DBEntity* getEntityAfter(DBEntity* src);

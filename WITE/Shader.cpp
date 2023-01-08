@@ -50,12 +50,14 @@ namespace WITE::GPU {
       pipe = target.pipelinesByShaderId.get(gpuIdx, id) = createPipe(gpuIdx, target.renderPasses.get(gpuIdx));
     else
       pipe = target.pipelinesByShaderId.get(gpuIdx, id);
-    cmd->bindPipeline(getBindPoint(), pipe);
+    auto bp = getBindPoint();
+    cmd->bindPipeline(bp, pipe);
+    preRender(target, cmd, layers, gpuIdx);
     for(auto& pair : renderablesByLayer)
       if(layers.contains(pair.first))
 	for(RenderableBase* renderable : pair.second)
 	  if(!Collections::contains(except, renderable))
-	    renderImpl(renderable, cmd);
+	    renderable->render(cmd);
   };
 
   bool ShaderBase::hasLayout(ShaderData::hashcode_t d, size_t gpuIdx) { //static

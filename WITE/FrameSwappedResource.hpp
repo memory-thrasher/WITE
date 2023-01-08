@@ -39,6 +39,7 @@ namespace WITE::Util {
     inline T& getWrite() { return get(0); };
     inline T& getRead() { return get(1); };
     inline std::array<T, N>& all() { return data; };
+    inline const std::array<const T, N>& call() { return data; };
   };
 
 }

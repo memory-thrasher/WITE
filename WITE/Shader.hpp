@@ -10,15 +10,14 @@
 #include "Vulkan.hpp"
 #include "types.hpp"
 #include "PerGpu.hpp"
-#include "PerGpuPerThread.hpp"
 #include "ShaderDescriptorLifeguard.hpp"
 #include "Renderable.hpp"
+#include "RenderTarget.hpp"
+#include "ElasticCommandBuffer.hpp"
 
 namespace WITE::GPU {
 
-  class RenderTarget;
   class GpuResource;
-  class ElasticCommandBuffer;
 
   class ShaderBase {
   private:
@@ -37,7 +36,7 @@ namespace WITE::GPU {
     ShaderBase(ShaderBase&) = delete;
     void add(RenderableBase*);
     void remove(RenderableBase*);
-    virtual void renderImpl(RenderableBase* r, ElasticCommandBuffer& cmd) = 0;
+    virtual void preRender(RenderTarget& target, ElasticCommandBuffer& cmd, layerCollection_t& layers, size_t gpu) = 0;
     virtual vk::PipelineBindPoint getBindPoint() = 0;
     static bool hasLayout(ShaderData::hashcode_t d, size_t gpuIdx);
     static vk::PipelineLayout getLayout(ShaderData::hashcode_t d, size_t gpuIdx);
@@ -59,13 +58,18 @@ namespace WITE::GPU {
 	return ShaderBase::getLayout(D, gpuIdx);
       vk::DescriptorSetLayout layouts[3] {
 	ShaderDescriptorLifeguard::getDSLayout<passShaderData(D), ShaderResourceProvider::eShaderInstance>(gpuIdx),
-	ShaderDescriptorLifeguard::getDSLayout<passShaderData(D), ShaderResourceProvider::eRenderable>(gpuIdx),
-	ShaderDescriptorLifeguard::getDSLayout<passShaderData(D), ShaderResourceProvider::eRenderTarget>(gpuIdx)
+	ShaderDescriptorLifeguard::getDSLayout<passShaderData(D), ShaderResourceProvider::eRenderTarget>(gpuIdx),
+	ShaderDescriptorLifeguard::getDSLayout<passShaderData(D), ShaderResourceProvider::eRenderable>(gpuIdx)
       };
       vk::PipelineLayoutCreateInfo pipeCI { {}, 3, layouts };
-      PerGpuPerThread<ShaderDescriptor<passShaderData(D), ShaderResourceProvider::eShaderInstance>> shaderInstanceDescriptors;
-      PerGpuPerThread<ShaderDescriptor<passShaderData(D), ShaderResourceProvider::eRenderTarget>> renderTargetDescriptors;
-      #error TODO ^^ use these
+      ShaderBase::makeLayout(DHC, &pipeCI, gpuIdx);
+    };
+    void preRender(RenderTarget& target, ElasticCommandBuffer& cmd, layerCollection_t& layers, size_t gpu) override {
+      vk::DescriptorSet dss[2] = {
+	globalResources.get(gpu),
+	target.getDescriptor<passShaderData(D)>()->get(gpu)
+      };
+      cmd->bindDescriptorSets(getBindPoint(), 0, 2, dss, 0, NULL);
     };
   public:
     constexpr static auto dataLayout = D;
@@ -79,4 +83,5 @@ namespace WITE::GPU {
 }
 
 #include "ShaderImpl.hpp"
+
 

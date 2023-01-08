@@ -10,7 +10,7 @@ namespace WITE::Collections {
   public:
     IteratorWrapper() : startI(), currentI(), endI() {};//already completed iterator, all these of the same type match
     IteratorWrapper(T start, T end) : startI(start), currentI(start), endI(end) {};
-    template<class U> requires std::negation<std::is_same<U, IteratorWrapper<T>>>::value //TODO exclude all template instances
+    template<class U> requires std::negation<std::is_same<U, IteratorWrapper<T>>>::value
     IteratorWrapper(U& collection) : IteratorWrapper(collection.begin(), collection.end()) {};
     IteratorWrapper(const IteratorWrapper<T>& src) : startI(src.startI), currentI(src.currentI), endI(src.endI) {};
     template<typename v = void> requires std::is_pointer<T>::value
@@ -19,7 +19,7 @@ namespace WITE::Collections {
     inline void reset() { currentI = startI; };
     inline operator bool() const { return currentI != endI; };
     typename std::conditional<std::is_pointer_v<T>,
-			      typename std::add_rvalue_reference<std::remove_pointer_t<T>>::type,
+			      typename std::add_lvalue_reference<std::remove_pointer_t<T>>::type,
 			      decltype(*currentI)>::type
     inline operator*() const { return *currentI; };
     inline auto& operator->() const { return *currentI; };

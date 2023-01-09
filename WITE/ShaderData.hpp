@@ -7,6 +7,7 @@
 #include "LiteralMap.hpp"
 #include "StdExtensions.hpp"
 #include "Image.hpp"
+#include "Buffer.hpp"
 #include "StructuralMap.hpp"
 #include "LiteralJaggedList.hpp"
 
@@ -110,20 +111,19 @@ namespace WITE::GPU {
     template<class Resource> struct acceptsTest { constexpr bool operator()(const ShaderResource*) { return false; }; };
 
     template<ImageSlotData ISD> struct acceptsTest<Image<ISD>> {
-      //TODO convert from lamda to foreach
       constexpr bool operator()(const ShaderResource* s) {
 	for(auto u : s->usage) {
 	  switch(u.access) {
-	  case ShaderResourceAccessType::eUndefined:
-	    switch(u.stage) {
-	    case ShaderStage::eDraw: if(!(ISD.usage & ImageBase::USAGE_INDIRECT)) return false; break;
-	    case ShaderStage::eAssembler: break;
-	    default: return false; break;
-	    }
-	    break;
-	  case ShaderResourceAccessType::eVertex: if(!(ISD.usage & ImageBase::USAGE_VERTEX)) return false; break;
-	  case ShaderResourceAccessType::eUniform:
-	  case ShaderResourceAccessType::eUniformTexel:
+	  // case ShaderResourceAccessType::eUndefined:
+	  //   switch(u.stage) {
+	  //   case ShaderStage::eDraw: if(!(ISD.usage & ImageBase::USAGE_INDIRECT)) return false; break;
+	  //   case ShaderStage::eAssembler: break;
+	  //   default: return false; break;
+	  //   }
+	  //   break;
+	  // case ShaderResourceAccessType::eVertex: if(!(ISD.usage & ImageBase::USAGE_VERTEX)) return false; break;
+	  // case ShaderResourceAccessType::eUniform:
+	  // case ShaderResourceAccessType::eUniformTexel:
 	  case ShaderResourceAccessType::eSampled:
 	    if(!u.write && !(ISD.usage & (ImageBase::USAGE_DS_READ | ImageBase::USAGE_DS_SAMPLED |
 					  ImageBase::USAGE_ATT_INPUT))) return false;
@@ -131,6 +131,35 @@ namespace WITE::GPU {
 	    break;
 	  case ShaderResourceAccessType::eDepthAtt: if(!(ISD.usage & ImageBase::USAGE_ATT_DEPTH)) return false; break;
 	  case ShaderResourceAccessType::eColorAtt: if(!(ISD.usage & ImageBase::USAGE_ATT_OUTPUT)) return false; break;
+	  default: return false; break;
+	  }
+	}
+	return true;
+      };
+    };
+
+    template<BufferSlotData BSD> struct acceptsTest<Buffer<BSD>> {
+      constexpr bool operator()(const ShaderResource* s) {
+	for(auto u : s->usage) {
+	  switch(u.access) {
+	  case ShaderResourceAccessType::eUndefined:
+	    switch(u.stage) {
+	    case ShaderStage::eDraw: if(!(BSD.usage & ImageBase::USAGE_INDIRECT)) return false; break;
+	    case ShaderStage::eAssembler: break;
+	    default: return false; break;
+	    }
+	    break;
+	  case ShaderResourceAccessType::eVertex: if(!(BSD.usage & ImageBase::USAGE_VERTEX)) return false; break;
+	  case ShaderResourceAccessType::eUniform:
+	  case ShaderResourceAccessType::eUniformTexel:
+	  // case ShaderResourceAccessType::eSampled:
+	  //   if(!u.write && !(BSD.usage & (ImageBase::USAGE_DS_READ | ImageBase::USAGE_DS_SAMPLED |
+	  // 				  ImageBase::USAGE_ATT_INPUT))) return false;
+	  //   if(u.write && !(BSD.usage & ImageBase::USAGE_DS_WRITE)) return false;
+	  //   break;
+	  // case ShaderResourceAccessType::eDepthAtt: if(!(ISD.usage & ImageBase::USAGE_ATT_DEPTH)) return false; break;
+	  // case ShaderResourceAccessType::eColorAtt: if(!(ISD.usage & ImageBase::USAGE_ATT_OUTPUT)) return false; break;
+	  default: return false; break;
 	  }
 	}
 	return true;
@@ -349,7 +378,7 @@ namespace WITE::GPU {
 	for(ShaderResourceUsage cu : r.usage)
 	  if(cu == usage)
 	    ret++;
-	return ret;
+      return ret;
     };
 
   };
@@ -488,8 +517,8 @@ namespace WITE::GPU {
       { { 4, PrimitiveNumberModel::eFloat, 8 }, vk::Format::eR64G64B64A64Sfloat },
     };
 
-#define acceptVertexModel(VM, NOM) size_t NOM## _SIZE, std::array<NOM## _SIZE, VertexAspectSpecifier> NOM
-#define passVertexModel(VM) NOM .size(), NOM
+#define acceptVertexModel(NOM) size_t NOM## _SIZE, std::array<VertexAspectSpecifier, NOM## _SIZE> NOM
+#define passVertexModel(VM) VM .size(), VM
 
   // template<size_t CNT, PrimitiveNumberModel M, size_t S> struct VertexAspect {
   //   static_assert(CNT>0, "illegal count");
@@ -521,7 +550,8 @@ namespace WITE::GPU {
     template<class A, class... B> Vertex(A a, B... b) : value(a), rest(std::forward<B...>(b...)) {};
   };
 
-  template<VertexAspectSpecifier T> struct Vertex<1, std::array<1, VertexAspectSpecifier>{T}> {
+  template<std::array<VertexAspectSpecifier, 1> M> struct Vertex<1, M> {
+    typedef VertexAspect_t<M[0]> T;
     T value;
     static constexpr size_t attributes = 1;
     template<size_t SKIP> auto sub() { static_assert(SKIP == 0, "SKIP was out of bounds"); return value; };

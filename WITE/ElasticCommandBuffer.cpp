@@ -4,7 +4,8 @@
 
 namespace WITE::GPU {
 
-  ElasticCommandBuffer::ElasticCommandBuffer(Queue* q, uint64_t f) : cmd(q->getNext()), owner(q), frame(f) {};
+  ElasticCommandBuffer::ElasticCommandBuffer(Queue* q, uint64_t f) :
+    cmd(q->getNext()), owner(q), frame(f), gpuIdx(q->getGpu()->getIndex()) {};
 
   ElasticCommandBuffer::~ElasticCommandBuffer() {
     if(owner)

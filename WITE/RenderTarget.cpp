@@ -118,7 +118,7 @@ namespace WITE::GPU {
   };
 
   void RenderTarget::destroy() {
-    destroyOnFrame = FrameCounter::getFrame()+1;
+    destroyOnFrame = Util::FrameCounter::getFrame()+1;
   };
 
 }

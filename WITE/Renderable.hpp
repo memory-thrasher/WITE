@@ -5,6 +5,7 @@
 #include "Vulkan.hpp"
 #include "ShaderData.hpp"
 #include "types.hpp"
+#include "ElasticCommandBuffer.hpp"
 
 namespace WITE::GPU {
 
@@ -23,7 +24,7 @@ namespace WITE::GPU {
     const layer_t layer;
     void render(ElasticCommandBuffer& cmd) {
       if(readDependency)
-	cmd.addDependency(readDependency[cmd->getGpuIdx()]);
+	cmd.addDependency(readDependency->getPtr(cmd.getGpuIdx()));
       renderImpl(cmd);
     };
     virtual ~RenderableBase() = default;
@@ -47,7 +48,7 @@ namespace WITE::GPU {
     template<class... R> void setResources(R... resources) {
       data.setResources(std::forward<R...>(resources...));
     };
-    void bind(size_t gpu, ElasticCommandBuffer& cmd) override {
+    void bind(size_t gpu, ElasticCommandBuffer& cmd) {
       auto ds = data.get(gpu);
       cmd->bindDescriptorSets(shader->getBindPoint(), 2, 1, &ds, 0, NULL);
     };

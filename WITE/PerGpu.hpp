@@ -51,6 +51,7 @@ namespace WITE::GPU {
       }
       return data[idx];
     };
+    inline T* getPtr(size_t idx) { return &getRef(idx); };
     inline T& operator[](size_t i) { return getRef(i); };
     T set(size_t idx, T gnu) {//returns old data if any, caller is responsible for freeing it
       ASSERT_TRAP(idx < MAX_GPUS, "out of bounds");

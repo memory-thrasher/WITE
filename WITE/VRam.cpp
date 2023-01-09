@@ -34,7 +34,7 @@ namespace WITE::GPU {
 
   void VRam::write(const void* src, size_t cnt) {
     //TODO assert that memory is host visible and/or transfer_dst usable
-    auto gpu = Gpu::get(gpuIdx);
+    auto& gpu = Gpu::get(gpuIdx);
     auto dev = gpu.getVkDevice();
     void* dst;
     VK_ASSERT(dev.mapMemory(mem, 0, cnt, {}, &dst), "Could not access device memory.");

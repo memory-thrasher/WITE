@@ -16,6 +16,7 @@ namespace WITE::GPU {
     Queue::Cmd* cmd;
     Queue* owner;
     uint64_t frame;//for truck method to signal end of frame availability on a resource that was not actually ready before the next frame started
+    size_t gpuIdx;
     std::array<ElasticCommandBuffer*, 2> children;
     friend class Queue;
     inline bool supports(QueueType qt) { return owner && owner->supports(qt); };
@@ -28,6 +29,7 @@ namespace WITE::GPU {
     inline operator vk::CommandBuffer() { return cmd->cmd; };
     inline vk::CommandBuffer* operator->() { return &cmd->cmd; };
     inline Gpu* getGpu() { return owner->getGpu(); };
+    inline size_t getGpuIdx() { return gpuIdx; };
     inline Queue* getQueue() { return owner; };
 
     //but only on the subresource corrosponding to this->getGpu

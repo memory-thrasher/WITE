@@ -81,6 +81,6 @@ namespace WITE::GPU {
     return ret;
   };
 
-  vk::Format VertexAspectSpecifier::getFormat() const { return formatsBySizeTypeQty.at(*this); };
+  constexpr vk::Format VertexAspectSpecifier::getFormat() const { return formatsBySizeTypeQty.at(*this); };
 
 };

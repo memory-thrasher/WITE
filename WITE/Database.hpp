@@ -22,10 +22,7 @@ number of threads can be changed at runtime but expect lag (user setting or simi
 #include "DBRecord.hpp"
 #include "DBThread.hpp"
 #include "entity_type.hpp"
-
-#ifndef DB_THREAD_COUNT
-#define DB_THREAD_COUNT 16
-#endif
+#include "constants.hpp"
 
 namespace WITE::DB {
 

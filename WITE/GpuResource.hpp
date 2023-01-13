@@ -3,7 +3,6 @@
 #include "Vulkan.hpp"
 #include "types.hpp"
 #include "FrameBufferedCollection.hpp"
-#include "Semaphore.hpp"
 #include "Thread.hpp"
 #include "PerGpu.hpp"
 #include "VRam.hpp"

@@ -40,8 +40,16 @@ namespace WITE::Util {
   inline int width()  { return (int)(maxx - minx); };
   inline int height() { return (int)(maxy - miny); };
   inline int depth()  { return (int)(maxz - minz); };
+  constexpr inline glm::ivec3 min() const { return glm::ivec3(minx, miny, minz); };
+  constexpr inline glm::ivec3 max() const { return glm::ivec3(maxx, maxy, maxz); };
+  constexpr inline glm::ivec3 center() const { return (min() + max())/2; };
   inline bool operator==(IntBox3D& o) { return memcmp(comp, o.comp, sizeof(comp)) == 0; };
   inline bool sameSize(IntBox3D& o) { return o.maxx - o.minx == maxx - minx && o.maxy - o.miny == maxy - miny && o.maxz - o.minz == maxz - minz; };
+  };
+
+  template<class T, class Compare = std::less<T>> inline T clamp(T t, T min, T max) {
+    Compare lt();
+    return lt(t, max) ? lt(min, t) ? t : min : max;
   };
 
   template<class T, class U, class Compare = std::less<T>> inline T min(T a, U b) {

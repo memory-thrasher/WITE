@@ -8,6 +8,7 @@
 #include "Math.hpp"
 #include "RenderTarget.hpp"
 #include "DEBUG.hpp"
+#include "Window.hpp"
 
 #include "Database.hpp" //for DB_THREAD_COUNT
 
@@ -96,6 +97,7 @@ namespace WITE::GPU {
   std::unique_ptr<struct Gpu::LogicalGpu[]> Gpu::logicalDevices;
   size_t Gpu::logicalDeviceCount;
   bool Gpu::running;
+  char *appName[1024];
 
   Gpu::Gpu(size_t idx, vk::PhysicalDevice pv) : idx(idx), pv(pv) {
     pv.getProperties2(&pvp);
@@ -258,19 +260,26 @@ namespace WITE::GPU {
     running = false;
   };
 
-  void Gpu::init(size_t logicalDeviceCount, const float* priorities) {//static
+  void Gpu::init(size_t logicalDeviceCount, const float* priorities, const char* appName,
+		 std::initializer_list<const char*> appRequestedLayers,
+		 std::initializer_list<const char*> appRequestedExtensions) {//static
     if(inited.exchange(true))
       return;
     running = true;
-    vk::ApplicationInfo appI("WITE Engine", 0, "WITE Engine", 0, (1 << 22) | (3 << 12) | (216));//TODO accept app name
+    vk::ApplicationInfo appI(appName, 0, "WITE Engine", 0, (1 << 22) | (3 << 12) | (216));
+    strcpy(Gpu::appName, appName);
     vk::InstanceCreateInfo ci((vk::InstanceCreateFlags)0, &appI);
+    std::vector<const char*> extensions(appRequestedExtensions);
+    std::vector<const char*> layers(appRequestedLayers);
 #ifdef DEBUG
-    assert(ci.enabledLayerCount == 0);
-    ci.enabledLayerCount = 1;
-    const char* ln = "VK_LAYER_KHRONOS_validation";
-    ci.ppEnabledLayerNames = &ln;
-    //TODO other extensions. Doesn't present require an extension?
+    layers.push_back("VK_LAYER_KHRONOS_validation");
 #endif
+    Window::addInstanceExtensionsTo(extensions);
+    extensions.add("VK_EXT_swapchain_colorspace");
+    ci.enabledLayerCount = layers.size();
+    ci.ppEnabledLayerNames = layers.data();
+    ci.enabledExtensionCount = extensions.size();
+    ci.ppEnabledExtensionNames = extensions.data();
     VK_ASSERT(vk::createInstance(&ci, ALLOCCB, &vkInstance), "Failed to create vulkan instance.");
     uint32_t cnt = MAX_GPUS;
     vk::PhysicalDevice pds[MAX_GPUS];

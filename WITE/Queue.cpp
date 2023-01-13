@@ -61,9 +61,11 @@ namespace WITE::GPU {
     if(frame > 0) {//first frame does not wait
       for(Semaphore* s : cmd->waits) {
 	uint64_t waitedFrame = frame - 1;
-	if(waitedFrame > 0 && s->getPromisedValue() < waitedFrame)
+	if(waitedFrame > 0 && s->getPromisedValue() < waitedFrame) {
 	  WARN("BUSY WAIT: Semaphore waited on frame ", waitedFrame, " with no pending promise beyond frame ", s->getPromisedValue());
-	while(s->getPromisedValue() < waitedFrame);
+	  while(s->getPromisedValue() < waitedFrame);
+	  WARN("BUSY WAIT: done");
+	}
 	//^^possible if truck thread hasn't queued transfer yet
 	staging->waits.emplace_back(s->vkSem(), waitedFrame, vk::PipelineStageFlagBits2::eAllCommands, 0);
       }

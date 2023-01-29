@@ -39,6 +39,12 @@ namespace WITE::Util {
     o.lock = NULL;
   }
 
+  ScopeLock::release() {
+    if(lock)
+      lock->ReleaseLock();
+    lock = NULL;
+  };
+
   ScopeLock::~ScopeLock() {
     if (lock) lock->ReleaseLock();
     lock = NULL;

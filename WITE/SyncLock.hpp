@@ -19,6 +19,7 @@ namespace WITE::Util {
   class ScopeLock {
   public:
     inline void yield();
+    inline void release();
     ScopeLock(SyncLock* lock);
     ScopeLock(ScopeLock& o);
     ~ScopeLock();

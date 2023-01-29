@@ -3,10 +3,9 @@
 #include "SyncLock.hpp"
 #include "Callback.hpp"
 #include "StdExtensions.hpp"
+#include "constants.hpp"
 
 namespace WITE::Platform {
-
-  static constexpr size_t MAX_THREADS = 256;
 
   template<class T> class ThreadResource {
   public:

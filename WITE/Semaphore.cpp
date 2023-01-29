@@ -1,5 +1,4 @@
 #include "Semaphore.hpp"
-#include "FrameCounter.hpp"
 #include "PerGpu.hpp"
 #include "Math.hpp"
 #include "Gpu.hpp"
@@ -12,7 +11,7 @@ namespace WITE::GPU {
   Semaphore::Semaphore(Gpu* gpu) : id(idSeed++), dev(gpu) {
     vk::SemaphoreTypeCreateInfo tci {
       vk::SemaphoreType::eTimeline,
-      targetValue = Util::max(Util::FrameCounter::getFrame(), 1)-1
+      targetValue = 0
     };
     vk::SemaphoreCreateInfo ci { {}, reinterpret_cast<const void*>(&tci) };
     VK_ASSERT(gpu->getVkDevice().createSemaphore(&ci, ALLOCCB, &sem), "failed to create semaphore");
@@ -29,25 +28,7 @@ namespace WITE::GPU {
   };
 
   uint64_t Semaphore::notePromise() {
-    notePromise(Util::FrameCounter::getFrame());
-    return targetValue;
-  };
-
-  void Semaphore::notePromise(uint64_t v) {
-    if(v > targetValue)
-      targetValue = v;
-  };
-
-  void Semaphore::signalNow() {
-    notePromise();
-    vk::SemaphoreSignalInfo si { sem, targetValue };
-    VK_ASSERT(dev->getVkDevice().signalSemaphore(&si), "Failed to signal semaphore");
-  };
-
-  void Semaphore::signalNow(uint64_t v) {
-    notePromise(v);
-    vk::SemaphoreSignalInfo si { sem, v };
-    VK_ASSERT(dev->getVkDevice().signalSemaphore(&si), "Failed to signal semaphore");
+    return ++targetValue;
   };
 
   uint64_t Semaphore::getCurrentValue() {

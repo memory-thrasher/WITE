@@ -88,13 +88,7 @@ namespace WITE::GPU {
     };
 
     void renderQueued(ElasticCommandBuffer& cmd) override {
-      ElasticCommandBuffer* transferCmd = NULL;
-      if(!cmd.supportsTransfer() && Gpu::ldmHasMultiplePhysical(LDM)) {
-	transferCmd = &cmd.getTransfer();
-      } else {
-	transferCmd = &cmd;
-      }
-      size_t gpuIdx = cmd->getGpu()->getIndex();
+      //
       size_t mbCnt = 0;
       vk::ImageMemoryBarrier mbs[resourceCount*2];
       std::bitset<resourceCount> transferMask;

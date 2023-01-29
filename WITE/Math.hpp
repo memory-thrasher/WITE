@@ -48,7 +48,7 @@ namespace WITE::Util {
   };
 
   template<class T, class Compare = std::less<T>> inline T clamp(T t, T min, T max) {
-    Compare lt();
+    Compare lt;
     return lt(t, max) ? lt(min, t) ? t : min : max;
   };
 

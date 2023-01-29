@@ -41,9 +41,6 @@ namespace WITE::GPU {
     size_t i = o->idx % queueInstanceCount;
     Util::ScopeLock lock(&queueMutexes[i]);
     auto dev = gpu->getVkDevice();
-    // for(auto cmd : o->cachedCmds.iterAll()) {
-    //if needed by anything else in PerThreadResources::Cmd
-    // }
     dev.destroyCommandPool(o->pool);//this frees all cmdbuffers
   };
 
@@ -52,43 +49,6 @@ namespace WITE::GPU {
   };
 
   Platform::ThreadResource<qSubmitStaging_t> qSubmitStaging;
-
-  void Queue::submit(Cmd* cmd, uint64_t frame) {
-    cmd->cmd.end();
-    qSubmitStaging_t* staging = qSubmitStaging.get();
-    staging->waits.clear();
-    staging->waits.reserve(cmd->waits.size());
-    if(frame > 0) {//first frame does not wait
-      for(Semaphore* s : cmd->waits) {
-	uint64_t waitedFrame = frame - 1;
-	if(waitedFrame > 0 && s->getPromisedValue() < waitedFrame) {
-	  WARN("BUSY WAIT: Semaphore waited on frame ", waitedFrame, " with no pending promise beyond frame ", s->getPromisedValue());
-	  while(s->getPromisedValue() < waitedFrame);
-	  WARN("BUSY WAIT: done");
-	}
-	//^^possible if truck thread hasn't queued transfer yet
-	staging->waits.emplace_back(s->vkSem(), waitedFrame, vk::PipelineStageFlagBits2::eAllCommands, 0);
-      }
-    }
-    staging->signals.clear();
-    staging->signals.reserve(cmd->signals.size());
-    for(Semaphore* s : cmd->signals) {
-      s->notePromise(frame);
-      staging->signals.emplace_back(s->vkSem(), frame, vk::PipelineStageFlagBits2::eAllCommands, 0);
-    }
-    vk::CommandBufferSubmitInfo csi { cmd->cmd };
-    vk::SubmitInfo2 si { {}, static_cast<uint32_t>(staging->waits.size()), staging->waits.data(),
-      1, &csi, static_cast<uint32_t>(staging->signals.size()), staging->signals.data() };
-    size_t qIdx = Platform::Thread::getCurrentTid() % queueInstanceCount;
-    {
-      Util::ScopeLock lock(&queueMutexes[qIdx]);
-      VK_ASSERT(queueInstances[qIdx].submit2(1, &si, VK_NULL_HANDLE), "Queue submission failed");
-    };
-    cmd->waits.clear();
-    cmd->signals.clear();
-    pools.get()->cmdPool.free(cmd);
-  };
-
   ElasticCommandBuffer Queue::createBatch(uint64_t frame) {
     return { this, frame };
   };
@@ -97,18 +57,35 @@ namespace WITE::GPU {
     return { this, Util::FrameCounter::getFrame() };
   };
 
-  Queue::Cmd* Queue::getNext() {
+  vk::CommandBuffer Queue::getNext() {
     auto ptr = pools.get();
-    Cmd* ret = ptr->cmdPool.allocate();
-    if(!ret->cmd) {
+    vk::CommandBuffer* ret = ptr->cmdPool.allocate();
+    if(!*ret) {
       vk::CommandBufferAllocateInfo ai { ptr->pool, vk::CommandBufferLevel::ePrimary, 1 };
-      VK_ASSERT(gpu->getVkDevice().allocateCommandBuffers(&ai, &ret->cmd), "failed to allocate command buffer");
+      VK_ASSERT(gpu->getVkDevice().allocateCommandBuffers(&ai, ret), "failed to allocate command buffer");
     } else {
-      ret->cmd.reset({});
+      cmd->reset({});
     }
     vk::CommandBufferBeginInfo bi { vk::CommandBufferUsageFlagBits::eOneTimeSubmit };
-    ret->cmd.begin(bi);
-    return ret;
+    ret->begin(bi);
+    return *ret;
+  };
+
+  void Queue::submit(vk::CommandBuffer cmd, Semaphore* wait, Semaphore* signal) {
+    cmd.end();
+    vk::CommandBufferSubmitInfo csi { cmd };
+    vk::SemaphoreSubmitInfo w, s;
+    if(wait)
+      w.setSemaphore(*wait).setValue(wait->getPromisedValue()).setStageMask(vk::PipelineStageFlagBits2::eTopOfPipe);
+    if(signal)
+      s.setSemaphore(*signal).setValue(signal->notePromise()).setStageMask(vk::PipelineStageFlagBits2::eBottomOfPipe);
+    vk::SubmitInfo2 si { {}, wait ? 1 : 0, &w, 1, &csi, signal ? 1 : 0, &s : NULL };
+    size_t qIdx = Platform::Thread::getCurrentTid() % queueInstanceCount;
+    {
+      Util::ScopeLock lock(&queueMutexes[qIdx]);
+      VK_ASSERT(queueInstances[qIdx].submit2(1, &si, VK_NULL_HANDLE), "Queue submission failed");
+    };
+    pools.get()->cmdPool.free(cmd);
   };
 
 }

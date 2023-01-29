@@ -6,7 +6,6 @@
 #include "Vulkan.hpp"
 #include "types.hpp"
 #include "FrameBufferedMap.hpp"
-#include "Semaphore.hpp"
 #include "ShaderData.hpp"
 #include "ShaderDescriptorLifeguard.hpp"
 #include "IteratorWrapper.hpp"
@@ -15,7 +14,6 @@ namespace WITE::GPU {
 
   class RenderableBase;
   class ShaderBase;
-  class ElasticCommandBuffer;
 
   struct RenderStep {
     layerCollection_t layers;

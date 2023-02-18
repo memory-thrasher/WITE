@@ -3,7 +3,7 @@
 #include "Gpu.hpp"
 #include "Queue.hpp"
 #include "Math.hpp"
-#include "ElasticCommandBuffer.hpp"
+#include "WorkBatch.hpp"
 
 namespace WITE::GPU {
 
@@ -73,8 +73,6 @@ namespace WITE::GPU {
     VK_ASSERT(dev.getSwapchainImagesKHR(swapchain, &swapImageCount, NULL), "Could not count swapchain images.");
     swapImages = std::make_unique<vk::Image>(swapImageCount);
     VK_ASSERT(dev.getSwapchainImagesKHR(swapchain, &swapImageCount, swapImages.get()), "Could not get swapchain images");
-    if(!presentQueue->supportsTransfer())
-      transferQueue = presentQueue->getGpu()->getTransfer();
   };
 
   void Window::addInstanceExtensionsTo(std::vector<const char*>& extensions) {//static
@@ -89,16 +87,11 @@ namespace WITE::GPU {
       extensions.push_back(names[i]);
   };
 
-  void Window::drawImpl(ImageBase* img, Semaphore* sem) {
-    ElasticCommandBuffer cmd = (transferQueue ? transferQueue : presentQueue)->createBatch();
-    //
-    if(swapCI.extent == img->getVkSize()) {
-      //same size, use the easy copy
-      cmd->copyImage();
-    } else {
-      //blit to scale but potentially crop to maintain aspect ratio
-      //TODO
-    }
+  void Window::drawImpl(ImageBase* img) {
+    WorkBatch cmd(presentQueue);
+    ASSERT_TRAP(swapCI.extent == img->getVkSize(), "NYI: rendering image of different size than window");
+    cmd.present(img, swapImages.get(), swap)
+      .start();
   };
 
 }

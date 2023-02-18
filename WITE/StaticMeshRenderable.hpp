@@ -14,8 +14,9 @@ namespace WITE::GPU {
     //if we need to stage the data in a host-visible buffer first before putting it into the vertex buffer, that should be handled in Buffer
     static constexpr size_t vertSize = sizeof(vertex_t);
     typedef Buffer<{LDM, USAGE, vertCount * vertSize}> MeshBuffer;
-    MeshBuffer meshBuffer;
-    #error TODO make this static! ^ only need one buffer since they all have the same data!
+    static MeshBuffer meshBuffer;
+    static Util::SyncLock bufferMutex;
+    static deviceMask_t bufferInitialized = 0;
   public:
     ShaderMeshRenderable(layer_t later, VertexShader<passShaderData(D), passVertexModel(VM)>* s) : UBER(layer, s)
     {
@@ -23,7 +24,12 @@ namespace WITE::GPU {
       setBuffers(&b);
     };
     void preBindVertBuffers(ElasticCommandBuffer& cmd, size_t gpu) override {
-      meshBuffer.write(MESH.get(), vertCount);
+      Util::ScopeLock(&bufferMutex);
+      deviceMask_t flag = 1 << gpu;
+      if(!(bufferInitialized & flag)) {
+	bufferInitialized |= flag;
+	meshBuffer.write(MESH.get(), vertCount, gpu);
+      }
     }
     size_t getVertexCount() { return vertCount; };
   };

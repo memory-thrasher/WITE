@@ -30,24 +30,31 @@ namespace WITE::Util {
     owningThread = Platform::Thread::getCurrentTid();
   }
 
+  bool SyncLock::isHeld() {
+    return queueSeed.load(std::memory_order_consume) > queueCurrent.load(std::memory_order_consume);
+  };
+
   ScopeLock::ScopeLock(SyncLock * sl) {
     sl->WaitForLock(false);//maybe make this optional?
     lock = sl;
+    held = true;
   }
 
   ScopeLock::ScopeLock(ScopeLock& o) : lock(o.lock) {
     o.lock = NULL;
+    held = false;
   }
 
   ScopeLock::release() {
-    if(lock)
+    if(held)
       lock->ReleaseLock();
-    lock = NULL;
+    held = false;
   };
 
   ScopeLock::~ScopeLock() {
-    if (lock) lock->ReleaseLock();
-    lock = NULL;
+    if (held)
+      lock->ReleaseLock();
+    held = false;
   }
 
   void ScopeLock::yield() {

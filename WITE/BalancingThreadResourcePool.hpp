@@ -1,5 +1,4 @@
 #include <deque>
-// #include <list>
 #include <stack>
 
 #include "SyncLock.hpp"
@@ -16,10 +15,11 @@ namespace WITE::Collections {
     ThreadResource<std::deque<bundle>> stores;
     ThreadResource<std::stack<T*>> available;
     std::stack<T*> commonScrap;
-    std::list<T*> commonAllocated;
+    LinkedTree<T> commonAllocated;
+    LinkedTree<T>::Iterator commonIterator;
   public:
 
-    RecyclingPool() {};
+    BalancingThreadResourcePool() : commonIterator(commonAllocated.iterate()) {};
 
     T* allocate() {
       auto* avail = available.get();
@@ -47,7 +47,7 @@ namespace WITE::Collections {
 	ret = &b[0];
       }
       Util::ScopeLock lock(&commonsLock);
-      commonAllocated.push_back(ret);
+      commonAllocated.insert(ret);
       return ret;
     };
 
@@ -71,15 +71,9 @@ namespace WITE::Collections {
       }
     };
 
-    //only invalidated if the current element is dropped. Unclear what happens in that case, might need to implement a list with self-recovering iterator.
-    auto begin() {
+    T* getAny() {
       Util::ScopeLock lock(&commonsLock);
-      return allocated.cbegin();
-    };
-
-    auto end() {
-      Util::ScopeLock lock(&commonsLock);
-      return allocated.cend();
+      return commonIterator();
     };
 
   };

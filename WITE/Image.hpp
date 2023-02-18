@@ -9,6 +9,7 @@
 namespace WITE::GPU {
 
   class Gpu;
+  class WorkBatch;
 
   class ImageBase : public GpuResource {
   private:
@@ -20,10 +21,24 @@ namespace WITE::GPU {
     typedef Collections::PerGpuPerThread<std::unique_ptr<accessObject>> accessors_t;
     accessors_t accessors;
     PerGpu<vk::Image> images;
+    PerGpu<VRam> mem;
     uint32_t w, h, z;
 
     void makeImage(vk::Image*, size_t gpu);
     static void destroyImage(vk::Image*, size_t gpu);
+    void makeStateTracker(StateSynchronizer<accessState>* ret, size_t gpu);
+
+    struct accessState {
+      vk::ImageLayout layout;
+      vk::AccessFlags2 accessMask;
+      vk::PipelineStageFlags2 stageMask;
+      uint32_t queueFam;
+    };
+
+    PerGpu<StateSynchronizer<accessState>> accessStateTracker;
+    void updateAccessState(size_t gpuIdx, accessState, accessState*, WorkBatch&);
+
+    friend class WorkBatch;
   public:
     const ImageSlotData slotData;
     const vk::Format format;
@@ -35,18 +50,23 @@ namespace WITE::GPU {
     void getCreateInfo(Gpu&, vk::ImageCreateInfo* out, size_t width, size_t height, size_t z = 1);
     vk::ImageUsageFlags getVkUsageFlags();
     vk::AttachmentDescription getAttachmentDescription(bool clear = true);
-    virtual vk::Image getVkImage(size_t gpuIdx) = 0;
+    vk::ImageSubresourceLayers getAllSubresourceLayers();
+    vk::Image getVkImage(size_t gpuIdx);
     vk::ImageView getVkImageView(size_t gpuIdx);
     void makeAccessors(accessObject*, size_t gpu);
     static void destroyAccessors(accessObject* doomed, size_t gpu);
     void resize(size_t w, size_t h, size_t z);//TODO for each existing image, blit it to the new one. Crash if not transfer-enabled (maybe make a resizable usage flag?).
     inline vk::Extent2D getVkSize() { return { w, h }; };
+    inline vk::Extent3D getVkSize3D() { return { w, h, z }; };
+    vk::ImageAspectFlags getAspects();
     vk::ImageSubresourceRange getAllInclusiveSubresource();
+    
     void populateDSWrite(vk::WriteDescriptorSet* out, size_t gpuIdx) override;
+    size_t getMemSize(size_t gpu);
   };
 
   //MIP and SAM might be less than requested if the platform does not support it
-  template<ImageSlotData ISD> class Image : ImageBase {
+  template<ImageSlotData ISD> class Image : public ImageBase {
   public:
     Image() : ImageBase(ISD) {};
     ~Image() override = default;

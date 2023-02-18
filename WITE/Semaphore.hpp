@@ -26,6 +26,9 @@ namespace WITE::GPU {
     inline vk::Semaphore vkSem() { return sem; };
     uint64_t notePromise();
     uint64_t getCurrentValue();
+    inline vk::SemaphoreSubmitInfo prepareForBatchSubmit() {
+      return { vkSem(), notePromise(), vk::PipelineStageFlagBits2::eAllCommands, 0 };
+    };
     inline uint64_t getPromisedValue() { return targetValue; };
     inline bool pending() { return getCurrentValue() < getPromisedValue(); };
     std::strong_ordering operator<=>(const Semaphore& r) const { return id <=> r.id; };//so semaphore& can be stored in a set

@@ -32,13 +32,14 @@ namespace WITE::GPU {
     void freePerThreadResources(PerThreadResources*);
   public:
     [[nodiscard]] vk::CommandBuffer getNext();
-    void submit(vk::CommandBuffer b, Semaphore* wait, Semaphore* signal);
+    void submit(const vk::SubmitInfo2&);
     const uint32_t family;
     const vk::QueueFamilyProperties qfp;
     Queue(Gpu*, const struct vk::DeviceQueueCreateInfo&, vk::QueueFamilyProperties& qfp);
     ~Queue();
     //no destructor bc the global destroy will handle that
     inline Gpu* getGpu() { return gpu; };
+    inline size_t getGpuIdx() { return gpu->getIndex(); };
     inline bool supportsTransfer() { return nonzero(qfp.queueFlags & vk::QueueFlagBits::eTransfer); };
     inline bool supportsCompute() { return nonzero(qfp.queueFlags & vk::QueueFlagBits::eCompute); };
     inline bool supportsGraphics() { return nonzero(qfp.queueFlags & vk::QueueFlagBits::eGraphics); };

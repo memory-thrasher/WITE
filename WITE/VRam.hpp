@@ -22,6 +22,8 @@ namespace WITE::GPU {
     VRam(VRam& o);
     VRam();
     ~VRam();
+    void read(const void* dst);
+    void write(const void* src);
     void write(const void* src, size_t cnt);
     template<class T> inline void write(const T* data, size_t tCnt) {
       write(reinterpret_cast<const void*>(data), tCnt * sizeof(T));

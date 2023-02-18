@@ -20,11 +20,11 @@ namespace WITE::GPU {
     vk::SwapchainCreateInfoKHR swapCI;
     SDL_Window* window;
     vk::SurfaceCapabilitiesKHR surfCaps;
-    Queue* presentQueue, transferQueue;
+    Queue* presentQueue;
     vk::SwapchainKHR swap;
-    std::unique_ptr<vk::Image> swapImages;
+    std::unique_ptr<vk::Image[]> swapImages;
     size_t swapImageCount;
-    void drawImpl(ImageBase* img, Semaphore* sem);
+    void drawImpl(ImageBase* img);
   public:
     static void addInstanceExtensionsTo(std::vector<const char*>& extensions);
     static Util::IntBox3D getScreenBounds(size_t idx = 0);
@@ -38,11 +38,10 @@ namespace WITE::GPU {
 	ISD.components >= 3;
     };
     //NOTE: Image's instance on this gpu MUST be in transfer_src layout. Generally called by RenderTarget.
-    template<ImageSlotData ISD> inline void draw(Image<ISD>* img, Semaphore* sem)
+    template<ImageSlotData ISD> inline void draw(Image<ISD>* img)
       requires imageIsPresentable(ISD)
     {
-      drawImpl(img, sem);
-#error TODO refactor to use Promise
+      drawImpl(img);
     };
   };
 

@@ -2,31 +2,30 @@
 #include "SyncLock.hpp"
 #include "Callback.hpp"
 
-namespace WITE::Util {
+namespace WITE::GPU {
 
   //S is intended to be an enum. Could be a primitive or PoD type.
   template<typename S> class StateSynchronizer {
   public:
-    typedefCB(changeState, void, S, S, WorkBatch&);//old state, new state, worker
+    typedefCB(changeState, void, S, S*, WorkBatch&);//old state, (writable) new state, worker.
   private:
-    SyncLock lock;
+    Util::SyncLock lock;
     S state;
     std::vector<WorkBatch> usingCurrentState;
     WorkBatch providingCurrentState;
     changeState change;
   public:
-    PromisedStateTracker(S initial, changeState c) : state(initial), change(c) {};
+    StateSynchronizer(S initial, changeState c) : state(initial), change(c) {};
+    StateSynchronizer() {};//allocation dummy
 
-    //does not change what type of promise p is. It must already be the proper type to use the new state.
-    //the callback might spawn a new promise, which will be recorded and returned.
-    //Callback must return a promise but may return is input.
     void inState(S s, WorkBatch& batch) {
-      ScopeLock l(&lock);
+      Util::ScopeLock l(&lock);
       if(providingCurrentState == batch) {
 	if(s == state)
 	  return;
 	ASSERT_TRAP(usingCurrentState.size() == 0, "transformable resouce deadlock");
-	change(state, s, batch);
+	change(state, &s, batch);
+	state = s;
 	return;
       }
       if(providingCurrentState)
@@ -34,13 +33,41 @@ namespace WITE::Util {
       if(s == state) {
 	usingCurrentState.push_back(batch);
       } else {
-	change(state, s, batch);
+	change(state, &s, batch);
 	state = s;
 	for(WorkBatch& consumer : usingCurrentState)
 	  batch.mustHappenAfter(usingCurrentState);
 	providingCurrentState = batch;
 	usingCurrentState.clear();
       }
+    };
+
+    //for things like render pass completion that have side-effects on things like layout. Returns old state
+    S onExternalChange(S s, WorkBatch batch) {
+      Util::ScopeLock l(&lock);
+      S old = state;
+      if(providingCurrentState == batch) {
+	state = s;
+	return old;
+      }
+      if(providingCurrentState)
+	batch.mustHappenAfter(providingCurrentState);
+      if(s == state) {
+	if(!contains(usingCurrentState, batch))
+	  usingCurrentState.push_back(batch);
+      } else {
+	state = s;
+	for(WorkBatch& consumer : usingCurrentState)
+	  batch.mustHappenAfter(usingCurrentState);
+	providingCurrentState = batch;
+	usingCurrentState.clear();
+      }
+      return old;
+    };
+
+    S get() {
+      Util::ScopeLock l(&lock);
+      return state;
     };
   };
 

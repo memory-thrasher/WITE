@@ -20,39 +20,65 @@ namespace WITE::GPU {
       size_t gpu = ~0;
       Queue* q;
       vk::CommandBuffer cmd;
+      vk::Fence fence;//wait fence last, if populated
+      Semaphore completeSem;
     };
 
     struct WorkBatchResources {
       state_t state = state_t::recording;
-      Util::SyncLock mutex;
+      Util::AdvancedSyncLock mutex;
       uint64_t cycle;
-      Semaphore completeSem;
       std::vector<Work> steps;
-      std::vector<WorkBatch> prerequisits, waiters;//waiters get tested and potentailly triggered when this work is done
-      std::vector<vk::SemaphoreSubmitInfo> waitedSemsStaging;
+      std::vector<WorkBatch> prerequisits;//, waiters;//waiters get tested and potentailly triggered when this work is done
+      std::vector<vk::SemaphoreSubmitInfo> waitedSemsStaging, signalSemsStaging;
       std::vector<vk::CommandBufferSubmitInfo> cmdStaging;
-      std::vector<vk::SubmitInfo2> submitStaging;
-      uint64_t currentStep;
+      uint64_t nextStep;
+      renderInfo currentRP;
+      bool isRecordingRP;
 
       inline bool canRecord();
       Work& getCurrent();
       Work& append();
       void reset();
       bool canStart();
+      void execute();//executes the current and maybe more
+      vk::CommandBuffer getCmd(QueueType qt);
+      vk::CommandBuffer getCmd();
+      vk::Fence useFence();
     };
 
     static BalancingThreadResourcePool<WorkBatchResources> allBatches;
+    static void checkWorkerLoop();
 
     WorkBatchResources* batch;
     uint64_t cycle;
 
     inline WorkBatchResources* get();
     inline operator WorkBatchResources*() { return get(); };
-    void execute(Work&);
+    inline WorkBatchResources& operator -> () { return &get(); };
     bool isDone(Work&);
+    inline vk::CommandBuffer getCmd(QueueType qt) { return get()->getCmd(qt); };
+    inline vk::CommandBuffer getCmd() { return get()->getCmd(); };
+    inline uint32_t currentQFam() { getCmd(); return get()->getCurrent().q->family; };//getCmd ensures a q has been picked
+
+    //begin cmd duplication helpers
+    WorkBatch& copyImage(ImageBase* src, ImageBase* dst);
+    static void quickImageBarrier(vk::CommandBuffer, vk::Image, vk::ImageLayout, vk::ImageLayout);
+    static WorkBatch& discardImage(vk::CommandBuffer, vk::Image, vk::ImageLayout post);
 
   public:
+    struct renderInfo {
+      static constexpr size_t MAX_RESOURCES = 4;//color + depth, x2 if VR, what more could you want?
+      size_t resourceCount;
+      ImageBase* resources[MAX_RESOURCES];
+      vk::ImageLayout initialLayouts[MAX_RESOURCES], finalLayouts[MAX_RESOURCES];
+      vk::RenderPassBeginInfo rpbi;
+      vk::SubpassContents sc;
+    };
+
     WorkBatch(uint64_t gpuIdx = -1);
+    WorkBatch(logicalDeviceMask_t ldm);
+    WorkBatch(Queue* q);
     WorkBatch(const WorkBatch&) = default;
 
     typedefCB(thenCB, WorkBatch);
@@ -67,11 +93,30 @@ namespace WITE::GPU {
     void mustHappenAfter(WorkBatch& p);
     bool isDone() const;//done, null, and recording hasn't started are the same thing
     bool isSubmitted() const;//post-submission states also return true
-    bool isWaiting() const;
+    size_t getGpuIdx();
+    inline Gpu& getGpu() { return Gpu::get(getGpuIdx()); };
+    // bool isWaiting() const;
     operator bool() const { return !isDone(); };
     auto operator <=>() const = default;
 
     //begin vk::cmd stuff. All return a GpuPromise& because whether a new cmd and promise has to be made is known only at runtime
+    WorkBatch& putImageInLayout(ImageBase*, vk::ImageLayout, QueueType,
+				vk::AccessFlags2 = vk::AccessFlagBits2::eNone,
+				vk::PipelineStageFlags2 = vk::PipelineStageFlagBits2::eAllCommands);
+    WorkBatch& putImageInLayout(ImageBase*, vk::ImageLayout, uint32_t qFam,
+				vk::AccessFlags2 = vk::AccessFlagBits2::eNone,
+				vk::PipelineStageFlags2 = vk::PipelineStageFlagBits2::eAllCommands);
+
+    //static multi-batch helpers
+    static void batchDistributeAcrossLdm(size_t srcGpu, size_t cnt, ImageBase** srcs, ImageBase** stagings, void** ram);//stagings may be null or single elements may be null
+
+    WorkBatch& pipelineBarrier2(vk::DependencyInfo* di);
+    WorkBatch& beginRenderPass(const renderInfo*);
+    WorkBatch& endRenderPass();
+    WorkBatch& copyImage(ImageBase*, ImageBase*);//only on the current gpu like everything else, though each image can conatine multiple vk images each on a different gpu
+    WorkBatch& copyImage(ImageBase*, vk::Image, vk::ImageLayout);//mostly for swapchains
+    // WorkBatch& copyImageToDev(Image<ISD>, size_t sgpu, size_t dgpu);
+    WorkBatch& present(ImageBase*, vk::Image* swapImages, vk::SwapchainKHR swap);
   };
 
 }

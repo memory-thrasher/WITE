@@ -74,6 +74,7 @@ namespace WITE::GPU {
     inline Queue* getGraphics() { return graphics; };
     inline Queue* getCompute() { return compute; };
     inline Queue* getTransfer() { return transfer; };
+    inline bool canGraphicsCompute() { return getGraphics()->supportsCompute(); };
     vk::PipelineCache getPipelineCache() { return pipelineCache; };
     void allocate(const vk::MemoryRequirements&, VRam* out);
     void deallocate(VRam*);

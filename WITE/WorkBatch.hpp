@@ -4,6 +4,8 @@
 #include "Callback.hpp"
 #include "Semaphore.hpp"
 #include "Vulkan.hpp"
+#include "BalancingThreadResourcePool.hpp"
+#include "IterableBalancingThreadResourcePool.hpp"
 
 namespace WITE::GPU {
 
@@ -20,7 +22,7 @@ namespace WITE::GPU {
       size_t gpu = ~0;
       Queue* q;
       vk::CommandBuffer cmd;
-      vk::Fence fence;//wait fence last, if populated
+      vk::Fence* fence;//if populated, wait fence after cpu but before gpu
       Semaphore completeSem;
     };
 
@@ -47,8 +49,9 @@ namespace WITE::GPU {
       vk::Fence useFence();
     };
 
-    static BalancingThreadResourcePool<WorkBatchResources> allBatches;
+    static IterableBalancingThreadResourcePool<WorkBatchResources> allBatches;
     static void checkWorkerLoop();
+    static PerGpuUP<BalancingThreadResourcePool<vk::Fence>> fences;
 
     WorkBatchResources* batch;
     uint64_t cycle;
@@ -65,6 +68,8 @@ namespace WITE::GPU {
     WorkBatch& copyImage(ImageBase* src, ImageBase* dst);
     static void quickImageBarrier(vk::CommandBuffer, vk::Image, vk::ImageLayout, vk::ImageLayout);
     static WorkBatch& discardImage(vk::CommandBuffer, vk::Image, vk::ImageLayout post);
+    static result presentImpl(vk::Fence fence, ImageBase*, vk::Image*, vk::SwapchainKHR, Queue*, WorkBatch);
+    void presentImpl2(vk::SwapchainKHR, uint32_t);
 
   public:
     struct renderInfo {
@@ -81,7 +86,8 @@ namespace WITE::GPU {
     WorkBatch(Queue* q);
     WorkBatch(const WorkBatch&) = default;
 
-    typedefCB(thenCB, WorkBatch);
+    enum result { done, yield };
+    typedefCB(thenCB, result, WorkBatch);
 
     static void init();
 

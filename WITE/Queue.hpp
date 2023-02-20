@@ -38,6 +38,7 @@ namespace WITE::GPU {
     Queue(Gpu*, const struct vk::DeviceQueueCreateInfo&, vk::QueueFamilyProperties& qfp);
     ~Queue();
     //no destructor bc the global destroy will handle that
+    void present(const vk::PresentInfoKHR* pi);
     inline Gpu* getGpu() { return gpu; };
     inline size_t getGpuIdx() { return gpu->getIndex(); };
     inline bool supportsTransfer() { return nonzero(qfp.queueFlags & vk::QueueFlagBits::eTransfer); };

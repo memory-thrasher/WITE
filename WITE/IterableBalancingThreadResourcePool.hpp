@@ -3,10 +3,11 @@
 
 #include "SyncLock.hpp"
 #include "Thread.hpp"
+#include "LinkedTree.hpp"
 
 namespace WITE::Collections {
 
-  template<typename T, size_t bundleSize = 64> class BalancingThreadResourcePool {
+  template<typename T, size_t bundleSize = 64> class IterableBalancingThreadResourcePool {
   private:
     typedef T[bundleSize] bundle;
     typedef T*[bundleSize] scrap;
@@ -15,9 +16,11 @@ namespace WITE::Collections {
     ThreadResource<std::deque<bundle>> stores;
     ThreadResource<std::stack<T*>> available;
     std::stack<T*> commonScrap;
+    LinkedTree<T> commonAllocated;
+    LinkedTree<T>::Iterator commonIterator;
   public:
 
-    BalancingThreadResourcePool() {};
+    IterableBalancingThreadResourcePool() : commonIterator(commonAllocated.iterate()) {};
 
     T* allocate() {
       auto* avail = available.get();
@@ -44,10 +47,16 @@ namespace WITE::Collections {
 	  avail->push(&b[i]);
 	ret = &b[0];
       }
+      Util::ScopeLock lock(&commonsLock);
+      commonAllocated.insert(ret);
       return ret;
     };
 
     void free(T* t) {
+      {
+	Util::ScopeLock lock(&commonsLock);
+	commonAllocated.remove(t);
+      }
       auto* avail = available.get();
       if(avail->size() > bundleSize*2) {
 	scrap s;
@@ -61,6 +70,11 @@ namespace WITE::Collections {
       } else {
 	avail->push_back(t);
       }
+    };
+
+    T* getAny() {
+      Util::ScopeLock lock(&commonsLock);
+      return commonIterator();
     };
 
   };

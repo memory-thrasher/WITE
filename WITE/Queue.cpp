@@ -88,4 +88,10 @@ namespace WITE::GPU {
     pools.get()->cmdPool.free(cmd);
   };
 
+  void Queue::present(const vk::PresentInfoKHR* pi) {
+    size_t qIdx = Platform::Thread::getCurrentTid() % queueInstanceCount;
+    Util::ScopeLock lock(&queueMutexes[qIdx]);
+    VK_ASSERT(queueInstances[qIdx].presentKHR(pi), "Queue presentation failed");
+  };
+
 }

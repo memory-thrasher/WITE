@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Thread.hpp"
 #include "SyncLock.hpp"
 
 namespace WITE::Util {
@@ -15,7 +16,7 @@ namespace WITE::Util {
     void release();
     bool heldBy(uint32_t tid);
     bool isHeld();
-    bool inline isHeldByThisThread() { return heldBy(Thread::getCurrentTid()); };
+    bool inline isHeldByThisThread() { return heldBy(Platform::Thread::getCurrentTid()); };
   };
 
   class AdvancedScopeLock {

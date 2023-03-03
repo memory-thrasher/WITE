@@ -29,18 +29,16 @@ namespace WITE::GPU {
       }
     };
   public:
-    virtual void preBindVertBuffers(ElasticCommandBuffer& cmd, size_t gpu) = 0;
-    void render(ElasticCommandBuffer& cmd) override {
+    virtual void preBindVertBuffers(WorkBatch cmd, size_t gpu) = 0;
+    void render(WorkBatch cmd) override {
       size_t gpu = cmd->getGpu()->getIndex();
       if(preBindVertBuffers)
 	preBindVertBuffers(cmd, gpu);
       vk::Buffer buffers[vertBufferCount];
       for(size_t i = 0;i < vertBufferCount;i++)
 	buffers[i] = vertBuffers[i].get(gpu);
-      cmd->bindVertexBuffers(0, vertBufferCountbuffers, offsets);
-      bindVertexBuffers(cmd, gpu);
-      bind(gpu, cmd);
-      cmd->draw(getVertCount(), 1, 0, 0);//FIXME "instances" of what?
+      cmd.bindVertexBuffers(0, vertBufferCountbuffers, offsets);
+      cmd.draw(getVertCount(), 1, 0, 0);//FIXME "instances" of what?
     };
     virtual size_t getVertexCount() = 0;
   };

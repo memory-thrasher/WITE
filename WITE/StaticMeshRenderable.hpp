@@ -18,12 +18,12 @@ namespace WITE::GPU {
     static Util::SyncLock bufferMutex;
     static deviceMask_t bufferInitialized = 0;
   public:
-    ShaderMeshRenderable(layer_t later, VertexShader<passShaderData(D), passVertexModel(VM)>* s) : UBER(layer, s)
+    ShaderMeshRenderable(layer_t layer, VertexShader<passShaderData(D), passVertexModel(VM)>* s) : UBER(layer, s)
     {
       MeshBuffer* b = &meshBuffer;
       setBuffers(&b);
     };
-    void preBindVertBuffers(ElasticCommandBuffer& cmd, size_t gpu) override {
+    void preBindVertBuffers(WorkBatch cmd, size_t gpu) override {
       Util::ScopeLock(&bufferMutex);
       deviceMask_t flag = 1 << gpu;
       if(!(bufferInitialized & flag)) {

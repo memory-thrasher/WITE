@@ -1,19 +1,36 @@
+#pragma once
+
 #include <vector>
 
-#include "SyncLock.hpp"
+#include "AdvancedSyncLock.hpp"
 #include "Callback.hpp"
 #include "Semaphore.hpp"
 #include "Vulkan.hpp"
 #include "BalancingThreadResourcePool.hpp"
 #include "IterableBalancingThreadResourcePool.hpp"
+#include "types.hpp"
+#include "PerGpu.hpp"
 
 namespace WITE::GPU {
 
+  class ImageBase;
   class Queue;
 
   class WorkBatch {
+  public:
+    enum class result { done, yield };
+    typedefCB(thenCB, result, WorkBatch);
+    struct renderInfo {
+      static constexpr size_t MAX_RESOURCES = 4;//color + depth, x2 if VR, what more could you want?
+      size_t resourceCount;
+      ImageBase* resources[MAX_RESOURCES];
+      vk::ImageLayout initialLayouts[MAX_RESOURCES], finalLayouts[MAX_RESOURCES];
+      vk::RenderPassBeginInfo rpbi;
+      vk::SubpassContents sc;
+    };
+
   private:
-    enum state_t : uint8_t {
+    enum class state_t : uint8_t {
       recording, pending, running, done
     };
 
@@ -21,9 +38,10 @@ namespace WITE::GPU {
       thenCB cpu;//if this contains both cpu and gpu work, do the cpu work first.
       size_t gpu = ~0;
       Queue* q;
-      vk::CommandBuffer cmd;
+      cmd_t cmd;
       vk::Fence* fence;//if populated, wait fence after cpu but before gpu
       Semaphore completeSem;
+      Work() = default;
     };
 
     struct WorkBatchResources {
@@ -49,45 +67,32 @@ namespace WITE::GPU {
       vk::Fence useFence();
     };
 
-    static IterableBalancingThreadResourcePool<WorkBatchResources> allBatches;
+    static Collections::IterableBalancingThreadResourcePool<WorkBatchResources> allBatches;
     static void checkWorkerLoop();
-    static PerGpuUP<BalancingThreadResourcePool<vk::Fence>> fences;
+    static PerGpuUP<Collections::BalancingThreadResourcePool<vk::Fence>> fences;
 
     WorkBatchResources* batch;
     uint64_t cycle;
 
-    inline WorkBatchResources* get();
-    inline operator WorkBatchResources*() { return get(); };
-    inline WorkBatchResources& operator -> () { return &get(); };
+    inline WorkBatchResources* get() { return batch && cycle == batch->cycle ? batch : NULL; };
+    inline WorkBatchResources& operator -> () { return *get(); };
     bool isDone(Work&);
     inline vk::CommandBuffer getCmd(QueueType qt) { return get()->getCmd(qt); };
     inline vk::CommandBuffer getCmd() { return get()->getCmd(); };
-    inline uint32_t currentQFam() { getCmd(); return get()->getCurrent().q->family; };//getCmd ensures a q has been picked
+    uint32_t currentQFam();
 
     //begin cmd duplication helpers
-    WorkBatch& copyImage(ImageBase* src, ImageBase* dst);
+    // WorkBatch& copyImage(ImageBase* src, ImageBase* dst);
     static void quickImageBarrier(vk::CommandBuffer, vk::Image, vk::ImageLayout, vk::ImageLayout);
     static WorkBatch& discardImage(vk::CommandBuffer, vk::Image, vk::ImageLayout post);
     static result presentImpl(vk::Fence fence, ImageBase*, vk::Image*, vk::SwapchainKHR, Queue*, WorkBatch);
     void presentImpl2(vk::SwapchainKHR, uint32_t);
 
   public:
-    struct renderInfo {
-      static constexpr size_t MAX_RESOURCES = 4;//color + depth, x2 if VR, what more could you want?
-      size_t resourceCount;
-      ImageBase* resources[MAX_RESOURCES];
-      vk::ImageLayout initialLayouts[MAX_RESOURCES], finalLayouts[MAX_RESOURCES];
-      vk::RenderPassBeginInfo rpbi;
-      vk::SubpassContents sc;
-    };
-
     WorkBatch(uint64_t gpuIdx = -1);
     WorkBatch(logicalDeviceMask_t ldm);
     WorkBatch(Queue* q);
     WorkBatch(const WorkBatch&) = default;
-
-    enum result { done, yield };
-    typedefCB(thenCB, result, WorkBatch);
 
     static void init();
 
@@ -100,10 +105,10 @@ namespace WITE::GPU {
     bool isDone() const;//done, null, and recording hasn't started are the same thing
     bool isSubmitted() const;//post-submission states also return true
     size_t getGpuIdx();
-    inline Gpu& getGpu() { return Gpu::get(getGpuIdx()); };
+    Gpu& getGpu();
     // bool isWaiting() const;
     operator bool() const { return !isDone(); };
-    auto operator <=>() const = default;
+    auto operator <=>(const WorkBatch&) const = default;
 
     //begin vk::cmd stuff. All return a GpuPromise& because whether a new cmd and promise has to be made is known only at runtime
     WorkBatch& putImageInLayout(ImageBase*, vk::ImageLayout, QueueType,
@@ -120,7 +125,7 @@ namespace WITE::GPU {
     WorkBatch& beginRenderPass(const renderInfo*);
     WorkBatch& endRenderPass();
     WorkBatch& copyImage(ImageBase*, ImageBase*);//only on the current gpu like everything else, though each image can conatine multiple vk images each on a different gpu
-    WorkBatch& copyImage(ImageBase*, vk::Image, vk::ImageLayout);//mostly for swapchains
+    WorkBatch& copyImageToVk(ImageBase*, vk::Image, vk::ImageLayout);//mostly for swapchains
     // WorkBatch& copyImageToDev(Image<ISD>, size_t sgpu, size_t dgpu);
     WorkBatch& present(ImageBase*, vk::Image* swapImages, vk::SwapchainKHR swap);
   };

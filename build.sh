@@ -15,7 +15,7 @@ if [ -z "${VK_SDK_PATH}" ]; then
     VK_SDK_PATH="${VULKAN_SDK}"
 fi
 COMPILER=clang++
-WORKNICE=nice -n10
+WORKNICE="nice -n10"
 
 #config
 if [ -z "$VK_INCLUDE" -a ! -z "$VK_SDK_PATH" ]; then
@@ -24,7 +24,7 @@ fi
 
 #compile to static
 find $BUILDLIBS $BUILDAPP $BUILDTESTS -name '*.cpp' -type f -print0 |
-    while IFS= read -d '' SRCFILE; do
+    while IFS= read -d '' SRCFILE && [ $(cat ${ERRLOGBITDIR}/*-${ERRLOGBIT} | wc -l) -eq 0 ]; do
 	if [ $(cat ${ERRLOGBITDIR}/*-${ERRLOGBIT} 2>/dev/null | wc -l) -gt 0 ]; then break; fi;
 	DSTFILE="${OUTDIR}/${SRCFILE%.*}.o"
 	DEPENDENCIES="${OUTDIR}/${SRCFILE%.*}.d"
@@ -60,7 +60,7 @@ find $BUILDLIBS $BUILDAPP $BUILDTESTS -name '*.cpp' -type f -print0 |
 
 #TODO other file types (shaders etc.)
 
-while pgrep $COMPILER &>/dev/null; do sleep 0.2s; done
+while pgrep $COMPILER &>/dev/null && [ $(cat ${ERRLOGBITDIR}/*-${ERRLOGBIT} | wc -l) -eq 0 ]; do sleep 0.2s; done
 cat ${ERRLOGBITDIR}/*-${ERRLOGBIT} >"${ERRLOG}"
 
 #libs
@@ -107,6 +107,8 @@ if ! [ -f "${ERRLOG}" ] || [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
     done
 fi
 
+pkill $COMPILER
+
 if [ -f "${ERRLOG}" ] && [ "$(stat -c %s "${ERRLOG}")" -gt 0 ]; then
     echo "${ERRLOG}"
     let i=0; while [ $i -lt 10 ]; do echo; let i++; done;
@@ -115,5 +117,4 @@ else
     echo "Success"
     tail "${LOGFILE}"
 fi
-
 

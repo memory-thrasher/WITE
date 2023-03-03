@@ -45,7 +45,7 @@ namespace WITE::Util {
     held = false;
   }
 
-  ScopeLock::release() {
+  void ScopeLock::release() {
     if(held)
       lock->ReleaseLock();
     held = false;

@@ -16,7 +16,7 @@ namespace WITE::Collections {
     typedefCB(creator_t, void, T*, size_t);//size is gpu idx
     typedefCB(destroyer_t, void, T*, size_t);
   private:
-    static constexpr size_t capacity = MAX_GPUS * Platform::MAX_THREADS;
+    static constexpr size_t capacity = MAX_GPUS * MAX_THREADS;
     std::array<T, capacity> data;
     std::bitset<capacity> allocationMask;
     Util::SyncLock allocationLock;
@@ -30,7 +30,7 @@ namespace WITE::Collections {
     T& operator[](size_t gpu) {
       uint32_t tid = Platform::Thread::getCurrentTid();
       ASSERT_TRAP(gpu < MAX_GPUS, "bad gpu idx");
-      ASSERT_TRAP(tid < Platform::MAX_THREADS, "bad tid");
+      ASSERT_TRAP(tid < MAX_THREADS, "bad tid");
       size_t idx = getIdx(gpu, tid);
       if(creator && !allocationMask[idx]) {
 	Util::ScopeLock lock(&allocationLock);
@@ -66,7 +66,7 @@ namespace WITE::Collections {
     typedefCB(destroyer_t, void, T*, size_t);
     typedef std::unique_ptr<T> U;
   private:
-    static constexpr size_t capacity = MAX_GPUS * Platform::MAX_THREADS;
+    static constexpr size_t capacity = MAX_GPUS * MAX_THREADS;
     std::array<U, capacity> data;
     std::bitset<capacity> allocationMask;
     Util::SyncLock allocationLock;
@@ -80,7 +80,7 @@ namespace WITE::Collections {
     T* operator[](size_t gpu) {
       uint32_t tid = Platform::Thread::getCurrentTid();
       ASSERT_TRAP(gpu < MAX_GPUS, "bad gpu idx");
-      ASSERT_TRAP(tid < Platform::MAX_THREADS, "bad tid");
+      ASSERT_TRAP(tid < MAX_THREADS, "bad tid");
       size_t idx = getIdx(gpu, tid);
       if(!allocationMask[idx]) {
 	Util::ScopeLock lock(&allocationLock);

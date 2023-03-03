@@ -1,6 +1,7 @@
-#include "time.h"
+#include "time.hpp"
 #include "AdvancedSyncLock.hpp"
 #include "Thread.hpp"
+#include "DEBUG.hpp"
 
 namespace WITE::Util {
 
@@ -14,7 +15,7 @@ namespace WITE::Util {
 
   bool AdvancedSyncLock::acquire(uint64_t timeoutNS) {
     timespec startTime = now();
-    auto tid = Thread::getCurrentTid();
+    auto tid = Platform::Thread::getCurrentTid();
     do {
       ScopeLock lock(&mutex);
       if(holds == 0 || currentOwner == tid) {
@@ -24,28 +25,28 @@ namespace WITE::Util {
       }
       lock.release();
       if(timeoutNS > 0)
-	Thread::sleepShort();
-    } while(since(startTime) < timeoutNS);
+	Platform::Thread::sleepShort();
+    } while(toNS(since(startTime)) < timeoutNS);
     return false;
   };
 
-  bool AdvancedSyncLock::release() {
+  void AdvancedSyncLock::release() {
     ScopeLock lock(&mutex);
-    ASSERT_TRAP(currentOwner == Thread::getCurrentTid(), "Mutex Failure!!!");
+    ASSERT_TRAP(currentOwner == Platform::Thread::getCurrentTid(), "Mutex Failure!!!");
     --holds;
   };
 
-  bool heldBy(uint32_t tid) {
+  bool AdvancedSyncLock::heldBy(uint32_t tid) {
     ScopeLock lock(&mutex);
     return holds && currentOwner == tid;
   };
 
-  bool isHeld() {
+  bool AdvancedSyncLock::isHeld() {
     ScopeLock lock(&mutex);
     return holds;
   };
 
-  AdvancedScopeLock::AdvancedScopeLock(AdvancedSyncLock& l, timeoutNS) : l(l) {
+  AdvancedScopeLock::AdvancedScopeLock(AdvancedSyncLock& l, uint64_t timeoutNS) : l(l) {
     reacquire(timeoutNS);
   };
 
@@ -53,11 +54,11 @@ namespace WITE::Util {
     release();
   };
 
-  AdvancedScopeLock::reacquire(uint64_t timeoutNS) {
+  void AdvancedScopeLock::reacquire(uint64_t timeoutNS) {
     l.acquire(timeoutNS);
   };
 
-  AdvancedScopeLock::release() {
+  void AdvancedScopeLock::release() {
     l.release();
   };
 

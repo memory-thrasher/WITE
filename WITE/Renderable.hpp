@@ -5,7 +5,7 @@
 #include "Vulkan.hpp"
 #include "ShaderData.hpp"
 #include "types.hpp"
-#include "ElasticCommandBuffer.hpp"
+#include "WorkBatch.hpp"
 
 namespace WITE::GPU {
 
@@ -18,15 +18,10 @@ namespace WITE::GPU {
     PerGpu<Semaphore>* readDependency;
   protected:
     RenderableBase(layer_t layer) : layer(layer) {};
-    virtual void bind(size_t gpu, ElasticCommandBuffer& cmd, vk::PipelineBindPoint bp) = 0;
-    virtual void renderImpl(ElasticCommandBuffer& cmd) = 0;
+    virtual void bind(size_t gpu, WorkBatch cmd, vk::PipelineBindPoint bp) = 0;
   public:
     const layer_t layer;
-    void render(ElasticCommandBuffer& cmd) {
-      if(readDependency)
-	cmd.addDependency(readDependency->getPtr(cmd.getGpuIdx()));
-      renderImpl(cmd);
-    };
+    virtual void render(WorkBatch cmd) = 0;
     virtual ~RenderableBase() = default;
     void setReadDependency(PerGpu<Semaphore>* d) {
       readDependency = d;

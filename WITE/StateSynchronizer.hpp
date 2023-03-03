@@ -36,7 +36,7 @@ namespace WITE::GPU {
 	change(state, &s, batch);
 	state = s;
 	for(WorkBatch& consumer : usingCurrentState)
-	  batch.mustHappenAfter(usingCurrentState);
+	  batch.mustHappenAfter(consumer);
 	providingCurrentState = batch;
 	usingCurrentState.clear();
       }
@@ -53,12 +53,12 @@ namespace WITE::GPU {
       if(providingCurrentState)
 	batch.mustHappenAfter(providingCurrentState);
       if(s == state) {
-	if(!contains(usingCurrentState, batch))
+	if(!Collections::contains(usingCurrentState, batch))
 	  usingCurrentState.push_back(batch);
       } else {
 	state = s;
 	for(WorkBatch& consumer : usingCurrentState)
-	  batch.mustHappenAfter(usingCurrentState);
+	  batch.mustHappenAfter(consumer);
 	providingCurrentState = batch;
 	usingCurrentState.clear();
       }

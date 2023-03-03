@@ -9,12 +9,12 @@ namespace WITE::GPU {
     return state == state_t::recording;
   };
 
-  Work& WorkBatch::WorkBatchResources::getCurrent() {
+  WorkBatch::Work& WorkBatch::WorkBatchResources::getCurrent() {
     return steps.empty() ? steps.emplace_back() : steps[steps.size()-1];
   };
 
-  Work& WorkBatch::WorkBatchResources::append() {
-    steps.emplace_back();
+  WorkBatch::Work& WorkBatch::WorkBatchResources::append() {
+    return steps.emplace_back();
   };
 
   void WorkBatch::WorkBatchResources::reset() {//only reset when consigning to the recycler
@@ -24,9 +24,17 @@ namespace WITE::GPU {
     // waiters.clear();
     prerequisits.clear();
     steps.clear();
-    if(fence) {
-      fences.free(fence);
-      fence = NULL;
+    for(Work& w : steps) {
+      if(w.fence) {
+	fences[w.gpu]->free(w.fence);
+	w.fence = NULL;
+      }
+      if(w.cmd) {
+	w.q->free(w.cmd);
+	w.cmd = NULL;
+      }
+      if(w.q)
+	w.q = NULL;
     }
   };
 
@@ -40,10 +48,6 @@ namespace WITE::GPU {
   };
 
   BalancingThreadResourcePool<WorkBatch::WorkBatchResources> allBatches;//static
-
-  WorkBatch::WorkBatchResources* WorkBatch::get() {
-    return batch && cycle == batch->cycle ? batch : NULL;
-  };
 
   WorkBatch::WorkBatch(uint64_t gpuIdx) {
     batch = allBatches.allocate();
@@ -143,6 +147,7 @@ namespace WITE::GPU {
 	    if(w2.cpu || w2.fence || w2.q != w.q)
 	      break;
 	    cmdStaging.emplace_back(w2.cmd);
+	    w2.cmd.end();
 	    signalSemsStaging.push_back(w2.completeSem.prepareForBatchSubmit());
 	  }
 	  vk::SubmitInfo2 si { {},
@@ -191,6 +196,11 @@ namespace WITE::GPU {
       c.cmd = q->getNext();
     }
     return c.cmd;
+  };
+
+  uint32_t WorkBatchResources::currentQFam() {
+    getCmd();//ensures a q has been picked
+    return get()->getCurrent().q->family;
   };
 
   #define PreRecordBoilerplate \
@@ -299,6 +309,10 @@ namespace WITE::GPU {
     size_t ret = b.getCurrent().gpu;
     ASSERT_TRAP(~ret, "requested gpu when one hasn't been chosen (need a thenOnGpu first)");
     return ret;
+  };
+
+  Gpu& WorkBatch::getGpu() {
+    return Gpu::get(getGpuIdx());
   };
 
   //begin duplication of vk::cmd functions
@@ -446,7 +460,7 @@ namespace WITE::GPU {
     cmd.copyImage(src->getVkImage(gpuIdx), srcLayout, dst->getVkImage(gpuIdx), dstLayout, 1, &r);
   };
 
-  WorkBatch& WorkBatch::copyImage(ImageBase* src, vk::Image dst, vk::ImageLayout postLayout) {
+  WorkBatch& WorkBatch::copyImageToVk(ImageBase* src, vk::Image dst, vk::ImageLayout postLayout) {
     PreRecordBoilerplate;
     auto cmd = getCmd();
     size_t gpuIdx = getGpuIdx();
@@ -520,7 +534,7 @@ namespace WITE::GPU {
     //this is in a then. The primary call to present has already queued fence as a requirement for this batch. The copy commands, however, could not be recorded before the output was chosen by acquire above. Batches cannot be added to while running, So spawn a new batch that depends on this one.
     WorkBatch stage2(q);
     stage2.mustHappenAfter(wb);
-    stage2.copyImage(src, swapImages[target], vk::ImageLayout::ePresentSrcKHR);
+    stage2.copyImageToVk(src, swapImages[target], vk::ImageLayout::ePresentSrcKHR);
     stage2.then(thenCB_F::make(swap, target, &presentImpl2));
     stage2.start();
     return result::done;

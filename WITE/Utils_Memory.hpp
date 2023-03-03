@@ -1,3 +1,8 @@
+#pragma once
+
+#include <stddef.h>
+#include <stdint.h>
+
 namespace WITE::Util {
   template <typename T, typename U> size_t member_offset(U T::*member) {
     //image that there was a T sitting on NULL, what would the address of member be? That's the offset.
@@ -11,6 +16,7 @@ namespace WITE::Util {
     i = (i & 0xF0F0F0F0F0F0F0F0) >> 4  | (i & 0x0F0F0F0F0F0F0F0F) << 4;
     i = (i & 0xCCCCCCCCCCCCCCCC) >> 2  | (i & 0x3333333333333333) << 2;
     i = (i & 0xAAAAAAAAAAAAAAAA) >> 1  | (i & 0x5555555555555555) << 1;
+    return i;
   };
 
 }

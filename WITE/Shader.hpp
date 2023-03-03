@@ -13,7 +13,6 @@
 #include "ShaderDescriptorLifeguard.hpp"
 #include "Renderable.hpp"
 #include "RenderTarget.hpp"
-#include "ElasticCommandBuffer.hpp"
 
 namespace WITE::GPU {
 

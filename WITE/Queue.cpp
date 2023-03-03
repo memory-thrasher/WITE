@@ -1,7 +1,6 @@
 #include "Queue.hpp"
 #include "Thread.hpp"
 #include "Gpu.hpp"
-#include "ElasticCommandBuffer.hpp"
 #include "DEBUG.hpp"
 
 namespace WITE::GPU {
@@ -44,54 +43,38 @@ namespace WITE::GPU {
     dev.destroyCommandPool(o->pool);//this frees all cmdbuffers
   };
 
-  struct qSubmitStaging_t {
-    std::vector<vk::SemaphoreSubmitInfo> waits, signals;
-  };
-
-  Platform::ThreadResource<qSubmitStaging_t> qSubmitStaging;
-  ElasticCommandBuffer Queue::createBatch(uint64_t frame) {
-    return { this, frame };
-  };
-
-  ElasticCommandBuffer Queue::createBatch() {
-    return { this, Util::FrameCounter::getFrame() };
-  };
-
-  vk::CommandBuffer Queue::getNext() {
+  cmd_t Queue::getNext() {
     auto ptr = pools.get();
-    vk::CommandBuffer* ret = ptr->cmdPool.allocate();
+    cmd_t ret = ptr->cmdPool.allocate();
     if(!*ret) {
       vk::CommandBufferAllocateInfo ai { ptr->pool, vk::CommandBufferLevel::ePrimary, 1 };
-      VK_ASSERT(gpu->getVkDevice().allocateCommandBuffers(&ai, ret), "failed to allocate command buffer");
+      VK_ASSERT(gpu->getVkDevice().allocateCommandBuffers(&ai, ret.cmd), "failed to allocate command buffer");
     } else {
-      cmd->reset({});
+      ret->reset({});
     }
     vk::CommandBufferBeginInfo bi { vk::CommandBufferUsageFlagBits::eOneTimeSubmit };
     ret->begin(bi);
-    return *ret;
+    return ret;
   };
 
-  void Queue::submit(vk::CommandBuffer cmd, Semaphore* wait, Semaphore* signal) {
-    cmd.end();
-    vk::CommandBufferSubmitInfo csi { cmd };
-    vk::SemaphoreSubmitInfo w, s;
-    if(wait)
-      w.setSemaphore(*wait).setValue(wait->getPromisedValue()).setStageMask(vk::PipelineStageFlagBits2::eTopOfPipe);
-    if(signal)
-      s.setSemaphore(*signal).setValue(signal->notePromise()).setStageMask(vk::PipelineStageFlagBits2::eBottomOfPipe);
-    vk::SubmitInfo2 si { {}, wait ? 1 : 0, &w, 1, &csi, signal ? 1 : 0, &s : NULL };
+  void Queue::free(cmd_t cmd) {
+    pools.get()->cmdPool.free(cmd.cmd);
+  };
+
+  void Queue::submit(const vk::SubmitInfo2& si) {
     size_t qIdx = Platform::Thread::getCurrentTid() % queueInstanceCount;
-    {
-      Util::ScopeLock lock(&queueMutexes[qIdx]);
-      VK_ASSERT(queueInstances[qIdx].submit2(1, &si, VK_NULL_HANDLE), "Queue submission failed");
-    };
-    pools.get()->cmdPool.free(cmd);
+    Util::ScopeLock lock(&queueMutexes[qIdx]);
+    VK_ASSERT(queueInstances[qIdx].submit2(1, &si, VK_NULL_HANDLE), "Queue submission failed");
   };
 
   void Queue::present(const vk::PresentInfoKHR* pi) {
     size_t qIdx = Platform::Thread::getCurrentTid() % queueInstanceCount;
     Util::ScopeLock lock(&queueMutexes[qIdx]);
     VK_ASSERT(queueInstances[qIdx].presentKHR(pi), "Queue presentation failed");
+  };
+
+  size_t Queue::getGpuIdx() {
+    return gpu->getIndex();
   };
 
 }

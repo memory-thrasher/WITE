@@ -1,3 +1,5 @@
+#pragma once
+
 #include <deque>
 #include <stack>
 
@@ -9,13 +11,13 @@ namespace WITE::Collections {
 
   template<typename T, size_t bundleSize = 64> class IterableBalancingThreadResourcePool {
   private:
-    typedef T[bundleSize] bundle;
-    typedef T*[bundleSize] scrap;
+    typedef T bundle[bundleSize];
+    typedef T* scrap[bundleSize];
     Util::SyncLock commonsLock;
     //associated thread owns the store (and so can locklessly expand it) but NOT the contents
-    ThreadResource<std::deque<bundle>> stores;
-    ThreadResource<std::stack<T*>> available;
-    std::stack<T*> commonScrap;
+    Platform::ThreadResource<std::deque<bundle>> stores;
+    Platform::ThreadResource<std::stack<T*>> available;
+    std::stack<scrap> commonScrap;
     LinkedTree<T> commonAllocated;
     LinkedTree<T>::Iterator commonIterator;
   public:

@@ -2,7 +2,7 @@
 
 namespace WITE::Util {
 
-  constexpr uint64_t NS_PER_SEC = 1000000000;
+  constexpr int64_t NS_PER_SEC = 1000000000;
 
   timespec now() {
     timespec ret;
@@ -16,13 +16,16 @@ namespace WITE::Util {
   };
 
   timespec diff(const timespec& a, const timespec& b) {
-    return a.tv_nsec < b.tv_nsec ? {
-      a.tv_sec - b.tv_sec - 1,
-      NS_PER_SEC + a.tv_nsec - b.tv_nsec
-    } : {
-      a.tv_sec - b.tv_sec,
-      a.tv_nsec - b.tv_nsec
-    };
+    if(a.tv_nsec < b.tv_nsec)
+      return {
+	a.tv_sec - b.tv_sec - 1,
+	NS_PER_SEC + a.tv_nsec - b.tv_nsec
+      };
+    else
+      return {
+	a.tv_sec - b.tv_sec,
+	a.tv_nsec - b.tv_nsec
+      };
   };
 
   uint64_t toNS(const timespec& t) {

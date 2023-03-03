@@ -1,12 +1,18 @@
 #pragma once
 
-#include <dequeue>
+#include <deque>
 
 #include "Utils_Memory.hpp"
 
 namespace WITE::Collections {
 
   class LinkedTreeBase {
+  protected:
+    typedef uint64_t invertedPtr;
+    struct node {
+      invertedPtr data;
+      node* low, *high, *parent;
+    };
   private:
     node* allocate(invertedPtr i, node* n);
   public:
@@ -17,14 +23,10 @@ namespace WITE::Collections {
       void advance();
     public:
       IteratorBase(node*, LinkedTreeBase*);
+      virtual ~IteratorBase();
       node* getNext();
     };
   protected:
-    uint64_t invertedPtr;
-    struct node {
-      invertedPtr data;
-      node* low, *high, *parent;
-    };
     node* root;
     std::deque<node> store;
     std::deque<node*> available;
@@ -45,11 +47,11 @@ namespace WITE::Collections {
     private:
       Iterator(node* t, LinkedTreeBase* ltb) : IteratorBase(t, ltb) {};
     public:
-      inline T* operator()() { return reverse(getNext()->data);
+      inline T* operator()() { return reverse(getNext()->data); };
     };
     inline void insert(T* t) { insert(reverse(t)); };
     inline void remove(T* t) { remove(reverse(t)); };
-      inline Iterator iterate() { return { root, this }; };//nonstandard ENDLESS! iterator.
+    inline Iterator iterate() { return { root, this }; };//nonstandard ENDLESS! iterator.
   };
 
 }

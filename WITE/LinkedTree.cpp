@@ -4,7 +4,7 @@ namespace WITE::Collections {
 
   LinkedTreeBase::LinkedTreeBase() = default;
 
-  ~LinkedTreeBase::LinkedTreeBase() = default;
+  LinkedTreeBase::~LinkedTreeBase() = default;
 
   void LinkedTreeBase::insert(invertedPtr i) {
     if(!root) {
@@ -35,9 +35,10 @@ namespace WITE::Collections {
     gnu->low = gnu->high = NULL;
     gnu->parent = n;
     gnu->data = i;
+    return gnu;
   };
 
-  void LinkedTreeBase::remove(invertedPtr) {
+  void LinkedTreeBase::remove(invertedPtr i) {
     if(!root) {
       [[unlikely]]
       //edge case: list is empty
@@ -124,7 +125,7 @@ namespace WITE::Collections {
     while(target->parent && target == target->parent->high)
       target = target->parent;
     if(target->parent) {
-      target->parent->high;
+      target = target->parent->high;
       return;
     }
     target = base->root;

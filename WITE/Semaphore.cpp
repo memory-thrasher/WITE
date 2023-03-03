@@ -17,7 +17,7 @@ namespace WITE::GPU {
     VK_ASSERT(gpu->getVkDevice().createSemaphore(&ci, ALLOCCB, &sem), "failed to create semaphore");
   };
 
-  Semaphore::Semaphore(Semaphore&& o) : targetValue(o.targetValue), id(o.id) {
+  Semaphore::Semaphore(Semaphore&& o) : targetValue(o.targetValue.load()), id(o.id) {
     o.sem = VK_NULL_HANDLE;
   };
 

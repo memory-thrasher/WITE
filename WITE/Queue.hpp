@@ -14,7 +14,6 @@
 namespace WITE::GPU {
 
   class Gpu;
-  class ElasticCommandBuffer;
 
   class Queue {
   private:
@@ -31,7 +30,8 @@ namespace WITE::GPU {
     PerThreadResources* makePerThreadResources();
     void freePerThreadResources(PerThreadResources*);
   public:
-    [[nodiscard]] vk::CommandBuffer getNext();
+    [[nodiscard]] cmd_t getNext();
+    void free(cmd_t);
     void submit(const vk::SubmitInfo2&);
     const uint32_t family;
     const vk::QueueFamilyProperties qfp;
@@ -40,7 +40,7 @@ namespace WITE::GPU {
     //no destructor bc the global destroy will handle that
     void present(const vk::PresentInfoKHR* pi);
     inline Gpu* getGpu() { return gpu; };
-    inline size_t getGpuIdx() { return gpu->getIndex(); };
+    size_t getGpuIdx();
     inline bool supportsTransfer() { return nonzero(qfp.queueFlags & vk::QueueFlagBits::eTransfer); };
     inline bool supportsCompute() { return nonzero(qfp.queueFlags & vk::QueueFlagBits::eCompute); };
     inline bool supportsGraphics() { return nonzero(qfp.queueFlags & vk::QueueFlagBits::eGraphics); };

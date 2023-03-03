@@ -11,13 +11,11 @@ namespace WITE::Collections {
     Util::SyncLock lock;
     std::deque<T> store;
     std::stack<T*> available;
-    // std::list<T*> allocated;//TODO another class that is iterable
   public:
 
     RecyclingPool(size_t initialSize) :
       lock(),
-      store(initialSize)// ,
-      // available(std::deque<size_t>(initialSize))
+      store(initialSize)
     {
       WITE::Util::ScopeLock locked(&lock);
       for(size_t i = 0;i < initialSize;i++)
@@ -34,23 +32,13 @@ namespace WITE::Collections {
       } else {
 	ret = &store.emplace_back();
       }
-      // allocated.push_front(ret);
       return ret;
     };
 
     void free(T* t) {
       WITE::Util::ScopeLock locked(&lock);
       available.push(t);
-      // allocated.remove(t);
     };
-
-    // allocated::iterator begin() {
-    //   return allocated.begin();
-    // };
-
-    // allocated::iterator end() {
-    //   return allocated.end();
-    // };
 
   };
 

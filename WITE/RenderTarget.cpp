@@ -2,7 +2,6 @@
 #include "Gpu.hpp"
 #include "Vulkan.hpp"
 #include "DEBUG.hpp"
-#include "ElasticCommandBuffer.hpp"
 #include "Shader.hpp"
 #include "Thread.hpp"
 #include "FrameCounter.hpp"

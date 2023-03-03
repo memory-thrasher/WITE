@@ -275,7 +275,7 @@ namespace WITE::GPU {
     layers.push_back("VK_LAYER_KHRONOS_validation");
 #endif
     Window::addInstanceExtensionsTo(extensions);
-    extensions.add("VK_EXT_swapchain_colorspace");
+    extensions.push_back("VK_EXT_swapchain_colorspace");
     ci.enabledLayerCount = layers.size();
     ci.ppEnabledLayerNames = layers.data();
     ci.enabledExtensionCount = extensions.size();
@@ -326,7 +326,7 @@ namespace WITE::GPU {
 	l.formatProperties[kvp.first] = fp;
       }
     }
-    RenderTarget::spawnTruckThread();
+    WorkBatch::init();
   };
 
   Gpu& Gpu::get(size_t i) {//static

@@ -39,7 +39,7 @@ namespace WITE::GPU {
     };
     //NOTE: Image's instance on this gpu MUST be in transfer_src layout. Generally called by RenderTarget.
     template<ImageSlotData ISD> inline void draw(Image<ISD>* img)
-      requires imageIsPresentable(ISD)
+      requires (imageIsPresentable(ISD))
     {
       drawImpl(img);
     };

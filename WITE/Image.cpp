@@ -9,8 +9,8 @@ namespace WITE::GPU {
 		accessors_t::destroyer_t_F::make(&ImageBase::destroyAccessors)),
       images(PerGpu<vk::Image>::creator_t_F::make(this, &ImageBase::makeImage),
 	     PerGpu<vk::Image>::destroyer_t_F::make(&ImageBase::destroyImage)),
-      accessStateTracker(PerGpu<StateSynchronizer<accessState>>::creator_t_F::make(this, &ImageBase::makeStateTracker)),
       w(512), h(isd.dimensions > 1 ? 512 : 1), z(1),
+      accessStateTracker(PerGpu<StateSynchronizer<accessState>>::creator_t_F::make(this, &ImageBase::makeStateTracker)),
       slotData(isd),
       format(Gpu::getBestImageFormat(isd.components, isd.componentsSize, isd.usage, isd.logicalDeviceMask)),
       transfersRequired(Gpu::gpuCountByLdm(isd.logicalDeviceMask) > 1 && (isd.externalUsage & MUSAGE_ANY_INTERMEDIATE))
@@ -24,7 +24,7 @@ namespace WITE::GPU {
     VK_ASSERT(vkDev.createImage(&ci, ALLOCCB, ret), "Failed to create image");
     vk::MemoryRequirements mr;
     vkDev.getImageMemoryRequirements(*ret, &mr);
-    VRam* vram = mem.getRef(gpu).get();
+    VRam* vram = mem.getPtr(gpu);
     g.allocate(mr, vram);
     vkDev.bindImageMemory(*ret, *vram, 0);
   };
@@ -42,7 +42,7 @@ namespace WITE::GPU {
 	vk::PipelineStageFlagBits2::eNone,
 	0 //which queue initially owns the image is unclear
       },
-      StateSynchronizer<accessState>::changeState_F::make(this, gpu, updateAccessState));
+      StateSynchronizer<accessState>::changeState_F::make<ImageBase, size_t>(this, gpu, &ImageBase::updateAccessState));
   };
 
   void ImageBase::getCreateInfo(Gpu& gpu, vk::ImageCreateInfo* out, size_t width, size_t height, size_t z) {

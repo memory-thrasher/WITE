@@ -5,6 +5,7 @@
 #include "PerGpuPerThread.hpp"
 #include "PerGpu.hpp"
 #include "VRam.hpp"
+#include "StateSynchronizer.hpp"
 
 namespace WITE::GPU {
 
@@ -13,6 +14,7 @@ namespace WITE::GPU {
 
   class ImageBase : public GpuResource {
   private:
+    struct accessState;
     struct accessObject {
       vk::ImageView view;
       vk::Sampler sampler;

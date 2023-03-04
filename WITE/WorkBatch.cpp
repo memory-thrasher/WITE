@@ -2,6 +2,8 @@
 #include "Queue.hpp"
 #include "constants.hpp"
 #include "Thread.hpp"
+#include "Gpu.hpp"
+#include "Image.hpp"
 
 namespace WITE::GPU {
 
@@ -31,7 +33,7 @@ namespace WITE::GPU {
       }
       if(w.cmd) {
 	w.q->free(w.cmd);
-	w.cmd = NULL;
+	new(&w.cmd)cmd_t();
       }
       if(w.q)
 	w.q = NULL;
@@ -47,7 +49,7 @@ namespace WITE::GPU {
     return true;
   };
 
-  BalancingThreadResourcePool<WorkBatch::WorkBatchResources> allBatches;//static
+  Collections::IterableBalancingThreadResourcePool<WorkBatch::WorkBatchResources> WorkBatch::allBatches;//static
 
   WorkBatch::WorkBatch(uint64_t gpuIdx) {
     batch = allBatches.allocate();
@@ -55,7 +57,7 @@ namespace WITE::GPU {
     batch->getCurrent().gpu = gpuIdx;
   };
 
-  WorkBatch::WorkBatch(logicalDeviceMask_t ldm) : WorkBatch(Gpu::getGpuFor(ldm)) {};
+  WorkBatch::WorkBatch(logicalDeviceMask_t ldm) : WorkBatch(Gpu::getGpuFor(ldm).getIndex()) {};
 
   WorkBatch::WorkBatch(Queue* q) : WorkBatch(q->getGpuIdx()) {
     get()->getCurrent().q = q;
@@ -64,11 +66,11 @@ namespace WITE::GPU {
   void WorkBatch::init() {//static
     auto loop = Platform::Thread::threadEntry_t_F::make(checkWorkerLoop);
     for(size_t i = 0;i < PROMISE_THREAD_COUNT;i++) {
-      PlatformThread::spawnThread(loop);
+      Platform::Thread::spawnThread(loop);
     }
   };
 
-  void WorkerBatch::checkWorkerLoop() {//static
+  void WorkBatch::checkWorkerLoop() {//static
     while(Gpu::running) {
       WorkBatchResources* wbr = allBatches.getAny();//resilient semi-ordered iteration
       if(!wbr) continue;//list empty: busy wait
@@ -76,59 +78,61 @@ namespace WITE::GPU {
     }
   };
 
-  void WorkBatch::check() {
-    auto b = get();
-    if(!b) return;
-    Util::AdvancedScopeLock lock(&b->mutex, 0);
+  void WorkBatch::WorkBatchResources::check() {
+    Util::AdvancedScopeLock lock(mutex, 0);
     if(!lock.isHeld()) return;//if another thread has this locked, don't check anything but also don't wait
-    if(b.cycle != cycle) return;
-    switch(b->state) {
-    case recording: return;
-    case pending:
-      if(!b->canStart()) return;//TODO eventually allow b to start when a prerequisite is in progress if a semaphore can be used
-      b->state = state_t::running;
-      b->nextStep = 0;
-      if(!b->steps.empty())
-	b->execute();
+    switch(state) {
+    case state_t::recording: return;
+    case state_t::pending:
+      if(!canStart()) return;//TODO eventually allow b to start when a prerequisite is in progress if a semaphore can be used
+      state = state_t::running;
+      nextStep = 0;
+      if(!steps.empty())
+	execute();
       break;
-    case running:
-      ASSERT_TRAP(b->nextStep > 0, "already in running state but first work step hasn't started");
-      Work& currentStep = b->steps[b->nextStep - 1];
-      if(currentStep.cpu || currentStep.completeSem.pending())
-	break; //currentStep is not done. cpu callback is set to null when finished
-      if(b->nextStep >= b->steps.size()) {//it's over
-	b->state = state_t::done;
-      } else {
-	b->execute();
-	break;
+    case state_t::running:
+      {
+	ASSERT_TRAP(nextStep > 0, "already in running state but first work step hasn't started");
+	Work& currentStep = steps[nextStep - 1];
+	if(currentStep.cpu || currentStep.completeSem.pending())
+	  break; //currentStep is not done. cpu callback is set to null when finished
+	if(nextStep >= steps.size()) {//it's over
+	  state = state_t::done;
+	} else {
+	  execute();
+	  break;
+	}
       }
-    case done:
+    case state_t::done:
       //TODO proc waiters if any. Need deadlock resolution, see comment above mustHappenAfter
-      b->reset();
-      allBatches.free(b);
+      reset();
+      allBatches.free(this);
     };
   };
+
+  
+  WorkBatch::WorkBatch(WorkBatchResources* batch) : batch(batch), cycle(batch->cycle) {};
 
   void WorkBatch::WorkBatchResources::execute() {
     do {
       ASSERT_TRAP(state == state_t::running, "attempted to execute on invalid state");
       ASSERT_TRAP(nextStep < steps.size(), "out of bounds");
-      Work& w = steps[nextStep];
-      if(w.cpu) {
-	switch(w.cpu(*this)) {
-	case: result::done:
-	  w.cpu = NULL;
+      Work* w = &steps[nextStep];
+      if(w->cpu) {
+	switch(w->cpu(this)) {
+	case result::done:
+	  w->cpu = NULL;
 	  break;
-	case: result::yield:
+	case result::yield:
 	  return;
 	};
       }
-      if(w.fence) {
-	auto res = Gpu::get(w.gpu).waitForFences(1, w.fence, false, 0);
+      if(w->fence) {
+	auto res = Gpu::get(w->gpu).getVkDevice().waitForFences(1, w->fence, false, 0);
 	switch(res) {
 	case vk::Result::eSuccess:
-	  fences.free(fence);
-	  fence = NULL;
+	  fences[w->gpu]->free(w->fence);
+	  w->fence = NULL;
 	  break;
 	case vk::Result::eTimeout:
 	  return;
@@ -136,69 +140,69 @@ namespace WITE::GPU {
 	  VK_ASSERT(res, "Failure detected while waiting fence");
 	}
       }
-      if(w.q && w.cmd) {
+      if(w->q && w->cmd) {
 	waitedSemsStaging.clear();
 	do {
-	  w = steps[nextStep];
+	  w = &steps[nextStep];
 	  cmdStaging.clear();
 	  signalSemsStaging.clear();
 	  for(;nextStep < steps.size();nextStep++) {
-	    Work& w2 = steps[nextStep];
-	    if(w2.cpu || w2.fence || w2.q != w.q)
+	    Work* w2 = &steps[nextStep];
+	    if(w2->cpu || w2->fence || w2->q != w->q)
 	      break;
-	    cmdStaging.emplace_back(w2.cmd);
-	    w2.cmd.end();
-	    signalSemsStaging.push_back(w2.completeSem.prepareForBatchSubmit());
+	    cmdStaging.emplace_back(*w2->cmd);
+	    w2->cmd->end();
+	    signalSemsStaging.push_back(w2->completeSem.prepareForBatchSubmit());
 	  }
 	  vk::SubmitInfo2 si { {},
-	    waitedSemsStaging.size(), waitedSemsStaging.data(),
-	    cmdStaging.size(), cmdStaging.data(),
-	    signalSemsStaging.size(), signalSemsStaging.data()
+	    static_cast<uint32_t>(waitedSemsStaging.size()), waitedSemsStaging.data(),
+	    static_cast<uint32_t>(cmdStaging.size()), cmdStaging.data(),
+	    static_cast<uint32_t>(signalSemsStaging.size()), signalSemsStaging.data()
 	  };
-	  w.q->submit(si);
+	  w->q->submit(si);
 	  //for next loop:
 	  waitedSemsStaging.clear();
 	  waitedSemsStaging.push_back(signalSemsStaging[signalSemsStaging.size()-1]);
-	} while(nextStep < steps.size() && steps[nextStep].gpu == w.gpu && !steps[nextStep].cpu && !steps[nextStep].fence);
+	} while(nextStep < steps.size() && steps[nextStep].gpu == w->gpu && !steps[nextStep].cpu && !steps[nextStep].fence);
 	return;
       }
       nextStep++;
-    } while(nextStep < steps.count());
+    } while(nextStep < steps.size());
   };
 
   vk::CommandBuffer WorkBatch::WorkBatchResources::getCmd(QueueType qt) {
-    Work c = getCurrent();
-    ASSERT_TRAP(~c.gpu, "get cmd called when no gpu has been chosen (need a thenOnGpu first)");
-    if(c.q && c.q->supports(qt)) {
+    Work* c = &getCurrent();
+    ASSERT_TRAP(~c->gpu, "get cmd called when no gpu has been chosen (need a thenOnGpu first)");
+    if(c->q && c->q->supports(qt)) {
       [[likely]]
-      if(!c.cmd)
-	c.cmd = c.q->getNext();
-      return c.cmd;
+      if(!c->cmd)
+	c->cmd = c->q->getNext();
+      return *c->cmd;
     }
-    size_t gpu = c.gpu;
-    if(c.q) {
-      c = append();
-      c.gpu = gpu;
+    size_t gpu = c->gpu;
+    if(c->q) {
+      c = &append();
+      c->gpu = gpu;
     }
-    c.q = Gpu::get(gpu).getQueue(qt);
-    return c.cmd = q->getNext();
+    c->q = Gpu::get(gpu).getQueue(qt);
+    return *(c->cmd = c->q->getNext());
   };
 
-  vk::CommandBuffer WorkBatchResources::getCmd() {//used for commands that do not care which queue is used
-    Work c = getCurrent();
-    ASSERT_TRAP(~c.gpu, "get cmd called when no gpu has been chosen (need a thenOnGpu first)");
-    if(c.q) {
+  vk::CommandBuffer WorkBatch::WorkBatchResources::getCmd() {//used for commands that do not care which queue is used
+    Work* c = &getCurrent();
+    ASSERT_TRAP(~c->gpu, "get cmd called when no gpu has been chosen (need a thenOnGpu first)");
+    if(c->q) {
       [[likely]]
-      if(!c.cmd) [[unlikely]]
-	c.cmd = c.q->getNext();
+      if(!c->cmd) [[unlikely]]
+	c->cmd = c->q->getNext();
     } else {
-      c.q = Gpu::get(gpu).getQueue(QueueType::eTransfer);
-      c.cmd = q->getNext();
+      c->q = Gpu::get(c->gpu).getQueue(QueueType::eTransfer);
+      c->cmd = c->q->getNext();
     }
-    return c.cmd;
+    return *c->cmd;
   };
 
-  uint32_t WorkBatchResources::currentQFam() {
+  uint32_t WorkBatch::currentQFam() {
     getCmd();//ensures a q has been picked
     return get()->getCurrent().q->family;
   };
@@ -206,40 +210,41 @@ namespace WITE::GPU {
   #define PreRecordBoilerplate \
     auto b = get(); \
     ASSERT_TRAP(b, "attempted to append to very stale batch"); \
-    Util::AdvancedScopeLock lock(&b->mutex); \
+    Util::AdvancedScopeLock lock(b->mutex); \
     ASSERT_TRAP(b->canRecord() && b->cycle == cycle, "invalid state"); \
-    auto& current = b->getCurrent(); \
+    [[maybe_unused]] auto current = &b->getCurrent(); \
     //end pre-record boilerplate. This is a macro bc must emit the lock to the calling scope.
 
   WorkBatch WorkBatch::then(WorkBatch::thenCB cb) {
     PreRecordBoilerplate;
-    if(current.cpu || current.q)
-      current = b.append();
-    current.cpu = cb;
+    if(current->cpu || current->q)
+      current = &b->append();
+    current->cpu = cb;
     return *this;
   };
 
   WorkBatch WorkBatch::thenOnGpu(size_t gpuIdx, thenCB cb) {
     PreRecordBoilerplate;
-    if(current.gpu != gpuIdx && current.gpu != ~0)
-      current = b.append();
-    current.gpu = gpuIdx;
+    if(current->gpu != gpuIdx && current->gpu != ~0)
+      current = &b->append();
+    current->gpu = gpuIdx;
     return *this;
   };
 
   WorkBatch WorkBatch::thenOnAGpu(logicalDeviceMask_t ldm) {
-    if(!Gpu::ldmContains(ldm, current.gpu))
-      thenOnGpu(Gpu::getGpuFor(ldm));
+    PreRecordBoilerplate;
+    if(!Gpu::ldmContains(ldm, current->gpu))
+      thenOnGpu(Gpu::getGpuFor(ldm).getIndex());
     return *this;
   };
 
-  const WorkBatch WorkBatch::submit() {
+  WorkBatch WorkBatch::submit() {
     PreRecordBoilerplate;//submit requires it be in the recording state too
     ASSERT_TRAP(!b->isRecordingRP, "attempted to submit a command buffer while a render pass is being recorded (missing endRenderPass)");
-    state = state_t::pending;
+    b->state = state_t::pending;
     //potential future enhancement: check if all prerequisits are also on this gpu and if so submit this now linked by semaphore
     lock.release();
-    check();//see if this can begin and if so, do it
+    b->check();//see if this can begin and if so, do it
     return *this;
   };
 
@@ -266,18 +271,18 @@ namespace WITE::GPU {
     // }
   };
 
-  bool WorkBatch::isDone() {
+  bool WorkBatch::isDone() const {
     auto b = get();
     if(!b)
       return true;
-    Util::AdvancedScopeLock lock(&b->mutex, 0);
+    Util::AdvancedScopeLock lock(b->mutex, 0);
     if(!lock.isHeld())
       return false;
     return b->state == state_t::done || b->cycle != cycle;
     //cycle check covers race condition if b recycled just now
   };
 
-  bool WorkBatch::isSubmitted() {
+  bool WorkBatch::isSubmitted() const {
     auto b = get();
     if(!b)
       return true;
@@ -285,14 +290,16 @@ namespace WITE::GPU {
     return b->state != state_t::recording || b->cycle != cycle;
   };
 
-  void WorkBatch::putImageInLayout(ImageBase* img, vk::ImageLayout l, QueueType qt,
+  WorkBatch& WorkBatch::putImageInLayout(ImageBase* img, vk::ImageLayout l, QueueType qt,
 				   vk::AccessFlags2 a, vk::PipelineStageFlags2 s) {
-    putImageInLayout(img, l, getGpu().getQueue(qt).family, a, s);
+    putImageInLayout(img, l, getGpu().getQueue(qt)->family, a, s);
+    return *this;
   };
 
-  void WorkBatch::putImageInLayout(ImageBase* img, vk::ImageLayout l, uint32_t qFam,
+  WorkBatch& WorkBatch::putImageInLayout(ImageBase* img, vk::ImageLayout l, uint32_t qFam,
 				   vk::AccessFlags2 a, vk::PipelineStageFlags2 s) {
-    img->accessStateTracker.get(getGpuIdx()).inState({ l, a, s, qFam });
+    img->accessStateTracker.get(getGpuIdx()).inState({ l, a, s, qFam }, *this);
+    return *this;
   };
 
   // bool WorkBatch::isWaiting() {
@@ -306,7 +313,7 @@ namespace WITE::GPU {
   size_t WorkBatch::getGpuIdx() {
     auto b = get();
     Util::AdvancedScopeLock lock(b->mutex);
-    size_t ret = b.getCurrent().gpu;
+    size_t ret = b->getCurrent().gpu;
     ASSERT_TRAP(~ret, "requested gpu when one hasn't been chosen (need a thenOnGpu first)");
     return ret;
   };
@@ -324,27 +331,26 @@ namespace WITE::GPU {
   };
 
   void WorkBatch::batchDistributeAcrossLdm(size_t srcGpu, size_t cntAll, ImageBase** srcs, ImageBase** stagings, void** ram) {//static
-    const size_t maxPerBatch = 64;
-    vk::ImageMemoryBarrier mbs[maxPerBatch * 2];
+    constexpr static size_t maxPerBatch = 64;
+    vk::ImageMemoryBarrier2 mbs[maxPerBatch * 2];
     vk::DependencyInfo di;
-    di.pImageMemoryBarriers = mb;
-    size_t srcGpu = getGpuIdx();
+    di.pImageMemoryBarriers = mbs;
     //NOTE: neither image copy nor memory barrier need any specific queue type, so use whatever owns the first image
-    uint32_t q = srcs[i]->accessStateTracker.getRef(srcGpu).get().queueFam;
+    uint32_t q = srcs[0]->accessStateTracker.getRef(srcGpu).get().queueFam;
 
-#define appendTransition(gpu, img, layout, access, stage) {		\
+#define appendTransition(gpu, img, layout, access, stage, cmd) {	\
       ImageBase::accessState gnu = { vk::ImageLayout::e ##layout, vk::AccessFlagBits2::e ##access, \
 	vk::PipelineStageFlagBits2::e ##stage, q			\
-      }, old = img->accessStateTracker.getRef(gpu).onExternalChange(gnu, *this); \
+      }, old = img->accessStateTracker.getRef(gpu).onExternalChange(gnu, cmd); \
       if(old.layout != gnu.layout || old.queueFam != gnu.queueFam)	\
 	mbs[mbCnt++] = { old.stageMask, old.accessMask, gnu.stagemask, gnu.accessMask, \
 	  gnu.layout, gnu.layout, old.queueFam, gnu.queueFam,		\
 	  img->getVkImage(gpu), img->getAllInclusiveSubresource() };	\
     }
-#define appendDiscard(gpu, img, layout, access, stage) {		\
+#define appendDiscard(gpu, img, layout, access, stage, cmd) {		\
       ImageBase::accessState gnu = { vk::ImageLayout::e ##layout, vk::AccessFlagBits2::e ##access, \
 	vk::PipelineStageFlagBits2::e ##stage, q			\
-      }, old = img->accessStateTracker.getRef(gpu).onExternalChange(gnu, *this); \
+      }, old = img->accessStateTracker.getRef(gpu).onExternalChange(gnu, cmd); \
       mbs[mbCnt++] = { old.stageMask, old.accessMask, gnu.stagemask, gnu.accessMask, \
 	vk::ImageLayout::eUndefined, gnu.layout, old.queueFam, gnu.queueFam, \
 	img->getVkImage(gpu), img->getAllInclusiveSubresource() };	\
@@ -366,10 +372,10 @@ namespace WITE::GPU {
 		    "Attempted to batch distribute an image that is not host read/writable (copy requires linear tiling)");
 	if(stagings && stagings[i]) {
 	  appendDiscard(srcGpu, stagings[i], General, TransferWrite | vk::AccessFlagBits2::eHostRead,
-			Copy | vk::PipelineStageFlagBits2::eHost);
-	  appendTransition(srcGpu, srcs[i], TransferSrcOptimal, TransferRead, Copy);
+			Copy | vk::PipelineStageFlagBits2::eHost, srcCmd);
+	  appendTransition(srcGpu, srcs[i], TransferSrcOptimal, TransferRead, Copy, srcCmd);
 	} else {
-	  appendTransition(srcGpu, srcs[i], General, HostRead, Host);
+	  appendTransition(srcGpu, srcs[i], General, HostRead, Host, srcCmd);
 	}
       }
       doBarrier(srcCmd);
@@ -389,12 +395,12 @@ namespace WITE::GPU {
 	    ASSERT_TRAP(stagings[i]->getMemSize(srcGpu) == stagings[i]->getMemSize(gpu),
 			"Ram size of same image format/dimensions is different on different gpus when attempting to copy");
 	    appendDiscard(gpu, stagings[i], General, TransferRead | vk::AccessFlagBits2::eHostWrite,
-			  Copy | vk::PipelineStageFlagBits2::eHost);
-	    appendDiscard(gpu, srcs[i], TransferDstOptimal, TransferRead, Copy);
+			  Copy | vk::PipelineStageFlagBits2::eHost, cmd);
+	    appendDiscard(gpu, srcs[i], TransferDstOptimal, TransferRead, Copy, cmd);
 	  } else {
 	    ASSERT_TRAP(srcs[i]->getMemSize(srcGpu) == srcs[i]->getMemSize(gpu),
 			"Ram size of same image format/dimensions is different on different gpus when attempting to copy");
-	    appendDiscard(gpu, srcs[i], Preinitialized, HostWrite, Host);
+	    appendDiscard(gpu, srcs[i], Preinitialized, HostWrite, Host, cmd);
 	  }
 	}
 	doBarrier(cmd);
@@ -426,7 +432,7 @@ namespace WITE::GPU {
     di.pImageMemoryBarriers = mb;
     for(size_t i = 0;i < b->currentRP.resourceCount;i++)
       if(b->currentRP.initialLayouts[i] != vk::ImageLayout::eUndefined)
-	appendTransition(gpuIdx, b->currentRP.resources[i], b->currentRP.initialLayouts[i], TopOfPipe, AllGraphics);
+	appendTransition(gpuIdx, b->currentRP.resources[i], b->currentRP.initialLayouts[i], TopOfPipe, AllGraphics, *this);
     doBarrier(cmd);
     cmd.beginRenderPass(&b->currentRP.rpbi);
   };
@@ -493,12 +499,12 @@ namespace WITE::GPU {
 
   vk::Fence WorkBatch::WorkBatchResources::useFence() {
     Work& current = get()->getCurrent();
-    ASSERT_TRAP(~current.gpu, "Attempted to use fence without supplying a gpu");
-    size_t gpuIdx = current.gpu;
-    if(current.fence) {
+    ASSERT_TRAP(~current->gpu, "Attempted to use fence without supplying a gpu");
+    size_t gpuIdx = current->gpu;
+    if(current->fence) {
       [[unlikely]]
       current = append();
-      current.gpu = gpuIdx;
+      current->gpu = gpuIdx;
     }
     vk::Fence* fence = fences.getRef(gpuIdx).allocate();
     if(!*fence) {
@@ -507,7 +513,7 @@ namespace WITE::GPU {
       VK_ASSERT(Gpu::get(gpuIdx).getVkDevice().createFence(&ci, NULL, fence), "Failed to create fence");
     } else
       VK_ASSERT(Gpu::get(gpuIdx).getVkDevice().resetFences(1, fence), "Failed to reset fence");
-    current.fence = fence;
+    current->fence = fence;
     return *fence;
   };
 
@@ -517,7 +523,7 @@ namespace WITE::GPU {
     pi.setSwapchainCount(1)
       .setSwapchains(&swap)
       .setImageIndices(&target);
-    current.q->present(&pi);
+    current->q->present(&pi);
   };
 
   WorkBatch::result WorkBatch::presentImpl(vk::Fence fence, ImageBase* src, vk::Image* swapImages, vk::SwapchainKHR swap,
@@ -543,8 +549,24 @@ namespace WITE::GPU {
   WorkBatch& WorkBatch::present(ImageBase* src, vk::Image* swapImages, vk::SwapchainKHR swap) {
     PreRecordBoilerplate;
     vk::Fence fence = b->useFence();
-    then(thenCB_F::make(fence, src, swapImages, swap, current.q, &presentImpl));
+    then(thenCB_F::make(fence, src, swapImages, swap, current->q, &presentImpl));
     //acquiring the swapchain image has to signal a semaphore or fence. In a then callback because it can block/timeout.
+  };
+
+  WorkBatch& WorkBatch::bindDescriptorSets(vk::PipelineBindPoint pipelineBindPoint, vk::PipelineLayout layout,
+					   uint32_t firstSet, uint32_t descriptorSetCount,
+					   const vk::DescriptorSet* pDescriptorSets,
+					   uint32_t dynamicOffsetCount, const uint32_t* pDynamicOffsets) {
+    PreRecordBoilerplate;
+#error TODO
+  };
+
+  WorkBatch& WorkBatch::nextSubpass(vk::SubpassContents contentType) {
+#error TODO
+  };
+
+  WorkBatch& WorkBatch::bindPipeline(vk::PipelineBindPoint pipelineBindPoint, vk::Pipeline pipeline) {
+#error TODO
   };
 
 };

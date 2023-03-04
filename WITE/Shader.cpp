@@ -3,7 +3,6 @@
 #include "RenderTarget.hpp"
 #include "GpuResource.hpp"
 #include "Gpu.hpp"
-#include "ElasticCommandBuffer.hpp"
 
 namespace WITE::GPU {
 
@@ -29,13 +28,13 @@ namespace WITE::GPU {
     renderablesByLayer[r->layer].remove(r);
   };
 
-  void ShaderBase::renderAllOfTypeTo(RenderTarget& target, ElasticCommandBuffer& cmd, QueueType qt, layerCollection_t& layers, std::initializer_list<RenderableBase*>& except) {// static
+  void ShaderBase::renderAllOfTypeTo(RenderTarget& target, WorkBatch cmd, QueueType qt, layerCollection_t& layers, std::initializer_list<RenderableBase*>& except) {// static
     for(ShaderBase* s : allShaders)
       if(s->queueType == qt)
 	s->renderTo(target, cmd, layers, except);
   };
 
-  void ShaderBase::renderTo(RenderTarget& target, ElasticCommandBuffer& cmd, layerCollection_t& layers, std::initializer_list<RenderableBase*>& except) {
+  void ShaderBase::renderTo(RenderTarget& target, WorkBatch cmd, layerCollection_t& layers, std::initializer_list<RenderableBase*>& except) {
     if(!layers.intersectsMap(renderablesByLayer)) return;
     bool found = false;
     for(auto& layer : layers)
@@ -44,14 +43,13 @@ namespace WITE::GPU {
 	break;
       }
     if(!found) return;
-    auto gpuIdx = cmd.getGpu()->getIndex();
+    auto gpuIdx = cmd.getGpu().getIndex();
     vk::Pipeline pipe;
     if(!target.pipelinesByShaderId.contains(gpuIdx, id))
       pipe = target.pipelinesByShaderId.get(gpuIdx, id) = createPipe(gpuIdx, target.renderPasses.get(gpuIdx));
     else
       pipe = target.pipelinesByShaderId.get(gpuIdx, id);
-    auto bp = getBindPoint();
-    cmd->bindPipeline(bp, pipe);
+    cmd.bindPipeline(getBindPoint(), pipe);
     preRender(target, cmd, layers, gpuIdx);
     for(auto& pair : renderablesByLayer)
       if(layers.contains(pair.first))

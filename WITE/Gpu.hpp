@@ -50,7 +50,7 @@ namespace WITE::GPU {
     std::array<std::atomic_uint64_t, VK_MAX_MEMORY_HEAPS> freeMemoryByHeap;
 
     Gpu(size_t idx, vk::PhysicalDevice);
-
+    Gpu(Gpu&&) = delete;
   public:
     static void init(size_t logicalDeviceCount, const float* priorities, const char* appName,
 		     std::initializer_list<const char*> appRequestedLayers,
@@ -60,7 +60,7 @@ namespace WITE::GPU {
     static Gpu& get(size_t);
     static inline size_t getGpuCount() { return gpuCount; };
     static uint8_t gpuCountByLdm(logicalDeviceMask_t ldm);
-    static Gpu* getGpuFor(logicalDeviceMask_t ldm);
+    static Gpu& getGpuFor(logicalDeviceMask_t ldm);
     static inline bool ldmHasMultiplePhysical(logicalDeviceMask_t ldm) { return gpuCountByLdm(ldm) > 1; };
     static inline bool ldmContains(logicalDeviceMask_t ldm, size_t gpu) { return gpuMaskByLdm(ldm) & (1 << gpu); };
     static inline Collections::BitmaskIterator gpusForLdm(logicalDeviceMask_t ldm) { return { gpuMaskByLdm(ldm) }; };

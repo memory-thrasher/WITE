@@ -64,6 +64,7 @@ namespace WITE::GPU {
     vk::ImageSubresourceRange getAllInclusiveSubresource();
     
     void populateDSWrite(vk::WriteDescriptorSet* out, size_t gpuIdx) override;
+    void ensureExists(size_t gpu);
     size_t getMemSize(size_t gpu);
   };
 

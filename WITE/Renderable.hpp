@@ -32,7 +32,8 @@ namespace WITE::GPU {
   //Use the specific renderable implementation for every possible shader.
   template<acceptShaderData(D)> class Renderable : public RenderableBase {
   private:
-    Shader<passShaderData(D)>* shader;
+    typedef Shader<passShaderData(D)> shader_t;
+    shader_t shader;
     typedef ShaderDescriptor<passShaderData(D), ShaderResourceProvider::eRenderable> data_t;
     data_t data;
   protected:
@@ -43,9 +44,9 @@ namespace WITE::GPU {
     template<class... R> void setResources(R... resources) {
       data.setResources(std::forward<R...>(resources...));
     };
-    void bind(size_t gpu, ElasticCommandBuffer& cmd) {
+    void bind(size_t gpu, WorkBatch cmd) {
       auto ds = data.get(gpu);
-      cmd->bindDescriptorSets(shader->getBindPoint(), 2, 1, &ds, 0, NULL);
+      cmd.bindDescriptorSets(shader->getBindPoint(), shader_t::getLayout(gpu), 2, 1, &ds, 0, NULL);
     };
     virtual ~Renderable() {
       shader->remove(this);

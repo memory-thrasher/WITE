@@ -30,15 +30,14 @@ namespace WITE::GPU {
     getRenderInfo(&ri, cmd.getGpuIdx());
     cmd.beginRenderPass(&ri);
     for(const RenderStep& step : steps) {
-      queue = gpu->getQueue(step.type);
       if(step.type == QueueType::eCompute && !cmd.getGpu().canGraphicsCompute()) {
 	CRASH("NOT YET IMPLEMENTED: render pass containing both graphics and compute steps, on a gpu that does not have a queue family that supports both (must split render pass between queues, or make multiple RPs)");
       } else {
-	cmd->nextSubpass(vk::SubpassContents::eInline);
+	cmd.nextSubpass(vk::SubpassContents::eInline);
       }
       ShaderBase::renderAllOfTypeTo(*this, cmd, step.type, step.layers, except);
     }
-    cmd->endRenderPass();
+    cmd.endRenderPass();
     renderQueued(cmd);
   };
 

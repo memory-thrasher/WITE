@@ -26,8 +26,8 @@ namespace WITE::GPU {
     static Util::SyncLock layoutsByData_mutex;
     std::map<layer_t, Collections::FrameBufferedCollection<RenderableBase*>> renderablesByLayer;
     const QueueType queueType;
-    static void renderAllOfTypeTo(RenderTarget&, ElasticCommandBuffer& cmd, QueueType, layerCollection_t&, std::initializer_list<RenderableBase*>& except);
-    void renderTo(RenderTarget&, ElasticCommandBuffer& cmd, layerCollection_t&, std::initializer_list<RenderableBase*>& except);
+    static void renderAllOfTypeTo(RenderTarget&, WorkBatch cmd, QueueType, layerCollection_t&, std::initializer_list<RenderableBase*>& except);
+    void renderTo(RenderTarget&, WorkBatch cmd, layerCollection_t&, std::initializer_list<RenderableBase*>& except);
     friend class RenderTarget;
   protected:
     ShaderBase(QueueType qt);
@@ -35,7 +35,7 @@ namespace WITE::GPU {
     ShaderBase(ShaderBase&) = delete;
     void add(RenderableBase*);
     void remove(RenderableBase*);
-    virtual void preRender(RenderTarget& target, ElasticCommandBuffer& cmd, layerCollection_t& layers, size_t gpu) = 0;
+    virtual void preRender(RenderTarget& target, WorkBatch cmd, layerCollection_t& layers, size_t gpu) = 0;
     virtual vk::PipelineBindPoint getBindPoint() = 0;
     static bool hasLayout(ShaderData::hashcode_t d, size_t gpuIdx);
     static vk::PipelineLayout getLayout(ShaderData::hashcode_t d, size_t gpuIdx);
@@ -52,6 +52,15 @@ namespace WITE::GPU {
   protected:
     static constexpr auto DHC = parseShaderData<D>().hashCode();
     Shader(QueueType qt) : ShaderBase(qt) {};
+    void preRender(RenderTarget& target, WorkBatch cmd, layerCollection_t& layers, size_t gpu) override {
+      vk::DescriptorSet dss[2] = {
+	globalResources.get(gpu),
+	target.getDescriptor<passShaderData(D)>()->get(gpu)
+      };
+      cmd.bindDescriptorSets(getBindPoint(), getLayout(gpu), 0, 2, dss, 0, NULL);
+    };
+  public:
+    constexpr static auto dataLayout = D;
     static vk::PipelineLayout getLayout(size_t gpuIdx) {
       if(ShaderBase::hasLayout(D, gpuIdx))
 	return ShaderBase::getLayout(D, gpuIdx);
@@ -63,15 +72,6 @@ namespace WITE::GPU {
       vk::PipelineLayoutCreateInfo pipeCI { {}, 3, layouts };
       ShaderBase::makeLayout(DHC, &pipeCI, gpuIdx);
     };
-    void preRender(RenderTarget& target, ElasticCommandBuffer& cmd, layerCollection_t& layers, size_t gpu) override {
-      vk::DescriptorSet dss[2] = {
-	globalResources.get(gpu),
-	target.getDescriptor<passShaderData(D)>()->get(gpu)
-      };
-      cmd->bindDescriptorSets(getBindPoint(), 0, 2, dss, 0, NULL);
-    };
-  public:
-    constexpr static auto dataLayout = D;
     //an instance-level resource could be a small buffer with a color for tint etc.
     //writable instance-level resources are useless because the instance may be executed to multiple targets in parallel
     template<class... R> inline void setGlobalResources(R... resources) {

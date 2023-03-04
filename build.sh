@@ -24,8 +24,8 @@ fi
 
 #compile to static
 find $BUILDLIBS $BUILDAPP $BUILDTESTS -name '*.cpp' -type f -print0 |
-    while IFS= read -d '' SRCFILE && [ $(cat ${ERRLOGBITDIR}/*-${ERRLOGBIT} | wc -l) -eq 0 ]; do
-	if [ $(cat ${ERRLOGBITDIR}/*-${ERRLOGBIT} 2>/dev/null | wc -l) -gt 0 ]; then break; fi;
+    while IFS= read -d '' SRCFILE && [ $(cat ${ERRLOGBITDIR}/*-${ERRLOGBIT} 2>/dev/null | wc -l) -eq 0 ]; do
+	if [ $(cat 2>/dev/null ${ERRLOGBITDIR}/*-${ERRLOGBIT} 2>/dev/null | wc -l) -gt 0 ]; then break; fi;
 	DSTFILE="${OUTDIR}/${SRCFILE%.*}.o"
 	DEPENDENCIES="${OUTDIR}/${SRCFILE%.*}.d"
 	THISERRLOG="${ERRLOGBITDIR}/$(echo "${SRCFILE}" | tr '/' '-')-${ERRLOGBIT}"
@@ -60,7 +60,8 @@ find $BUILDLIBS $BUILDAPP $BUILDTESTS -name '*.cpp' -type f -print0 |
 
 #TODO other file types (shaders etc.)
 
-while pgrep $COMPILER &>/dev/null && [ $(cat ${ERRLOGBITDIR}/*-${ERRLOGBIT} | wc -l) -eq 0 ]; do sleep 0.2s; done
+while pgrep $COMPILER &>/dev/null && [ $(cat 2>/dev/null ${ERRLOGBITDIR}/*-${ERRLOGBIT} | wc -l) -eq 0 ]; do sleep 0.2s; done
+sleep 1s;
 cat ${ERRLOGBITDIR}/*-${ERRLOGBIT} >"${ERRLOG}"
 
 #libs

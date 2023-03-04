@@ -339,12 +339,12 @@ namespace WITE::GPU {
 
   Platform::ThreadResource<uint64_t> ldmSalt;
 
-  Gpu* Gpu::getGpuFor(logicalDeviceMask_t ldm) {//static
+  Gpu& Gpu::getGpuFor(logicalDeviceMask_t ldm) {//static
     deviceMask_t options = gpuMaskByLdm(ldm);
     auto pc = std::popcount(options);
-    if(pc <= 0) return NULL;
-    if(pc == 1) return &get(Util::unroll(options));
-    return &get(Util::unrollNth(options, (*ldmSalt.get())++ % pc));
+    ASSERT_TRAP(pc > 0, "invalid LDM");
+    if(pc == 1) return get(Util::unroll(options));
+    return get(Util::unrollNth(options, (*ldmSalt.get())++ % pc));
   };
 
   deviceMask_t Gpu::gpuMaskByLdm(logicalDeviceMask_t ldm) {//static

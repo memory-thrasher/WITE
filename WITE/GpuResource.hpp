@@ -9,8 +9,6 @@
 
 namespace WITE::GPU {
 
-  class ElasticCommandBuffer;
-
   struct ImageFormatFamily {
     uint8_t components, componentsSize;
     constexpr ImageFormatFamily(uint8_t comp, uint8_t comp_size) : components(comp), componentsSize(comp_size) {};

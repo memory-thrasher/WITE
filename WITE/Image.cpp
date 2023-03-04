@@ -115,7 +115,7 @@ namespace WITE::GPU {
       return;
     }
     vk::ImageMemoryBarrier2 mb {
-      old.stageMask, old.accessMask, gnu.stageMask, gnu.accessMask, old.layout, gnu.layout, old.queueFam, gnu.queueFam,
+      old.stageMask, old.accessMask, gnu->stageMask, gnu->accessMask, old.layout, gnu->layout, old.queueFam, gnu->queueFam,
       getVkImage(gpuIdx), getAllInclusiveSubresource()
     };
     vk::DependencyInfo di;
@@ -146,7 +146,11 @@ namespace WITE::GPU {
     out->dstArrayElement = 0;
   };
 
-  size_t getMemSize(size_t gpu) {
+  void ImageBase::ensureExists(size_t gpu) {
+    images.getPtr(gpu);
+  };
+
+  size_t ImageBase::getMemSize(size_t gpu) {
     ensureExists(gpu);
     return mem.getRef(gpu).mai.allocationSize;
   }

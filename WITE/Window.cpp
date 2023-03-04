@@ -29,22 +29,23 @@ namespace WITE::GPU {
   Window::Window(Util::IntBox3D box) : Window(box.minx, box.miny, box.width(), box.height()) {};
 
   //a rendered image is always blitted to the window's swapchain image (for now. HUD overlay might make sense to take the rendered image as an input attachment and color attach the swapchain image. Or maybe the hud elements will be rendered to a mostly transparent image and the two or more are composited here by alpha)
-  Window::Window(int x, int y, int w, int h) : x(x), y(y), w(w), h(h) {
-    swapCI.setMinImageCount(3).setImageColorSpace(vk::ColorSpaceKHR::ePassThroughExt).setImageArrayLayers(1)
+  Window::Window(uint32_t x, uint32_t y, uint32_t w, uint32_t h) // : x(x), y(y), w(w), h(h)
+  {
+    swapCI.setMinImageCount(3).setImageColorSpace(vk::ColorSpaceKHR::ePassThroughEXT).setImageArrayLayers(1)
       .setImageUsage(vk::ImageUsageFlagBits::eTransferDst).setImageSharingMode(vk::SharingMode::eExclusive)
       .setPreTransform(vk::SurfaceTransformFlagBitsKHR::eIdentity).setPresentMode(vk::PresentModeKHR::eMailbox)
       .setClipped(true);
     window = SDL_CreateWindow("WITE", x, y, w, h, SDL_WINDOW_VULKAN | SDL_WINDOW_SHOWN | SDL_WINDOW_BORDERLESS);
-    VkSurfaceKHR ts;
-    ASSERT_TRAP(SDL_Vulkan_CreateSurface(window, Gpu::getVkInstance(), &ts), "Failed to create vk surface");
-    swapCI.setSurface(ts);
+    VkSurfaceKHR surface;
+    ASSERT_TRAP(SDL_Vulkan_CreateSurface(window, Gpu::getVkInstance(), &surface), "Failed to create vk surface");
+    swapCI.setSurface(surface);
     //now that the window exists, we can ask each device if it can render to it
     vk::Bool32 supported = false;
     for(size_t i = 0;i < Gpu::getGpuCount() && !presentQueue;i++) {
       Gpu& g = Gpu::get(i);
       Queue* fams[2] = { g.getGraphics(), g.getTransfer() };
       for(size_t j = 0;j < 2 && !presentQueue;j++) {
-	g->getPhysical().getSurfaceSupportKHR(fams[j]->family, surface, &supported);
+	VK_ASSERT(g.getPhysical().getSurfaceSupportKHR(fams[j]->family, surface, &supported), "failed to query surface support");
 	if(supported) {
 	  presentQueue = fams[j];
 	}
@@ -56,42 +57,42 @@ namespace WITE::GPU {
     auto phys = gpu->getPhysical();
     {
       VK_ASSERT(phys.getSurfaceFormatsKHR(surface, &formatCount, NULL), "Could not count surface formats");
-      auto formats = std::make_unique<vk::SurfaceFormat[]>(formatCount);
+      auto formats = std::make_unique<vk::SurfaceFormatKHR[]>(formatCount);
       VK_ASSERT(phys.getSurfaceFormatsKHR(surface, &formatCount, formats.get()), "Could not enumerate surface formats");
       swapCI.imageFormat = formats[0].format;
       if(swapCI.imageFormat == vk::Format::eUndefined)
-	swapCI.imageFormat = vk::Format::eB8G8R8_UNORM;
+	swapCI.imageFormat = vk::Format::eB8G8R8Unorm;
     }
-    VK_ASSERT(phs.getSurfaceCapabilitiesKHR(surface, &surfCaps), "Could not fetch surface capabilities.");
+    VK_ASSERT(phys.getSurfaceCapabilitiesKHR(surface, &surfCaps), "Could not fetch surface capabilities.");
     swapCI.setImageExtent({
 	Util::clamp(w, surfCaps.minImageExtent.width,  surfCaps.maxImageExtent.width),
 	Util::clamp(h, surfCaps.minImageExtent.height, surfCaps.maxImageExtent.height)
       });
-    swapCI.setCompositeAlpha(static_cast<vk::CompositeAlphaFlagBitsKHR>(1 << (ffs(surfCaps.supportedCompositeAlpha) - 1)));
+    swapCI.setCompositeAlpha(static_cast<vk::CompositeAlphaFlagBitsKHR>(1 << (ffs(static_cast<vk::CompositeAlphaFlagsKHR::MaskType>(surfCaps.supportedCompositeAlpha)) - 1)));
     auto dev = gpu->getVkDevice();
     VK_ASSERT(dev.createSwapchainKHR(&swapCI, ALLOCCB, &swap), "could not create swapchain");
-    VK_ASSERT(dev.getSwapchainImagesKHR(swapchain, &swapImageCount, NULL), "Could not count swapchain images.");
-    swapImages = std::make_unique<vk::Image>(swapImageCount);
-    VK_ASSERT(dev.getSwapchainImagesKHR(swapchain, &swapImageCount, swapImages.get()), "Could not get swapchain images");
+    VK_ASSERT(dev.getSwapchainImagesKHR(swap, &swapImageCount, NULL), "Could not count swapchain images.");
+    swapImages = std::make_unique<vk::Image[]>(swapImageCount);
+    VK_ASSERT(dev.getSwapchainImagesKHR(swap, &swapImageCount, swapImages.get()), "Could not get swapchain images");
   };
 
   void Window::addInstanceExtensionsTo(std::vector<const char*>& extensions) {//static
-    auto tempWin = SDL_CreateWindow(0, 0, 100, 100, SDL_WINDOW_VULKAN | SDL_WINDOW_HIDDEN);
+    auto tempWin = SDL_CreateWindow("surface probe", 0, 0, 100, 100, SDL_WINDOW_VULKAN | SDL_WINDOW_HIDDEN);
     unsigned int cnt = 0;
     ASSERT_TRAP(SDL_Vulkan_GetInstanceExtensions(tempWin, &cnt, NULL), "failed to count vk extensions required by sdl");
-    const char* names = new char[cnt];
+    const char**names = new const char*[cnt];
     ASSERT_TRAP(SDL_Vulkan_GetInstanceExtensions(tempWin, &cnt, names), "failed to list vk extensions required by sdl");
     SDL_DestroyWindow(tempWin);
     extensions.reserve(extensions.size() + cnt);
     for(size_t i = 0;i < cnt;i++)
       extensions.push_back(names[i]);
+    delete [] names;
   };
 
   void Window::drawImpl(ImageBase* img) {
     WorkBatch cmd(presentQueue);
-    ASSERT_TRAP(swapCI.extent == img->getVkSize(), "NYI: rendering image of different size than window");
-    cmd.present(img, swapImages.get(), swap)
-      .start();
+    ASSERT_TRAP(swapCI.imageExtent == img->getVkSize(), "NYI: rendering image of different size than window");
+    cmd.present(img, swapImages.get(), swap).submit();
   };
 
 }

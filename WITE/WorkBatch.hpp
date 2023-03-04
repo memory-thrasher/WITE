@@ -62,9 +62,11 @@ namespace WITE::GPU {
       void reset();
       bool canStart();
       void execute();//executes the current and maybe more
+      void check();
       vk::CommandBuffer getCmd(QueueType qt);
       vk::CommandBuffer getCmd();
       vk::Fence useFence();
+      WorkBatch&& lea();
     };
 
     static Collections::IterableBalancingThreadResourcePool<WorkBatchResources> allBatches;
@@ -74,7 +76,7 @@ namespace WITE::GPU {
     WorkBatchResources* batch;
     uint64_t cycle;
 
-    inline WorkBatchResources* get() { return batch && cycle == batch->cycle ? batch : NULL; };
+    inline WorkBatchResources* get() const { return batch && cycle == batch->cycle ? batch : NULL; };
     inline WorkBatchResources& operator -> () { return *get(); };
     bool isDone(Work&);
     inline vk::CommandBuffer getCmd(QueueType qt) { return get()->getCmd(qt); };
@@ -88,6 +90,7 @@ namespace WITE::GPU {
     static result presentImpl(vk::Fence fence, ImageBase*, vk::Image*, vk::SwapchainKHR, Queue*, WorkBatch);
     void presentImpl2(vk::SwapchainKHR, uint32_t);
 
+    WorkBatch(WorkBatchResources* batch);
   public:
     WorkBatch(uint64_t gpuIdx = -1);
     WorkBatch(logicalDeviceMask_t ldm);
@@ -96,7 +99,6 @@ namespace WITE::GPU {
 
     static void init();
 
-    void check();
     WorkBatch then(thenCB);
     WorkBatch thenOnGpu(size_t gpuIdx, thenCB = NULL);
     WorkBatch thenOnAGpu(logicalDeviceMask_t ldm);
@@ -110,7 +112,7 @@ namespace WITE::GPU {
     operator bool() const { return !isDone(); };
     auto operator <=>(const WorkBatch&) const = default;
 
-    //begin vk::cmd stuff. All return a GpuPromise& because whether a new cmd and promise has to be made is known only at runtime
+    //begin vk::cmd stuff.
     WorkBatch& putImageInLayout(ImageBase*, vk::ImageLayout, QueueType,
 				vk::AccessFlags2 = vk::AccessFlagBits2::eNone,
 				vk::PipelineStageFlags2 = vk::PipelineStageFlagBits2::eAllCommands);
@@ -128,6 +130,11 @@ namespace WITE::GPU {
     WorkBatch& copyImageToVk(ImageBase*, vk::Image, vk::ImageLayout);//mostly for swapchains
     // WorkBatch& copyImageToDev(Image<ISD>, size_t sgpu, size_t dgpu);
     WorkBatch& present(ImageBase*, vk::Image* swapImages, vk::SwapchainKHR swap);
+    WorkBatch& bindDescriptorSets(vk::PipelineBindPoint pipelineBindPoint, vk::PipelineLayout layout,
+				  uint32_t firstSet, uint32_t descriptorSetCount, const vk::DescriptorSet* pDescriptorSets,
+				  uint32_t dynamicOffsetCount, const uint32_t* pDynamicOffsets);
+    WorkBatch& nextSubpass(vk::SubpassContents = vk::SubpassContents::eInline);
+    WorkBatch& bindPipeline(vk::PipelineBindPoint pipelineBindPoint, vk::Pipeline pipeline);
   };
 
 }

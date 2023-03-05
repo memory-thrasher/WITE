@@ -19,6 +19,7 @@ namespace WITE::GPU {
   class WorkBatch {
   public:
     enum class result { done, yield };
+    //acceptable forms of callback:
     typedefCB(thenCB, result, WorkBatch);
     struct renderInfo {
       static constexpr size_t MAX_RESOURCES = 4;//color + depth, x2 if VR, what more could you want?
@@ -111,6 +112,24 @@ namespace WITE::GPU {
     // bool isWaiting() const;
     operator bool() const { return !isDone(); };
     auto operator <=>(const WorkBatch&) const = default;
+
+    //SFINAE overload to support lambdas, including options to ignore the param or return void (mapped to done)
+    template<class CB> requires requires(CB cb, WorkBatch wb) { {cb(wb)} -> std::convertible_to<result>; }
+    WorkBatch then(CB cb) {
+      return then(thenCB_F::make(cb));
+    }
+    template<class CB> requires requires(CB cb) { {cb()} -> std::convertible_to<result>; }
+    WorkBatch then(CB cb) {
+      return then(thenCB_F::make([cb](WorkBatch){ return cb(); }));
+    }
+    template<class CB> requires requires(CB cb) { {cb()} -> std::same_as<void>; }
+    WorkBatch then(CB cb) {
+      return then(thenCB_F::make([cb](WorkBatch){ cb(); return result::done; }));
+    }
+    template<class CB> requires requires(CB cb, WorkBatch wb) { {cb(wb)} -> std::same_as<void>; }
+    WorkBatch then(CB cb) {
+      return then(thenCB_F::make([cb](WorkBatch wb){ cb(wb); return result::done; }));
+    }
 
     //begin vk::cmd stuff.
     WorkBatch& putImageInLayout(ImageBase*, vk::ImageLayout, QueueType,

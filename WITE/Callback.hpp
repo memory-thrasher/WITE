@@ -49,6 +49,8 @@ namespace WITE::Util {
   };
 
   template<class RET, class... RArgs> class CallbackFactory {
+  private:
+    template<class L> static auto lambdaWrapper(L l, RArgs... rargs) { return l(std::forward<RArgs>(rargs)...); };
   public:
     template<class T, class... CArgs> class Callback : public Callback_t<RET, RArgs...> {
     private:
@@ -82,6 +84,8 @@ namespace WITE::Util {
     make(U* owner, CArgs... cargs, RET(U::*const func)(CArgs..., RArgs...));
     template<class... CArgs> constexpr static callback_t
     make(CArgs... cargs, RET(*const func)(CArgs..., RArgs...));
+    template<class L> requires requires(RArgs... ra) { {L()(std::forward<RArgs>(ra)...)} -> std::convertible_to<RET>; }
+    constexpr static callback_t make(L);
   };
 
   template<class RET, class... RArgs> template<class U, class... CArgs> constexpr CallbackPtr<RET, RArgs...>
@@ -93,6 +97,13 @@ namespace WITE::Util {
   CallbackFactory<RET, RArgs...>::make(CArgs... cargs, RET(*const func)(CArgs..., RArgs...)) {
     return CallbackPtr(new CallbackFactory<RET, RArgs...>::StaticCallback<CArgs...>(func, std::forward<CArgs>(cargs)...));
   }
+
+  //wrapper for lambdas
+  template<class RET, class... RArgs>
+  template<class L> requires requires(RArgs... ra) { {L()(std::forward<RArgs>(ra)...)} -> std::convertible_to<RET>; }
+  constexpr CallbackPtr<RET, RArgs...> CallbackFactory<RET, RArgs...>::make(L l) {
+    return make<L>(l, &CallbackFactory<RET, RArgs...>::lambdaWrapper);
+  };
 
 #define typedefCB(name, ...) typedef WITE::Util::CallbackFactory<__VA_ARGS__> name## _F; typedef typename name## _F::callback_t name ; typedef WITE::Util::CallbackConstexprWrapper<__VA_ARGS__> name## _ce ;
 

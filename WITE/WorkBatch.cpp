@@ -338,20 +338,22 @@ namespace WITE::GPU {
     //NOTE: neither image copy nor memory barrier need any specific queue type, so use whatever owns the first image
     uint32_t q = srcs[0]->accessStateTracker.getRef(srcGpu).get().queueFam;
 
-#define appendTransition(gpu, img, layout, access, stage, cmd) {	\
-      ImageBase::accessState gnu = { vk::ImageLayout::e ##layout, vk::AccessFlagBits2::e ##access, \
+#define appendTransition(gpu, img, _layout, access, stage, cmd) {	\
+      ImageBase::accessState gnu = { _layout,				\
+	vk::AccessFlagBits2::e ##access,				\
 	vk::PipelineStageFlagBits2::e ##stage, q			\
       }, old = img->accessStateTracker.getRef(gpu).onExternalChange(gnu, cmd); \
       if(old.layout != gnu.layout || old.queueFam != gnu.queueFam)	\
-	mbs[mbCnt++] = { old.stageMask, old.accessMask, gnu.stagemask, gnu.accessMask, \
+	mbs[mbCnt++] = { old.stageMask, old.accessMask, gnu.stageMask, gnu.accessMask, \
 	  gnu.layout, gnu.layout, old.queueFam, gnu.queueFam,		\
 	  img->getVkImage(gpu), img->getAllInclusiveSubresource() };	\
     }
-#define appendDiscard(gpu, img, layout, access, stage, cmd) {		\
-      ImageBase::accessState gnu = { vk::ImageLayout::e ##layout, vk::AccessFlagBits2::e ##access, \
+#define appendDiscard(gpu, img, _layout, access, stage, cmd) {		\
+      ImageBase::accessState gnu = { vk::ImageLayout::e ##_layout,	\
+	vk::AccessFlagBits2::e ##access,				\
 	vk::PipelineStageFlagBits2::e ##stage, q			\
       }, old = img->accessStateTracker.getRef(gpu).onExternalChange(gnu, cmd); \
-      mbs[mbCnt++] = { old.stageMask, old.accessMask, gnu.stagemask, gnu.accessMask, \
+      mbs[mbCnt++] = { old.stageMask, old.accessMask, gnu.stageMask, gnu.accessMask, \
 	vk::ImageLayout::eUndefined, gnu.layout, old.queueFam, gnu.queueFam, \
 	img->getVkImage(gpu), img->getAllInclusiveSubresource() };	\
     }
@@ -365,6 +367,7 @@ namespace WITE::GPU {
       size_t cnt = std::min(cntAll, maxPerBatch);
       size_t mbCnt = 0;
       WorkBatch srcCmd(srcGpu);
+      WorkBatch cleanupCmd;
       //host access requires linear tiling and general layout. General layout allows all operation.
       for(size_t i = 0;i < cnt;i++) {
 	ASSERT_TRAP(((stagings && stagings[i] ? stagings[i] : srcs[i])->slotData.usage & GpuResource::MUSAGE_ANY_HOST) ==
@@ -373,21 +376,36 @@ namespace WITE::GPU {
 	if(stagings && stagings[i]) {
 	  appendDiscard(srcGpu, stagings[i], General, TransferWrite | vk::AccessFlagBits2::eHostRead,
 			Copy | vk::PipelineStageFlagBits2::eHost, srcCmd);
-	  appendTransition(srcGpu, srcs[i], TransferSrcOptimal, TransferRead, Copy, srcCmd);
+	  appendTransition(srcGpu, srcs[i], vk::ImageLayout::eTransferSrcOptimal, TransferRead, Copy, srcCmd);
 	} else {
-	  appendTransition(srcGpu, srcs[i], General, HostRead, Host, srcCmd);
+	  appendTransition(srcGpu, srcs[i], vk::ImageLayout::eGeneral, HostRead, Host, srcCmd);
 	}
       }
       doBarrier(srcCmd);
-      for(size_t i = 0;i < cnt;i++)
-	if(stagings && stagings[i])
+      void** ramCopy = new void*[cnt];
+      memcpy(ramCopy, ram, cnt * sizeof(void*));
+      ImageBase** srcCopy = new ImageBase*[cnt];
+      for(size_t i = 0;i < cnt;i++) {
+	if(stagings && stagings[i]) {
+	  srcCopy[i] = stagings[i];
 	  srcCmd.copyImage(srcs[i], stagings[i]);
-      for(size_t i = 0;i < cnt;i++)
-	srcCmd.then(thenCB_F::make((stagings && stagings[i] ? stagings[i] : srcs[i])->mem.getPtr(srcGpu), ram[i], VRam::read));
+	} else {
+	  srcCopy[i] = srcs[i];
+	}
+      }
+      srcCmd.then([srcGpu, cnt, ramCopy, srcCopy]() {
+	for(size_t i = 0;i < cnt;i++)
+	  srcCopy[i]->mem.getPtr(srcGpu)->read(ramCopy[i]);
+      });
       srcCmd.submit();
+      cleanupCmd.mustHappenAfter(srcCmd);
+      cleanupCmd.then([ramCopy, srcCopy](){
+	delete [] ramCopy;
+	delete [] srcCopy;
+      });
       //note: splitting to one cmd per gpu so they can be parallel
       for(size_t gpu = 0;gpu < Gpu::getGpuCount();gpu++) {
-	if(gpu == srcGpu || !Gpu::ldmContains(src[i]->slotData.logicalDeviceMask, gpu)) continue;
+	if(gpu == srcGpu || !Gpu::ldmContains(srcs[gpu]->slotData.logicalDeviceMask, gpu)) continue;
 	WorkBatch cmd(gpu);
 	cmd.mustHappenAfter(srcCmd);
 	for(size_t i = 0;i < cnt;i++) {
@@ -404,20 +422,22 @@ namespace WITE::GPU {
 	  }
 	}
 	doBarrier(cmd);
-	for(size_t i = 0;i < cnt;i++)
-	  cmd.then(thenCB_F::make((stagings && stagings[i] ? stagings[i] : srcs[i])->mem.getPtr(gpu), ram[i], VRam::write));
+	cmd.then([gpu, cnt, ramCopy, srcCopy]() {
+	  for(size_t i = 0;i < cnt;i++)
+	    srcCopy[i]->mem.getPtr(gpu)->write(ramCopy[i]);
+	});
 	cmd.thenOnGpu(gpu);
 	for(size_t i = 0;i < cnt;i++)
 	  if(stagings && stagings[i])
 	    cmd.copyImage(stagings[i], srcs[i]);
 	cmd.submit();
+	cleanupCmd.mustHappenAfter(cmd);
       }
+      cleanupCmd.submit();
       cntAll -= cnt;
       srcs += cnt;
-      dsts += cnt;
       if(stagings) stagings += cnt;
     }
-    return *this;
   }
 
   WorkBatch& WorkBatch::beginRenderPass(const renderInfo* ri) {
@@ -427,12 +447,12 @@ namespace WITE::GPU {
     b->currentRP = *ri;
     auto cmd = getCmd(QueueType::eGraphics);
     size_t gpuIdx = getGpuIdx();
-    vk::ImageMemoryBarrier mbs[renderInfo::MAX_RESOURCES];
+    vk::ImageMemoryBarrier2 mbs[renderInfo::MAX_RESOURCES];
     vk::DependencyInfo di;
-    di.pImageMemoryBarriers = mb;
+    di.pImageMemoryBarriers = mbs;
     for(size_t i = 0;i < b->currentRP.resourceCount;i++)
       if(b->currentRP.initialLayouts[i] != vk::ImageLayout::eUndefined)
-	appendTransition(gpuIdx, b->currentRP.resources[i], b->currentRP.initialLayouts[i], TopOfPipe, AllGraphics, *this);
+	appendTransition(gpuIdx, b->currentRP.resources[i], b->currentRP.initialLayouts[i], ShaderRead, AllGraphics, *this);
     doBarrier(cmd);
     cmd.beginRenderPass(&b->currentRP.rpbi);
   };

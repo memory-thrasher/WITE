@@ -38,10 +38,5 @@ namespace WITE::GPU {
     ~Buffer() override = default;
   };
 
-  template<BufferSlotData BSD> struct GpuResourceFactory<BSD> {
-    typedef Buffer<BSD> type;
-    auto operator()() { return type(); };
-  };
-
 }
 

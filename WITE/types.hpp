@@ -1,7 +1,7 @@
 #pragma once
 
-#include "StructuralConstList.hpp"
 #include "constants.hpp"
+#include "LiteralList.hpp"
 
 namespace WITE {
 
@@ -9,7 +9,7 @@ namespace WITE {
 
   namespace GPU {
 
-    typedef const Collections::StructuralConstList<layer_t> layerCollection_t;
+    typedef Collections::LiteralList<layer_t> layerCollection_t;
 
     enum class QueueType { eGraphics, eTransfer, eCompute };
 

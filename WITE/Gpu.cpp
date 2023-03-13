@@ -97,7 +97,7 @@ namespace WITE::GPU {
   std::unique_ptr<struct Gpu::LogicalGpu[]> Gpu::logicalDevices;
   size_t Gpu::logicalDeviceCount;
   bool Gpu::running;
-  char *appName[1024];
+  char Gpu::appName[1024];
 
   Gpu::Gpu(size_t idx, vk::PhysicalDevice pv) : idx(idx), pv(pv) {
     pv.getProperties2(&pvp);

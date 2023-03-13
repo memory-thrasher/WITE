@@ -1,7 +1,7 @@
 BUILDLIBS="WITE"
 BUILDTESTS="Tests"
 BUILDAPP=""
-LINKOPTS="-lrt -latomic -lvulkan"
+LINKOPTS="-lrt -latomic -lvulkan -lSDL2"
 BOTHOPTS="-pthread -DDEBUG -g"
 BASEDIR="$(cd "$(dirname "$0")"; pwd -L)"
 OUTDIR="${BASEDIR}/build" #TODO not just WITE but all subdirs
@@ -21,6 +21,11 @@ WORKNICE="nice -n10"
 if [ -z "$VK_INCLUDE" -a ! -z "$VK_SDK_PATH" ]; then
     VK_INCLUDE="-I${VK_SDK_PATH}/Include -I${VK_SDK_PATH}/Third-Party/Include"
 fi
+
+find "${OUTDIR}" -type f -iname '*.o' -print0 |
+    while IFS= read -d '' OFILE; do
+	find $BUILDLIBS $BUILDAPP $BUILDTESTS -type f -iname "$(basename "${OFILE%.*}.cpp")" | grep -q . || rm "${OFILE}";
+    done;
 
 #compile to static
 find $BUILDLIBS $BUILDAPP $BUILDTESTS -name '*.cpp' -type f -print0 |

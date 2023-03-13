@@ -10,6 +10,7 @@
 #include "IterableBalancingThreadResourcePool.hpp"
 #include "types.hpp"
 #include "PerGpu.hpp"
+#include "constants.hpp"
 
 namespace WITE::GPU {
 
@@ -22,7 +23,6 @@ namespace WITE::GPU {
     //acceptable forms of callback:
     typedefCB(thenCB, result, WorkBatch);
     struct renderInfo {
-      static constexpr size_t MAX_RESOURCES = 4;//color + depth, x2 if VR, what more could you want?
       size_t resourceCount;
       ImageBase* resources[MAX_RESOURCES];
       vk::ImageLayout initialLayouts[MAX_RESOURCES], finalLayouts[MAX_RESOURCES];
@@ -87,9 +87,9 @@ namespace WITE::GPU {
     //begin cmd duplication helpers
     // WorkBatch& copyImage(ImageBase* src, ImageBase* dst);
     static void quickImageBarrier(vk::CommandBuffer, vk::Image, vk::ImageLayout, vk::ImageLayout);
-    static WorkBatch& discardImage(vk::CommandBuffer, vk::Image, vk::ImageLayout post);
+    static void discardImage(vk::CommandBuffer, vk::Image, vk::ImageLayout post);
     static result presentImpl(vk::Fence fence, ImageBase*, vk::Image*, vk::SwapchainKHR, Queue*, WorkBatch);
-    void presentImpl2(vk::SwapchainKHR, uint32_t);
+    static result presentImpl2(vk::SwapchainKHR, uint32_t, WorkBatch wb);
 
     WorkBatch(WorkBatchResources* batch);
   public:

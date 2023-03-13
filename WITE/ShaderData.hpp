@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <compare>
 
-#include "StructuralConstList.hpp"
 #include "LiteralMap.hpp"
 #include "StdExtensions.hpp"
 #include "Image.hpp"
@@ -92,7 +91,7 @@ namespace WITE::GPU {
   class ShaderResource {
   public:
     // const ShaderResourceType type;
-    const Collections::StructuralConstList<ShaderResourceUsage> usage;
+    const Collections::LiteralList<ShaderResourceUsage> usage;
     const ShaderResourceProvider providedBy;
     ShaderResource() = delete;
     constexpr ShaderResource(const ShaderResource&) = default;
@@ -101,7 +100,7 @@ namespace WITE::GPU {
     template<class Container> constexpr ShaderResource(const ShaderResourceProvider provider, Container C) :
       ShaderResource(provider, C.begin(), C.end()) {};
     constexpr ShaderResource(// const ShaderResourceType type, 
-			     const std::initializer_list<ShaderResourceUsage> usage,
+			     const Collections::LiteralList<ShaderResourceUsage> usage,
 			     const ShaderResourceProvider provider) :
       // type(type),
       usage(usage),
@@ -247,22 +246,20 @@ namespace WITE::GPU {
       StorageUniformTexelToCompute = { true, ShaderStage::eCompute, ShaderResourceAccessType::eUniformTexel },
       StorageImageToCompute = { true, ShaderStage::eCompute, ShaderResourceAccessType::eSampled };
 
-    const Collections::StructuralConstList<ShaderResource> resources;
+    const Collections::LiteralList<ShaderResource> resources;
     constexpr ~ShaderData() = default;
-    constexpr ShaderData(const std::initializer_list<ShaderResource> resources) : resources(resources) {};
-    template<class Iter> constexpr ShaderData(const Iter B, const Iter E) : resources(B, E) {};
-    template<class Container> constexpr ShaderData(const Container C) : ShaderData(C.begin(), C.end()) {};
+    constexpr ShaderData(const Collections::LiteralList<ShaderResource> resources) : resources(resources) {};
     const ShaderResource& operator[](const size_t i) const {
       return resources[i];
     };
 
-    constexpr ShaderData SubsetFrom(ShaderResourceProvider p) const {
-      std::vector<ShaderResource> retResources;
-      for(auto r : resources)
-	if(r.providedBy == p)
-	  retResources.push_back(r);
-      return ShaderData(retResources);
-    };
+    // constexpr ShaderData SubsetFrom(ShaderResourceProvider p) const {
+    //   std::vector<ShaderResource> retResources;
+    //   for(auto r : resources)
+    // 	if(r.providedBy == p)
+    // 	  retResources.push_back(r);
+    //   return ShaderData(retResources);
+    // };
 
     typedef uint64_t hashcode_t;//used in maps to cache descriptor info
     //uniqueness likely but not gauranteed
@@ -399,18 +396,18 @@ namespace WITE::GPU {
 #define passShaderData(SD) passLiteralJaggedList(SD)
 #define acceptShaderData(SD) acceptLiteralJaggedListAliasXNS(::WITE::GPU, NormalizedShaderData, SD)
 
-  template<acceptShaderData(JL)> constexpr ShaderData parseShaderData() {
-    std::vector<ShaderResource> resources;
-    std::vector<ShaderResourceUsage> usages;
-    for(auto resource : JL) {
-      usages.clear();
-      for(auto usage : resource) {
-	usages.push_back(usage.usage);
-      }
-      resources.emplace_back(resource.get().provider, usages);
-    };
-    return ShaderData(resources);
-  };
+  // template<acceptShaderData(JL)> constexpr ShaderData parseShaderData() {
+  //   std::vector<ShaderResource> resources;
+  //   std::vector<ShaderResourceUsage> usages;
+  //   for(auto resource : JL) {
+  //     usages.clear();
+  //     for(auto usage : resource) {
+  // 	usages.push_back(usage.usage);
+  //     }
+  //     resources.emplace_back(resource.get().provider, usages);
+  //   };
+  //   return ShaderData(resources);
+  // };
 
   //TODO maybe make this generic
   template<acceptShaderData(D), ShaderResourceProvider P>

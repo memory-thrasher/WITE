@@ -44,8 +44,9 @@ namespace WITE::GPU {
     template<class... R> void setResources(R... resources) {
       data.setResources(std::forward<R...>(resources...));
     };
-    void bind(size_t gpu, WorkBatch cmd) {
+    void bind(RenderTarget& target, WorkBatch cmd) {
       auto ds = data.get(gpu);
+      #error TODO add a callback here to the creator to update the transform or w/e. Bind DBE to CArg onSpinUp
       cmd.bindDescriptorSets(shader->getBindPoint(), shader_t::getLayout(gpu), 2, 1, &ds, 0, NULL);
     };
     virtual ~Renderable() {

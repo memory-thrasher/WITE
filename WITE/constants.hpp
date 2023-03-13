@@ -23,6 +23,14 @@
 #define MAX_THREADS 256
 #endif
 
+#ifndef MAX_RESOURCES
+#define MAX_RESOURCES 4
+#endif
+
+#ifndef MAX_STEPS
+#define MAX_STEPS 64
+#endif
+
 #define GENERATED_THREAD_COUNT (PROMISE_THREAD_COUNT + DB_THREAD_COUNT)
 
 static_assert(GENERATED_THREAD_COUNT + 1 < MAX_THREADS);//+1 for main

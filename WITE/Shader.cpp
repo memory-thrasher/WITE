@@ -55,7 +55,7 @@ namespace WITE::GPU {
       if(layers.contains(pair.first))
 	for(RenderableBase* renderable : pair.second)
 	  if(!Collections::contains(except, renderable))
-	    renderable->render(cmd);
+	    renderable->render(target, cmd);
   };
 
   bool ShaderBase::hasLayout(ShaderData::hashcode_t d, size_t gpuIdx) { //static

@@ -32,6 +32,18 @@ namespace WITE::GPU {
     }
   };
 
+  void VRam::read(void* dst, size_t cnt) {
+    //TODO assert that memory is host visible and/or transfer_dst usable
+    auto& gpu = Gpu::get(gpuIdx);
+    auto dev = gpu.getVkDevice();
+    void* src;
+    VK_ASSERT(dev.mapMemory(mem, 0, cnt, {}, &src), "Could not access device memory.");
+    //FIXME if mem is not host-visible (see memory requirements), make a temporary buffer first here to stage and dispose after
+    //FIXME if map fails, a smaller map might not. Batchify if needed. Hopefully we don't get huge buffers.
+    std::memcpy(dst, src, cnt);
+    dev.unmapMemory(mem);
+  };
+
   void VRam::write(const void* src, size_t cnt) {
     //TODO assert that memory is host visible and/or transfer_dst usable
     auto& gpu = Gpu::get(gpuIdx);

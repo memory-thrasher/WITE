@@ -23,9 +23,9 @@ namespace WITE::GPU {
     logicalDeviceMask_t logicalDeviceMask;
     uint32_t arrayLayers, mipLevels;
     constexpr ImageSlotData(uint8_t comp, uint8_t comp_size, uint8_t dim, uint8_t sam,
-			    uint32_t al, uint32_t mip, logicalDeviceMask_t ldm, usage_t usage) :
+			    uint32_t al, uint32_t mip, logicalDeviceMask_t ldm, usage_t usage, usage_t externalUsage) :
       ImageFormatFamily(comp, comp_size),
-      dimensions(dim), samples(sam), usage(usage), logicalDeviceMask(ldm), arrayLayers(al), mipLevels(mip) {};
+      dimensions(dim), samples(sam), usage(usage), externalUsage(externalUsage), logicalDeviceMask(ldm), arrayLayers(al), mipLevels(mip) {};
   };
 
   struct BufferSlotData {
@@ -82,12 +82,13 @@ namespace WITE::GPU {
       ImageSlotData imageData;
       BufferSlotData bufferData;
     };
+    constexpr GpuResourceSlotInfo(const struct GpuResourceSlotInfo& isd) = default;
     constexpr GpuResourceSlotInfo(ImageSlotData isd) :
       type(GpuResourceType::eImage), imageData(isd) {};
     constexpr GpuResourceSlotInfo(BufferSlotData bsd) :
       type(GpuResourceType::eBuffer), bufferData(bsd) {};
     constexpr GpuResourceSlotInfo mutateUsage(usage_t add, usage_t remove = ~0) const {
-      GpuResourceSlotInfo ret = *this;;
+      GpuResourceSlotInfo ret = *this;
       switch(type) {
       case GpuResourceType::eImage: ret.imageData.usage = (ret.imageData.usage & ~remove) | add; break;
       case GpuResourceType::eBuffer: ret.bufferData.usage = (ret.bufferData.usage & ~remove) | add; break;
@@ -103,12 +104,6 @@ namespace WITE::GPU {
       return mutateUsage(GpuResource::USAGE_TRANSFER, GpuResource::MUSAGE_ANY_HOST);
     };
   };
-
-  template<GpuResourceSlotInfo CI> struct GpuResourceFactory {};
-
-  template<GpuResourceSlotInfo CI> auto makeGpuResource() {
-    return GpuResourceFactory<CI>()();
-  }
 
 };
 

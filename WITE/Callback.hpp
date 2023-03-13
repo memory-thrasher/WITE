@@ -84,7 +84,7 @@ namespace WITE::Util {
     make(U* owner, CArgs... cargs, RET(U::*const func)(CArgs..., RArgs...));
     template<class... CArgs> constexpr static callback_t
     make(CArgs... cargs, RET(*const func)(CArgs..., RArgs...));
-    template<class L> requires requires(RArgs... ra) { {L()(std::forward<RArgs>(ra)...)} -> std::convertible_to<RET>; }
+    template<class L> requires requires(L l, RArgs... ra) { {l(std::forward<RArgs>(ra)...)} -> std::convertible_to<RET>; }
     constexpr static callback_t make(L);
   };
 
@@ -100,7 +100,7 @@ namespace WITE::Util {
 
   //wrapper for lambdas
   template<class RET, class... RArgs>
-  template<class L> requires requires(RArgs... ra) { {L()(std::forward<RArgs>(ra)...)} -> std::convertible_to<RET>; }
+  template<class L> requires requires(L l, RArgs... ra) { {l(std::forward<RArgs>(ra)...)} -> std::convertible_to<RET>; }
   constexpr CallbackPtr<RET, RArgs...> CallbackFactory<RET, RArgs...>::make(L l) {
     return make<L>(l, &CallbackFactory<RET, RArgs...>::lambdaWrapper);
   };

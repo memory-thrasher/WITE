@@ -44,13 +44,12 @@ namespace WITE::Collections {
     static inline T* reverse(invertedPtr i) { return reinterpret_cast<T*>(Util::reverse(i)); };
   public:
     class Iterator : public IteratorBase {
-    private:
-      Iterator(node* t, LinkedTreeBase* ltb) : IteratorBase(t, ltb) {};
     public:
+      Iterator(node* t, LinkedTreeBase* ltb) : IteratorBase(t, ltb) {};
       inline T* operator()() { return reverse(getNext()->data); };
     };
-    inline void insert(T* t) { insert(reverse(t)); };
-    inline void remove(T* t) { remove(reverse(t)); };
+    inline void insert(T* t) { LinkedTreeBase::insert(reverse(t)); };
+    inline void remove(T* t) { LinkedTreeBase::remove(reverse(t)); };
     inline Iterator iterate() { return { root, this }; };//nonstandard ENDLESS! iterator.
   };
 

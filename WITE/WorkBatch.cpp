@@ -50,6 +50,7 @@ namespace WITE::GPU {
   };
 
   Collections::IterableBalancingThreadResourcePool<WorkBatch::WorkBatchResources> WorkBatch::allBatches;//static
+  PerGpuUP<Collections::BalancingThreadResourcePool<vk::Fence>> WorkBatch::fences;
 
   WorkBatch::WorkBatch(uint64_t gpuIdx) {
     batch = allBatches.allocate();
@@ -298,7 +299,7 @@ namespace WITE::GPU {
 
   WorkBatch& WorkBatch::putImageInLayout(ImageBase* img, vk::ImageLayout l, uint32_t qFam,
 				   vk::AccessFlags2 a, vk::PipelineStageFlags2 s) {
-    img->accessStateTracker.get(getGpuIdx()).inState({ l, a, s, qFam }, *this);
+    img->accessStateTracker.getRef(getGpuIdx()).inState({ l, a, s, qFam }, *this);
     return *this;
   };
 
@@ -448,16 +449,19 @@ namespace WITE::GPU {
     auto cmd = getCmd(QueueType::eGraphics);
     size_t gpuIdx = getGpuIdx();
     vk::ImageMemoryBarrier2 mbs[renderInfo::MAX_RESOURCES];
+    size_t mbCnt = 0;
     vk::DependencyInfo di;
     di.pImageMemoryBarriers = mbs;
+    uint32_t q = current->q->family;
     for(size_t i = 0;i < b->currentRP.resourceCount;i++)
       if(b->currentRP.initialLayouts[i] != vk::ImageLayout::eUndefined)
 	appendTransition(gpuIdx, b->currentRP.resources[i], b->currentRP.initialLayouts[i], ShaderRead, AllGraphics, *this);
     doBarrier(cmd);
-    cmd.beginRenderPass(&b->currentRP.rpbi);
+    cmd.beginRenderPass(&b->currentRP.rpbi, b->currentRP.sc);
+    return *this;
   };
-#undefine appendTransition
-#undefine appendDiscard
+#undef appendTransition
+#undef appendDiscard
 
   WorkBatch& WorkBatch::endRenderPass() {
     PreRecordBoilerplate;
@@ -465,11 +469,12 @@ namespace WITE::GPU {
     b->isRecordingRP = false;
     size_t gpuIdx = getGpuIdx();
     for(size_t i = 0;i < b->currentRP.resourceCount;i++)
-      b->currentRP.resources[i]->accessStateTracker.getRef(gpuIdx).onExternalChange({ b->currentRp.finalLayouts[i],
+      b->currentRP.resources[i]->accessStateTracker.getRef(gpuIdx).onExternalChange({ b->currentRP.finalLayouts[i],
 	  vk::AccessFlagBits2::eShaderRead | vk::AccessFlagBits2::eShaderWrite,
 	  vk::PipelineStageFlagBits2::eBottomOfPipe,
 	  b->getCurrent().q->family
-	});
+	}, *this);
+    return *this;
   };
 
   WorkBatch& WorkBatch::copyImage(ImageBase* src, ImageBase* dst) {
@@ -484,6 +489,7 @@ namespace WITE::GPU {
     ASSERT_TRAP(src->getVkSize3D() == dst->getVkSize3D(), "copy size mismatch");
     vk::ImageCopy r(src->getAllSubresourceLayers(), {}, dst->getAllSubresourceLayers(), {}, src->getVkSize3D());
     cmd.copyImage(src->getVkImage(gpuIdx), srcLayout, dst->getVkImage(gpuIdx), dstLayout, 1, &r);
+    return *this;
   };
 
   WorkBatch& WorkBatch::copyImageToVk(ImageBase* src, vk::Image dst, vk::ImageLayout postLayout) {
@@ -495,17 +501,18 @@ namespace WITE::GPU {
     putImageInLayout(src, srcLayout, currentQFam(), vk::AccessFlagBits2::eTransferRead, vk::PipelineStageFlagBits2::eCopy);
     //just assume they're the same size
     auto tempLayout = postLayout == vk::ImageLayout::eGeneral ? postLayout : vk::ImageLayout::eTransferDstOptimal;
-    discardImage(dst, tempLayout);
-    vk::BufferCopy r(src->getAllSubresourceLayers(), {}, src->getAllSubresourceLayers(), {}, src->getVkSize3D());
+    discardImage(cmd, dst, tempLayout);
+    vk::ImageCopy r(src->getAllSubresourceLayers(), {}, src->getAllSubresourceLayers(), {}, src->getVkSize3D());
     cmd.copyImage(src->getVkImage(gpuIdx), srcLayout, dst, tempLayout, 1, &r);
     quickImageBarrier(cmd, dst, tempLayout, postLayout);
+    return *this;
   };
 
-  static void WorkBatch::quickImageBarrier(vk::CommandBuffer cmd, vk::Image img, vk::ImageLayout pre, vk::ImageLayout post) {
+  void WorkBatch::quickImageBarrier(vk::CommandBuffer cmd, vk::Image img, vk::ImageLayout pre, vk::ImageLayout post) {//static
     vk::ImageMemoryBarrier2 mb {
       vk::PipelineStageFlagBits2::eAllCommands, vk::AccessFlagBits2::eNone,
-      vk::PipelineStageFlagBits2::eAllCommands, , vk::AccessFlagBits2::eNone,
-      pre, post, 0, 0, img, { vk::ImageAspectBits::eColor, 0, 1, 0, 1 }
+      vk::PipelineStageFlagBits2::eAllCommands, vk::AccessFlagBits2::eNone,
+      pre, post, 0, 0, img, { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 }
     };
     vk::DependencyInfo di;
     di.pImageMemoryBarriers = &mb;
@@ -513,22 +520,21 @@ namespace WITE::GPU {
     cmd.pipelineBarrier2(&di);
   };
 
-  static WorkBatch& WorkBatch::discardImage(vk::CommandBuffer cmd, vk::Image image, vk::ImageLayout post) {
+  void WorkBatch::discardImage(vk::CommandBuffer cmd, vk::Image image, vk::ImageLayout post) { //static
     quickImageBarrier(cmd, image, vk::ImageLayout::eUndefined, post);
   };
 
   vk::Fence WorkBatch::WorkBatchResources::useFence() {
-    Work& current = get()->getCurrent();
+    Work* current = &getCurrent();
     ASSERT_TRAP(~current->gpu, "Attempted to use fence without supplying a gpu");
     size_t gpuIdx = current->gpu;
     if(current->fence) {
       [[unlikely]]
-      current = append();
+      current = &append();
       current->gpu = gpuIdx;
     }
-    vk::Fence* fence = fences.getRef(gpuIdx).allocate();
-    if(!*fence) {
-      [[unlikely]]
+    vk::Fence* fence = fences.getRef(gpuIdx)->allocate();
+    if(!*fence) [[unlikely]] {
       vk::FenceCreateInfo ci;//all default (only option is for fence to be pre-signaled)
       VK_ASSERT(Gpu::get(gpuIdx).getVkDevice().createFence(&ci, NULL, fence), "Failed to create fence");
     } else
@@ -537,19 +543,21 @@ namespace WITE::GPU {
     return *fence;
   };
 
-  void WorkBatch::presentImpl2(vk::SwapchainKHR swap, uint32_t target, WorkBatch wb) {
-    Work& current = get()->getCurrent();
+  WorkBatch::result WorkBatch::presentImpl2(vk::SwapchainKHR swap, uint32_t target, WorkBatch wb) { //static
+    //WorkBatch unused but present to allow this to be a raw thenCB
+    Work& current = wb.get()->getCurrent();
     vk::PresentInfoKHR pi;
     pi.setSwapchainCount(1)
-      .setSwapchains(&swap)
-      .setImageIndices(&target);
-    current->q->present(&pi);
+      .setPSwapchains(&swap)
+      .setPImageIndices(&target);
+    current.q->present(&pi);
+    return result::done;
   };
 
   WorkBatch::result WorkBatch::presentImpl(vk::Fence fence, ImageBase* src, vk::Image* swapImages, vk::SwapchainKHR swap,
 					   Queue* q, WorkBatch wb) { // static
     uint32_t target;
-    vk::Result res = q->getGpu()->getVkDevice().acquireNextImageKHR(swap, 0, NULL, fence, &target);
+    vk::Result res = q->getGpu()->getVkDevice().acquireNextImageKHR(swap, 0, std::nullptr_t(), fence, &target);
     switch(res) {
     case vk::Result::eNotReady: return result::yield;
     case vk::Result::eSuboptimalKHR: WARN("NYI suboptimal flag received while presenting: should recreate swapchain"); break;
@@ -561,16 +569,18 @@ namespace WITE::GPU {
     WorkBatch stage2(q);
     stage2.mustHappenAfter(wb);
     stage2.copyImageToVk(src, swapImages[target], vk::ImageLayout::ePresentSrcKHR);
-    stage2.then(thenCB_F::make(swap, target, &presentImpl2));
-    stage2.start();
+    stage2.then(thenCB_F::make<vk::SwapchainKHR, uint32_t>(swap, target, &WorkBatch::presentImpl2));
+    stage2.submit();
     return result::done;
   };
 
   WorkBatch& WorkBatch::present(ImageBase* src, vk::Image* swapImages, vk::SwapchainKHR swap) {
     PreRecordBoilerplate;
     vk::Fence fence = b->useFence();
-    then(thenCB_F::make(fence, src, swapImages, swap, current->q, &presentImpl));
+    then(thenCB_F::make<vk::Fence, ImageBase*, vk::Image*, vk::SwapchainKHR, Queue*>
+	 (fence, src, swapImages, swap, current->q, &presentImpl));
     //acquiring the swapchain image has to signal a semaphore or fence. In a then callback because it can block/timeout.
+    return *this;
   };
 
   WorkBatch& WorkBatch::bindDescriptorSets(vk::PipelineBindPoint pipelineBindPoint, vk::PipelineLayout layout,
@@ -578,15 +588,21 @@ namespace WITE::GPU {
 					   const vk::DescriptorSet* pDescriptorSets,
 					   uint32_t dynamicOffsetCount, const uint32_t* pDynamicOffsets) {
     PreRecordBoilerplate;
-#error TODO
+    getCmd().bindDescriptorSets(pipelineBindPoint, layout, firstSet, descriptorSetCount, pDescriptorSets,
+			       dynamicOffsetCount, pDynamicOffsets);
+    return *this;
   };
 
   WorkBatch& WorkBatch::nextSubpass(vk::SubpassContents contentType) {
-#error TODO
+    PreRecordBoilerplate;
+    getCmd().nextSubpass(contentType);
+    return *this;
   };
 
   WorkBatch& WorkBatch::bindPipeline(vk::PipelineBindPoint pipelineBindPoint, vk::Pipeline pipeline) {
-#error TODO
+    PreRecordBoilerplate;
+    getCmd().bindPipeline(pipelineBindPoint, pipeline);
+    return *this;
   };
 
 };

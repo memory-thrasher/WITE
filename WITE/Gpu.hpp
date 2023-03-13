@@ -7,7 +7,6 @@
 #include "GpuResource.hpp"
 #include "Queue.hpp"
 #include "Vulkan.hpp"
-#include "StructuralConstList.hpp"
 #include "types.hpp"
 #include "constants.hpp"
 #include "BitmaskIterator.hpp"

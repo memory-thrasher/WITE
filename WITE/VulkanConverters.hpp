@@ -4,7 +4,6 @@
 
 #include "GpuResource.hpp"
 #include "StdExtensions.hpp"
-#include "StructuralConstList.hpp"
 #include "LiteralLookup.hpp"
 #include "LiteralMap.hpp"
 
@@ -85,7 +84,7 @@ namespace WITE::GPU {
     return vk::ImageLayout::eGeneral;
   }
 
-  constexpr static vk::AccessFlags2 accessFlagsFromUsage(usage_t usage) {
+  constexpr static vk::AccessFlags2 accessFlags2FromUsage(usage_t usage) {
     vk::AccessFlags2 ret;
     if(usage & GpuResource::USAGE_INDIRECT) ret |= vk::AccessFlagBits2::eIndirectCommandRead;
     // if(usage & GpuResource::USAGE_NYI) ret |= vk::AccessFlagBits2::eIndexRead;
@@ -106,7 +105,28 @@ namespace WITE::GPU {
     return ret;
   };
 
-  constexpr static vk::PipelineStageFlags2 stagesFromAccess(vk::AccessFlags2 access) {
+  constexpr static vk::AccessFlags accessFlagsFromUsage(usage_t usage) {
+    vk::AccessFlags ret;
+    if(usage & GpuResource::USAGE_INDIRECT) ret |= vk::AccessFlagBits::eIndirectCommandRead;
+    // if(usage & GpuResource::USAGE_NYI) ret |= vk::AccessFlagBits::eIndexRead;
+    if(usage & GpuResource::USAGE_VERTEX) ret |= vk::AccessFlagBits::eVertexAttributeRead;
+    if(usage & GpuResource::USAGE_DS_READ) ret |= vk::AccessFlagBits::eUniformRead | vk::AccessFlagBits::eMemoryRead;
+    if(usage & GpuResource::USAGE_ATT_INPUT) ret |= vk::AccessFlagBits::eInputAttachmentRead;
+    if(usage & GpuResource::USAGE_DS_WRITE) ret |= vk::AccessFlagBits::eMemoryWrite;
+    //TODO? separate color attachment read/write (read is for blending)
+    if(usage & GpuResource::USAGE_ATT_OUTPUT)
+      ret |= vk::AccessFlagBits::eColorAttachmentWrite | vk::AccessFlagBits::eColorAttachmentRead;
+    if(usage & GpuResource::USAGE_ATT_DEPTH)
+      ret |= vk::AccessFlagBits::eDepthStencilAttachmentRead | vk::AccessFlagBits::eDepthStencilAttachmentWrite;
+    // if(usage & GpuResource::USAGE_HOST_READ) ret |= vk::AccessFlagBits::eTransferRead;
+    // if(usage & GpuResource::USAGE_HOST_WRITE) ret |= vk::AccessFlagBits::eTransferWrite;
+    if(usage & GpuResource::USAGE_HOST_READ) ret |= vk::AccessFlagBits::eTransferRead;
+    if(usage & GpuResource::USAGE_HOST_WRITE) ret |= vk::AccessFlagBits::eTransferWrite;
+    if(usage & GpuResource::USAGE_TRANSFER) ret |= vk::AccessFlagBits::eTransferRead | vk::AccessFlagBits::eTransferWrite;
+    return ret;
+  };
+
+  constexpr static vk::PipelineStageFlags2 stages2FromAccess(vk::AccessFlags2 access) {
     if(access & (vk::AccessFlagBits2::eMemoryRead | vk::AccessFlagBits2::eMemoryWrite))
       return vk::PipelineStageFlagBits2::eAllCommands;
     vk::PipelineStageFlags2 ret;
@@ -172,8 +192,75 @@ namespace WITE::GPU {
     return ret;
   };
 
-  constexpr static vk::PipelineStageFlags2 stageFlagsForUsage(usage_t usage) {
-    return stagesFromAccess(accessFlagsFromUsage(usage));
+  constexpr static vk::PipelineStageFlags stagesFromAccess(vk::AccessFlags2 access) {
+    if(access & (vk::AccessFlagBits2::eMemoryRead | vk::AccessFlagBits2::eMemoryWrite))
+      return vk::PipelineStageFlagBits::eAllCommands;
+    vk::PipelineStageFlags ret;
+    if(access & vk::AccessFlagBits2::eIndirectCommandRead)
+      ret |= vk::PipelineStageFlagBits::eDrawIndirect | vk::PipelineStageFlagBits::eAccelerationStructureBuildKHR;
+    if(access & vk::AccessFlagBits2::eIndexRead)
+      ret |= vk::PipelineStageFlagBits::eVertexInput;
+    if(access & vk::AccessFlagBits2::eVertexAttributeRead)
+      ret |= vk::PipelineStageFlagBits::eVertexInput;
+    if(access & vk::AccessFlagBits2::eUniformRead)
+      ret |= vk::PipelineStageFlagBits::eTaskShaderNV | vk::PipelineStageFlagBits::eMeshShaderNV |
+	vk::PipelineStageFlagBits::eRayTracingShaderNV | vk::PipelineStageFlagBits::eVertexShader |
+	vk::PipelineStageFlagBits::eTessellationControlShader | vk::PipelineStageFlagBits::eTessellationEvaluationShader |
+	vk::PipelineStageFlagBits::eGeometryShader | vk::PipelineStageFlagBits::eFragmentShader |
+	vk::PipelineStageFlagBits::eComputeShader;
+    if(access & vk::AccessFlagBits2::eShaderRead)
+      ret |= vk::PipelineStageFlagBits::eAccelerationStructureBuildKHR |// vk::PipelineStageFlagBits::eMicromapBuildEXT |
+	vk::PipelineStageFlagBits::eTaskShaderNV | vk::PipelineStageFlagBits::eMeshShaderNV |
+	vk::PipelineStageFlagBits::eRayTracingShaderNV | vk::PipelineStageFlagBits::eVertexShader |
+	vk::PipelineStageFlagBits::eTessellationControlShader | vk::PipelineStageFlagBits::eTessellationEvaluationShader |
+	vk::PipelineStageFlagBits::eGeometryShader | vk::PipelineStageFlagBits::eFragmentShader |
+	vk::PipelineStageFlagBits::eComputeShader;
+    if(access & vk::AccessFlagBits2::eShaderWrite)
+      ret |= vk::PipelineStageFlagBits::eTaskShaderNV | vk::PipelineStageFlagBits::eMeshShaderNV |
+	vk::PipelineStageFlagBits::eRayTracingShaderNV | vk::PipelineStageFlagBits::eVertexShader |
+	vk::PipelineStageFlagBits::eTessellationControlShader | vk::PipelineStageFlagBits::eTessellationEvaluationShader |
+	vk::PipelineStageFlagBits::eGeometryShader | vk::PipelineStageFlagBits::eFragmentShader |
+	vk::PipelineStageFlagBits::eComputeShader;
+    if(access & vk::AccessFlagBits2::eInputAttachmentRead)
+      ret |= // vk::PipelineStageFlagBits::eSubpassShadingHUAWEI |
+	vk::PipelineStageFlagBits::eFragmentShader;
+    if(access & (vk::AccessFlagBits2::eColorAttachmentRead | vk::AccessFlagBits2::eColorAttachmentWrite))
+      ret |= vk::PipelineStageFlagBits::eColorAttachmentOutput;
+    if(access & (vk::AccessFlagBits2::eDepthStencilAttachmentRead | vk::AccessFlagBits2::eDepthStencilAttachmentWrite))
+      ret |= vk::PipelineStageFlagBits::eEarlyFragmentTests | vk::PipelineStageFlagBits::eLateFragmentTests;
+    if(access & (vk::AccessFlagBits2::eTransferRead | vk::AccessFlagBits2::eTransferWrite))
+      ret |= vk::PipelineStageFlagBits::eTransfer | vk::PipelineStageFlagBits::eAccelerationStructureBuildKHR;
+    if(access & (vk::AccessFlagBits2::eHostRead | vk::AccessFlagBits2::eHostWrite))
+      ret |= vk::PipelineStageFlagBits::eHost;
+    if(access & vk::AccessFlagBits2::eColorAttachmentReadNoncoherentEXT)
+      ret |= vk::PipelineStageFlagBits::eColorAttachmentOutput;
+    if(access & (vk::AccessFlagBits2::eCommandPreprocessReadNV | vk::AccessFlagBits2::eCommandPreprocessWriteNV))
+      ret |= vk::PipelineStageFlagBits::eCommandPreprocessNV;
+    if(access & vk::AccessFlagBits2::eConditionalRenderingReadEXT)
+      ret |= vk::PipelineStageFlagBits::eConditionalRenderingEXT;
+    if(access & vk::AccessFlagBits2::eFragmentShadingRateAttachmentReadKHR)
+      ret |= vk::PipelineStageFlagBits::eFragmentShadingRateAttachmentKHR;
+    // if(access & vk::AccessFlagBits2::eInvocationMaskReadHUAWEI)
+    //   ret |= vk::PipelineStageFlagBits::eInvocationMaskHUAWEI;
+    if(access & (vk::AccessFlagBits2::eTransformFeedbackWriteEXT | vk::AccessFlagBits2::eTransformFeedbackCounterWriteEXT))
+      ret |= vk::PipelineStageFlagBits::eTransformFeedbackEXT;
+    if(access & vk::AccessFlagBits2::eTransformFeedbackCounterReadEXT)
+      ret |= vk::PipelineStageFlagBits::eTransformFeedbackEXT | vk::PipelineStageFlagBits::eDrawIndirect;
+    if(access & vk::AccessFlagBits2::eAccelerationStructureReadKHR)
+      ret |= vk::PipelineStageFlagBits::eTaskShaderNV | vk::PipelineStageFlagBits::eMeshShaderNV |
+	vk::PipelineStageFlagBits::eRayTracingShaderNV | vk::PipelineStageFlagBits::eVertexShader |
+	vk::PipelineStageFlagBits::eTessellationControlShader | vk::PipelineStageFlagBits::eTessellationEvaluationShader |
+	vk::PipelineStageFlagBits::eGeometryShader | vk::PipelineStageFlagBits::eFragmentShader |
+	vk::PipelineStageFlagBits::eComputeShader | vk::PipelineStageFlagBits::eAccelerationStructureBuildKHR;
+    if(access & vk::AccessFlagBits2::eAccelerationStructureWriteKHR)
+      ret |= vk::PipelineStageFlagBits::eAccelerationStructureBuildKHR;
+    if(access & vk::AccessFlagBits2::eFragmentDensityMapReadEXT)
+      ret |= vk::PipelineStageFlagBits::eFragmentDensityProcessEXT;
+    return ret;
+  };
+
+  constexpr static vk::PipelineStageFlags stageFlagsForUsage(usage_t usage) {
+    return stagesFromAccess(accessFlags2FromUsage(usage));
   };
 
   constexpr static vk::ImageAspectFlags aspectMaskForUsage(usage_t usage) {

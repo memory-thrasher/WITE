@@ -11,7 +11,16 @@ namespace WITE::Collections {
   template<typename T, size_t bundleSize = 64> class BalancingThreadResourcePool {
   private:
     typedef T bundle[bundleSize];
-    typedef T* scrap[bundleSize];
+    struct scrap {
+    private:
+      T* data[bundleSize];
+    public:
+      scrap() {};
+      scrap(const scrap& o) {
+	memcpy(data, o.data, sizeof(data));
+      };
+      inline T*& operator[](int i) { return data[i]; };
+    };
     Util::SyncLock commonsLock;
     //associated thread owns the store (and so can locklessly expand it) but NOT the contents
     Platform::ThreadResource<std::deque<bundle>> stores;
@@ -23,7 +32,7 @@ namespace WITE::Collections {
 
     T* allocate() {
       auto* avail = available.get();
-      T* ret;
+      T* ret = NULL;
       if(!avail->empty()) {
 	[[likely]]
 	ret = avail->top();
@@ -59,9 +68,9 @@ namespace WITE::Collections {
 	  avail->pop();
 	}
 	Util::ScopeLock lock(&commonsLock);
-	commonScrap->push_back(s);
+	commonScrap.emplace(s);
       } else {
-	avail->push_back(t);
+	avail->push(t);
       }
     };
 

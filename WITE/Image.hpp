@@ -35,6 +35,7 @@ namespace WITE::GPU {
       vk::AccessFlags2 accessMask;
       vk::PipelineStageFlags2 stageMask;
       uint32_t queueFam;
+      auto operator<=>(const accessState& o) const = default;
     };
 
     PerGpu<StateSynchronizer<accessState>> accessStateTracker;
@@ -73,11 +74,6 @@ namespace WITE::GPU {
   public:
     Image() : ImageBase(ISD) {};
     ~Image() override = default;
-  };
-
-  template<ImageSlotData ISD> struct GpuResourceFactory<ISD> {
-    typedef Image<ISD> type;
-    auto operator()() { return Image<ISD>(); };
   };
 
 }

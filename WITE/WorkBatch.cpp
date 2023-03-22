@@ -448,7 +448,7 @@ namespace WITE::GPU {
     b->currentRP = *ri;
     auto cmd = getCmd(QueueType::eGraphics);
     size_t gpuIdx = getGpuIdx();
-    vk::ImageMemoryBarrier2 mbs[renderInfo::MAX_RESOURCES];
+    vk::ImageMemoryBarrier2 mbs[MAX_RESOURCES];
     size_t mbCnt = 0;
     vk::DependencyInfo di;
     di.pImageMemoryBarriers = mbs;
@@ -602,6 +602,19 @@ namespace WITE::GPU {
   WorkBatch& WorkBatch::bindPipeline(vk::PipelineBindPoint pipelineBindPoint, vk::Pipeline pipeline) {
     PreRecordBoilerplate;
     getCmd().bindPipeline(pipelineBindPoint, pipeline);
+    return *this;
+  };
+
+  WorkBatch& WorkBatch::bindVertexBuffers(uint32_t firstBinding, uint32_t bindingCount, const vk::Buffer * pBuffers,
+					  const vk::DeviceSize * pOffsets) {
+    PreRecordBoilerplate;
+    getCmd().bindVertexBuffers(firstBinding, bindingCount, pBuffers, pOffsets);
+    return *this;
+  };
+
+  WorkBatch& WorkBatch::draw(size_t vCnt, size_t firstVert, size_t instanceCnt, size_t firstInstance) {
+    PreRecordBoilerplate;
+    getCmd().draw(vCnt, instanceCnt, firstVert, firstInstance);
     return *this;
   };
 

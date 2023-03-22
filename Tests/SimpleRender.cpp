@@ -1,15 +1,14 @@
 #include <iostream>
-#include <cstring>
-#include <time.h>
-#include <signal.h>
-
-//for timeout
-#include <sys/time.h>
-#include <sys/resource.h>
+// #include <cstring>
+// #include <time.h>
+// #include <signal.h>
+#include <glm/glm.hpp>
+#include <glm/ext/matrix_transform.hpp>
 
 #include "../WITE/Database.hpp"
 #include "../WITE/Window.hpp"
 #include "../WITE/BackedRenderTarget.hpp"
+#include "../WITE/StaticMeshRenderable.hpp"
 
 using namespace WITE;
 using namespace WITE::DB;
@@ -18,6 +17,7 @@ using namespace WITE::GPU;
 #define GRU(x) GpuResource::USAGE_ ##x
 
 constexpr logicalDeviceMask_t LDM_RENDERER = 1;
+constexpr layer_t LAYER_PRIMARY = 0;
 
 defineLiteralList(GpuResourceSlotInfo, COLOR_TARGET_REZ,
 		  ImageSlotData(3, 8, 2, 1, 1, 1, LDM_RENDERER, GRU(ATT_OUTPUT), GRU(PRESENT)),
@@ -34,16 +34,48 @@ constexpr BackedRenderTargetData COLOR_TARGET { COLOR_TARGET_REZ, COLOR_TARGET_S
 #define FRAME_COUNT 500
 #define transient reinterpret_cast<transients*>(dbe->transientData)
 
+typedef Util::FrameSwappedResource<Buffer<BufferSlotData(LDM_RENDERER, GRU(DS_READ) | GRU(HOST_WRITE), sizeof(glm::dmat4))>> TransformBuffer;
+
+constexpr auto basicRenderingPayloadData =
+	    makeShaderData(
+			   { { ShaderData::UniformToVertex }, ShaderResourceProvider::eRenderable }, //object transform
+			   { { ShaderData::UniformToVertex }, ShaderResourceProvider::eRenderTarget }, //camera transform
+			   { { ShaderData::ColorAttachment }, ShaderResourceProvider::eRenderTarget },
+			   { { ShaderData::DepthAttachment }, ShaderResourceProvider::eRenderTarget }
+			   );
+
+ShaderModule basicShader_module {};
+
+VertexShader<basicRenderingPayloadData, VertexPrefab::basic3d> basicShader;
+
+constexpr Vertex<VertexPrefab::basic3d> pyramid_verts[] {
+  { { 0, 0, 0 } }, { { 1, 1, 0 } }, { { 1, 0.5, 1 } },
+    { { 1, 1, 0 } }, { { -1, 1, 0 } }, { { 1, 0.5, 1 } },
+    { { -1, 1, 0 } }, { { 0, 0, 0 } }, { { 1, 0.5, 1 } },
+    { { 1, 1, 0 } }, { { 0, 0, 0 } }, { { -1, 1, 0 } },
+ };
+
+typedef StaticMeshRenderable<basicRenderingPayloadData, VertexPrefab::basic3d, LDM_RENDERER, pyramid_verts> pyramid_mesh;
+
 class pyramid_t {
 private:
-  glm::dmat4 transform;
+  struct transients {
+    TransformBuffer transformBuffer;
+    pyramid_mesh mesh;
+    // transients() : mesh(LAYER_PRIMARY, basicShader) {};
+  };
 public:
+  glm::dmat4 transform;
   static void onUpdate(DBRecord* data, DBEntity* dbe) {
     pyramid_t dis;
     dbe->completeRead(&dis, data);
-    //TODO rotate
+    glm::rotate(dis.transform, glm::radians(1.0), glm::dvec3(0, 0, 1));
+    transient->transformBuffer.getWrite().write(&dis.transform);
+    dbe->write(&dis);
   };
   static void onSpinUp(DBEntity* dbe) {
+    dbe->transientData = new transients();
+    #error TODO
     //TODO create renderable
   };
   static void onSpinDown(DBEntity* dbe) {

@@ -48,10 +48,10 @@ namespace WITE::GPU {
     friend class ShaderBase;
     virtual void renderQueued(WorkBatch cmd) = 0;//implementation is expected to do something with the rendered image
     virtual void bindResourcesTo(ShaderDescriptorBase*) = 0;
-    template<acceptShaderData(SD)> ShaderDescriptorBase* getDescriptor() {
-      constexpr auto hc = parseShaderData<SD>().hashCode();
+    template<ShaderData SD> ShaderDescriptorBase* getDescriptor() {
+      constexpr auto hc = SD.hashCode();
       if(!descriptorSets.contains(hc)) {
-	ShaderDescriptorBase* sd = new ShaderDescriptor<passShaderData(SD), ShaderResourceProvider::eRenderTarget>();
+	ShaderDescriptorBase* sd = new ShaderDescriptor<SD, ShaderResourceProvider::eRenderTarget>();
 	descriptorSets.emplace(hc, sd);
 	bindResourcesTo(sd);
 	return sd;
@@ -59,7 +59,6 @@ namespace WITE::GPU {
 	return descriptorSets.at(hc).get();
     };
   public:
-    void* extraData;
     RenderTarget() = delete;
     RenderTarget(const RenderTarget&) = delete;
     virtual ~RenderTarget() = default;

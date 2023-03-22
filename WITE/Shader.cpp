@@ -35,7 +35,7 @@ namespace WITE::GPU {
   };
 
   void ShaderBase::renderTo(RenderTarget& target, WorkBatch cmd, layerCollection_t& layers, std::initializer_list<RenderableBase*>& except) {
-    if(!layers.intersectsMap(renderablesByLayer)) return;
+    if(!Collections::collectionIntersectsMap(layers, renderablesByLayer)) return;
     bool found = false;
     for(auto& layer : layers)
       if(renderablesByLayer.contains(layer) && renderablesByLayer.at(layer).count()) {
@@ -52,10 +52,10 @@ namespace WITE::GPU {
     cmd.bindPipeline(getBindPoint(), pipe);
     preRender(target, cmd, layers, gpuIdx);
     for(auto& pair : renderablesByLayer)
-      if(layers.contains(pair.first))
+      if(Collections::contains(layers, pair.first))
 	for(RenderableBase* renderable : pair.second)
 	  if(!Collections::contains(except, renderable))
-	    renderable->render(target, cmd);
+	    renderable->render(cmd);
   };
 
   bool ShaderBase::hasLayout(ShaderData::hashcode_t d, size_t gpuIdx) { //static

@@ -21,9 +21,13 @@ defineLiteralJaggedList(int, 4, test,
     }
   );
 
-template< acceptLiteralJaggedList(int, 4, JL) > requires(JL.contains(5)) struct Foo {
-  template<size_t l0> constexpr static size_t sum() {
-    size_t ret = 0;
+using JL_t = WITE::Collections::PackedLiteralJaggedList<int, 4>;
+
+template<JL_t pJL> requires(WITE::Collections::unpack<int, 4, pJL>().contains(5))
+  struct Foo {
+    static constexpr auto JL = WITE::Collections::unpack<int, 4, pJL>();
+    template<size_t l0> constexpr static size_t sum() {
+      size_t ret = 0;
     for(auto l1 : JL.getIterator(l0))
       for(auto l2 : l1)
 	for(auto l3 : l2)
@@ -57,7 +61,7 @@ template< acceptLiteralJaggedList(int, 4, JL) > requires(JL.contains(5)) struct 
   constexpr static std::array<char, debugSize> debug = getDebug<1>();
 };
 
-using Bar = Foo< passLiteralJaggedList(test) >;
+using Bar = Foo<test>;
 
 int main(int argc, char** argv) {
   // for(size_t i = 0;i < test.dataCount;i++)

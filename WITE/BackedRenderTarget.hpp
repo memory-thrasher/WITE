@@ -20,17 +20,17 @@ namespace WITE::GPU {
     typedef BackedRenderTarget<DATA, LDM> SPECULUM;
     static constexpr size_t resourceCount = DATA.resources.len;
     static constexpr size_t stepCount = DATA.steps.len;
-    static constexpr std::array<GpuResourceSlotInfo, resourceCount> REZ = subArray<0, resourceCount>(DATA.resources);
-    static constexpr std::array<RenderStep, stepCount> STEPS = subArray<0, stepCount>(DATA.steps);
+    static constexpr auto REZ = DATA.resources;
+    static constexpr auto STEPS = DATA.steps;
   protected:
     virtual const Collections::IteratorWrapper<const RenderStep*> getRenderSteps() const override { return { DATA.steps }; };
     virtual void getRenderInfo(WorkBatch::renderInfo* out, size_t gpuIdx) override {
       out->rpbi = { renderPasses.get(gpuIdx), fbs.get(gpuIdx)->getWrite(), { { 0, 0 }, { width, height } },
-	resourceCount, clears };
+	resourceCount, clears.data() };
       out->resourceCount = resourceCount;
       static_assert(resourceCount <= MAX_RESOURCES);
       for(size_t i = 0;i < resourceCount;i++) {
-	out->resources[i] = resources[i].swapper.getWrite();
+	out->resources[i] = resources[i]->swapper.getWrite();
 	out->initialLayouts[i] = attachments[i].initialLayout;
 	out->finalLayouts[i] = attachments[i].finalLayout;
       }
@@ -55,7 +55,7 @@ namespace WITE::GPU {
       Image<REZ[i].externallyStagedResourceSlot().imageData> rez[2];
       Image<REZ[i].stagingResourceSlot().imageData> stagingRez;
       //all gpu resources shall include a PerGpu and manage any scynchronization between them
-      std::array<GpuResource*, 2> rezPtr { &rez[0], &rez[1] };
+      std::array<ImageBase*, 2> rezPtr { &rez[0], &rez[1] };
       resource_ct() : resource_bt(rezPtr, &stagingRez) {};
     };
     template<size_t i> struct resource_t {
@@ -94,7 +94,7 @@ namespace WITE::GPU {
       vk::FramebufferCreateInfo fbci { {}, rp, resourceCount, views, width, height, 1 };
       for(size_t i = 0;i < 2;i++) {
 	for(size_t j = 0;j < resourceCount;j++) {
-	  static_cast<ImageBase*>(resources[j]->swapper.all()[i])->getVkImageView(&views[j], idx);
+	  views[j] = static_cast<ImageBase*>(resources[j]->swapper.all()[i])->getVkImageView(idx);
 	}
 	VK_ASSERT(vkgpu.createFramebuffer(&fbci, ALLOCCB, &ret[i]), "Failed to create framebuffer");
       }
@@ -116,7 +116,7 @@ namespace WITE::GPU {
       void* rams[resourceCount];
       size_t gpu = cmd.getGpuIdx();
       for(size_t i = 0;i < resourceCount;i++) {
-	if(REZ[i].externalUsage) {
+	if(REZ[i].imageData.externalUsage) {
 	  images[cnt] = resources[i]->swapper.getWrite();
 	  stagings[cnt] = resources[i]->staging;
 	  if(!resources[i]->hostRam)
@@ -221,23 +221,25 @@ namespace WITE::GPU {
 	    0,//multiview view mask
 	    attachmentReferences[j].inputCount,
 	    attachmentReferences[j].inputs.data(),
-	    NULL,//resolves NYI
 	    attachmentReferences[j].colorCount,
 	    attachmentReferences[j].colors.data(),
+	    NULL,//resolves NYI
 	    attachmentReferences[j].depths.data(),
 	    attachmentReferences[j].preserveCount,
 	    attachmentReferences[j].preserves.data()
 	};
       }
-      ci = { {}, resourceCount, attachments.data(), stepCount, subpasses.data(), dependsCount, depends };//NYI correlated views
+      ci.setAttachmentCount(resourceCount).setPAttachments(attachments.data())
+	.setSubpassCount(stepCount).setPSubpasses(subpasses.data())
+	.setDependencyCount(dependsCount).setPDependencies(depends.data());//NYI correlated views
     };
 
     void bindResourcesTo(ShaderDescriptorBase* sdb) override {
       GpuResource* resourcePackage[2*resourceCount];//TODO move this to constructor/constexpr
       for(size_t i = 0;i < resourceCount;i++)
 	for(size_t f = 0;f < 2;f++)
-	  resourcePackage[i * 2 + f] = resources[i].swapper.all()[f];
-      sdb->bindResourcesUnchecked(resourcePackage);
+	  resourcePackage[i * 2 + f] = resources[i]->swapper.all()[f];
+      sdb->bindResourcesUnchecked(const_cast<const GpuResource**>(resourcePackage));
     };
 
   public:
@@ -259,7 +261,7 @@ namespace WITE::GPU {
 	WorkBatch cmd(gpuIdx);
 	for(size_t i = 0;i < resourceCount;i++)
 	  if(REZ[i].imageData.externalUsage)
-	    cmd.copyImage(resources[i].staging, resources[i]->swapper.getWrite());
+	    cmd.copyImage(resources[i]->staging, resources[i]->swapper.getWrite());
 	cmd.submit();
       }
     };

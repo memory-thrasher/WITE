@@ -8,7 +8,6 @@
 #include "Image.hpp"
 #include "Buffer.hpp"
 #include "StructuralMap.hpp"
-#include "LiteralJaggedList.hpp"
 
 namespace WITE::GPU {
 
@@ -40,15 +39,16 @@ namespace WITE::GPU {
 
   class ShaderResourceUsage {
   public:
-    const bool write;
-    const ShaderStage stage;
-    const ShaderResourceAccessType access;
+    bool write;
+    ShaderStage stage;
+    ShaderResourceAccessType access;
 
-    ShaderResourceUsage() = delete;
+    constexpr ShaderResourceUsage() = default;
     constexpr ShaderResourceUsage(const bool write, const ShaderStage stage,
 				  const ShaderResourceAccessType access = ShaderResourceAccessType::eUndefined) :
       write(write), stage(stage), access(access) {};
     constexpr ~ShaderResourceUsage() = default;
+    constexpr ShaderResourceUsage(const ShaderResourceUsage& o) = default;
 
     constexpr bool operator==(const ShaderResourceUsage& a) const {
       return a.write == this->write && a.stage == this->stage && a.access == this->access;
@@ -91,21 +91,22 @@ namespace WITE::GPU {
   class ShaderResource {
   public:
     // const ShaderResourceType type;
-    const Collections::LiteralList<ShaderResourceUsage> usage;
-    const ShaderResourceProvider providedBy;
-    ShaderResource() = delete;
+    Collections::LiteralList<ShaderResourceUsage> usage;
+    ShaderResourceProvider provider;
+    constexpr ShaderResource() = default;
     constexpr ShaderResource(const ShaderResource&) = default;
-    template<class Iter> constexpr ShaderResource(const ShaderResourceProvider provider, Iter B, Iter E) :
-      usage(B, E), providedBy(provider) {};
-    template<class Container> constexpr ShaderResource(const ShaderResourceProvider provider, Container C) :
-      ShaderResource(provider, C.begin(), C.end()) {};
+    constexpr ShaderResource(const ShaderResourceProvider provider, const Collections::LiteralList<ShaderResourceUsage>& usage) :
+      usage(usage), provider(provider) {};
     constexpr ShaderResource(// const ShaderResourceType type, 
 			     const Collections::LiteralList<ShaderResourceUsage> usage,
 			     const ShaderResourceProvider provider) :
       // type(type),
       usage(usage),
-      providedBy(provider)
+      provider(provider)
     {};
+
+    auto begin() const { return usage.begin(); };
+    auto end() const { return usage.end(); };
 
     template<class Resource> struct acceptsTest { constexpr bool operator()(const ShaderResource*) { return false; }; };
 
@@ -170,7 +171,7 @@ namespace WITE::GPU {
 
     //guaranteed unique
     constexpr uint64_t hashCode() const {
-      uint64_t ret = static_cast<uint64_t>(providedBy);
+      uint64_t ret = static_cast<uint64_t>(provider);
       for(ShaderResourceUsage u : usage)
 	ret = ret * ShaderResourceUsage::maxHashCode + u.hashCode();
       return ret;
@@ -246,20 +247,23 @@ namespace WITE::GPU {
       StorageUniformTexelToCompute = { true, ShaderStage::eCompute, ShaderResourceAccessType::eUniformTexel },
       StorageImageToCompute = { true, ShaderStage::eCompute, ShaderResourceAccessType::eSampled };
 
-    const Collections::LiteralList<ShaderResource> resources;
+    Collections::LiteralList<ShaderResource> resources;
+    constexpr ShaderData() = default;
     constexpr ~ShaderData() = default;
+    constexpr ShaderData(const ShaderData&) = default;
     constexpr ShaderData(const Collections::LiteralList<ShaderResource> resources) : resources(resources) {};
+    constexpr ShaderData& operator=(const ShaderData&) = default;
     const ShaderResource& operator[](const size_t i) const {
       return resources[i];
     };
 
-    // constexpr ShaderData SubsetFrom(ShaderResourceProvider p) const {
-    //   std::vector<ShaderResource> retResources;
-    //   for(auto r : resources)
-    // 	if(r.providedBy == p)
-    // 	  retResources.push_back(r);
-    //   return ShaderData(retResources);
-    // };
+    auto begin() const {
+      return resources.begin();
+    };
+
+    auto end() const {
+      return resources.end();
+    };
 
     typedef uint64_t hashcode_t;//used in maps to cache descriptor info
     //uniqueness likely but not gauranteed
@@ -380,68 +384,84 @@ namespace WITE::GPU {
 
   };
 
-  union ShaderDataDatumBundle {
-  public:
-    ShaderResourceUsage usage;
-    ShaderResourceProvider provider;
-    constexpr ShaderDataDatumBundle() : provider(ShaderResourceProvider::last) {};
-    constexpr ShaderDataDatumBundle(ShaderResourceProvider p) : provider(p) {};
-    constexpr ShaderDataDatumBundle(bool write, ShaderStage stage,
-				    ShaderResourceAccessType access = ShaderResourceAccessType::eUndefined) :
-      usage(write, stage, access) {};
-    constexpr ~ShaderDataDatumBundle() = default;
-  };
+  constexpr ShaderData ShaderData_EMPTY = {};
 
-  defineLiteralJaggedListAliasType(ShaderDataDatumBundle, 2, NormalizedShaderData);
-#define passShaderData(SD) passLiteralJaggedList(SD)
-#define acceptShaderData(SD) acceptLiteralJaggedListAliasXNS(::WITE::GPU, NormalizedShaderData, SD)
-
-  // template<acceptShaderData(JL)> constexpr ShaderData parseShaderData() {
-  //   std::vector<ShaderResource> resources;
-  //   std::vector<ShaderResourceUsage> usages;
-  //   for(auto resource : JL) {
-  //     usages.clear();
-  //     for(auto usage : resource) {
-  // 	usages.push_back(usage.usage);
-  //     }
-  //     resources.emplace_back(resource.get().provider, usages);
-  //   };
-  //   return ShaderData(resources);
-  // };
-
-  //TODO maybe make this generic
-  template<acceptShaderData(D), ShaderResourceProvider P>
+  template<ShaderData D, ShaderResourceProvider P>
   constexpr auto SubsetShaderDataVolume() {
-    std::array<size_t, D.DIM> ret;
-    for(size_t i = 0;i < D.DIM;i++) ret[i] = 0;
+    std::array<size_t, 2> ret;
     for(auto r : D) {
-      auto p = r.get().provider;
+      auto p = r.provider;
       if(p != P) continue;
       ret[0]++;
-      for(auto u : r) {
-	ret[1]++;
-      }
+      ret[1] += r.usage.len;
     }
     return ret;
   };
 
-  template<acceptShaderData(D), ShaderResourceProvider P>
+  template<std::array<size_t, 2> VOL> struct ShaderDataStorage {
+    ShaderResourceUsage allUsages[VOL[1]];
+    ShaderResource allResources[VOL[0]];
+    ShaderData data;
+    constexpr ShaderDataStorage() = default;
+    constexpr ~ShaderDataStorage() = default;
+    template<collection C1> constexpr ShaderDataStorage(const C1& rc) {
+      size_t ui = 0, ri = 0;
+      auto rt = rc.begin();
+      while(rt != rc.end()) {
+	auto& uc = rt->k;
+	auto ut = uc.begin();
+	size_t cnt = 0;
+	while(ut != uc.end()) {
+	  allUsages[ui++] = *ut;
+	  cnt++;
+	  ut++;
+	}
+	allResources[ri++] = { { &allUsages[ui - cnt], cnt }, rt->v };
+	rt++;
+      }
+      data = Collections::LiteralList<ShaderResource>(allResources, VOL[0]);
+    };
+    constexpr inline operator ShaderData() const { return data; };
+  };
+
+  template<ShaderData D, ShaderResourceProvider P>
   constexpr auto SubsetShaderData() {
-    constexpr auto V = SubsetShaderDataVolume<passLiteralJaggedList(D), P>();
+    constexpr auto V = SubsetShaderDataVolume<D, P>();
     std::vector<Collections::StructuralPair<std::vector<ShaderResourceUsage>, ShaderResourceProvider>> ret;
     for(auto r : D) {
-      auto p = r.get().provider;
+      auto p = r.provider;
       if(p != P) continue;
       auto& pair = ret.emplace_back();
       pair.v = P;
       for(auto u : r) {
-	pair.k.push_back(u.get());
+	pair.k.push_back(u);
       }
     }
-    return LJLA::NormalizedShaderData<V>(ret);
+    return ShaderDataStorage<V>(ret);
   };
 
-  // static constexpr ShaderData emptyShaderData = ShaderData({});
+  template<std::array<size_t, 2> V>
+  constexpr ShaderDataStorage<V> makeShaderDataImpl(std::initializer_list<Collections::StructuralPair<std::initializer_list<ShaderResourceUsage>, ShaderResourceProvider>> il) {
+    return il;
+  }
+
+  template<collection C1 = std::initializer_list<Collections::StructuralPair<std::initializer_list<ShaderResourceUsage>, ShaderResourceProvider>>> constexpr std::array<size_t, 2> getShaderDataVolume(const C1& rc) {
+    size_t ui = 0, ri = 0;
+    auto rt = rc.begin();
+    while(rt != rc.end()) {
+      auto& uc = rt->k;
+      auto ut = uc.begin();
+      while(ut != uc.end()) {
+	ui++;
+	ut++;
+      }
+      ri++;
+      rt++;
+    }
+    return { ri, ui };
+  };
+
+#define makeShaderData(...) makeShaderDataImpl<::WITE::GPU::getShaderDataVolume({ __VA_ARGS__ })>({ __VA_ARGS__ });
 
   enum class PrimitiveNumberModel { eUnsigned, eTwosCompliment, eFloat, eFixed, eUnsignedFixed };
 
@@ -514,45 +534,38 @@ namespace WITE::GPU {
       { { 4, PrimitiveNumberModel::eFloat, 8 }, vk::Format::eR64G64B64A64Sfloat },
     };
 
-#define acceptVertexModel(NOM) size_t NOM## _SIZE, std::array<VertexAspectSpecifier, NOM## _SIZE> NOM
-#define passVertexModel(VM) VM .size(), VM
-
-  // template<size_t CNT, PrimitiveNumberModel M, size_t S> struct VertexAspect {
-  //   static_assert(CNT>0, "illegal count");
-  //   typedef PrimitiveNumber_t<M, S> T;
-  //   union {
-  //     std::array<T, CNT> data;
-  //     // struct { T value; VertexAspect<CNT-1, M, S> next; };
-  //     glm::vec<CNT, T, glm::qualifier::packed> glmvec;
-  //   };
-  //   static_assert(sizeof(data) == sizeof(glmvec));
-  //   // static_assert(sizeof(data) == sizeof(T) + sizeof(next));
-  //   //TODO some operators (alias glmvec)
-  //   //TODO to vk::Format
-  // };
-  // template<PrimitiveNumberModel M, size_t S> struct VertexAspect<1, M, S> {
-  //   typedef PrimitiveNumber_t<M, S> T;
-  //   T value;
-  // };
   template<size_t CNT, PrimitiveNumberModel M, size_t S> using VertexAspect =
     glm::vec<CNT, PrimitiveNumber_t<M, S>, glm::qualifier::packed>;//abstracted so an extension can be made later
   template<VertexAspectSpecifier U> using VertexAspect_t = VertexAspect<U.count, U.model, U.size>;
 
-  template<acceptVertexModel(M)> struct Vertex {
-    static constexpr size_t attributes = M_SIZE;
-    typedef VertexAspect_t<M[0]> T;
-    T value;
-    Vertex<attributes-1, subArray<1, attributes-1>(M)> rest;
-    template<size_t SKIP> auto& sub() { if constexpr(SKIP == 0) return value; else return rest.template sub<SKIP-1>(); };
-    template<class A, class... B> Vertex(A a, B... b) : value(a), rest(std::forward<B...>(b...)) {};
+  using VertexModel = Collections::LiteralList<VertexAspectSpecifier>;
+
+  namespace VertexPrefab {
+    constexpr VertexAspectSpecifier
+    dXYZ = { 3, PrimitiveNumberModel::eFloat, 8 }
+      ;
+    constexpr VertexModel
+    basic3d = { &dXYZ, 1 }
+		;
   };
 
-  template<std::array<VertexAspectSpecifier, 1> M> struct Vertex<1, M> {
+  template<VertexModel M, size_t L = M.len> struct Vertex {
+    static constexpr size_t attributes = M.len;
     typedef VertexAspect_t<M[0]> T;
     T value;
-    static constexpr size_t attributes = 1;
-    template<size_t SKIP> auto sub() { static_assert(SKIP == 0, "SKIP was out of bounds"); return value; };
-    template<class U> Vertex(U u) : value(u) {};
+    Vertex<M.sub(1, attributes-1)> rest;
+    template<size_t SKIP> constexpr auto& sub() {
+      if constexpr(SKIP == 0)
+	return value;
+      else
+	return rest.template sub<SKIP-1>();
+    };
+    template<class... B> constexpr Vertex(T a, B... b) : value(a), rest(std::forward<B...>(b...)) {};
+    constexpr Vertex(T a) : value(a) {};
+  };
+
+  template<VertexModel M> requires(M.len == 0) struct Vertex<M, 0> {
+    static constexpr size_t attributes = 0;
   };
 
 }

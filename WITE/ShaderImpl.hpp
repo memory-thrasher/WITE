@@ -3,8 +3,8 @@
 namespace WITE::GPU {
 
   //TODO move these to their own files
-  template<acceptShaderData(D)> class MeshShader : public Shader<passShaderData(D)> {
-    static_assert(ParseShaderData<passShaderData(D)>().containsOnly({
+  template<ShaderData D> class MeshShader : public Shader<D> {
+    static_assert(D.containsOnly({
 	  ShaderStage::eTask,
 	  ShaderStage::eMesh,
 	  ShaderStage::eFragmentDepth,
@@ -14,8 +14,8 @@ namespace WITE::GPU {
     //TODO public constructor that asks for modules for every stage
   };
 
-  template<acceptShaderData(D)> class ComputeShader : public Shader<passShaderData(D)> {
-    static_assert(ParseShaderData<passShaderData(D)>().containsOnly({ ShaderStage::eCompute }));
+  template<ShaderData D> class ComputeShader : public Shader<D> {
+    static_assert(ParseShaderData<D>().containsOnly({ ShaderStage::eCompute }));
     //TODO public constructor that asks for modules for every stage
   };
 

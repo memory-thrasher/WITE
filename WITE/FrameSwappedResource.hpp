@@ -4,6 +4,7 @@
 
 #include "FrameCounter.hpp"
 #include "Callback.hpp"
+#include "StdExtensions.hpp"
 
 namespace WITE::Util {
 
@@ -17,7 +18,9 @@ namespace WITE::Util {
     std::atomic_uint64_t lastFrameFetch, lastFrameRelease;
   public:
     FrameSwappedResource(const std::array<T, N>& data, onFrameSwitch_cb onSwitch) : data(data), onSwitch(onSwitch) {}
-    FrameSwappedResource(T* data, onFrameSwitch_cb onSwitch = NULL) : data(data), onSwitch(onSwitch) {}
+    FrameSwappedResource(T* data, onFrameSwitch_cb onSwitch = NULL) : onSwitch(onSwitch) {
+      memcpy(this->data.data(), data, sizeof(T) * N);
+    }
     FrameSwappedResource(const std::initializer_list<T> data, onFrameSwitch_cb onSwitch) : data(data), onSwitch(onSwitch) {}
     FrameSwappedResource(onFrameSwitch_cb onSwitch) : data(), onSwitch(onSwitch) {}
     FrameSwappedResource(const FrameSwappedResource&) = delete;

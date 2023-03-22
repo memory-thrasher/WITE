@@ -4,16 +4,16 @@
 
 namespace WITE::GPU {
 
-  template<acceptShaderData(D), acceptVertexModel(VM)> class VertexShader : public Shader<passShaderData(D)> {
+  template<ShaderData D, VertexModel VM> class VertexShader : public Shader<D> {
   public:
-    typedef Vertex<passVertexModel(VM)> vertex_t;
-    typedef VertexShader<passShaderData(D), passVertexModel(VM)> S;
+    typedef Vertex<VM> vertex_t;
+    typedef VertexShader<D, VM> S;
   private:
-    static_assert(ParseShaderData<passShaderData(D)>().contains(ShaderData::Vertex));
-    static_assert(!ParseShaderData<passShaderData(D)>().contains(ShaderData::Index), "Index Rendering NYI");
-    static_assert(ParseShaderData<passShaderData(D)>().contains(ShaderData::DepthAttachment));
-    static_assert(ParseShaderData<passShaderData(D)>().contains(ShaderData::ColorAttachment));
-    static_assert(ParseShaderData<passShaderData(D)>().containsOnly({
+    static_assert(ParseShaderData<D>().contains(ShaderData::Vertex));
+    static_assert(!ParseShaderData<D>().contains(ShaderData::Index), "Index Rendering NYI");
+    static_assert(ParseShaderData<D>().contains(ShaderData::DepthAttachment));
+    static_assert(ParseShaderData<D>().contains(ShaderData::ColorAttachment));
+    static_assert(ParseShaderData<D>().containsOnly({
 	  ShaderStage::eDraw,
 	  ShaderStage::eAssembler,
 	  ShaderStage::eVertex,
@@ -47,7 +47,7 @@ namespace WITE::GPU {
   public:
 
     VertexShader(ShaderModule* v, ShaderModule* tc, ShaderModule* te, ShaderModule* g, ShaderModule* f) :
-      Shader<passShaderData(D)>(QueueType::eGraphics), vertex(v), tessellationControl(tc), tessellationEvaluation(te), geometry(g), fragment(f)
+      Shader<D>(QueueType::eGraphics), vertex(v), tessellationControl(tc), tessellationEvaluation(te), geometry(g), fragment(f)
     {
       ASSERT_TRAP(!v || v->has(vk::ShaderStageFlagBits::eVertex), "no entry point provided for that shader module");
       ASSERT_TRAP(!tc || tc->has(vk::ShaderStageFlagBits::eTessellationControl),
@@ -81,7 +81,7 @@ namespace WITE::GPU {
 	stageCIs[stageCnt++] = tessellationEvaluation->getCI(vk::ShaderStageFlagBits::eTessellationEvaluation, idx);
       if(geometry) stageCIs[stageCnt++] = geometry->getCI(vk::ShaderStageFlagBits::eGeometry, idx);
       stageCIs[stageCnt++] = fragment->getCI(vk::ShaderStageFlagBits::eFragment, idx);
-      gpci.layout = Shader<passShaderData(D)>::getLayout(idx);
+      gpci.layout = Shader<D>::getLayout(idx);
       gpci.renderPass = rp;
       gpci.pStages = stageCIs;
       VK_ASSERT_TUPLE(ret, vkDev.createGraphicsPipeline(dev.getPipelineCache(), gpci, ALLOCCB), "Failed to create pipe");

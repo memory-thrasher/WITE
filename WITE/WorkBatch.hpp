@@ -11,6 +11,7 @@
 #include "types.hpp"
 #include "PerGpu.hpp"
 #include "constants.hpp"
+#include "Buffer.hpp"
 
 namespace WITE::GPU {
 
@@ -154,6 +155,20 @@ namespace WITE::GPU {
 				  uint32_t dynamicOffsetCount, const uint32_t* pDynamicOffsets);
     WorkBatch& nextSubpass(vk::SubpassContents = vk::SubpassContents::eInline);
     WorkBatch& bindPipeline(vk::PipelineBindPoint pipelineBindPoint, vk::Pipeline pipeline);
+    WorkBatch& bindVertexBuffers(uint32_t firstBinding, uint32_t bindingCount, const vk::Buffer * pBuffers,
+				 const vk::DeviceSize * pOffsets);
+    WorkBatch& bindVertexBuffers(BufferBase* pBuffers, uint32_t bindingCount = 1, const size_t* pOffsets = NULL);
+    template<size_t CNT> WorkBatch& bindAndDraw(BufferBase** buffers, size_t vertCnt,
+						size_t first = 0, const size_t* offsets = NULL) {
+      vk::Buffer bs[CNT];
+      size_t zeros[CNT];//default initialize to 0, only used if offsets is null
+      for(size_t i = 0;i < CNT;i++)
+	bs[i] = buffers[i]->getVkBuffer(getGpuIdx());
+      bindVertexBuffers(first, CNT, bs, offsets ? offsets : zeros);
+      draw(vertCnt);
+      return *this;
+    };
+    WorkBatch& draw(size_t vCnt, size_t firstVert = 0, size_t instanceCnt = 1, size_t firstInstace = 0);
   };
 
 }

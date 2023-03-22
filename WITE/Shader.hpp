@@ -4,7 +4,6 @@
 #include <map>
 
 #include "ShaderData.hpp"
-#include "StructuralConstList.hpp"
 #include "SyncLock.hpp"
 #include "FrameBufferedCollection.hpp"
 #include "Vulkan.hpp"
@@ -45,29 +44,29 @@ namespace WITE::GPU {
     const pipelineId_t id = idSeed++;//for RenderTarget to map pipelines against
   };
 
-  template<acceptShaderData(D)> class Shader : public ShaderBase {
+  template<ShaderData D> class Shader : public ShaderBase {
   private:
     static_assert(D.containsWritable());
-    ShaderDescriptor<passShaderData(D), ShaderResourceProvider::eShaderInstance> globalResources;
+    ShaderDescriptor<D, ShaderResourceProvider::eShaderInstance> globalResources;
   protected:
     static constexpr auto DHC = parseShaderData<D>().hashCode();
     Shader(QueueType qt) : ShaderBase(qt) {};
     void preRender(RenderTarget& target, WorkBatch cmd, layerCollection_t& layers, size_t gpu) override {
       vk::DescriptorSet dss[2] = {
 	globalResources.get(gpu),
-	target.getDescriptor<passShaderData(D)>()->get(gpu)
+	target.getDescriptor<D>()->get(gpu)
       };
       cmd.bindDescriptorSets(getBindPoint(), getLayout(gpu), 0, 2, dss, 0, NULL);
     };
   public:
     constexpr static auto dataLayout = D;
     static vk::PipelineLayout getLayout(size_t gpuIdx) {
-      if(ShaderBase::hasLayout(D, gpuIdx))
-	return ShaderBase::getLayout(D, gpuIdx);
+      if(ShaderBase::hasLayout(D.hashCode(), gpuIdx))
+	return ShaderBase::getLayout(D.hashCode(), gpuIdx);
       vk::DescriptorSetLayout layouts[3] {
-	ShaderDescriptorLifeguard::getDSLayout<passShaderData(D), ShaderResourceProvider::eShaderInstance>(gpuIdx),
-	ShaderDescriptorLifeguard::getDSLayout<passShaderData(D), ShaderResourceProvider::eRenderTarget>(gpuIdx),
-	ShaderDescriptorLifeguard::getDSLayout<passShaderData(D), ShaderResourceProvider::eRenderable>(gpuIdx)
+	ShaderDescriptorLifeguard::getDSLayout<D, ShaderResourceProvider::eShaderInstance>(gpuIdx),
+	ShaderDescriptorLifeguard::getDSLayout<D, ShaderResourceProvider::eRenderTarget>(gpuIdx),
+	ShaderDescriptorLifeguard::getDSLayout<D, ShaderResourceProvider::eRenderable>(gpuIdx)
       };
       vk::PipelineLayoutCreateInfo pipeCI { {}, 3, layouts };
       ShaderBase::makeLayout(DHC, &pipeCI, gpuIdx);

@@ -26,12 +26,16 @@ namespace WITE::GPU {
 			    uint32_t al, uint32_t mip, logicalDeviceMask_t ldm, usage_t usage, usage_t externalUsage) :
       ImageFormatFamily(comp, comp_size),
       dimensions(dim), samples(sam), usage(usage), externalUsage(externalUsage), logicalDeviceMask(ldm), arrayLayers(al), mipLevels(mip) {};
+    constexpr ~ImageSlotData() = default;
   };
 
   struct BufferSlotData {
     logicalDeviceMask_t logicalDeviceMask;
     usage_t usage;
     uint32_t size;
+    constexpr BufferSlotData(logicalDeviceMask_t logicalDeviceMask, usage_t usage, uint32_t size) :
+      logicalDeviceMask(logicalDeviceMask), usage(usage), size(size) {};
+    constexpr ~BufferSlotData() = default;
   };
 
   //base class for buffers and images and whatever else might come up

@@ -11,15 +11,18 @@ namespace WITE::Collections {
 
   template<typename T> struct LiteralList {
     const T* data;
-    const size_t len;
+    size_t len;
+    constexpr size_t count() const { return len; };
     constexpr LiteralList() = default;
     constexpr LiteralList(const LiteralList<T>& o) = default;
     constexpr LiteralList(const T* data, const size_t len) : data(data), len(len) {};
     template<size_t LEN> constexpr LiteralList(const std::array<T, LEN>& o) : LiteralList(o.data(), LEN) {};
+    template<size_t LEN> constexpr LiteralList(const T (&o)[LEN]) : LiteralList(o, LEN) {};
     constexpr ~LiteralList() = default;
     constexpr inline auto begin() const { return data; };
     constexpr inline auto end() const { return data+len; };
     constexpr inline const T& operator[](int i) const { return data[i]; };
+    constexpr inline const LiteralList sub(size_t start, size_t len) const { return { data+start, len }; };
   };
 
   template<size_t layers, class T> constexpr std::array<size_t, 1> countIlRecursive(const std::initializer_list<T> il) {
@@ -54,21 +57,21 @@ namespace WITE::Collections {
     return ret;
   };
 
-  template<size_t start, size_t len, class T>
-  constexpr std::array<T, len> subArray(const LiteralList<T> src) {
-    if constexpr(len <= 0)
-      return {};
-    else if constexpr(len == 1)
-      return { src[start] };
-    else if constexpr(len == 2)
-      return { src[start], src[start+1] };
-    else
-      return { src[start], std::forward(subArray<start+1, len-1, T>(src)) };
-    // std::array<T, len> ret;
-    // for(size_t i = 0;i < len;i++)
-    //   ret[i] = src[start+i];
-    // return ret;
-  };
+  // template<size_t start, size_t len, class T>
+  // constexpr std::array<T, len> subArray(const LiteralList<T> src) {
+  //   if constexpr(len <= 0)
+  //     return {};
+  //   else if constexpr(len == 1)
+  //     return { src[start] };
+  //   else if constexpr(len == 2)
+  //     return { src[start], src[start+1] };
+  //   else
+  //     return { src[start], std::forward(subArray<start+1, len-1, T>(src)) };
+  //   // std::array<T, len> ret;
+  //   // for(size_t i = 0;i < len;i++)
+  //   //   ret[i] = src[start+i];
+  //   // return ret;
+  // };
 
   template<size_t N> constexpr size_t sum(std::array<size_t, N> src) {
     size_t ret = 0;

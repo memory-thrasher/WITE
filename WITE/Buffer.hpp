@@ -4,6 +4,7 @@
 #include "PerGpu.hpp"
 #include "Vulkan.hpp"
 #include "VRam.hpp"
+#include "Gpu.hpp"
 
 namespace WITE::GPU {
 
@@ -30,12 +31,17 @@ namespace WITE::GPU {
     void populateDSWrite(vk::WriteDescriptorSet* out, size_t gpuIdx) override;
     inline size_t getSize() const { return slotData.size; };//TODO dynamic size?
     template<class T> inline void write(const T* data, size_t tCnt, size_t gpu) { mem.getRef(gpu)->write(data, tCnt); };
+    template<class T> inline void write(const T* data, size_t tCnt, logicalDeviceMask_t ldm) {
+      for(size_t dev : Gpu::gpusForLdm(ldm))
+	write(data, tCnt, dev);
+    };
   };
 
   template<BufferSlotData BSD> class Buffer : public BufferBase {
   public:
     Buffer() : BufferBase(BSD) {};
     ~Buffer() override = default;
+    template<class T> inline void write(const T* data, size_t tCnt = 1) { BufferBase::write(data, tCnt, BSD.logicalDeviceMask); };
   };
 
 }

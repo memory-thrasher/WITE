@@ -3,6 +3,7 @@
 #include <vector>
 #include <algorithm>
 #include <cstring> //memcpy
+#include <map>
 
 namespace WITE::Collections {
 
@@ -36,7 +37,13 @@ namespace WITE::Collections {
     }
   }
 
-  
+  template<class T, class K, class V> bool collectionIntersectsMap(const T& col, const std::map<K, V>& map) {
+    auto iter = col.begin(), end = col.end();
+    while(iter++ != end)
+      if(map.contains(*iter))
+	return true;
+    return false;
+  };
 
 }
 
@@ -49,8 +56,7 @@ namespace WITE {
 
   template<typename D, typename S> inline void memcpy(D* dst, const S* src, size_t len)
     requires std::is_volatile_v<D> {
-    for(size_t i = len;i;) {
-      --i;
+    for(size_t i = len;i--;) {
       dst[i] = src[i];
     }
   }
@@ -84,7 +90,8 @@ namespace WITE {
   }
 
   //I and O are either iterators or pointers
-  template<class I, class O, class Alloc> constexpr O const_copy(I start, I end, O out, Alloc& alloc) {
+  template<class I, class O, class Alloc = std::allocator<std::remove_reference_t<decltype(*O())>>>
+  constexpr O const_copy(I start, I end, O out, Alloc alloc = Alloc()) {
     auto o = out;
     while(start != end)
       std::allocator_traits<Alloc>::construct(alloc, &*o++, *start++);//constructor or assignment call

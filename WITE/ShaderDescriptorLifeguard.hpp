@@ -23,7 +23,7 @@ namespace WITE::GPU {
 
   class GpuResource;
 
-  template<acceptShaderData(D)> struct ShaderDescriptorPoolLayout {
+  template<ShaderData D> struct ShaderDescriptorPoolLayout {
     constexpr static uint32_t setsPerPool = 100;
     constexpr static uint32_t resourceCount = ParseShaderData<D>().countDescriptorSetResources();
     constexpr static vk::DescriptorSetLayoutBinding dsBindings[resourceCount] = ParseShaderData<D>().template getDescriptorSetLayoutBindings<resourceCount>();
@@ -53,15 +53,15 @@ namespace WITE::GPU {
     vk::DescriptorSet allocate();
     void deallocate(vk::DescriptorSet r);
 
-    template<acceptShaderData(FD)>
+    template<ShaderData FD>
     static ShaderDescriptorLifeguard* get(size_t gpuIdx) {
       static constexpr auto hc = parseShaderData<FD>().hashCode();
       auto map = all[gpuIdx];
       ShaderDescriptorLifeguard* sdl;
       if(!map->contains(hc)) {
 	sdl = map->emplace(hc,
-			   &ShaderDescriptorPoolLayout<passLiteralJaggedList(FD)>::dslCI,
-			   &ShaderDescriptorPoolLayout<passLiteralJaggedList(FD)>::poolCI,
+			   &ShaderDescriptorPoolLayout<FD>::dslCI,
+			   &ShaderDescriptorPoolLayout<FD>::poolCI,
 			   gpuIdx).first;
       } else {
 	sdl = &map->at(hc);
@@ -70,19 +70,19 @@ namespace WITE::GPU {
     };
 
   public:
-    template<acceptShaderData(D), ShaderResourceProvider P>
+    template<ShaderData D, ShaderResourceProvider P>
     static void allocate(vk::DescriptorSet* ret, size_t gpuIdx) {
-      *ret = get<D.SubsetFrom(P)>(gpuIdx)->allocate();
+      *ret = get<SubsetShaderData<D, P>()>(gpuIdx)->allocate();
     };
 
-    template<acceptShaderData(D), ShaderResourceProvider P>
+    template<ShaderData D, ShaderResourceProvider P>
     static void deallocate(size_t gpuIdx, vk::DescriptorSet* r) {
-      get<D.SubsetFrom(P)>(gpuIdx)->deallocate(*r);
+      get<SubsetShaderData<D, P>()>(gpuIdx)->deallocate(*r);
     };
 
-    template<acceptShaderData(D), ShaderResourceProvider P>
+    template<ShaderData D, ShaderResourceProvider P>
     static vk::DescriptorSetLayout getDSLayout(size_t gpuIdx) {
-      return get<D.SubsetFrom(P)>(gpuIdx)->dsl;
+      return get<SubsetShaderData<D, P>()>(gpuIdx)->dsl;
     };
 
   };
@@ -101,11 +101,11 @@ namespace WITE::GPU {
     virtual vk::DescriptorSet get(size_t gpu) = 0;
   };
 
-  template<acceptShaderData(D), ShaderResourceProvider P> class ShaderDescriptor : public ShaderDescriptorBase {
+  template<ShaderData D, ShaderResourceProvider P> class ShaderDescriptor : public ShaderDescriptorBase {
   private:
-    static constexpr auto FD = SubsetShaderData<passLiteralJaggedList(D), P>();
+    static constexpr auto FD = SubsetShaderData<D, P>();
     static constexpr auto FDC = FD.hashCode();
-    static constexpr uint32_t resourceCount = ShaderDescriptorPoolLayout<passLiteralJaggedList(FD)>::resourceCount;
+    static constexpr uint32_t resourceCount = ShaderDescriptorPoolLayout<FD>::resourceCount;
 
     struct descriptorSetContainer {
       vk::DescriptorSet ds;
@@ -172,7 +172,7 @@ namespace WITE::GPU {
 	    dsw[i].dstSet = dsc.ds;
 	    dsw[i].dstBinding = i;
 	    //populated by resource.populateDSWrite: arrayElement, descriptorCount, p*Info
-	    dsw[i].descriptorType = ShaderDescriptorPoolLayout<passLiteralJaggedList(FD)>::dsBindings[i].descriptorType;
+	    dsw[i].descriptorType = ShaderDescriptorPoolLayout<FD>::dsBindings[i].descriptorType;
 	    pf.resources[i].populateDSWrite(&dsw[i], gpu);
 	  }
 	  Gpu::get(gpu).getVkDevice().updateDescriptorSets(resourceCount, &dsw, 0, NULL);
@@ -212,7 +212,7 @@ namespace WITE::GPU {
 
   };
 
-  template<ShaderResourceProvider P> class ShaderDescriptor<passEmptyJaggedListAliasXNS(GPU, NormalizedShaderData), P> {
+  template<ShaderResourceProvider P> class ShaderDescriptor<ShaderData_EMPTY, P> {
     static constexpr bool empty = true;
   };
 

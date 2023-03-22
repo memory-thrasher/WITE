@@ -24,7 +24,13 @@ namespace WITE::Collections {
 #define STDIL9(T) STDIL8(STDIL(T))
   //beyond 9 dimensions of jagged array, rethink everything
 
-  template<class T, size_t dimensions, std::array<size_t, dimensions> volume> class LiteralJaggedList {
+  class LiteralJaggedListBase {
+  public:
+    constexpr LiteralJaggedListBase() = default;
+    constexpr ~LiteralJaggedListBase() = default;
+  };
+
+  template<class T, size_t dimensions, std::array<size_t, dimensions> volume> class LiteralJaggedList : public LiteralJaggedListBase {
   public:
     using SPECULUM = LiteralJaggedList<T, dimensions, volume>;
     static constexpr size_t indexCount = sum(subArray<0, dimensions-1>(volume)),
@@ -165,28 +171,25 @@ namespace WITE::Collections {
 
   };
 
+  template<class T, size_t dimensions> struct PackedLiteralJaggedList {
+    const LiteralJaggedListBase* data;
+    std::array<size_t, dimensions> volume;
+    constexpr PackedLiteralJaggedList() = default;
+    constexpr ~PackedLiteralJaggedList() = default;
+
+    template<std::array<size_t, dimensions> VOL>
+    constexpr PackedLiteralJaggedList(const LiteralJaggedList<T, dimensions, VOL>& o) : data(&o) {
+      //memcpy(volume, VOL.data(), sizeof(volume));
+      const_copy(&VOL[0], &VOL[dimensions], volume.data());
+    };
+
+  };
+
+  template<class T, size_t DIM, PackedLiteralJaggedList<T, DIM> PAK> constexpr auto unpack() {
+    return *(const LiteralJaggedList<T, DIM, PAK.volume>*)PAK.data;
+  };
+
   //use in global or name space
 #define defineLiteralJaggedList(T, DIM, NOM, ...) constexpr auto NOM = ::WITE::Collections::LiteralJaggedList<T, DIM, ::WITE::Collections::countIlRecursive<DIM>({ __VA_ARGS__ })>({ __VA_ARGS__ });
-
-  //use in a class template declaration
-#define acceptLiteralJaggedList(T, DIM, NOM) std::array<size_t, DIM> witeJaggedListVolume_ ##NOM, ::WITE::Collections::LiteralJaggedList<T, DIM, witeJaggedListVolume_ ##NOM> NOM
-
-  //use to pass a JL to a template
-#define passLiteralJaggedList(NOM) NOM.VOLUME, NOM
-
-#define passEmptyJaggedList(T, DIM) std::array<size_t, DIM>(), ::WITE::Collections::LiteralJaggedList<T, DIM, std::array<size_t, DIM>()>();
-
-#define defineLiteralJaggedListAliasType(T, DIM, NOM_T) namespace LJLA { constexpr size_t DIM_ ##NOM_T = DIM; template<std::array<size_t, DIM> VOL> using NOM_T = ::WITE::Collections::LiteralJaggedList<T, DIM, VOL>; }
-
-#define acceptLiteralJaggedListAlias(NOM_T, NOM) std::array<size_t, LJLA::DIM_ ##NOM_T> witeJaggedListVolume_ ##NOM, LJLA::NOM_T <witeJaggedListVolume_ ##NOM> NOM
-
-#define passEmptyJaggedListAlias(NOM_T) std::array<size_t, LJLA::DIM_ ##NOM_T>(), LJLA::NOM_T<std::array<size_t, LJLA::DIM_ ##NOM_T >{}>()
-
-  //cross-namespace versions
-#define acceptLiteralJaggedListAliasXNS(NS, NOM_T, NOM) std::array<size_t, NS::LJLA::DIM_ ##NOM_T> witeJaggedListVolume_ ##NOM, NS::LJLA::NOM_T <witeJaggedListVolume_ ##NOM> NOM
-
-#define passEmptyJaggedListAliasXNS(NS, NOM_T) std::array<size_t, NS::LJLA::DIM_ ##NOM_T>{}, NS::LJLA::NOM_T<std::array<size_t, NS::LJLA::DIM_ ##NOM_T >{}>{}
-
-  //alias types should make their own definitions
 
 };

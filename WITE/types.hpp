@@ -9,7 +9,7 @@ namespace WITE {
 
   namespace GPU {
 
-    typedef Collections::LiteralList<layer_t> layerCollection_t;
+    typedef const Collections::LiteralList<layer_t> layerCollection_t;
 
     enum class QueueType { eGraphics, eTransfer, eCompute };
 

@@ -16,6 +16,7 @@ if [ -z "${VK_SDK_PATH}" ]; then
 fi
 COMPILER=clang++
 WORKNICE="nice -n10"
+GLCOMPILER=glslangValidator
 
 #config
 if [ -z "$VK_INCLUDE" -a ! -z "$VK_SDK_PATH" ]; then
@@ -27,10 +28,23 @@ find "${OUTDIR}" -type f -iname '*.o' -print0 |
 	find $BUILDLIBS $BUILDAPP $BUILDTESTS -type f -iname "$(basename "${OFILE%.*}.cpp")" | grep -q . || rm "${OFILE}";
     done;
 
+#compile shaders first (so they can be imported as strings if desired)
+find $BUILDAPP $BUILDTESTS -iname '*.glsl' -type f -print0 |
+    while IFS= read -d '' SRCFILE && [ $(cat ${ERRLOGBITDIR}/*-${ERRLOGBIT} 2>/dev/null | wc -l) -eq 0 ]; do
+	DSTFILE="${OUTDIR}/${SRCFILE%.*}.spv"
+	#TODO are imports or other dependencies possible?
+	THISERRLOG="${ERRLOGBITDIR}/$(echo "${SRCFILE}" | tr '/' '-')-${ERRLOGBIT}"
+	rm "${THISERRLOG}" 2>/dev/null
+	(
+	    if ![ -f "${DSTFILE}" ] || [ "${SRCFILE}" -nt "${DSTFILE}" ]; then
+		$WORKNICE $GLCOMPILER -V130 -gVS "${SRCFILE}" -o "${DSTFILE}"
+	    fi
+	) 2>"${THISERRLOG}" &
+    done
+
 #compile to static
 find $BUILDLIBS $BUILDAPP $BUILDTESTS -name '*.cpp' -type f -print0 |
     while IFS= read -d '' SRCFILE && [ $(cat ${ERRLOGBITDIR}/*-${ERRLOGBIT} 2>/dev/null | wc -l) -eq 0 ]; do
-	if [ $(cat 2>/dev/null ${ERRLOGBITDIR}/*-${ERRLOGBIT} 2>/dev/null | wc -l) -gt 0 ]; then break; fi;
 	DSTFILE="${OUTDIR}/${SRCFILE%.*}.o"
 	DEPENDENCIES="${OUTDIR}/${SRCFILE%.*}.d"
 	THISERRLOG="${ERRLOGBITDIR}/$(echo "${SRCFILE}" | tr '/' '-')-${ERRLOGBIT}"
@@ -55,7 +69,7 @@ find $BUILDLIBS $BUILDAPP $BUILDTESTS -name '*.cpp' -type f -print0 |
 	    fi
 	    rm "${DEPENDENCIES}" &>/dev/null
 	    if ! $WORKNICE $COMPILER $VK_INCLUDE --std=c++20 -D_POSIX_C_SOURCE=200112L -fPIC $BOTHOPTS -Werror -Wall "${SRCFILE}" -c -o "${DSTFILE}" >>"${LOGFILE}" 2>>"${THISERRLOG}"; then
-		touch "${SRCFILE}";
+		echo "Failed Build: ${SRCFILE}" 2>>"${THISERRLOG}"
 		echo "Failed Build: ${SRCFILE}"
 	    else
 		echo "Built: ${SRCFILE}"
@@ -65,8 +79,7 @@ find $BUILDLIBS $BUILDAPP $BUILDTESTS -name '*.cpp' -type f -print0 |
 
 #TODO other file types (shaders etc.)
 
-while pgrep $COMPILER &>/dev/null && [ $(cat 2>/dev/null ${ERRLOGBITDIR}/*-${ERRLOGBIT} | wc -l) -eq 0 ]; do sleep 0.2s; done
-sleep 1s;
+while pgrep $COMPILER &>/dev/null; do sleep 0.2s; done
 cat ${ERRLOGBITDIR}/*-${ERRLOGBIT} >"${ERRLOG}"
 
 #libs
@@ -112,8 +125,6 @@ if ! [ -f "${ERRLOG}" ] || [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
 	$WORKNICE $COMPILER $(find "$DIRNAME" -name '*.o') -o $APPNAME $BOTHOPTS >>"${LOGFILE}" 2>>"${ERRLOG}"
     done
 fi
-
-pkill $COMPILER
 
 if [ -f "${ERRLOG}" ] && [ "$(stat -c %s "${ERRLOG}")" -gt 0 ]; then
     echo "${ERRLOG}"

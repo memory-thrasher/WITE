@@ -23,7 +23,25 @@ namespace WITE::Collections {
     constexpr inline auto end() const { return data+len; };
     constexpr inline const T& operator[](int i) const { return data[i]; };
     constexpr inline const LiteralList sub(size_t start, size_t len) const { return { data+start, len }; };
-  };
+
+    template<class L> constexpr inline const size_t countWhere(L l) {
+      size_t ret = 0;
+      for(size_t i = 0;i < len;i++)
+	if(l(data[len]))
+	  ret++;
+      return ret;
+    };
+
+    template<class L, size_t C = countWhere(l)> constexpr inline const auto where(L l) {
+      size_t j = 0;
+      T ret[C];
+      for(size_t i = 0;i < len;i++)
+	if(l(data[len]))
+	  ret[j++] = data[len];
+      return ret;
+    };
+
+};
 
   template<size_t layers, class T> constexpr std::array<size_t, 1> countIlRecursive(const std::initializer_list<T> il) {
     return { countIL(il) };

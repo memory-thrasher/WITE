@@ -91,7 +91,15 @@ namespace WITE::GPU {
       type(GpuResourceType::eImage), imageData(isd) {};
     constexpr GpuResourceSlotInfo(BufferSlotData bsd) :
       type(GpuResourceType::eBuffer), bufferData(bsd) {};
-    constexpr GpuResourceSlotInfo mutateUsage(usage_t add, usage_t remove = ~0) const {
+    constexpr usage_t getUsage() const {
+      usage_t ret;
+      switch(type) {
+      case GpuResourceType::eImage: ret = imageData.usage; break;
+      case GpuResourceType::eBuffer: rret = bufferData.usage; break;
+      }
+      return ret;
+    };
+    constexpr GpuResourceSlotInfo mutateUsage(usage_t add, usage_t remove = 0) const {
       GpuResourceSlotInfo ret = *this;
       switch(type) {
       case GpuResourceType::eImage: ret.imageData.usage = (ret.imageData.usage & ~remove) | add; break;

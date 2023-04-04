@@ -55,6 +55,7 @@ namespace WITE::GPU {
     vk::AttachmentDescription getAttachmentDescription(bool clear = true);
     vk::ImageSubresourceLayers getAllSubresourceLayers();
     vk::Image getVkImage(size_t gpuIdx);
+    vk::ImageView makeVkImageView(size_t gpuIdx);
     vk::ImageView getVkImageView(size_t gpuIdx);
     void makeAccessors(accessObject*, size_t gpu);
     static void destroyAccessors(accessObject* doomed, size_t gpu);

@@ -86,11 +86,18 @@ namespace WITE::GPU {
     return images[gpuIdx];
   };
 
-  void ImageBase::makeAccessors(accessObject* ret, size_t gpu) {
+  vk::ImageView ImageBase::makeVkImageView(size_t gpu) {
     auto vkDev = Gpu::get(gpu).getVkDevice();
     vk::ImageViewCreateInfo ivci { {}, getVkImage(gpu), getViewTypeForWhole(slotData), format, {}, {
 	aspectMaskForUsage(slotData.usage), 0, slotData.mipLevels, 0, slotData.arrayLayers } };
-    VK_ASSERT(vkDev.createImageView(&ivci, ALLOCCB, &ret->view), "Failed to create image view");
+    vk::ImageView ret;
+    VK_ASSERT(vkDev.createImageView(&ivci, ALLOCCB, &ret), "Failed to create image view");
+    return ret;
+  };
+
+  void ImageBase::makeAccessors(accessObject* ret, size_t gpu) {
+    auto vkDev = Gpu::get(gpu).getVkDevice();
+    ret->view = makeVkImageView(gpu);
     vk::SamplerCreateInfo sci { {}, vk::Filter::eLinear, vk::Filter::eLinear, vk::SamplerMipmapMode::eLinear,
       vk::SamplerAddressMode::eClampToEdge, vk::SamplerAddressMode::eClampToEdge, vk::SamplerAddressMode::eClampToEdge,
       0, true, 1.0f, false, vk::CompareOp::eNever, 0, static_cast<float>(slotData.mipLevels),

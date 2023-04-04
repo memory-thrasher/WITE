@@ -32,15 +32,19 @@ find "${OUTDIR}" -type f -iname '*.o' -print0 |
 find $BUILDAPP $BUILDTESTS -iname '*.glsl' -type f -print0 |
     while IFS= read -d '' SRCFILE && [ $(cat ${ERRLOGBITDIR}/*-${ERRLOGBIT} 2>/dev/null | wc -l) -eq 0 ]; do
 	DSTFILE="${OUTDIR}/${SRCFILE%.*}.spv"
+	HDSTFILE="${OUTDIR}/${SRCFILE%.*}.spv.h"
 	#TODO are imports or other dependencies possible?
 	THISERRLOG="${ERRLOGBITDIR}/$(echo "${SRCFILE}" | tr '/' '-')-${ERRLOGBIT}"
 	rm "${THISERRLOG}" 2>/dev/null
 	(
-	    if ![ -f "${DSTFILE}" ] || [ "${SRCFILE}" -nt "${DSTFILE}" ]; then
-		$WORKNICE $GLCOMPILER -V130 -gVS "${SRCFILE}" -o "${DSTFILE}"
+	    if ! [ -f "${DSTFILE}" ] || [ "${SRCFILE}" -nt "${DSTFILE}" ]; then
+		$WORKNICE $GLCOMPILER -V --target-env vulkan1.3 -gVS "${SRCFILE}" -o "${DSTFILE}" --vn "${HDSTFILE}" ||
+		    rm "${DSTFILE}"
 	    fi
-	) 2>"${THISERRLOG}" &
+	) &>"${THISERRLOG}" &
     done
+
+while pgrep $GLCOMPILER &>/dev/null; do sleep 0.2s; done
 
 #compile to static
 find $BUILDLIBS $BUILDAPP $BUILDTESTS -name '*.cpp' -type f -print0 |
@@ -69,6 +73,7 @@ find $BUILDLIBS $BUILDAPP $BUILDTESTS -name '*.cpp' -type f -print0 |
 	    fi
 	    rm "${DEPENDENCIES}" &>/dev/null
 	    if ! $WORKNICE $COMPILER $VK_INCLUDE --std=c++20 -D_POSIX_C_SOURCE=200112L -fPIC $BOTHOPTS -Werror -Wall "${SRCFILE}" -c -o "${DSTFILE}" >>"${LOGFILE}" 2>>"${THISERRLOG}"; then
+		rm "${DSTFILE}"
 		echo "Failed Build: ${SRCFILE}" 2>>"${THISERRLOG}"
 		echo "Failed Build: ${SRCFILE}"
 	    else

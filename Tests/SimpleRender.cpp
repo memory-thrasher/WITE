@@ -10,6 +10,10 @@
 #include "../WITE/BackedRenderTarget.hpp"
 #include "../WITE/StaticMeshRenderable.hpp"
 
+//include the compiled shader code which was outputted as a header in the build dir before c++ code gets compiled.
+#include "basicShader.frag.spv.h"
+#include "basicShader.vert.spv.h"
+
 using namespace WITE;
 using namespace WITE::DB;
 using namespace WITE::GPU;
@@ -38,15 +42,17 @@ typedef Util::FrameSwappedResource<Buffer<BufferSlotData(LDM_RENDERER, GRU(DS_RE
 
 constexpr auto basicRenderingPayloadData =
 	    makeShaderData(
+			   { { ShaderData::Vertex }, ShaderResourceProvider::eRenderable },
 			   { { ShaderData::UniformToVertex }, ShaderResourceProvider::eRenderable }, //object transform
 			   { { ShaderData::UniformToVertex }, ShaderResourceProvider::eRenderTarget }, //camera transform
 			   { { ShaderData::ColorAttachment }, ShaderResourceProvider::eRenderTarget },
 			   { { ShaderData::DepthAttachment }, ShaderResourceProvider::eRenderTarget }
 			   );
 
-ShaderModule basicShader_module {};
+ShaderModule basicShaderFrag { basicShader_frag, vk::ShaderStageFlagBits::eFragment },
+  basicShaderVert { basicShader_vert, vk::ShaderStageFlagBits::eVertex };
 
-VertexShader<basicRenderingPayloadData, VertexPrefab::basic3d> basicShader;
+VertexShader<basicRenderingPayloadData, VertexPrefab::basic3d> basicShader { &basicShaderFrag, &basicShaderVert };
 
 constexpr Vertex<VertexPrefab::basic3d> pyramid_verts[] {
   { { 0, 0, 0 } }, { { 1, 1, 0 } }, { { 1, 0.5, 1 } },

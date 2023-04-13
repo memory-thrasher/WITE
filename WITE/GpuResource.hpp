@@ -68,6 +68,7 @@ namespace WITE::GPU {
       MUSAGE_ANY_READ = USAGE_INDIRECT | USAGE_VERTEX | USAGE_DS_READ | USAGE_DS_SAMPLED | USAGE_ATT_INPUT | USAGE_HOST_READ | USAGE_TRANSFER,
       MUSAGE_ANY_ATTACH = USAGE_ATT_DEPTH | USAGE_ATT_INPUT | USAGE_ATT_OUTPUT,
       MUSAGE_ANY_SHADER_READ = USAGE_INDIRECT | USAGE_VERTEX | USAGE_DS_READ | USAGE_DS_SAMPLED,
+      MUSAGE_ANY_DESCRIPTOR_SET = USAGE_DS_WRITE | USAGE_DS_READ | USAGE_DS_SAMPLED,
       MUSAGE_ANY_HOST = USAGE_HOST_READ | USAGE_HOST_WRITE,
       MUSAGE_ANY_INTERMEDIATE = MUSAGE_ANY_SHADER_READ | USAGE_ATT_INPUT;//denotes which images need synced when multiple gpus
     GpuResource(const GpuResource&) = delete;
@@ -78,7 +79,7 @@ namespace WITE::GPU {
     virtual void populateDSWrite(vk::WriteDescriptorSet* out, size_t gpuIdx) = 0;//implementation must not overwrite descriptor set, binding or type
   };
 
-  enum class GpuResourceType { eImage, eBuffer };
+  enum class GpuResourceType : uint32_t { eImage, eBuffer };
 
   struct GpuResourceSlotInfo {
     GpuResourceType type;
@@ -95,7 +96,7 @@ namespace WITE::GPU {
       usage_t ret;
       switch(type) {
       case GpuResourceType::eImage: ret = imageData.usage; break;
-      case GpuResourceType::eBuffer: rret = bufferData.usage; break;
+      case GpuResourceType::eBuffer: ret = bufferData.usage; break;
       }
       return ret;
     };

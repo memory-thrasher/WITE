@@ -25,23 +25,25 @@ fi
 
 find "${OUTDIR}" -type f -iname '*.o' -print0 |
     while IFS= read -d '' OFILE; do
-	find $BUILDLIBS $BUILDAPP $BUILDTESTS -type f -iname "$(basename "${OFILE%.*}.cpp")" | grep -q . || rm "${OFILE}";
+	find $BUILDLIBS $BUILDAPP $BUILDTESTS -type f -iname "$(basename "${OFILE%.*}.cpp")" | grep -q . ||
+	    rm "${OFILE}" 2>/devnull;
     done;
 
 #compile shaders first (so they can be imported as strings if desired)
 find $BUILDAPP $BUILDTESTS -iname '*.glsl' -type f -print0 |
     while IFS= read -d '' SRCFILE && [ $(cat ${ERRLOGBITDIR}/*-${ERRLOGBIT} 2>/dev/null | wc -l) -eq 0 ]; do
-	DSTFILE="${OUTDIR}/${SRCFILE%.*}.spv"
-	HDSTFILE="${OUTDIR}/${SRCFILE%.*}.spv.h"
+	DSTFILE="${OUTDIR}/${SRCFILE%.*}.spv.h"
+	VARNAME="$(basename "${SRCFILE}" | sed -r 's,/,_,g;s/\.([^.]*)\.glsl$/_\1/')"
 	#TODO are imports or other dependencies possible?
 	THISERRLOG="${ERRLOGBITDIR}/$(echo "${SRCFILE}" | tr '/' '-')-${ERRLOGBIT}"
 	rm "${THISERRLOG}" 2>/dev/null
 	(
-	    if ! [ -f "${DSTFILE}" ] || [ "${SRCFILE}" -nt "${DSTFILE}" ]; then
-		$WORKNICE $GLCOMPILER -V --target-env vulkan1.3 -gVS "${SRCFILE}" -o "${DSTFILE}" --vn "${HDSTFILE}" ||
-		    rm "${DSTFILE}"
+	    if ! [ -f "${DSTFILE}" ] || [ "${SRCFILE}" -nt "${DSTFILE}" ] || [ "$0" -nt "${DSTFILE}" ]; then
+		echo building
+		$WORKNICE $GLCOMPILER -V --target-env vulkan1.3 -gVS "${SRCFILE}" -o "${DSTFILE}" --vn "${VARNAME}" ||
+		    rm "${DSTFILE}" 2>/dev/null
 	    fi
-	) &>"${THISERRLOG}" &
+	) 2>"${THISERRLOG}" &
     done
 
 while pgrep $GLCOMPILER &>/dev/null; do sleep 0.2s; done
@@ -52,12 +54,13 @@ find $BUILDLIBS $BUILDAPP $BUILDTESTS -name '*.cpp' -type f -print0 |
 	DSTFILE="${OUTDIR}/${SRCFILE%.*}.o"
 	DEPENDENCIES="${OUTDIR}/${SRCFILE%.*}.d"
 	THISERRLOG="${ERRLOGBITDIR}/$(echo "${SRCFILE}" | tr '/' '-')-${ERRLOGBIT}"
+	BUILDDIR="$(dirname "${DSTFILE}")"
 	rm "${THISERRLOG}" 2>/dev/null
 	mkdir -p "$(dirname "$DSTFILE")";
 	(
 	    if [ -f "${DSTFILE}" ] && [ "${DSTFILE}" -nt "$0" ] && [ "${DSTFILE}" -nt "${SRCFILE}" ]; then
 		if ! test -f "${DEPENDENCIES}" || test "${SRCFILE}" -nt "${DEPENDENCIES}"; then
-		    $WORKNICE $COMPILER $VK_INCLUDE -E -o /dev/null -w -ferror-limit=1 -H "${SRCFILE}" 2>&1 | grep '^\.' | grep -o '[^[:space:]]*$' | sort -u &>"${DEPENDENCIES}"
+		    $WORKNICE $COMPILER $VK_INCLUDE -I "${BUILDDIR}" -E -o /dev/null -w -ferror-limit=1 -H "${SRCFILE}" 2>&1 | grep '^\.' | grep -o '[^[:space:]]*$' | sort -u &>"${DEPENDENCIES}"
 		fi
 		while read depend; do
 		    if ! [ -f "${depend}" ]; then
@@ -72,7 +75,8 @@ find $BUILDLIBS $BUILDAPP $BUILDTESTS -name '*.cpp' -type f -print0 |
 		echo "building ${DSTFILE}"
 	    fi
 	    rm "${DEPENDENCIES}" &>/dev/null
-	    if ! $WORKNICE $COMPILER $VK_INCLUDE --std=c++20 -D_POSIX_C_SOURCE=200112L -fPIC $BOTHOPTS -Werror -Wall "${SRCFILE}" -c -o "${DSTFILE}" >>"${LOGFILE}" 2>>"${THISERRLOG}"; then
+	    # -I "${BUILDDIR}" is for shaders which get turned into headers
+	    if ! $WORKNICE $COMPILER $VK_INCLUDE -I "${BUILDDIR}" --std=c++20 -D_POSIX_C_SOURCE=200112L -fPIC $BOTHOPTS -Werror -Wall "${SRCFILE}" -c -o "${DSTFILE}" >>"${LOGFILE}" 2>>"${THISERRLOG}"; then
 		rm "${DSTFILE}"
 		echo "Failed Build: ${SRCFILE}" 2>>"${THISERRLOG}"
 		echo "Failed Build: ${SRCFILE}"

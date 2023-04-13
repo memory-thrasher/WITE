@@ -34,7 +34,7 @@ namespace WITE::GPU {
   template<ShaderData D> class Renderable : public RenderableBase {
   private:
     typedef Shader<D> shader_t;
-    shader_t shader;
+    shader_t* shader;
     typedef ShaderDescriptor<D, ShaderResourceProvider::eRenderable> data_t;
     data_t data;
   protected:

@@ -383,27 +383,29 @@ namespace WITE::GPU {
 	}
       }
       doBarrier(srcCmd);
-      void** ramCopy = new void*[cnt];
-      memcpy(ramCopy, ram, cnt * sizeof(void*));
-      ImageBase** srcCopy = new ImageBase*[cnt];
-      for(size_t i = 0;i < cnt;i++) {
-	if(stagings && stagings[i]) {
-	  srcCopy[i] = stagings[i];
-	  srcCmd.copyImage(srcs[i], stagings[i]);
-	} else {
-	  srcCopy[i] = srcs[i];
-	}
-      }
-      srcCmd.then([srcGpu, cnt, ramCopy, srcCopy]() {
+      //copying parameters not currently required because this is currently only called from BackedRenderTarget which provides permanent backings. Saving this code for future use when that's no longer the case.
+      // void** ramCopy = new void*[cnt];
+      // memcpy(ramCopy, ram, cnt * sizeof(void*));
+      // ImageBase** srcCopy = new ImageBase*[cnt];
+      // for(size_t i = 0;i < cnt;i++) {
+      // 	if(stagings && stagings[i]) {
+      // 	  srcCopy[i] = stagings[i];
+      // 	  srcCmd.copyImage(srcs[i], stagings[i]);
+      // 	} else {
+      // 	  srcCopy[i] = srcs[i];
+      // 	}
+      // }
+      // srcCmd.then([srcGpu, cnt, ramCopy, srcCopy]() {
+      srcCmd.then([srcGpu, cnt, ram, srcs]() {
 	for(size_t i = 0;i < cnt;i++)
-	  srcCopy[i]->mem.getPtr(srcGpu)->read(ramCopy[i]);
+	  srcs[i]->mem.getPtr(srcGpu)->read(ram[i]);
       });
       srcCmd.submit();
-      cleanupCmd.mustHappenAfter(srcCmd);
-      cleanupCmd.then([ramCopy, srcCopy](){
-	delete [] ramCopy;
-	delete [] srcCopy;
-      });
+      // cleanupCmd.mustHappenAfter(srcCmd);
+      // cleanupCmd.then([ramCopy, srcCopy](){
+      // 	delete [] ramCopy;
+      // 	delete [] srcCopy;
+      // });
       //note: splitting to one cmd per gpu so they can be parallel
       for(size_t gpu = 0;gpu < Gpu::getGpuCount();gpu++) {
 	if(gpu == srcGpu || !Gpu::ldmContains(srcs[gpu]->slotData.logicalDeviceMask, gpu)) continue;

@@ -48,6 +48,16 @@ namespace WITE::Util {
     inline T& getRead() { return get(1); };
     inline std::array<T, N>& all() { return data; };
     inline const std::array<const T, N>& call() const { return data; };
+
   };
+
+  // template<class T, size_t L, size_t N = 2>
+  // inline FrameSwappedResource<T*[L], N> DeMultiplex(FrameSwappedResource<T, N>*(&multis)[L]) {
+  //   std::array<T*[L], N> ret;
+  //   for(size_t i = 0;i < L;i++)
+  //     for(size_t j = 0;j < N;j++)
+  // 	ret[j][i] = &multis[i].all()[j];
+  //   return { ret, NULL };
+  // };
 
 }

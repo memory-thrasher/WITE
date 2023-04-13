@@ -28,9 +28,9 @@ namespace WITE::Collections {
 	data.emplace(locationIter, k);
       return *locationIter;
     };
-    const auto begin() const { return data.cbegin(); };
-    const auto end() const { return data.cend(); };
-    const auto size() const { return data.size(); };
+    constexpr auto begin() const { return data.cbegin(); };
+    constexpr auto end() const { return data.cend(); };
+    constexpr auto size() const { return data.size(); };
     void clear() { data.clear(); };
   };
 

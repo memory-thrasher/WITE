@@ -12,7 +12,7 @@ namespace WITE::GPU {
       w(512), h(isd.dimensions > 1 ? 512 : 1), z(1),
       accessStateTracker(PerGpu<StateSynchronizer<accessState>>::creator_t_F::make(this, &ImageBase::makeStateTracker)),
       slotData(isd),
-      format(Gpu::getBestImageFormat(isd.components, isd.componentsSize, isd.usage, isd.logicalDeviceMask)),
+      format(getBestImageFormat(isd)),
       transfersRequired(Gpu::gpuCountByLdm(isd.logicalDeviceMask) > 1 && (isd.externalUsage & MUSAGE_ANY_INTERMEDIATE))
   {};
 

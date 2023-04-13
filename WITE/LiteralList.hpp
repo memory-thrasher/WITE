@@ -32,16 +32,20 @@ namespace WITE::Collections {
       return ret;
     };
 
-    template<class L, size_t C = countWhere(l)> constexpr inline const auto where(L l) {
+    template<class L, size_t C> constexpr inline const auto where(L l) {
       size_t j = 0;
       T ret[C];
-      for(size_t i = 0;i < len;i++)
-	if(l(data[len]))
-	  ret[j++] = data[len];
+      for(size_t i = 0;i < C && i < C;i++)
+	if(l(data[i]))
+	  ret[j++] = data[i];
       return ret;
     };
 
-};
+  };
+
+  template<class T, LiteralList<T> LL, class L> constexpr static inline const auto where(L l) {
+    return LL.where<LL.countWhere(l)>(l);
+  };
 
   template<size_t layers, class T> constexpr std::array<size_t, 1> countIlRecursive(const std::initializer_list<T> il) {
     return { countIL(il) };

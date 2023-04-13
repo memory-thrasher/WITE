@@ -1,3 +1,5 @@
+#pragma once
+
 #include <map>
 
 #include "PerGpu.hpp"
@@ -20,6 +22,8 @@ namespace WITE::GPU {
     const size_t codeLen;
     ShaderModule(const void* code, size_t len,
 		 std::initializer_list<std::pair<vk::ShaderStageFlagBits, const char*>> entryPoints);
+    template<size_t L> ShaderModule(const uint32_t (&a)[L], vk::ShaderStageFlagBits stage) :
+      ShaderModule(reinterpret_cast<const void*>(a), L, {{ stage, "main" }}) {};
     const vk::PipelineShaderStageCreateInfo&& getCI(vk::ShaderStageFlagBits stage, size_t gpuIdx);
     bool has(vk::ShaderStageFlagBits b) const { return stageInfos.contains(b); };
   };

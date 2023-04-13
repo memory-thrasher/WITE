@@ -25,11 +25,12 @@ namespace WITE::GPU {
 
   template<ShaderData D> struct ShaderDescriptorPoolLayout {
     constexpr static uint32_t setsPerPool = 100;
-    constexpr static uint32_t resourceCount = ParseShaderData<D>().countDescriptorSetResources();
-    constexpr static vk::DescriptorSetLayoutBinding dsBindings[resourceCount] = ParseShaderData<D>().template getDescriptorSetLayoutBindings<resourceCount>();
+    constexpr static uint32_t resourceCount = D.countDescriptorSetResources();
+    constexpr static vk::DescriptorSetLayoutBinding dsBindings[resourceCount] =
+		D.template getDescriptorSetLayoutBindings<resourceCount>();
     constexpr static vk::DescriptorSetLayoutCreateInfo dslCI { {}, resourceCount, dsBindings };
-    constexpr static uint32_t typeCount = ParseShaderData<D>().template countDistinctTypes<resourceCount>();
-    constexpr static vk::DescriptorPoolSize types[typeCount] = ParseShaderData<D>().template getDescriptorPoolSizes<typeCount, resourceCount>();
+    constexpr static uint32_t typeCount = D.template countDistinctTypes<resourceCount>();
+    constexpr static vk::DescriptorPoolSize types[typeCount] = D.template getDescriptorPoolSizes<typeCount, resourceCount>();
     constexpr static vk::DescriptorPoolCreateInfo poolCI { {}, setsPerPool, typeCount, types };
   };
 
@@ -96,7 +97,7 @@ namespace WITE::GPU {
 
     //bypasses compiler check, for RenderTarget because what shaders are on what layer is not presently described at compile time
     //data = c-array of GpuResource* of length deduced via ShaderData templates
-    virtual void bindResourcesUnchecked(const GpuResource** data) = 0;
+    virtual void bindResourcesUnchecked(GpuResource** (&resources)[2]) = 0;
 
     virtual vk::DescriptorSet get(size_t gpu) = 0;
   };
@@ -104,7 +105,7 @@ namespace WITE::GPU {
   template<ShaderData D, ShaderResourceProvider P> class ShaderDescriptor : public ShaderDescriptorBase {
   private:
     static constexpr auto FD = SubsetShaderData<D, P>();
-    static constexpr auto FDC = FD.hashCode();
+    static constexpr auto FDC = FD.data.hashCode();
     static constexpr uint32_t resourceCount = ShaderDescriptorPoolLayout<FD>::resourceCount;
 
     struct descriptorSetContainer {
@@ -141,23 +142,24 @@ namespace WITE::GPU {
     ShaderDescriptor(ShaderDescriptor&) = delete;
     ShaderDescriptor() {};
 
-    void bindResourcesUnchecked(const GpuResource** resources) override {
+    void bindResourcesUnchecked(GpuResource** (&resources)[2]) override {
       ASSERT_TRAP(resources, "null resource given to descriptor");
       uint64_t frame = Util::FrameCounter::getFrame();
       size_t fIdx = 0;
       for(perFrame& pf : data.call()) {
 	Util::ScopeLock lock(&pf.lock);
 	pf.lastResourceUpdated = frame;
-	for(size_t i = 0;i < resourceCount;i++) {
+	memcpy(pf.resources, resources[fIdx], resourceCount*sizeof(GpuResource*));
+#ifdef DEBUG
+	for(size_t i = 0;i < resourceCount;i++)
 	  ASSERT_TRAP(resources[i * 2 + fIdx], "null resource given to descriptor");
-	  pf.resources[i] = resources[i * 2 + fIdx];
-	}
+#endif
 	fIdx++;
       }
     };
 
     //gets the READABLE DS. Will first bind resources against it if out of date.
-    vk::DescriptorSet get(size_t gpu) {
+    vk::DescriptorSet get(size_t gpu) override {
       perFrame& pf = data.get();
       descriptorSetContainer& dsc = pf.dsContainers[gpu];
       uint64_t frame = Util::FrameCounter::getFrame();

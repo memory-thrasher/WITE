@@ -105,8 +105,8 @@ namespace WITE::GPU {
       provider(provider)
     {};
 
-    auto begin() const { return usage.begin(); };
-    auto end() const { return usage.end(); };
+    constexpr auto begin() const { return usage.begin(); };
+    constexpr auto end() const { return usage.end(); };
 
     template<class Resource> struct acceptsTest { constexpr bool operator()(const ShaderResource*) { return false; }; };
 
@@ -257,18 +257,18 @@ namespace WITE::GPU {
       return resources[i];
     };
 
-    auto begin() const {
+    constexpr auto begin() const {
       return resources.begin();
     };
 
-    auto end() const {
+    constexpr auto end() const {
       return resources.end();
     };
 
     typedef uint64_t hashcode_t;//used in maps to cache descriptor info
     //uniqueness likely but not gauranteed
     constexpr hashcode_t hashCode() const {
-      uint64_t ret;
+      uint64_t ret = 0;
       for(ShaderResource r : resources)
 	ret = ret * 5021 + r.hashCode();
       return ret;
@@ -335,7 +335,7 @@ namespace WITE::GPU {
     template<size_t retCount> //must always = countDescriptorSetResources()
     constexpr auto getDescriptorSetLayoutBindings() const {
       Collections::StructuralMap<vk::DescriptorType, vk::ShaderStageFlags> flags;
-      vk::DescriptorSetLayoutBinding ret[retCount];
+      std::array<vk::DescriptorSetLayoutBinding, retCount> ret = {};
       uint32_t i = 0;
       for(ShaderResource r : resources) {
 	flags.clear();
@@ -388,7 +388,7 @@ namespace WITE::GPU {
 
   template<ShaderData D, ShaderResourceProvider P>
   constexpr auto SubsetShaderDataVolume() {
-    std::array<size_t, 2> ret;
+    std::array<size_t, 2> ret = {};
     for(auto r : D) {
       auto p = r.provider;
       if(p != P) continue;

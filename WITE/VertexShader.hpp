@@ -1,6 +1,9 @@
+#pragma once
+
 #include "ShaderModule.hpp"
 #include "Vulkan.hpp"
 #include "Gpu.hpp"
+#include "Shader.hpp"
 
 namespace WITE::GPU {
 
@@ -9,11 +12,11 @@ namespace WITE::GPU {
     typedef Vertex<VM> vertex_t;
     typedef VertexShader<D, VM> S;
   private:
-    static_assert(ParseShaderData<D>().contains(ShaderData::Vertex));
-    static_assert(!ParseShaderData<D>().contains(ShaderData::Index), "Index Rendering NYI");
-    static_assert(ParseShaderData<D>().contains(ShaderData::DepthAttachment));
-    static_assert(ParseShaderData<D>().contains(ShaderData::ColorAttachment));
-    static_assert(ParseShaderData<D>().containsOnly({
+    static_assert(D.contains(ShaderData::Vertex));
+    static_assert(!D.contains(ShaderData::Index), "Index Rendering NYI");
+    static_assert(D.contains(ShaderData::DepthAttachment));
+    static_assert(D.contains(ShaderData::ColorAttachment));
+    static_assert(D.containsOnly({
 	  ShaderStage::eDraw,
 	  ShaderStage::eAssembler,
 	  ShaderStage::eVertex,

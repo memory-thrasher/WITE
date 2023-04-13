@@ -23,7 +23,7 @@ namespace WITE::GPU {
     enum class result { done, yield };
     //acceptable forms of callback:
     typedefCB(thenCB, result, WorkBatch);
-    struct renderInfo {
+    struct renderInfo {//here "resource" = attachment
       size_t resourceCount;
       ImageBase* resources[MAX_RESOURCES];
       vk::ImageLayout initialLayouts[MAX_RESOURCES], finalLayouts[MAX_RESOURCES];

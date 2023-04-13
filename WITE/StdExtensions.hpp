@@ -45,6 +45,13 @@ namespace WITE::Collections {
     return false;
   };
 
+  template<size_t L, class T, class C> constexpr inline auto populateFor(C l) {
+    T ret[L];
+    for(size_t i = 0;i < L;i++)
+      ret[i] = l(i);
+    return ret;
+  };
+
 }
 
 namespace WITE {
@@ -54,12 +61,12 @@ namespace WITE {
     std::memcpy(reinterpret_cast<void*>(dst), reinterpret_cast<const void*>(src), len);
   }
 
-  template<typename D, typename S> inline void memcpy(D* dst, const S* src, size_t len)
-    requires std::is_volatile_v<D> {
-    for(size_t i = len;i--;) {
-      dst[i] = src[i];
-    }
-  }
+  // template<typename D, typename S> inline void memcpy(D* dst, const S* src, size_t len)
+  //   requires std::is_volatile_v<D> {
+  //   for(size_t i = len;i--;) {
+  //     dst[i] = src[i];
+  //   }
+  // }
 
   template<typename D, typename S> inline auto memcmp(const D* dst, const S* src, size_t len) {
     return std::memcmp(reinterpret_cast<const void*>(dst), reinterpret_cast<const void*>(src), len);
@@ -67,6 +74,24 @@ namespace WITE {
 
   template<typename T> inline void memset(T* dst, const char value, const size_t len) {
     std::memset(reinterpret_cast<void*>(dst), value, len);
+  }
+
+  template<size_t cnt, typename T> inline void memset(T* dst, const T value) {
+    if constexpr(cnt == 1)
+      *dst = value;
+    else if constexpr(cnt > 1) {
+      constexpr size_t m = (cnt+1)>>1;
+      memset<m, T>(dst, value);
+      memcpy(dst+m, dst, (cnt-m)*sizeof(T));
+    }
+  }
+
+  template<typename T, size_t L> inline void memcpy(T* out, T(&in)[L]) {
+    memcpy(out, &in, L * sizeof(T));
+  }
+
+  template<typename T, size_t L> inline void memcpy(T(&out)[L], T* in) {
+    memcpy(&out, in, L * sizeof(T));
   }
 
   // template<typename CVT, typename T = std::remove_cv_t<CVT>> inline T cv_cast(CVT i) {
@@ -117,5 +142,12 @@ namespace WITE {
   // };
 
   // template<class U, class T> concept is_collection_of_recursive = std::convertible_to<typename remove_collection<U>::type, T>;
+
+  template<class T> inline T* auto_cast(T* i) { return i; };//ptr to ptr
+  template<class T> inline T* auto_cast(T& i) { return &i; };//ref to ptr
+  template<class T, class U> inline T* auto_cast(U* i) { return reinterpret_cast<T*>(i); };//crosstype cast ptr to ptr
+  template<class T, class U> inline T* auto_cast(U i)  { return reinterpret_cast<T*>(i); };//downcast numeric to ptr
+  template<class T, class U> inline T* auto_cast(U& i) { return reinterpret_cast<T*>(&i); };//crosstype cast ref to ptr
+  //TODO more as needed (non-ptr with caution)
 
 }

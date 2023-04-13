@@ -49,7 +49,7 @@ namespace WITE::GPU {
     static_assert(D.containsWritable());
     ShaderDescriptor<D, ShaderResourceProvider::eShaderInstance> globalResources;
   protected:
-    static constexpr auto DHC = parseShaderData<D>().hashCode();
+    static constexpr auto DHC = D.hashCode();
     Shader(QueueType qt) : ShaderBase(qt) {};
     void preRender(RenderTarget& target, WorkBatch cmd, layerCollection_t& layers, size_t gpu) override {
       vk::DescriptorSet dss[2] = {

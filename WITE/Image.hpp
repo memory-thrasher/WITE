@@ -47,6 +47,10 @@ namespace WITE::GPU {
     const vk::Format format;
     const bool transfersRequired;//if this image is to be transferred from it's device: ie if it's used by multiple phys devs
 
+    static inline auto getBestImageFormat(ImageSlotData isd) {
+      return Gpu::getBestImageFormat(isd.components, isd.componentsSize, isd.usage, isd.logicalDeviceMask);
+    };
+
     virtual ~ImageBase() = default;
     ImageBase(ImageBase&) = delete;
     ImageBase(ImageSlotData isd);

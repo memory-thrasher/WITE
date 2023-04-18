@@ -4,10 +4,20 @@
 #include <stdint.h>
 
 namespace WITE::Util {
+
   template <typename T, typename U> size_t member_offset(U T::*member) {
-    //image that there was a T sitting on NULL, what would the address of member be? That's the offset.
+    //imagine that there was a T sitting on NULL, what would the address of member be? That's the offset.
     return reinterpret_cast<size_t>(&(static_cast<T*>(nullptr)->*member));
   }
+
+  // template<class T> struct declval_helper { static T val; };
+  // template<class T, class U, U T::*F> struct offset_helper {
+  //   using TV = declval_helper<T>;
+  //   uint8_t bytes[(uint8_t*)&(TV::val.*F) - (uint8_t*)&TV::val];
+  // };
+  // template<class T, class U, U T::*F> consteval int offset_of() {
+  //   return sizeof(offset_helper<T, U, F>::bytes);
+  // };
 
   inline uint64_t reverse(uint64_t i) {
     i = i >> 32 | i << 32;

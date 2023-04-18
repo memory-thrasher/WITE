@@ -86,8 +86,6 @@ find $BUILDLIBS $BUILDAPP $BUILDTESTS -name '*.cpp' -type f -print0 |
 	) &
     done
 
-#TODO other file types (shaders etc.)
-
 while pgrep $COMPILER &>/dev/null; do sleep 0.2s; done
 cat ${ERRLOGBITDIR}/*-${ERRLOGBIT} >"${ERRLOG}"
 

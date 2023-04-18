@@ -4,6 +4,7 @@
 #include "Vulkan.hpp"
 #include "Gpu.hpp"
 #include "Shader.hpp"
+#include "StdExtensions.hpp"
 
 namespace WITE::GPU {
 
@@ -27,9 +28,16 @@ namespace WITE::GPU {
 	  ShaderStage::eBlending
 	}));
     vk::VertexInputBindingDescription viBinding { 0, sizeof(vertex_t), vk::VertexInputRate::eVertex };
-    vk::VertexInputAttributeDescription viAttributes[VM.count()];
+    static constexpr auto viAttributes = populateFor<VM.count(), vk::VertexInputAttributeDescription>([](size_t i)consteval{
+      size_t offset = 0;
+      for(uint32_t j = 0;j < i;j++) {
+	offset += VM[i].totalSize();
+      }
+      return vk::VertexInputAttributeDescription { (uint32_t)i, 0, VM[i].getFormat(), (uint32_t)offset };
+      //TODO see how many of these can be constexpr
+    });
     vk::PipelineVertexInputStateCreateInfo vi { (vk::PipelineVertexInputStateCreateFlags)0,
-      1, &viBinding, VM.count(), &viAttributes };
+      1, &viBinding, VM.count(), viAttributes.data() };
     vk::PipelineInputAssemblyStateCreateInfo ias { {}, vk::PrimitiveTopology::eTriangleList, VK_FALSE };
     vk::PipelineTessellationStateCreateInfo ts { {}, 0 };
     vk::PipelineViewportStateCreateInfo vs { {}, 1, NULL, 1, NULL, NULL };
@@ -60,10 +68,6 @@ namespace WITE::GPU {
       ASSERT_TRAP(!g || g->has(vk::ShaderStageFlagBits::eGeometry), "no entry point provided for that shader module");
       ASSERT_TRAP(f && f->has(vk::ShaderStageFlagBits::eFragment), "no entry point provided for that shader module");
       ASSERT_TRAP(tessellationEvaluation == NULL && tessellationControl == NULL, "NYI tessellation");//temp
-      for(size_t i = 0, j = 0;i < VM.count();i++) {
-	viAttributes[i] = { i, 0, VM[i].getFormat(), j };
-	j += sizeof(VertexAspect_t<VM[i]>);
-      }
     };
 
     VertexShader(ShaderModule* v, ShaderModule* tc, ShaderModule* te, ShaderModule* f) : VertexShader(v, tc, te, NULL, f) {};

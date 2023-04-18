@@ -67,8 +67,7 @@ class pyramid_t {
 private:
   struct transients {
     TransformBuffer transformBuffer;
-    pyramid_mesh mesh;
-    // transients() : mesh(LAYER_PRIMARY, basicShader) {};
+    pyramid_mesh mesh { LAYER_PRIMARY, &basicShader };
   };
 public:
   glm::dmat4 transform;
@@ -95,7 +94,7 @@ private:
   uint64_t frameCounter;
   struct transients {
     Window window;
-    BackedRenderTarget<COLOR_TARGET, LDM_RENDERER>* canvas;
+    BackedRenderTarget<COLOR_TARGET, LDM_RENDERER> canvas;
   };
 public:
   static void onUpdate(DBRecord* data, DBEntity* dbe) {
@@ -106,13 +105,12 @@ public:
     dis.frameCounter++;
     dbe->write(&dis);
     if(dbf >= FRAME_COUNT) db->shutdown();
-    transient->canvas->render({});
-    auto* lastData = transient->canvas->getRead<0>();//0 = index of color attachment within resource list above
+    transient->canvas.render({});
+    auto* lastData = transient->canvas.getRead<0>();//0 = index of color attachment within resource list above
     transient->window.draw(lastData);
   };
   static void onSpinUp(DBEntity* dbe) {
     dbe->transientData = new transients();
-    transient->canvas = BackedRenderTarget<COLOR_TARGET, LDM_RENDERER>::make();
     //TODO create camera
   };
   static void onSpinDown(DBEntity* dbe) {

@@ -19,7 +19,7 @@ namespace WITE::GPU {
     PerGpu<Semaphore>* readDependency;
   protected:
     RenderableBase(layer_t layer) : layer(layer) {};
-    virtual void bind(size_t gpu, WorkBatch cmd, vk::PipelineBindPoint bp) = 0;
+    virtual void bind(RenderTarget& target, WorkBatch cmd) = 0;
   public:
     const layer_t layer;
     virtual void render(WorkBatch cmd) = 0;
@@ -45,7 +45,7 @@ namespace WITE::GPU {
     template<class... R> void setResources(R... resources) {
       data.setResources(std::forward<R...>(resources...));
     };
-    void bind(RenderTarget& target, WorkBatch cmd) {
+    virtual void bind(RenderTarget& target, WorkBatch cmd) override {
       size_t gpu = cmd.getGpuIdx();
       auto ds = data.get(gpu);
       cmd.bindDescriptorSets(shader->getBindPoint(), shader_t::getLayout(gpu), 2, 1, &ds, 0, NULL);

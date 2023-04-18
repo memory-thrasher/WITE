@@ -13,17 +13,18 @@ namespace WITE::Util {
     typedefCB(onFrameSwitch_cb, void, T&, T&);
   private:
     static_assert(N > 0);
-    std::array<T, N> data;
+    Collections::CopyableArray<T, N> data;
     onFrameSwitch_cb onSwitch;
     std::atomic_uint64_t lastFrameFetch, lastFrameRelease;
   public:
-    FrameSwappedResource(const std::array<T, N>& data, onFrameSwitch_cb onSwitch) : data(data), onSwitch(onSwitch) {}
+    FrameSwappedResource(const Collections::CopyableArray<T, N>& data, onFrameSwitch_cb onSwitch) : data(data), onSwitch(onSwitch) {}
     FrameSwappedResource(T* data, onFrameSwitch_cb onSwitch = NULL) : onSwitch(onSwitch) {
       memcpy(this->data.data(), data, sizeof(T) * N);
     }
     FrameSwappedResource(const std::initializer_list<T> data, onFrameSwitch_cb onSwitch) : data(data), onSwitch(onSwitch) {}
     FrameSwappedResource(onFrameSwitch_cb onSwitch) : data(), onSwitch(onSwitch) {}
     FrameSwappedResource(const FrameSwappedResource&) = delete;
+    FrameSwappedResource() {}
     size_t getIdx(ssize_t offset = 0) {
       auto frame = FrameCounter::getFrame();
       if(onSwitch) {
@@ -46,14 +47,14 @@ namespace WITE::Util {
     }
     inline T& getWrite() { return get(0); };
     inline T& getRead() { return get(1); };
-    inline std::array<T, N>& all() { return data; };
-    inline const std::array<const T, N>& call() const { return data; };
+    inline Collections::CopyableArray<T, N>& all() { return data; };
+    inline const Collections::CopyableArray<const T, N>& call() const { return data; };
 
   };
 
   // template<class T, size_t L, size_t N = 2>
   // inline FrameSwappedResource<T*[L], N> DeMultiplex(FrameSwappedResource<T, N>*(&multis)[L]) {
-  //   std::array<T*[L], N> ret;
+  //   Collections::CopyableArray<T*[L], N> ret;
   //   for(size_t i = 0;i < L;i++)
   //     for(size_t j = 0;j < N;j++)
   // 	ret[j][i] = &multis[i].all()[j];

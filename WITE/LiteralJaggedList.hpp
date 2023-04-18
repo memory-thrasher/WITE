@@ -30,14 +30,14 @@ namespace WITE::Collections {
     constexpr ~LiteralJaggedListBase() = default;
   };
 
-  template<class T, size_t dimensions, std::array<size_t, dimensions> volume> class LiteralJaggedList : public LiteralJaggedListBase {
+  template<class T, size_t dimensions, Collections::CopyableArray<size_t, dimensions> volume> class LiteralJaggedList : public LiteralJaggedListBase {
   public:
     using SPECULUM = LiteralJaggedList<T, dimensions, volume>;
     static constexpr size_t indexCount = sum(subArray<0, dimensions-1>(volume)),
       indexDimensions = dimensions-1,
       dataCount = sum(volume),
       DIM = dimensions;
-    static constexpr std::array<size_t, dimensions+1> layerBoundaries = cumulativeSum(volume);
+    static constexpr Collections::CopyableArray<size_t, dimensions+1> layerBoundaries = cumulativeSum(volume);
     static constexpr auto VOLUME = volume;
     T data[dataCount];//all the data in the jagged array flattened
     size_t indexes[indexCount];//some of these point to data some back into indexes
@@ -93,7 +93,7 @@ namespace WITE::Collections {
       return get(tie<size_t, args...>(f, std::forward<args>(path)...));
     };
 
-    template<size_t N> requires (N <= dimensions && N > 0) constexpr auto get(const std::array<size_t, N>& path) const {
+    template<size_t N> requires (N <= dimensions && N > 0) constexpr auto get(const Collections::CopyableArray<size_t, N>& path) const {
       size_t r = path[0];
       for(size_t i = 1;i < N;i++)
 	r = indexes[r] + path[i];
@@ -148,7 +148,7 @@ namespace WITE::Collections {
     };
 
     template<size_t N> requires (N < dimensions)
-      constexpr inline iterator<N-1> getIterator(const std::array<size_t, N>& path) const {
+      constexpr inline iterator<N-1> getIterator(const Collections::CopyableArray<size_t, N>& path) const {
       size_t target = path[0];
       for(size_t i = 1;i < N;i++)
 	target = indexes[target] + path[i];
@@ -173,11 +173,11 @@ namespace WITE::Collections {
 
   template<class T, size_t dimensions> struct PackedLiteralJaggedList {
     const LiteralJaggedListBase* data;
-    std::array<size_t, dimensions> volume;
+    Collections::CopyableArray<size_t, dimensions> volume;
     constexpr PackedLiteralJaggedList() = default;
     constexpr ~PackedLiteralJaggedList() = default;
 
-    template<std::array<size_t, dimensions> VOL>
+    template<Collections::CopyableArray<size_t, dimensions> VOL>
     constexpr PackedLiteralJaggedList(const LiteralJaggedList<T, dimensions, VOL>& o) : data(&o) {
       //memcpy(volume, VOL.data(), sizeof(volume));
       const_copy(&VOL[0], &VOL[dimensions], volume.data());

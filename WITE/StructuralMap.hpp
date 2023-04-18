@@ -20,18 +20,21 @@ namespace WITE::Collections {
     std::vector<StructuralPair<K, V>, Alloc> data;
 
   public:
+    constexpr StructuralMap(std::initializer_list<StructuralPair<K, V>> il) : data(il) {};
     constexpr StructuralMap() = default;
     constexpr ~StructuralMap() = default;
-    V& operator[](const K& k) {
-      auto locationIter = std::lower_bound(data.cbegin(), data.cend());
-      if(locationIter == data.cend() || !equals(*locationIter.k, k))
-	data.emplace(locationIter, k);
-      return *locationIter;
+    constexpr V& operator[](const K& k) {
+      auto locationIter = std::lower_bound(data.begin(), data.end(), k);
+      if(locationIter == data.cend())
+	return data.emplace_back(k).v;
+      else if(!equals(locationIter->k, k))
+	locationIter = data.emplace(locationIter, k);
+      return locationIter->v;
     };
     constexpr auto begin() const { return data.cbegin(); };
     constexpr auto end() const { return data.cend(); };
     constexpr auto size() const { return data.size(); };
-    void clear() { data.clear(); };
+    constexpr void clear() { data.clear(); };
   };
 
 }

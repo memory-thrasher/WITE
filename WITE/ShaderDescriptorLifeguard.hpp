@@ -26,8 +26,7 @@ namespace WITE::GPU {
   template<ShaderData D> struct ShaderDescriptorPoolLayout {
     constexpr static uint32_t setsPerPool = 100;
     constexpr static uint32_t resourceCount = D.countDescriptorSetResources();
-    constexpr static vk::DescriptorSetLayoutBinding dsBindings[resourceCount] =
-		D.template getDescriptorSetLayoutBindings<resourceCount>();
+    constexpr static auto dsBindings = D.template getDescriptorSetLayoutBindings<resourceCount>();
     constexpr static vk::DescriptorSetLayoutCreateInfo dslCI { {}, resourceCount, dsBindings };
     constexpr static uint32_t typeCount = D.template countDistinctTypes<resourceCount>();
     constexpr static vk::DescriptorPoolSize types[typeCount] = D.template getDescriptorPoolSizes<typeCount, resourceCount>();
@@ -56,7 +55,7 @@ namespace WITE::GPU {
 
     template<ShaderData FD>
     static ShaderDescriptorLifeguard* get(size_t gpuIdx) {
-      static constexpr auto hc = parseShaderData<FD>().hashCode();
+      static constexpr auto hc = FD.hashCode();
       auto map = all[gpuIdx];
       ShaderDescriptorLifeguard* sdl;
       if(!map->contains(hc)) {
@@ -70,20 +69,26 @@ namespace WITE::GPU {
       return sdl;
     };
 
+    template<ShaderData D, ShaderResourceProvider P>
+    static ShaderDescriptorLifeguard* get(size_t gpuIdx) {
+      static constexpr auto SUB = SubsetShaderData<D, P>();
+      return get<SUB>(gpuIdx);
+    };
+
   public:
     template<ShaderData D, ShaderResourceProvider P>
     static void allocate(vk::DescriptorSet* ret, size_t gpuIdx) {
-      *ret = get<SubsetShaderData<D, P>()>(gpuIdx)->allocate();
+      *ret = get<D, P>(gpuIdx)->allocate();
     };
 
     template<ShaderData D, ShaderResourceProvider P>
     static void deallocate(size_t gpuIdx, vk::DescriptorSet* r) {
-      get<SubsetShaderData<D, P>()>(gpuIdx)->deallocate(*r);
+      get<D, P>(gpuIdx)->deallocate(*r);
     };
 
     template<ShaderData D, ShaderResourceProvider P>
     static vk::DescriptorSetLayout getDSLayout(size_t gpuIdx) {
-      return get<SubsetShaderData<D, P>()>(gpuIdx)->dsl;
+      return get<D, P>(gpuIdx)->dsl;
     };
 
   };
@@ -114,7 +119,7 @@ namespace WITE::GPU {
       std::atomic_uint64_t lastDSUpdated;
       static void makeDSC(descriptorSetContainer* ret, size_t gpuIdx) {
 	ret->gpuIdx = gpuIdx;
-	ret->ds = ShaderDescriptorLifeguard::allocate<D, P>(gpuIdx);
+	ShaderDescriptorLifeguard::template allocate<D, P>(&ret->ds, gpuIdx);
       };
       ~descriptorSetContainer() {
 	if(ds)

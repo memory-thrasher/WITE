@@ -10,9 +10,9 @@
 namespace WITE::GPU {
 
   defineLiteralMap(vk::QueueFlagBits, QueueType, queueTypeByFlagBit,
-		   Collections::StructuralPair<vk::QueueFlagBits, QueueType>(vk::QueueFlagBits::eTransfer, QueueType::eTransfer),
-		   Collections::StructuralPair<vk::QueueFlagBits, QueueType>(vk::QueueFlagBits::eCompute , QueueType::eCompute ),
-		   Collections::StructuralPair<vk::QueueFlagBits, QueueType>(vk::QueueFlagBits::eGraphics, QueueType::eGraphics)
+		   { vk::QueueFlagBits::eTransfer, QueueType::eTransfer },
+		   { vk::QueueFlagBits::eCompute , QueueType::eCompute  },
+		   { vk::QueueFlagBits::eGraphics, QueueType::eGraphics }
 		   );
 
   defineLiteralMap(QueueType, vk::QueueFlagBits, queueBitByType,

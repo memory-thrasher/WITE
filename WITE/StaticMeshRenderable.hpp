@@ -20,7 +20,7 @@ namespace WITE::GPU {
     static_assert(UBER::vertBufferCount == 1);
     static constexpr usage_t USAGE = GpuResource::USAGE_VERTEX | GpuResource::USAGE_HOST_WRITE | GpuResource::USAGE_GRAPHICS;
     //if we need to stage the data in a host-visible buffer first before putting it into the vertex buffer, that should be handled in Buffer
-    static constexpr size_t vertSize = sizeof(shader_t::vertex_t);
+    static constexpr size_t vertSize = sizeof(typename shader_t::vertex_t);
     typedef Buffer<BufferSlotData(LDM, USAGE, MESH.len * vertSize)> MeshBuffer;
     deviceMask_t bufferInitialized;
   public:
@@ -49,7 +49,7 @@ namespace WITE::GPU {
 	}
       }
     }
-    size_t getVertexCount() { return MESH.len; };
+    virtual size_t getVertexCount() override { return MESH.len; };
   };
 
 };

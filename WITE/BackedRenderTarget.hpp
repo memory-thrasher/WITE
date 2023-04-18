@@ -77,7 +77,7 @@ namespace WITE::GPU {
 	    preserves.push_back(j);
 	}
 	const RenderStep step = DATA.steps[i];
-	if(depthStencils.size() > 1) std::abort();
+	ASSERT_CONSTEXPR(depthStencils.size() <= 1);
 	if(depthStencils.size() == 0)
 	  depthStencils.emplace_back(VK_ATTACHMENT_UNUSED);
 	return vk::SubpassDescription2().setPipelineBindPoint(step.type == QueueType::eCompute ?

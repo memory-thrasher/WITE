@@ -8,6 +8,7 @@
 #include "Image.hpp"
 #include "Buffer.hpp"
 #include "StructuralMap.hpp"
+#include "CopyableArray.hpp"
 
 namespace WITE::GPU {
 
@@ -71,12 +72,12 @@ namespace WITE::GPU {
 	access == ShaderResourceAccessType::eSampled;
     };
 
-    constexpr vk::DescriptorType getVkDSType() const {
+    consteval vk::DescriptorType getVkDSType() const {
       switch(access) {
       case ShaderResourceAccessType::eUniform: return write ? vk::DescriptorType::eStorageBuffer : vk::DescriptorType::eUniformBuffer;
       case ShaderResourceAccessType::eUniformTexel: return write ? vk::DescriptorType::eStorageTexelBuffer : vk::DescriptorType::eUniformTexelBuffer;
       case ShaderResourceAccessType::eSampled: return write ? vk::DescriptorType::eStorageImage : vk::DescriptorType::eSampledImage;
-      default: throw "illegal access"; break;
+      default: ASSERT_CONSTEXPR_RET(0, {}); break;
       };
     };
 
@@ -316,47 +317,51 @@ namespace WITE::GPU {
       return false;
     };
 
-    constexpr size_t countDescriptorSetResources() const {
+    consteval size_t countDescriptorSetResources() const {
       size_t ret = 0;
       std::vector<vk::DescriptorType> types;
       for(ShaderResource r : resources) {
 	types.clear();
 	for(ShaderResourceUsage cu : r.usage) {
-	  auto dst = cu.getVkDSType();
-	  if(cu.isDS() && !Collections::contains(types, dst)) {
+	  if(cu.isDS() && !Collections::contains(types, cu.getVkDSType())) {
 	    ret++;
-	    types.push_back(dst);
+	    types.push_back(cu.getVkDSType());
 	  }
 	}
       }
       return ret;
     };
 
-    template<size_t retCount> //must always = countDescriptorSetResources()
-    constexpr auto getDescriptorSetLayoutBindings() const {
+    template<size_t retCount> consteval auto getDescriptorSetLayoutBindings() const {
       Collections::StructuralMap<vk::DescriptorType, vk::ShaderStageFlags> flags;
-      std::array<vk::DescriptorSetLayoutBinding, retCount> ret = {};
+      Collections::CopyableArray<vk::DescriptorSetLayoutBinding, retCount> ret;
       uint32_t i = 0;
       for(ShaderResource r : resources) {
 	flags.clear();
 	for(ShaderResourceUsage cu : r.usage)
 	  if(cu.isDS())
 	    flags[cu.getVkDSType()] |= cu.getVkStages();
-	for(auto p : flags)
-	  ret[i] = { i++, p.k, 1, p.v };
+	for(auto p : flags) {
+	  ret[i] = { i, p.k, 1, p.v };
+	  i++;
+	}
       }
       return ret;
     };
 
+    // template<ShaderData SD> static consteval auto getDescriptorSetLayoutBindings() const {
+    //   return SD::getDescriptorSetLayoutBindings<SD::countDescriptorSetResources()>();
+    // };
+
     template<size_t bindingCount> //must always = countDescriptorSetResources()
-    constexpr void poolSizesHelper(Collections::StructuralMap<vk::DescriptorType, uint32_t>& ret) const {
+    consteval void poolSizesHelper(Collections::StructuralMap<vk::DescriptorType, uint32_t>& ret) const {
       auto bindings = getDescriptorSetLayoutBindings<bindingCount>();
       for(auto binding : bindings)
 	ret[binding.descriptorType]++;
-    }
+    };
 
     template<size_t bindingCount> //must always = countDescriptorSetResources()
-    constexpr uint32_t countDistinctTypes() const {
+    consteval uint32_t countDistinctTypes() const {
       Collections::StructuralMap<vk::DescriptorType, uint32_t> helper;
       poolSizesHelper<bindingCount>(helper);
       return helper.size();
@@ -387,8 +392,8 @@ namespace WITE::GPU {
   constexpr ShaderData ShaderData_EMPTY = {};
 
   template<ShaderData D, ShaderResourceProvider P>
-  constexpr auto SubsetShaderDataVolume() {
-    std::array<size_t, 2> ret = {};
+  consteval auto SubsetShaderDataVolume() {
+    Collections::CopyableArray<size_t, 2> ret;
     for(auto r : D) {
       auto p = r.provider;
       if(p != P) continue;
@@ -398,7 +403,7 @@ namespace WITE::GPU {
     return ret;
   };
 
-  template<std::array<size_t, 2> VOL> struct ShaderDataStorage {
+  template<Collections::CopyableArray<size_t, 2> VOL> struct ShaderDataStorage {
     ShaderResourceUsage allUsages[VOL[1]];
     ShaderResource allResources[VOL[0]];
     ShaderData data;
@@ -440,12 +445,12 @@ namespace WITE::GPU {
     return ShaderDataStorage<V>(ret);
   };
 
-  template<std::array<size_t, 2> V>
+  template<Collections::CopyableArray<size_t, 2> V>
   constexpr ShaderDataStorage<V> makeShaderDataImpl(std::initializer_list<Collections::StructuralPair<std::initializer_list<ShaderResourceUsage>, ShaderResourceProvider>> il) {
     return il;
   }
 
-  template<collection C1 = std::initializer_list<Collections::StructuralPair<std::initializer_list<ShaderResourceUsage>, ShaderResourceProvider>>> constexpr std::array<size_t, 2> getShaderDataVolume(const C1& rc) {
+  template<collection C1 = std::initializer_list<Collections::StructuralPair<std::initializer_list<ShaderResourceUsage>, ShaderResourceProvider>>> constexpr Collections::CopyableArray<size_t, 2> getShaderDataVolume(const C1& rc) {
     size_t ui = 0, ri = 0;
     auto rt = rc.begin();
     while(rt != rc.end()) {
@@ -484,14 +489,16 @@ namespace WITE::GPU {
     PrimitiveNumberModel model;
     size_t size;
     constexpr VertexAspectSpecifier(size_t c, PrimitiveNumberModel m, size_t s) : count(c), model(m), size(s) {};
+    constexpr VertexAspectSpecifier() = default;
     constexpr ~VertexAspectSpecifier() = default;
     constexpr vk::Format getFormat() const;
+    constexpr inline size_t totalSize() const { return size * count; };
     friend constexpr bool operator<(const VertexAspectSpecifier& l, const VertexAspectSpecifier& r) {
       return l.count < r.count || (l.count == r.count && (l.size < r.size || (l.size == r.size && l.model < r.model)));
     };
   };
 
-  const std::map<VertexAspectSpecifier, vk::Format> formatsBySizeTypeQty {
+  defineLiteralMap(VertexAspectSpecifier, vk::Format, formatsBySizeTypeQty,
       { { 1, PrimitiveNumberModel::eUnsigned, 1 }, vk::Format::eR8Uint },
       { { 2, PrimitiveNumberModel::eUnsigned, 1 }, vk::Format::eR8G8Uint },
       { { 3, PrimitiveNumberModel::eUnsigned, 1 }, vk::Format::eR8G8B8Uint },
@@ -532,11 +539,15 @@ namespace WITE::GPU {
       { { 2, PrimitiveNumberModel::eFloat, 8 }, vk::Format::eR64G64Sfloat },
       { { 3, PrimitiveNumberModel::eFloat, 8 }, vk::Format::eR64G64B64Sfloat },
       { { 4, PrimitiveNumberModel::eFloat, 8 }, vk::Format::eR64G64B64A64Sfloat },
-    };
+    );
 
   template<size_t CNT, PrimitiveNumberModel M, size_t S> using VertexAspect =
     glm::vec<CNT, PrimitiveNumber_t<M, S>, glm::qualifier::packed>;//abstracted so an extension can be made later
   template<VertexAspectSpecifier U> using VertexAspect_t = VertexAspect<U.count, U.model, U.size>;
+
+  constexpr inline vk::Format VertexAspectSpecifier::getFormat() const {
+    return formatsBySizeTypeQty[*this];
+  };
 
   using VertexModel = Collections::LiteralList<VertexAspectSpecifier>;
 

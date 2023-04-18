@@ -29,29 +29,29 @@ namespace WITE::GPU {
     typedef BackingTuple<SLOTS.sub(1, SLOTS.len - 1)> rest_t;
     rest_t rest;
 
-    template<size_t I> inline auto* get() { if constexpr(I == 0) return this; return rest.template get<I-1>(); };
+    template<size_t I> inline auto* get() { if constexpr(I == 0) return this; else return rest.template get<I-1>(); };
 
-    constexpr static inline size_t count(usage_t usage) {
-      return SLOTS.countWhere([usage](GpuResourceSlotInfo& s) {
+    consteval static inline size_t count(usage_t usage) {
+      return SLOTS.countWhere([usage](auto s) {
 	return (s.getUsage() & usage) == usage;
       });
     };
 
-    constexpr static inline size_t count(usage_t usage, GpuResourceType type) {
-      return SLOTS.countWhere([usage, type](GpuResourceSlotInfo& s) {
+    consteval static inline size_t count(usage_t usage, GpuResourceType type) {
+      return SLOTS.countWhere([usage, type](auto& s) {
 	return (s.getUsage() & usage) == usage && type == s.type;
       });
     };
 
     template<usage_t usage, GpuResourceType type, size_t R = count(usage, type)>
-    constexpr static inline auto where() {
+    consteval static inline auto where() {
       size_t ret[R];
       where<usage, type, 0>(ret);
       return ret;
     };
 
     template<usage_t usage, GpuResourceType type, size_t I>
-    constexpr static inline void where(size_t* ret) {
+    consteval static inline void where(size_t* ret) {
       if constexpr(SLOTS[0].type == GpuResourceType::eImage && (SLOTS[0].getUsage() & usage) == usage)
 	*ret++ = I;
       if constexpr(L > 1)
@@ -61,7 +61,7 @@ namespace WITE::GPU {
     template<class T, usage_t usage>
     auto inline createIndex() {
       constexpr static size_t LEN = count(usage);
-      std::array<T[LEN], 2> ret;
+      Collections::CopyableArray<T[LEN], 2> ret;
       createIndex<T, usage>(&ret[0], &ret[1]);
       return FrameSwappedResource<T[LEN]>(ret, NULL);
     };
@@ -80,7 +80,7 @@ namespace WITE::GPU {
     template<class T, usage_t usage, GpuResourceType type>
     auto inline createIndex() {
       constexpr static size_t LEN = count(usage, type);
-      std::array<T[LEN], 2> ret;
+      Collections::CopyableArray<T[LEN], 2> ret;
       createIndex<T, usage, type>(&ret[0], &ret[1]);
       return FrameSwappedResource<T[LEN]>(ret, NULL);
     };

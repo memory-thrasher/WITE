@@ -27,9 +27,9 @@ namespace WITE::Collections {
       constexpr const V* end() const { return last; };
       constexpr inline bool contains(const V& v) const { return Collections::contains(*this, v); };
     };
-    std::array<V, valueCount> data;
+    Collections::CopyableArray<V, valueCount> data;
     typedef StructuralPair<K, size_t> index_t;
-    std::array<index_t, keyCount> index;
+    Collections::CopyableArray<index_t, keyCount> index;
     constexpr LiteralLookup(const std::initializer_list<StructuralPair<K, std::initializer_list<V>>> il) {
       std::vector<StructuralPair<K, std::initializer_list<V>>> sorted(il.begin(), il.end());
       std::sort(sorted.begin(), sorted.end());
@@ -41,12 +41,12 @@ namespace WITE::Collections {
       }
     };
     constexpr range operator[](const K& i) const {
-      const index_t* ii = std::lower_bound(index.data(), index.data() + keyCount, i);
-      return range(&data[ii->v], &data[ii == index.data() + (keyCount - 1) ? valueCount : ii[1].v]);
+      const index_t* ii = std::lower_bound(index.begin(), index.end(), i);
+      return range(&data[ii->v], &data[ii == index + (keyCount - 1) ? valueCount : ii[1].v]);
     };
     constexpr inline range at(const K& i) const { return operator[](i); };
     constexpr bool contains(const K& i) const {
-      return std::binary_search(index.data(), index.data() + keyCount, index_t(i));
+      return std::binary_search(index.begin(), index.end(), index_t(i));
     };
   };
 

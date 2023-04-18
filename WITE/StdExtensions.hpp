@@ -45,13 +45,6 @@ namespace WITE::Collections {
     return false;
   };
 
-  template<size_t L, class T, class C> constexpr inline auto populateFor(C l) {
-    T ret[L];
-    for(size_t i = 0;i < L;i++)
-      ret[i] = l(i);
-    return ret;
-  };
-
 }
 
 namespace WITE {

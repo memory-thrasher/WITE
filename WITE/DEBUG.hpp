@@ -66,6 +66,10 @@
 #define VK_ASSERT(cmd, ...) { auto _r = (cmd); if(_r != vk::Result::eSuccess) CRASH(__VA_ARGS__, _r); }
 #define VK_ASSERT_TUPLE(out, cmd, ...) { vk::Result _r; std::tie(_r, out) = (cmd); if(_r != vk::Result::eSuccess) CRASH(__VA_ARGS__, _r); }
 
+void constexprAssertFailed();//note: NOT constexpr
+#define ASSERT_CONSTEXPR(X) { if(!(X)) ::constexprAssertFailed(); }
+#define ASSERT_CONSTEXPR_RET(X, RET) { if(!(X)) { ::constexprAssertFailed(); return RET; } }
+
 template<class T> void hexdump(T* src) {
   uint8_t* data = reinterpret_cast<uint8_t*>(src);
   for(size_t i = 0;i < sizeof(T);i++)

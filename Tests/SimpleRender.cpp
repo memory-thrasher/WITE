@@ -40,14 +40,17 @@ constexpr BackedRenderTargetData COLOR_TARGET { COLOR_TARGET_REZ, COLOR_TARGET_S
 
 typedef Util::FrameSwappedResource<Buffer<BufferSlotData(LDM_RENDERER, GRU(DS_READ) | GRU(HOST_WRITE), sizeof(glm::dmat4))>> TransformBuffer;
 
-constexpr auto basicRenderingPayloadData =
-	    makeShaderData(
-			   { { ShaderData::Vertex }, ShaderResourceProvider::eRenderable },
-			   { { ShaderData::UniformToVertex }, ShaderResourceProvider::eRenderable }, //object transform
-			   { { ShaderData::UniformToVertex }, ShaderResourceProvider::eRenderTarget }, //camera transform
-			   { { ShaderData::ColorAttachment }, ShaderResourceProvider::eRenderTarget },
-			   { { ShaderData::DepthAttachment }, ShaderResourceProvider::eRenderTarget }
-			   );
+// constexpr auto basicRenderingPayloadData =
+// 	    makeShaderData(
+// constexpr std::array<size_t, 2> Vtemp = { 5, 5 };
+// constexpr ShaderDataStorage<Vtemp> basicRenderingPayloadData {{
+defineShaderData(basicRenderingPayloadData,
+		 { { ShaderData::Vertex }, ShaderResourceProvider::eRenderable },
+		 { { ShaderData::UniformToVertex }, ShaderResourceProvider::eRenderable }, //object transform
+		 { { ShaderData::UniformToVertex }, ShaderResourceProvider::eRenderTarget }, //camera transform
+		 { { ShaderData::ColorAttachment }, ShaderResourceProvider::eRenderTarget },
+		 { { ShaderData::DepthAttachment }, ShaderResourceProvider::eRenderTarget }
+		 );
 
 ShaderModule basicShaderFrag { basicShader_frag, vk::ShaderStageFlagBits::eFragment },
   basicShaderVert { basicShader_vert, vk::ShaderStageFlagBits::eVertex };

@@ -22,7 +22,7 @@ namespace WITE::GPU {
     QueueType type;
     //TODO some way to distinguish ray tracing and other bind points from generic graphics
     Collections::LiteralList<usage_t> resourceUsages;//sensical subset of ImageBase::USAGE_*
-    constexpr RenderStep(layerCollection_t layers, QueueType type, Collections::LiteralList<usage_t> usages) :
+    consteval RenderStep(layerCollection_t layers, QueueType type, Collections::LiteralList<usage_t> usages) :
       layers(layers), type(type), resourceUsages(usages) {};
     constexpr RenderStep(const RenderStep& o) = default;
     constexpr ~RenderStep() = default;

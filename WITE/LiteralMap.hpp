@@ -18,8 +18,8 @@ namespace WITE::Collections {
   template<class K, class V, size_t count> class LiteralMap : public LiteralMapBase<K, V> {
   public:
     typedef StructuralPair<K, V> P;
-    Collections::CopyableArray<P, count> data;
-    consteval LiteralMap(const std::initializer_list<P> il) {
+    std::array<P, count> data;
+    constexpr LiteralMap(const std::initializer_list<P> il) {
       std::vector<P> sorted(il.begin(), il.end());
       std::sort(sorted.begin(), sorted.end());
       for(size_t i = 0;i < sorted.size();i++)

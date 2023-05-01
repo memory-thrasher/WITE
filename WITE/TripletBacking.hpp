@@ -61,7 +61,7 @@ namespace WITE::GPU {
     template<class T, usage_t usage>
     auto inline createIndex() {
       constexpr static size_t LEN = count(usage);
-      Collections::CopyableArray<T[LEN], 2> ret;
+      std::array<T[LEN], 2> ret;
       createIndex<T, usage>(&ret[0], &ret[1]);
       return FrameSwappedResource<T[LEN]>(ret, NULL);
     };
@@ -80,7 +80,7 @@ namespace WITE::GPU {
     template<class T, usage_t usage, GpuResourceType type>
     auto inline createIndex() {
       constexpr static size_t LEN = count(usage, type);
-      Collections::CopyableArray<T[LEN], 2> ret;
+      std::array<T[LEN], 2> ret;
       createIndex<T, usage, type>(&ret[0], &ret[1]);
       return FrameSwappedResource<T[LEN]>(ret, NULL);
     };

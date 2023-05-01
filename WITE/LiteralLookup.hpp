@@ -10,7 +10,7 @@
 namespace WITE::Collections {
 
   template<class K, class V>
-  constexpr size_t countIlOfPairsOfIl(const std::initializer_list<StructuralPair<K, std::initializer_list<V>>> il) {
+  consteval size_t countIlOfPairsOfIl(const std::initializer_list<StructuralPair<K, std::initializer_list<V>>> il) {
     size_t ret = 0;
     for(const auto pair : il)
       ret += countIL(pair.v);
@@ -27,9 +27,9 @@ namespace WITE::Collections {
       constexpr const V* end() const { return last; };
       constexpr inline bool contains(const V& v) const { return Collections::contains(*this, v); };
     };
-    Collections::CopyableArray<V, valueCount> data;
+    std::array<V, valueCount> data;
     typedef StructuralPair<K, size_t> index_t;
-    Collections::CopyableArray<index_t, keyCount> index;
+    std::array<index_t, keyCount> index;
     constexpr LiteralLookup(const std::initializer_list<StructuralPair<K, std::initializer_list<V>>> il) {
       std::vector<StructuralPair<K, std::initializer_list<V>>> sorted(il.begin(), il.end());
       std::sort(sorted.begin(), sorted.end());
@@ -42,7 +42,7 @@ namespace WITE::Collections {
     };
     constexpr range operator[](const K& i) const {
       const index_t* ii = std::lower_bound(index.begin(), index.end(), i);
-      return range(&data[ii->v], &data[ii == index + (keyCount - 1) ? valueCount : ii[1].v]);
+      return range(&data[ii->v], &data[ii == &index[keyCount - 1] ? valueCount : ii[1].v]);
     };
     constexpr inline range at(const K& i) const { return operator[](i); };
     constexpr bool contains(const K& i) const {

@@ -8,7 +8,7 @@
 #include "Image.hpp"
 #include "Buffer.hpp"
 #include "StructuralMap.hpp"
-#include "CopyableArray.hpp"
+#include "ConstevalArray.hpp"
 
 namespace WITE::GPU {
 
@@ -96,9 +96,9 @@ namespace WITE::GPU {
     ShaderResourceProvider provider;
     constexpr ShaderResource() = default;
     constexpr ShaderResource(const ShaderResource&) = default;
-    constexpr ShaderResource(const ShaderResourceProvider provider, const Collections::LiteralList<ShaderResourceUsage>& usage) :
+    consteval ShaderResource(const ShaderResourceProvider provider, const Collections::LiteralList<ShaderResourceUsage>& usage) :
       usage(usage), provider(provider) {};
-    constexpr ShaderResource(// const ShaderResourceType type, 
+    consteval ShaderResource(// const ShaderResourceType type, 
 			     const Collections::LiteralList<ShaderResourceUsage> usage,
 			     const ShaderResourceProvider provider) :
       // type(type),
@@ -113,7 +113,7 @@ namespace WITE::GPU {
 
     template<ImageSlotData ISD> struct acceptsTest<Image<ISD>> {
       constexpr bool operator()(const ShaderResource* s) {
-	for(auto u : s->usage) {
+	for(auto& u : s->usage) {
 	  switch(u.access) {
 	  // case ShaderResourceAccessType::eUndefined:
 	  //   switch(u.stage) {
@@ -252,9 +252,9 @@ namespace WITE::GPU {
     constexpr ShaderData() = default;
     constexpr ~ShaderData() = default;
     constexpr ShaderData(const ShaderData&) = default;
-    constexpr ShaderData(const Collections::LiteralList<ShaderResource> resources) : resources(resources) {};
+    consteval ShaderData(const Collections::LiteralList<ShaderResource> resources) : resources(resources) {};
     constexpr ShaderData& operator=(const ShaderData&) = default;
-    const ShaderResource& operator[](const size_t i) const {
+    consteval const ShaderResource& operator[](const size_t i) const {
       return resources[i];
     };
 
@@ -334,16 +334,18 @@ namespace WITE::GPU {
 
     template<size_t retCount> consteval auto getDescriptorSetLayoutBindings() const {
       Collections::StructuralMap<vk::DescriptorType, vk::ShaderStageFlags> flags;
-      Collections::CopyableArray<vk::DescriptorSetLayoutBinding, retCount> ret;
-      uint32_t i = 0;
-      for(ShaderResource r : resources) {
-	flags.clear();
-	for(ShaderResourceUsage cu : r.usage)
-	  if(cu.isDS())
-	    flags[cu.getVkDSType()] |= cu.getVkStages();
-	for(auto p : flags) {
-	  ret[i] = { i, p.k, 1, p.v };
-	  i++;
+      Collections::ConstevalArray<vk::DescriptorSetLayoutBinding, retCount> ret;
+      if constexpr(retCount > 0) {
+	uint32_t i = 0;
+	for(ShaderResource r : resources) {
+	  flags.clear();
+	  for(ShaderResourceUsage cu : r.usage)
+	    if(cu.isDS())
+	      flags[cu.getVkDSType()] |= cu.getVkStages();
+	  for(auto p : flags) {
+	    ret[i] = { i, p.k, 1, p.v };
+	    i++;
+	  }
 	}
       }
       return ret;
@@ -393,7 +395,7 @@ namespace WITE::GPU {
 
   template<ShaderData D, ShaderResourceProvider P>
   consteval auto SubsetShaderDataVolume() {
-    Collections::CopyableArray<size_t, 2> ret;
+    std::array<size_t, 2> ret { 0, 0 };
     for(auto r : D) {
       auto p = r.provider;
       if(p != P) continue;
@@ -403,16 +405,20 @@ namespace WITE::GPU {
     return ret;
   };
 
-  template<Collections::CopyableArray<size_t, 2> VOL> struct ShaderDataStorage {
-    ShaderResourceUsage allUsages[VOL[1]];
-    ShaderResource allResources[VOL[0]];
+  template<std::array<size_t, 2> VOL> struct ShaderDataStorage {
+    std::array<ShaderResourceUsage, VOL[1]> allUsages;
+    std::array<ShaderResource, VOL[0]> allResources;
     ShaderData data;
     constexpr ShaderDataStorage() = default;
+    constexpr ShaderDataStorage(const ShaderDataStorage<VOL>&o) :
+      allUsages(o.allUsages), allResources(o.allResources), data({ allResources.data(), VOL[0] }) {};
     constexpr ~ShaderDataStorage() = default;
-    template<collection C1> constexpr ShaderDataStorage(const C1& rc) {
+    template<class C> requires std::is_trivially_copyable_v<C> consteval ShaderDataStorage(C rc) : ShaderDataStorage(rc.begin(), rc.end()) {};
+    template<class C> requires (!std::is_trivially_copyable_v<C>) consteval ShaderDataStorage(const C& rc) : ShaderDataStorage(rc.begin(), rc.end()) {};
+    template<class Iter> consteval ShaderDataStorage(Iter begin, Iter end) {
       size_t ui = 0, ri = 0;
-      auto rt = rc.begin();
-      while(rt != rc.end()) {
+      auto rt = begin;
+      while(rt != end) {
 	auto& uc = rt->k;
 	auto ut = uc.begin();
 	size_t cnt = 0;
@@ -424,14 +430,13 @@ namespace WITE::GPU {
 	allResources[ri++] = { { &allUsages[ui - cnt], cnt }, rt->v };
 	rt++;
       }
-      data = Collections::LiteralList<ShaderResource>(allResources, VOL[0]);
+      data = Collections::LiteralList<ShaderResource>(allResources.data(), VOL[0]);
     };
     constexpr inline operator ShaderData() const { return data; };
   };
 
-  template<ShaderData D, ShaderResourceProvider P>
-  constexpr auto SubsetShaderData() {
-    constexpr auto V = SubsetShaderDataVolume<D, P>();
+  template<ShaderData D, ShaderResourceProvider P, std::array<size_t, 2> V = SubsetShaderDataVolume<D, P>()>
+  consteval ShaderDataStorage<V> SubsetShaderData() {
     std::vector<Collections::StructuralPair<std::vector<ShaderResourceUsage>, ShaderResourceProvider>> ret;
     for(auto r : D) {
       auto p = r.provider;
@@ -442,15 +447,11 @@ namespace WITE::GPU {
 	pair.k.push_back(u);
       }
     }
-    return ShaderDataStorage<V>(ret);
+    ShaderDataStorage<V> ret2 { ret };
+    return ret2;
   };
 
-  template<Collections::CopyableArray<size_t, 2> V>
-  constexpr ShaderDataStorage<V> makeShaderDataImpl(std::initializer_list<Collections::StructuralPair<std::initializer_list<ShaderResourceUsage>, ShaderResourceProvider>> il) {
-    return il;
-  }
-
-  template<collection C1 = std::initializer_list<Collections::StructuralPair<std::initializer_list<ShaderResourceUsage>, ShaderResourceProvider>>> constexpr Collections::CopyableArray<size_t, 2> getShaderDataVolume(const C1& rc) {
+  template<collection C1 = std::initializer_list<Collections::StructuralPair<std::initializer_list<ShaderResourceUsage>, ShaderResourceProvider>>> consteval std::array<size_t, 2> getShaderDataVolume(const C1& rc) {
     size_t ui = 0, ri = 0;
     auto rt = rc.begin();
     while(rt != rc.end()) {
@@ -466,7 +467,7 @@ namespace WITE::GPU {
     return { ri, ui };
   };
 
-#define makeShaderData(...) makeShaderDataImpl<::WITE::GPU::getShaderDataVolume({ __VA_ARGS__ })>({ __VA_ARGS__ });
+#define defineShaderData(NOM, ...) constexpr ShaderDataStorage<::WITE::GPU::getShaderDataVolume({ __VA_ARGS__ })>NOM{std::initializer_list<Collections::StructuralPair<std::initializer_list<ShaderResourceUsage>, ShaderResourceProvider>>{ __VA_ARGS__ }};
 
   enum class PrimitiveNumberModel { eUnsigned, eTwosCompliment, eFloat, eFixed, eUnsignedFixed };
 
@@ -551,20 +552,19 @@ namespace WITE::GPU {
 
   using VertexModel = Collections::LiteralList<VertexAspectSpecifier>;
 
+#define defineVertexModel(NOM, ...) defineLiteralList(VertexAspectSpecifier, NOM, __VA_ARGS__ )
+
   namespace VertexPrefab {
     constexpr VertexAspectSpecifier
-    dXYZ = { 3, PrimitiveNumberModel::eFloat, 8 }
-      ;
-    constexpr VertexModel
-    basic3d = { &dXYZ, 1 }
-		;
+    dXYZ = { 3, PrimitiveNumberModel::eFloat, 8 };
+    defineVertexModel(basic3d, dXYZ);
   };
 
   template<VertexModel M, size_t L = M.len> struct Vertex {
     static constexpr size_t attributes = M.len;
     typedef VertexAspect_t<M[0]> T;
     T value;
-    Vertex<M.sub(1, attributes-1)> rest;
+    Vertex<M.sub(1)> rest;
     template<size_t SKIP> constexpr auto& sub() {
       if constexpr(SKIP == 0)
 	return value;

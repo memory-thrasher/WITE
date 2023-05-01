@@ -3,7 +3,6 @@
 #include <array>
 #include <bitset>
 
-#include "CopyableArray.hpp"
 #include "Thread.hpp"
 #include "constants.hpp"
 #include "SyncLock.hpp"
@@ -18,7 +17,7 @@ namespace WITE::Collections {
     typedefCB(destroyer_t, void, T*, size_t);
   private:
     static constexpr size_t capacity = MAX_GPUS * MAX_THREADS;
-    Collections::CopyableArray<T, capacity> data;
+    std::array<T, capacity> data;
     std::bitset<capacity> allocationMask;
     Util::SyncLock allocationLock;
     creator_t creator;
@@ -68,7 +67,7 @@ namespace WITE::Collections {
     typedef std::unique_ptr<T> U;
   private:
     static constexpr size_t capacity = MAX_GPUS * MAX_THREADS;
-    Collections::CopyableArray<U, capacity> data;
+    std::array<U, capacity> data;
     std::bitset<capacity> allocationMask;
     Util::SyncLock allocationLock;
     creator_t creator;

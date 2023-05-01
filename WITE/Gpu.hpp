@@ -45,8 +45,8 @@ namespace WITE::GPU {
     vk::PipelineCache pipelineCache;
     vk::PhysicalDeviceMemoryProperties2 pdmp;
     vk::PhysicalDeviceMemoryBudgetPropertiesEXT pdmbp;
-    Collections::CopyableArray<int64_t, VK_MAX_MEMORY_TYPES> memoryScoreByType;
-    Collections::CopyableArray<std::atomic_uint64_t, VK_MAX_MEMORY_HEAPS> freeMemoryByHeap;
+    std::array<int64_t, VK_MAX_MEMORY_TYPES> memoryScoreByType;
+    std::array<std::atomic_uint64_t, VK_MAX_MEMORY_HEAPS> freeMemoryByHeap;
 
     Gpu(size_t idx, vk::PhysicalDevice);
     Gpu(Gpu&&) = delete;

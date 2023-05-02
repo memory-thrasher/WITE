@@ -8,7 +8,6 @@
 #include "Image.hpp"
 #include "Buffer.hpp"
 #include "StructuralMap.hpp"
-#include "ConstevalArray.hpp"
 
 namespace WITE::GPU {
 
@@ -334,7 +333,7 @@ namespace WITE::GPU {
 
     template<size_t retCount> consteval auto getDescriptorSetLayoutBindings() const {
       Collections::StructuralMap<vk::DescriptorType, vk::ShaderStageFlags> flags;
-      Collections::ConstevalArray<vk::DescriptorSetLayoutBinding, retCount> ret;
+      Collections::CopyableArray<vk::DescriptorSetLayoutBinding, retCount> ret;
       if constexpr(retCount > 0) {
 	uint32_t i = 0;
 	for(ShaderResource r : resources) {
@@ -552,12 +551,11 @@ namespace WITE::GPU {
 
   using VertexModel = Collections::LiteralList<VertexAspectSpecifier>;
 
-#define defineVertexModel(NOM, ...) defineLiteralList(VertexAspectSpecifier, NOM, __VA_ARGS__ )
-
   namespace VertexPrefab {
     constexpr VertexAspectSpecifier
     dXYZ = { 3, PrimitiveNumberModel::eFloat, 8 };
-    defineVertexModel(basic3d, dXYZ);
+    constexpr VertexModel
+    basic3d = { &dXYZ, 1 };
   };
 
   template<VertexModel M, size_t L = M.len> struct Vertex {

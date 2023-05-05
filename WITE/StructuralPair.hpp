@@ -10,6 +10,7 @@ namespace WITE::Collections {
     constexpr StructuralPair(K k) : k(k), v() {};//implicit constructor from k for searching by key via operator<
     constexpr inline bool operator<(const StructuralPair<K, V>& o) const { return k < o.k; };
     // constexpr inline bool operator<(const K& o) const { return k < o; };
+    constexpr ~StructuralPair() = default;
   };
 
 }

@@ -2,6 +2,7 @@
 
 #include <initializer_list>
 #include <array>
+#include <ranges>
 
 #include "CopyableArray.hpp"
 
@@ -9,7 +10,9 @@ namespace WITE::Collections {
 
   template<class T> consteval size_t countIL(const std::initializer_list<T> il) { return std::distance(il.begin(), il.end()); };
 
-#define defineLiteralList(T, NOM, ...) constexpr ::WITE::Collections::CopyableArray<T, ::WITE::Collections::countIL<T>({ __VA_ARGS__ })> NOM = { __VA_ARGS__ }
+#define defineLiteralListScalar(T, NOM, ...) constexpr ::WITE::Collections::CopyableArray<T, ::WITE::Collections::countIL<T>({ __VA_ARGS__ })> NOM = { __VA_ARGS__ }
+
+#define defineLiteralList(T, NOM, ...) constexpr ::WITE::Collections::CopyableArray<T, ::WITE::Collections::countIL<T>({ __VA_ARGS__ })> NOM = {{ __VA_ARGS__ }}
 
   template<typename T> struct LiteralList {
     const T* data;
@@ -19,7 +22,8 @@ namespace WITE::Collections {
     constexpr LiteralList() = default;
     constexpr LiteralList(const LiteralList<T>& o) = default;
     consteval LiteralList(const T* data, const size_t len) : data(data), len(len) {};
-    template<size_t LEN> consteval LiteralList(const CopyableArray<T, LEN>& o) : LiteralList(o, LEN) {};
+    template<size_t LEN> consteval LiteralList(const CopyableArray<T, LEN>& o, size_t len) : LiteralList((const T*)o, len) {};
+    template<size_t LEN> consteval LiteralList(const CopyableArray<T, LEN>& o) : LiteralList((const T*)o, LEN) {};
     template<size_t LEN> consteval LiteralList(const std::array<T, LEN>& o) : LiteralList(o.data(), LEN) {};
     template<size_t LEN> consteval LiteralList(const T (&o)[LEN]) : LiteralList(o, LEN) {};
     constexpr ~LiteralList() = default;
@@ -42,8 +46,10 @@ namespace WITE::Collections {
       return ret;
     };
 
-    // template<LiteralList<T> LL, class P, size_t cnt = LL.countWhere>
+  };
 
+  template<class T, LiteralList<T> LL, class P, P p, size_t cnt = LL.countWhere(p)> CopyableArray<T, cnt> where() {
+    return { std::ranges::views::filter(std::ranges::views::counted(LL.data, LL.len)) };
   };
 
   template<class T, LiteralList<T> L, size_t... I> consteval std::array<T, L.len> toStdArray() {

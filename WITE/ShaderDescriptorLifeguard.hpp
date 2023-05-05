@@ -109,8 +109,8 @@ namespace WITE::GPU {
 
   template<ShaderData D, ShaderResourceProvider P> class ShaderDescriptor : public ShaderDescriptorBase {
   private:
-    static constexpr auto FD = SubsetShaderData<D, P>();
-    static constexpr auto FDC = FD.data.hashCode();
+    static constexpr ShaderDataStorage<SubsetShaderDataVolume<D, P>()> FD { SubsetShaderData<D, P>() };
+    static constexpr auto FDC = FD.hashCode();
     static constexpr uint32_t resourceCount = ShaderDescriptorPoolLayout<FD>::resourceCount;
 
     struct descriptorSetContainer {

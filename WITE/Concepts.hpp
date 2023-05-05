@@ -9,7 +9,7 @@ namespace WITE {
   template<typename L, typename T> concept lambda_indexer_to = requires(L l, size_t i) { { l(i) } -> std::convertible_to<T>; };
 
   template<typename I, typename T> concept iterator = requires(I iter) {
-    { ++iter } -> std::same_as<I>;
+    { ++iter } -> std::convertible_to<I>;
     { *iter } -> std::convertible_to<T>;
   };
 
@@ -19,5 +19,10 @@ namespace WITE {
   };
 
   template<typename T, typename L> concept predicate = requires(L l, T t) { { l(t) } -> std::same_as<bool>; };
+
+  template<typename I, typename T> concept iterator_not_ptr = requires(I iter) {
+    requires iterator<I, T>;
+    requires std::negation<std::is_pointer<I>>::value;
+  };
 
 };

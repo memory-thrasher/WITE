@@ -5,6 +5,7 @@
 #include "Gpu.hpp"
 #include "Shader.hpp"
 #include "StdExtensions.hpp"
+#include "CopyableArray.hpp"
 
 namespace WITE::GPU {
 
@@ -28,14 +29,14 @@ namespace WITE::GPU {
 	  ShaderStage::eBlending
 	}));
     vk::VertexInputBindingDescription viBinding { 0, sizeof(vertex_t), vk::VertexInputRate::eVertex };
-    static constexpr auto viAttributes = populateFor<VM.count(), vk::VertexInputAttributeDescription>([](size_t i)consteval{
-      size_t offset = 0;
-      for(uint32_t j = 0;j < i;j++) {
-	offset += VM[i].totalSize();
-      }
-      return vk::VertexInputAttributeDescription { (uint32_t)i, 0, VM[i].getFormat(), (uint32_t)offset };
-      //TODO see how many of these can be constexpr
-    });
+    static constexpr Collections::CopyableArray<vk::VertexInputAttributeDescription, VM.count()> viAttributes =
+      ([](size_t i)consteval{
+	size_t offset = 0;
+	for(uint32_t j = 0;j < i;j++)
+	  offset += VM[i].totalSize();
+	return vk::VertexInputAttributeDescription { (uint32_t)i, 0, VM[i].getFormat(), (uint32_t)offset };
+      });
+    //TODO see how many of these can be constexpr
     vk::PipelineVertexInputStateCreateInfo vi { (vk::PipelineVertexInputStateCreateFlags)0,
       1, &viBinding, VM.count(), viAttributes.data() };
     vk::PipelineInputAssemblyStateCreateInfo ias { {}, vk::PrimitiveTopology::eTriangleList, VK_FALSE };

@@ -29,7 +29,7 @@ defineLiteralList(GpuResourceSlotInfo, COLOR_TARGET_REZ,
 
 defineLiteralList(usage_t, COLOR_TARGET_USAGES, GRU(ATT_OUTPUT), GRU(ATT_DEPTH));
 
-defineLiteralList(layer_t, PRIMARY_RENDER_LAYERS, 1);
+defineLiteralListScalar(layer_t, PRIMARY_RENDER_LAYERS, 1);
 
 defineLiteralList(RenderStep, COLOR_TARGET_STEPS, RenderStep(PRIMARY_RENDER_LAYERS, QueueType::eGraphics, COLOR_TARGET_USAGES));
 

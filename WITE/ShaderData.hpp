@@ -8,6 +8,8 @@
 #include "Image.hpp"
 #include "Buffer.hpp"
 #include "StructuralMap.hpp"
+#include "CopyableArray.hpp"
+#include "OversizedCopyableArray.hpp"
 
 namespace WITE::GPU {
 
@@ -43,7 +45,7 @@ namespace WITE::GPU {
     ShaderStage stage;
     ShaderResourceAccessType access;
 
-    constexpr ShaderResourceUsage() = default;
+    constexpr ShaderResourceUsage() : write(false), stage(ShaderStage::last), access(ShaderResourceAccessType::eUndefined) {};
     constexpr ShaderResourceUsage(const bool write, const ShaderStage stage,
 				  const ShaderResourceAccessType access = ShaderResourceAccessType::eUndefined) :
       write(write), stage(stage), access(access) {};
@@ -91,19 +93,13 @@ namespace WITE::GPU {
   class ShaderResource {
   public:
     // const ShaderResourceType type;
-    Collections::LiteralList<ShaderResourceUsage> usage;
+    static constexpr size_t MAX_USAGES = 16;//4 is probably more than enough, but this only exists at compile-time so harmless
+    Collections::OversizedCopyableArray<ShaderResourceUsage, MAX_USAGES> usage;
     ShaderResourceProvider provider;
     constexpr ShaderResource() = default;
     constexpr ShaderResource(const ShaderResource&) = default;
-    consteval ShaderResource(const ShaderResourceProvider provider, const Collections::LiteralList<ShaderResourceUsage>& usage) :
+    consteval ShaderResource(const std::initializer_list<ShaderResourceUsage> usage, const ShaderResourceProvider provider) :
       usage(usage), provider(provider) {};
-    consteval ShaderResource(// const ShaderResourceType type, 
-			     const Collections::LiteralList<ShaderResourceUsage> usage,
-			     const ShaderResourceProvider provider) :
-      // type(type),
-      usage(usage),
-      provider(provider)
-    {};
 
     constexpr auto begin() const { return usage.begin(); };
     constexpr auto end() const { return usage.end(); };
@@ -166,7 +162,6 @@ namespace WITE::GPU {
       };
     };
 
-    //TODO ^for buffers?
     template<class Resource> constexpr bool accepts() { return acceptsTest<Resource>::accepts(this); };
 
     //guaranteed unique
@@ -393,80 +388,40 @@ namespace WITE::GPU {
   constexpr ShaderData ShaderData_EMPTY = {};
 
   template<ShaderData D, ShaderResourceProvider P>
-  consteval auto SubsetShaderDataVolume() {
-    std::array<size_t, 2> ret { 0, 0 };
+  consteval size_t SubsetShaderDataVolume() {
+    size_t ret = 0;
     for(auto r : D) {
       auto p = r.provider;
       if(p != P) continue;
-      ret[0]++;
-      ret[1] += r.usage.len;
+      ret++;
     }
     return ret;
   };
 
-  template<std::array<size_t, 2> VOL> struct ShaderDataStorage {
-    std::array<ShaderResourceUsage, VOL[1]> allUsages;
-    std::array<ShaderResource, VOL[0]> allResources;
-    ShaderData data;
+  template<size_t USAGE_COUNT> struct ShaderDataStorage {
+    Collections::CopyableArray<ShaderResource, USAGE_COUNT> usages;
+
     constexpr ShaderDataStorage() = default;
-    constexpr ShaderDataStorage(const ShaderDataStorage<VOL>&o) :
-      allUsages(o.allUsages), allResources(o.allResources), data({ allResources.data(), VOL[0] }) {};
+    constexpr ShaderDataStorage(const ShaderDataStorage<USAGE_COUNT>&o) = default;
     constexpr ~ShaderDataStorage() = default;
-    template<class C> requires std::is_trivially_copyable_v<C> consteval ShaderDataStorage(C rc) : ShaderDataStorage(rc.begin(), rc.end()) {};
-    template<class C> requires (!std::is_trivially_copyable_v<C>) consteval ShaderDataStorage(const C& rc) : ShaderDataStorage(rc.begin(), rc.end()) {};
-    template<class Iter> consteval ShaderDataStorage(Iter begin, Iter end) {
-      size_t ui = 0, ri = 0;
-      auto rt = begin;
-      while(rt != end) {
-	auto& uc = rt->k;
-	auto ut = uc.begin();
-	size_t cnt = 0;
-	while(ut != uc.end()) {
-	  allUsages[ui++] = *ut;
-	  cnt++;
-	  ut++;
-	}
-	allResources[ri++] = { { &allUsages[ui - cnt], cnt }, rt->v };
-	rt++;
-      }
-      data = Collections::LiteralList<ShaderResource>(allResources.data(), VOL[0]);
-    };
-    constexpr inline operator ShaderData() const { return data; };
+
+    template<typename C> consteval ShaderDataStorage(C rc) : usages(rc) {};
+
+    consteval inline operator ShaderData() const { return Collections::LiteralList<ShaderResource>(usages); };
   };
 
-  template<ShaderData D, ShaderResourceProvider P, std::array<size_t, 2> V = SubsetShaderDataVolume<D, P>()>
+  template<ShaderData D, ShaderResourceProvider P, size_t V = SubsetShaderDataVolume<D, P>()>
   consteval ShaderDataStorage<V> SubsetShaderData() {
-    std::vector<Collections::StructuralPair<std::vector<ShaderResourceUsage>, ShaderResourceProvider>> ret;
+    std::vector<ShaderResource> ret;
     for(auto r : D) {
       auto p = r.provider;
       if(p != P) continue;
-      auto& pair = ret.emplace_back();
-      pair.v = P;
-      for(auto u : r) {
-	pair.k.push_back(u);
-      }
+      ret.emplace_back(r);
     }
-    ShaderDataStorage<V> ret2 { ret };
-    return ret2;
+    return ShaderDataStorage<V>(ret);
   };
 
-  template<collection C1 = std::initializer_list<Collections::StructuralPair<std::initializer_list<ShaderResourceUsage>, ShaderResourceProvider>>> consteval std::array<size_t, 2> getShaderDataVolume(const C1& rc) {
-    size_t ui = 0, ri = 0;
-    auto rt = rc.begin();
-    while(rt != rc.end()) {
-      auto& uc = rt->k;
-      auto ut = uc.begin();
-      while(ut != uc.end()) {
-	ui++;
-	ut++;
-      }
-      ri++;
-      rt++;
-    }
-    return { ri, ui };
-  };
-
-#define defineShaderData(NOM, ...) constexpr ShaderDataStorage<::WITE::GPU::getShaderDataVolume({ __VA_ARGS__ })>NOM{std::initializer_list<Collections::StructuralPair<std::initializer_list<ShaderResourceUsage>, ShaderResourceProvider>>{ __VA_ARGS__ }};
+#define defineShaderData(NOM, ...) constexpr ShaderDataStorage<::WITE::Collections::countIL<::WITE::GPU::ShaderResource>({ __VA_ARGS__ })>NOM{std::initializer_list<::WITE::GPU::ShaderResource>{ __VA_ARGS__ }};
 
   enum class PrimitiveNumberModel { eUnsigned, eTwosCompliment, eFloat, eFixed, eUnsignedFixed };
 

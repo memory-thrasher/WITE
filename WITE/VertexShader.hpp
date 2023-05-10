@@ -38,7 +38,7 @@ namespace WITE::GPU {
       });
     //TODO see how many of these can be constexpr
     vk::PipelineVertexInputStateCreateInfo vi { (vk::PipelineVertexInputStateCreateFlags)0,
-      1, &viBinding, VM.count(), viAttributes.data() };
+      1, &viBinding, VM.count(), viAttributes.ptr() };
     vk::PipelineInputAssemblyStateCreateInfo ias { {}, vk::PrimitiveTopology::eTriangleList, VK_FALSE };
     vk::PipelineTessellationStateCreateInfo ts { {}, 0 };
     vk::PipelineViewportStateCreateInfo vs { {}, 1, NULL, 1, NULL, NULL };

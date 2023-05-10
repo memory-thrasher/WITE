@@ -27,10 +27,10 @@ namespace WITE::GPU {
     constexpr static uint32_t setsPerPool = 100;
     constexpr static uint32_t resourceCount = D.countDescriptorSetResources();
     constexpr static auto dsBindings = D.template getDescriptorSetLayoutBindings<resourceCount>();
-    constexpr static vk::DescriptorSetLayoutCreateInfo dslCI { {}, resourceCount, dsBindings };
+    constexpr static vk::DescriptorSetLayoutCreateInfo dslCI { {}, resourceCount, dsBindings.ptr() };
     constexpr static uint32_t typeCount = D.template countDistinctTypes<resourceCount>();
-    constexpr static vk::DescriptorPoolSize types[typeCount] = D.template getDescriptorPoolSizes<typeCount, resourceCount>();
-    constexpr static vk::DescriptorPoolCreateInfo poolCI { {}, setsPerPool, typeCount, types };
+    constexpr static auto types = D.template getDescriptorPoolSizes<typeCount, resourceCount>();
+    constexpr static vk::DescriptorPoolCreateInfo poolCI { {}, setsPerPool, typeCount, types.ptr() };
   };
 
   class ShaderDescriptorLifeguard { //manager of the pool. ha.
@@ -46,23 +46,22 @@ namespace WITE::GPU {
 
     ShaderDescriptorLifeguard() = delete;
     ShaderDescriptorLifeguard(ShaderDescriptorLifeguard&) = delete;
-    ShaderDescriptorLifeguard(const vk::DescriptorSetLayoutCreateInfo* dslCI,
-			      const vk::DescriptorPoolCreateInfo* poolCI,
-			      size_t gpuIdx);
     void allocatePool();
     vk::DescriptorSet allocate();
     void deallocate(vk::DescriptorSet r);
 
     template<ShaderData FD>
     static ShaderDescriptorLifeguard* get(size_t gpuIdx) {
-      static constexpr auto hc = FD.hashCode();
+      static constexpr ShaderData::hashcode_t hc = FD.hashCode();
       auto map = all[gpuIdx];
       ShaderDescriptorLifeguard* sdl;
-      if(!map->contains(hc)) {
-	sdl = map->emplace(hc,
-			   &ShaderDescriptorPoolLayout<FD>::dslCI,
-			   &ShaderDescriptorPoolLayout<FD>::poolCI,
-			   gpuIdx).first;
+      if(!map->contains(hc)) {//TODO cache an iterator for both contains and emplace, for performance
+	ConstructorData cd {
+	  &ShaderDescriptorPoolLayout<FD>::dslCI,
+	  &ShaderDescriptorPoolLayout<FD>::poolCI,
+	  gpuIdx
+	};
+	sdl = &map->emplace(std::piecewise_construct, std::tie(hc), std::tie(cd)).first->second;
       } else {
 	sdl = &map->at(hc);
       }
@@ -76,14 +75,21 @@ namespace WITE::GPU {
     };
 
   public:
+    struct ConstructorData {
+      const vk::DescriptorSetLayoutCreateInfo* dslCI;
+      const vk::DescriptorPoolCreateInfo* poolCI;
+      size_t gpuIdx;
+    };
+    ShaderDescriptorLifeguard(const ConstructorData&);//must be public to be used by map::emplace
+
     template<ShaderData D, ShaderResourceProvider P>
     static void allocate(vk::DescriptorSet* ret, size_t gpuIdx) {
       *ret = get<D, P>(gpuIdx)->allocate();
     };
 
     template<ShaderData D, ShaderResourceProvider P>
-    static void deallocate(size_t gpuIdx, vk::DescriptorSet* r) {
-      get<D, P>(gpuIdx)->deallocate(*r);
+    static void deallocate(size_t gpuIdx, vk::DescriptorSet r) {
+      get<D, P>(gpuIdx)->deallocate(r);
     };
 
     template<ShaderData D, ShaderResourceProvider P>
@@ -110,7 +116,7 @@ namespace WITE::GPU {
   template<ShaderData D, ShaderResourceProvider P> class ShaderDescriptor : public ShaderDescriptorBase {
   private:
     static constexpr ShaderDataStorage<SubsetShaderDataVolume<D, P>()> FD { SubsetShaderData<D, P>() };
-    static constexpr auto FDC = FD.hashCode();
+    static constexpr auto FDC = FD.data().hashCode();
     static constexpr uint32_t resourceCount = ShaderDescriptorPoolLayout<FD>::resourceCount;
 
     struct descriptorSetContainer {
@@ -123,7 +129,7 @@ namespace WITE::GPU {
       };
       ~descriptorSetContainer() {
 	if(ds)
-	  ShaderDescriptorLifeguard::deallocate<D, P>(ds);
+	  ShaderDescriptorLifeguard::deallocate<D, P>(gpuIdx, ds);
       };
     };
 
@@ -151,7 +157,7 @@ namespace WITE::GPU {
       ASSERT_TRAP(resources, "null resource given to descriptor");
       uint64_t frame = Util::FrameCounter::getFrame();
       size_t fIdx = 0;
-      for(perFrame& pf : data.call()) {
+      for(perFrame& pf : data.all()) {
 	Util::ScopeLock lock(&pf.lock);
 	pf.lastResourceUpdated = frame;
 	memcpy(pf.resources, resources[fIdx], resourceCount*sizeof(GpuResource*));
@@ -170,7 +176,7 @@ namespace WITE::GPU {
       uint64_t frame = Util::FrameCounter::getFrame();
       //NOTE limitation: if SetResource is called every frame, it'll never acutally update
       if(pf.lastResourceUpdated < frame && dsc.lastDSUpdated < pf.lastResourceUpdated) {
-	Util::ScopeLock lock(pf.lock);
+	Util::ScopeLock lock(&pf.lock);
 	uint64_t lru = pf.lastResourceUpdated;
 	if(lru < frame && dsc.lastDSUpdated < lru) {
 	  dsc.lastDSUpdated = lru;
@@ -180,9 +186,9 @@ namespace WITE::GPU {
 	    dsw[i].dstBinding = i;
 	    //populated by resource.populateDSWrite: arrayElement, descriptorCount, p*Info
 	    dsw[i].descriptorType = ShaderDescriptorPoolLayout<FD>::dsBindings[i].descriptorType;
-	    pf.resources[i].populateDSWrite(&dsw[i], gpu);
+	    pf.resources[i]->populateDSWrite(&dsw[i], gpu);
 	  }
-	  Gpu::get(gpu).getVkDevice().updateDescriptorSets(resourceCount, &dsw, 0, NULL);
+	  Gpu::get(gpu).getVkDevice().updateDescriptorSets(resourceCount, dsw, 0, NULL);
 	}
       }
       return dsc.ds;

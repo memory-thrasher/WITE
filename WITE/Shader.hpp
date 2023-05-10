@@ -32,14 +32,14 @@ namespace WITE::GPU {
     ShaderBase(QueueType qt);
     virtual ~ShaderBase();
     ShaderBase(ShaderBase&) = delete;
-    void add(RenderableBase*);
-    void remove(RenderableBase*);
     virtual void preRender(RenderTarget& target, WorkBatch cmd, layerCollection_t& layers, size_t gpu) = 0;
     virtual vk::PipelineBindPoint getBindPoint() = 0;
     static bool hasLayout(ShaderData::hashcode_t d, size_t gpuIdx);
     static vk::PipelineLayout getLayout(ShaderData::hashcode_t d, size_t gpuIdx);
     static vk::PipelineLayout makeLayout(ShaderData::hashcode_t d, const vk::PipelineLayoutCreateInfo* pipeCI, size_t gpuIdx);
   public:
+    void add(RenderableBase*);
+    void remove(RenderableBase*);
     virtual vk::Pipeline createPipe(size_t idx, vk::RenderPass rp) = 0;
     const pipelineId_t id = idSeed++;//for RenderTarget to map pipelines against
   };

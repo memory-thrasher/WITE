@@ -364,8 +364,8 @@ namespace WITE::GPU {
     };
 
     template<size_t retCount, size_t bindingCount> //must always = countDistinctTypes(), countDescriptorSetResources()
-    constexpr auto getDescriptorPoolSizes() const {
-      vk::DescriptorPoolSize ret[retCount];
+    consteval auto getDescriptorPoolSizes() const {
+      Collections::CopyableArray<vk::DescriptorPoolSize, bindingCount> ret;
       size_t i = 0;
       Collections::StructuralMap<vk::DescriptorType, uint32_t> sizes;
       poolSizesHelper<bindingCount>(sizes);
@@ -408,6 +408,7 @@ namespace WITE::GPU {
     template<typename C> consteval ShaderDataStorage(C rc) : usages(rc) {};
 
     consteval inline operator ShaderData() const { return Collections::LiteralList<ShaderResource>(usages); };
+    consteval inline ShaderData data() const { return *this; };
   };
 
   template<ShaderData D, ShaderResourceProvider P, size_t V = SubsetShaderDataVolume<D, P>()>

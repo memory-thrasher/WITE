@@ -166,7 +166,8 @@ namespace WITE::GPU {
   public:
     vk::ClearValue clears[attachmentCount] = defaultClears;
 
-    BackedRenderTarget() : fbs(fbs_t::creator_t_F::make(this, &SPECULUM::makeFBs),
+    BackedRenderTarget() : RenderTarget(LDM),
+			   fbs(fbs_t::creator_t_F::make(this, &SPECULUM::makeFBs),
 			       fbs_t::destroyer_t_F::make(this, &SPECULUM::destroyFBs))
     {
       //ci exists in parent class, parent creates render passes on demand from it.

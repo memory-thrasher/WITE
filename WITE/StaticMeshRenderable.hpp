@@ -28,15 +28,15 @@ namespace WITE::GPU {
     {
       Util::ScopeLock lock(&staticMeshCache::bufferMutex);
       staticMeshCache& cache = staticMeshCache::cache[(void*)MESH.data];
-      MeshBuffer* b;
+      BufferBase* b;
       if(!cache.meshBuffer)
 	[[unlikely]]
 	cache.meshBuffer.reset(b = new MeshBuffer());
       else
-	b = (MeshBuffer*)cache.meshBuffer.get();
+	b = cache.meshBuffer.get();
       bufferInitialized = cache.bufferInitialized;
       lock.release();
-      setBuffers(&b);
+      this->setBuffers(&b);
     };
     void preBindVertBuffers(WorkBatch cmd, size_t gpu) override {
       deviceMask_t flag = 1 << gpu;

@@ -39,8 +39,8 @@ find $BUILDAPP $BUILDTESTS -iname '*.glsl' -type f -print0 |
 	rm "${THISERRLOG}" 2>/dev/null
 	(
 	    if ! [ -f "${DSTFILE}" ] || [ "${SRCFILE}" -nt "${DSTFILE}" ] || [ "$0" -nt "${DSTFILE}" ]; then
-		echo building
-		$WORKNICE $GLCOMPILER -V --target-env vulkan1.3 -gVS "${SRCFILE}" -o "${DSTFILE}" --vn "${VARNAME}" ||
+		#echo building
+		$WORKNICE $GLCOMPILER -V --target-env vulkan1.3 -gVS "${SRCFILE}" -o "${DSTFILE}" --vn "${VARNAME}" >/dev/null ||
 		    rm "${DSTFILE}" 2>/dev/null
 	    fi
 	) 2>"${THISERRLOG}" &
@@ -70,18 +70,18 @@ find $BUILDLIBS $BUILDAPP $BUILDTESTS -name '*.cpp' -type f -print0 |
 			echo "rebuilding ${SRCFILE} because ${depend} is newer";
 			break;
 		    fi
-		done <"${DEPENDENCIES}" | grep -F rebuild || exit 0;
-	    else
-		echo "building ${DSTFILE}"
+		done <"${DEPENDENCIES}" | grep -Fq rebuild || exit 0;
+	    #else
+		#echo "building ${DSTFILE}"
 	    fi
 	    rm "${DEPENDENCIES}" &>/dev/null
 	    # -I "${BUILDDIR}" is for shaders which get turned into headers
 	    if ! $WORKNICE $COMPILER $VK_INCLUDE -I "${BUILDDIR}" --std=c++20 -D_POSIX_C_SOURCE=200112L -fPIC $BOTHOPTS -Werror -Wall "${SRCFILE}" -c -o "${DSTFILE}" >>"${LOGFILE}" 2>>"${THISERRLOG}"; then
-		rm "${DSTFILE}"
-		echo "Failed Build: ${SRCFILE}" 2>>"${THISERRLOG}"
-		echo "Failed Build: ${SRCFILE}"
-	    else
-		echo "Built: ${SRCFILE}"
+		rm "${DSTFILE}" 2>/dev/null
+		echo "Failed Build: ${SRCFILE}" >>"${THISERRLOG}"
+		#echo "Failed Build: ${SRCFILE}"
+	    #else
+		#echo "Built: ${SRCFILE}"
 	    fi
 	) &
     done
@@ -98,7 +98,7 @@ if ! [ -f "${ERRLOG}" ] || [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
 	if [ -f "$LIBNAME" ] && [ $(find "$OUTDIR/$DIRNAME" -iname '*.o' -newer "$LIBNAME" | wc -l) -eq 0 ]; then continue; fi;
 	#TODO VK_LIB ?
 	test -f "$OUTDIR/${DIRNAME}.so" && cp "$OUTDIR/${DIRNAME}.so" "$OUTDIR/${DIRNAME}.so.bak.$(date '+%y%m%d%H%M')"
-	echo "Linking $LIBNAME"
+	#echo "Linking $LIBNAME"
 	$WORKNICE $COMPILER -shared $BOTHOPTS $LINKOPTS $(find "$OUTDIR/$DIRNAME" -name '*.o') -o $LIBNAME >>"${LOGFILE}" 2>>"${ERRLOG}"
     done
 fi
@@ -110,7 +110,7 @@ if ! [ -f "${ERRLOG}" ] || [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
 	    while IFS= read -d '' OFILE; do
 		#TODO VK_LIB ?
 		TESTNAME="${OFILE%.*}"
-		echo running test $TESTNAME
+		#echo running test $TESTNAME
 		test -f "${TESTNAME}" && cp "${TESTNAME}" "${TESTNAME}.bak.$(date '+%y%m%d%H%M')"
 		$WORKNICE $COMPILER "$OFILE" -o "$TESTNAME" -L "${OUTDIR}" "-Wl,-rpath,$OUTDIR" $BUILTLIBS $LINKOPTS $BOTHOPTS 2>>"${ERRLOG}" >>"${LOGFILE}"
 		echo running test "${TESTNAME}" >>"${LOGFILE}"
@@ -128,15 +128,14 @@ if ! [ -f "${ERRLOG}" ] || [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
 	find "$DIRNAME" -iname '*.o' | grep -qF .o || continue;
 	APPNAME="$DIRNAME/$(basename "${DIRNAME}").so"
 	#TODO VK_LIB ?
-	echo "Linking $APPNAME"
+	#echo "Linking $APPNAME"
 	$WORKNICE $COMPILER $(find "$DIRNAME" -name '*.o') -o $APPNAME $BOTHOPTS >>"${LOGFILE}" 2>>"${ERRLOG}"
     done
 fi
 
 if [ -f "${ERRLOG}" ] && [ "$(stat -c %s "${ERRLOG}")" -gt 0 ]; then
-    echo "${ERRLOG}"
-    let i=0; while [ $i -lt 10 ]; do echo; let i++; done;
-    head -n 40 "${ERRLOG}"
+    #echo "${ERRLOG}"
+    cat "${ERRLOG}"
 else
     echo "Success"
     tail "${LOGFILE}"

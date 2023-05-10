@@ -5,14 +5,12 @@ namespace WITE::GPU {
 
   Collections::PerGpuPerThread<std::unique_ptr<std::map<ShaderData::hashcode_t, ShaderDescriptorLifeguard>>> all; //static
 
-  ShaderDescriptorLifeguard::ShaderDescriptorLifeguard(const vk::DescriptorSetLayoutCreateInfo* dslCI,
-						       const vk::DescriptorPoolCreateInfo* poolCI,
-						       size_t gpuIdx) :
-    poolCI(poolCI),
-    gpu(Gpu::get(gpuIdx))
+  ShaderDescriptorLifeguard::ShaderDescriptorLifeguard(const ConstructorData& data) :
+    poolCI(data.poolCI),
+    gpu(Gpu::get(data.gpuIdx))
   {
     auto vkDev = gpu.getVkDevice();
-    VK_ASSERT(vkDev.createDescriptorSetLayout(dslCI, ALLOCCB, &dsl), "Could not create DS layout");
+    VK_ASSERT(vkDev.createDescriptorSetLayout(data.dslCI, ALLOCCB, &dsl), "Could not create DS layout");
     allocatePool();
   };
 

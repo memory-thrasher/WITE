@@ -38,10 +38,10 @@ namespace WITE::Collections {
     //   return std::ranges::views::filter(data, p);
     // };
 
-    template<typename P> constexpr inline size_t countWhere(P p) {
+    template<typename P> constexpr inline size_t countWhere(P p) const {
       size_t ret = 0;
-      for(const T& t : data)
-	if(p(t))
+      for(size_t i = 0;i < len;i++)
+	if(p(data[i]))
 	  ret++;
       return ret;
     };

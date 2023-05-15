@@ -16,10 +16,13 @@ namespace WITE::GPU {
   template<GpuResourceSlotInfo SLOT> using gpuResource_t = std::invoke_result<resourceFactory<SLOT>>::type;
 
   template<GpuResourceSlotInfo SLOT> struct TripletBacking {
-    typedef gpuResource_t<SLOT> staging_t;
+    typedef gpuResource_t<SLOT.stagingResourceSlot()> staging_t;
     staging_t staging = resourceFactory<SLOT.stagingResourceSlot()>()();
     typedef gpuResource_t<SLOT.externallyStagedResourceSlot()> T;
-    Util::FrameSwappedResource<T> swapper;
+    Util::FrameSwappedResource<T, 2> swapper = { {
+	resourceFactory<SLOT.externallyStagedResourceSlot()>()(),
+	resourceFactory<SLOT.externallyStagedResourceSlot()>()()
+      }, NULL };
     void* hostRam;
     ~TripletBacking() { if(hostRam) free(hostRam); };
   };
@@ -45,8 +48,8 @@ namespace WITE::GPU {
 
     template<usage_t usage, GpuResourceType type, size_t R = count(usage, type)>
     consteval static inline auto where() {
-      size_t ret[R];
-      where<usage, type, 0>(ret);
+      Collections::CopyableArray<size_t, R> ret;
+      where<usage, type, 0>(ret.ptr());
       return ret;
     };
 
@@ -61,9 +64,9 @@ namespace WITE::GPU {
     template<class T, usage_t usage>
     auto inline createIndex() {
       constexpr static size_t LEN = count(usage);
-      std::array<T[LEN], 2> ret;
-      createIndex<T, usage>(&ret[0], &ret[1]);
-      return FrameSwappedResource<T[LEN]>(ret, NULL);
+      Collections::CopyableArray<T[LEN], 2> ret;
+      createIndex<T, usage>(ret[0], ret[1]);
+      return Util::FrameSwappedResource<T[LEN]>(ret.ptr(), NULL);
     };
 
     template<class T, usage_t usage>
@@ -81,8 +84,8 @@ namespace WITE::GPU {
     auto inline createIndex() {
       constexpr static size_t LEN = count(usage, type);
       std::array<T[LEN], 2> ret;
-      createIndex<T, usage, type>(&ret[0], &ret[1]);
-      return FrameSwappedResource<T[LEN]>(ret, NULL);
+      createIndex<T, usage, type>(ret[0], ret[1]);
+      return Util::FrameSwappedResource<T[LEN]>(ret, NULL);
     };
 
     template<class T, usage_t usage, GpuResourceType type>
@@ -99,8 +102,8 @@ namespace WITE::GPU {
     template<class T, usage_t usage, GpuResourceType type>
     auto inline indexStagings() {
       constexpr static size_t LEN = count(usage, type);
-      T ret[LEN];
-      indexStagings<T, usage, type>(ret);
+      Collections::CopyableArray<T, LEN> ret;
+      indexStagings<T, usage, type>(ret.ptr());
       return ret;
     };
 
@@ -115,8 +118,8 @@ namespace WITE::GPU {
     template<usage_t usage, GpuResourceType type>
     auto inline indexHostRams() {
       constexpr static size_t LEN = count(usage, type);
-      void* ret[LEN];
-      indexHostRams<usage, type>(ret);
+      Collections::CopyableArray<void*, LEN> ret;
+      indexHostRams<usage, type>(ret.ptr());
       return ret;
     };
 

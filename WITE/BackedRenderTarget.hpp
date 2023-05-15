@@ -29,14 +29,15 @@ namespace WITE::GPU {
 
     static constexpr size_t descriptorCount = resources_t::count(GpuResource::MUSAGE_ANY_DESCRIPTOR_SET);
     static constexpr size_t attachmentCount = resources_t::count(ATTACHMENT_IMAGES);
-    static constexpr size_t attachmentIndexes[attachmentCount] = resources_t::template where<ATTACHMENT_IMAGES>();
-    static constexpr vk::ImageLayout attachmentInitialLayouts[attachmentCount] =
-      populateFor<attachmentCount>([](size_t i)constexpr{
+    static constexpr Collections::CopyableArray<size_t, attachmentCount> attachmentIndexes =
+      resources_t::template where<ATTACHMENT_IMAGES>();
+    static constexpr Collections::CopyableArray<vk::ImageLayout, attachmentCount> attachmentInitialLayouts =
+      [](size_t i)consteval{
 	return (DATA.resources[attachmentIndexes[i]].imageData.externalUsage & GpuResource::USAGE_HOST_WRITE) ?
 	  vk::ImageLayout::ePreinitialized : vk::ImageLayout::eUndefined;
-      });
-    static constexpr vk::AttachmentDescription2 attachmentDescriptionsDefault[attachmentCount] =
-      populateFor<attachmentCount>([](size_t i)constexpr{
+      };
+    static constexpr Collections::CopyableArray<vk::AttachmentDescription2, attachmentCount> attachmentDescriptionsDefault =
+      [](size_t i)consteval{
 	//format cannot be picked until runtime
 	const ImageSlotData isd = DATA.resources[attachmentIndexes[i]].imageData;
 	const bool preInit = isd.externalUsage & GpuResource::USAGE_HOST_WRITE;
@@ -48,12 +49,43 @@ namespace WITE::GPU {
 	  .setStencilLoadOp(preInit ? vk::AttachmentLoadOp::eLoad : vk::AttachmentLoadOp::eClear)
 	  .setStencilStoreOp(extUsage ? vk::AttachmentStoreOp::eStore : vk::AttachmentStoreOp::eDontCare)
 	  .setInitialLayout(attachmentInitialLayouts[i]).setFinalLayout(vk::ImageLayout::eTransferSrcOptimal);
-      });
-    static constexpr vk::SubpassDescription2 subpassDescriptions[DATA.steps.len] =
-      populateFor<DATA.steps.len>([](size_t i)constexpr{
-	std::vector<vk::AttachmentReference2> inputs, colors, depthStencils;
+      };
+
+    struct SubpassDescriptionStorage {
+      Collections::OversizedCopyableArray<vk::AttachmentReference2, attachmentCount> inputs, colors;
+      vk::AttachmentReference2 depthStencil;
+      Collections::OversizedCopyableArray<uint32_t, attachmentCount> preserves;
+      vk::PipelineBindPoint bp;
+      constexpr SubpassDescriptionStorage(const std::vector<vk::AttachmentReference2>& inputs,
+					  const std::vector<vk::AttachmentReference2>& colors,
+					  const vk::AttachmentReference2& depthStencil,
+					  const std::vector<uint32_t>& preserves,
+					  vk::PipelineBindPoint bp) :
+	inputs(inputs), colors(colors), depthStencil(depthStencil), preserves(preserves), bp(bp) {}
+      constexpr ~SubpassDescriptionStorage() = default;
+
+      constexpr vk::SubpassDescription2 makeDescription() const {
+	vk::SubpassDescription2 ret;
+	ret.setPipelineBindPoint(bp)
+	  //.setViewMask(???)
+	  .setInputAttachmentCount(inputs.len)
+	  .setPInputAttachments(inputs.ptr())
+	  .setColorAttachmentCount(colors.len)
+	  .setPColorAttachments(colors.ptr())
+	  //NYI resolves
+	  .setPDepthStencilAttachment(&depthStencil)//only one allowed
+	  .setPreserveAttachmentCount(preserves.len)
+	  .setPPreserveAttachments(preserves.ptr());
+	return ret;
+      }
+    };
+
+    static constexpr Collections::CopyableArray<SubpassDescriptionStorage, DATA.steps.len> subpassDescriptionStorage =
+      [](size_t i)constexpr{
+	std::vector<vk::AttachmentReference2> inputs, colors;
+	vk::AttachmentReference2 depthStencil = { VK_ATTACHMENT_UNUSED };
 	std::vector<uint32_t> preserves;
-	for(size_t j = 0;j < attachmentCount;j++) {
+	for(uint32_t j = 0;j < attachmentCount;j++) {
 	  ImageSlotData isd = DATA.resources[attachmentIndexes[j]].imageData;
 	  bool used = false;
 	  if(isd.usage & GpuResource::USAGE_ATT_INPUT) {
@@ -64,34 +96,24 @@ namespace WITE::GPU {
 	    used = true;
 	    colors.emplace_back(j, attachmentInitialLayouts[j], aspectMaskForUsage(isd.usage));
 	  }
-	  if(isd.usage & GpuResource::USAGE_ATT_DEPTH) {
+	  if(isd.usage & GpuResource::USAGE_ATT_DEPTH) {//only one of these is allowed per step
 	    used = true;
-	    depthStencils.emplace_back(j, attachmentInitialLayouts[j], aspectMaskForUsage(isd.usage));
+	    ASSERT_CONSTEXPR(depthStencil.attachment == VK_ATTACHMENT_UNUSED);
+	    depthStencil = { j, attachmentInitialLayouts[j], aspectMaskForUsage(isd.usage) };
 	  }
 	  if(used) continue;
 	  //now decide if it needs to be preserved
-	  if(isd.externalUsage & !GpuResource::USAGE_HOST_WRITE) used = true;//used by something else
+	  if(isd.externalUsage & ~GpuResource::USAGE_HOST_WRITE) used = true;//used by something else
 	  for(size_t k = i + 1;k < DATA.steps.len && !used;k++)
 	    used |= DATA.steps[k].resourceUsages[j];//used by a future step
 	  if(used)
 	    preserves.push_back(j);
 	}
-	const RenderStep step = DATA.steps[i];
-	ASSERT_CONSTEXPR(depthStencils.size() <= 1);
-	if(depthStencils.size() == 0)
-	  depthStencils.emplace_back(VK_ATTACHMENT_UNUSED);
-	return vk::SubpassDescription2().setPipelineBindPoint(step.type == QueueType::eCompute ?
-							      vk::PipelineBindPoint::eCompute : vk::PipelineBindPoint::eGraphics)
-	  //.setViewMask(???)
-	  .setInputAttachmentCount(inputs.size())
-	  .setPInputAttachments(inputs.data())
-	  .setColorAttachmentCount(colors.size())
-	  .setPColorAttachments(colors.data())
-	  //NYI resolves
-	  .setPDepthStencilAttachment(depthStencils.data())//only one allowed
-	  .setPreserveAttachmentCount(preserves.size())
-	  .setPPreserveAttachments(preserves.data());
-      });
+	return SubpassDescriptionStorage { inputs, colors, depthStencil, preserves,
+	  DATA.steps[i].type == QueueType::eCompute ? vk::PipelineBindPoint::eCompute : vk::PipelineBindPoint::eGraphics };
+      };
+    static constexpr Collections::CopyableArray<vk::SubpassDescription2, DATA.steps.len> subpassDescriptions =
+      [](size_t i){ return subpassDescriptionStorage[i].makeDescription(); };
 
     struct fb_t {
       vk::Framebuffer fb;
@@ -101,9 +123,12 @@ namespace WITE::GPU {
     fbs_t fbs;
     Util::FrameSwappedResource<ImageBase*[attachmentCount]> attachments =
       resources.template createIndex<ImageBase*, ATTACHMENT_IMAGES>();
-    ImageBase* attachmentStagings[attachmentCount] = resources.template indexStagings<ImageBase*, ATTACHMENT_IMAGES>();
-    void* attachmentHostRams[attachmentCount] = resources.template indexHostRams<ATTACHMENT_IMAGES>();
-    vk::AttachmentDescription2 attachmentDescriptions[attachmentCount] = attachmentDescriptionsDefault;
+    Collections::CopyableArray<ImageBase*, attachmentCount> attachmentStagings =
+      resources.template indexStagings<ImageBase*, ATTACHMENT_IMAGES>();
+    Collections::CopyableArray<void*, attachmentCount> attachmentHostRams =
+      resources.template indexHostRams<ATTACHMENT_IMAGES>();
+    Collections::CopyableArray<vk::AttachmentDescription2, attachmentCount> attachmentDescriptions =
+      attachmentDescriptionsDefault;
     Util::FrameSwappedResource<GpuResource*[descriptorCount]> descriptorSets =
       resources.template createIndex<GpuResource*, GpuResource::MUSAGE_ANY_DESCRIPTOR_SET>();
 
@@ -157,22 +182,23 @@ namespace WITE::GPU {
       WorkBatch::batchDistributeAcrossLdm(gpu, attachmentCount, attachments.getWrite(), attachmentStagings, attachmentHostRams);
     };
 
-    static constexpr vk::ClearValue defaultClears[attachmentCount] =
-      populateFor<attachmentCount, vk::ClearValue>([](size_t i)constexpr{
+    static constexpr Collections::CopyableArray<vk::ClearValue, attachmentCount> defaultClears =
+      [](size_t i)constexpr{
 	return (DATA.resources[attachmentIndexes[i]].getUsage() & GpuResource::USAGE_ATT_DEPTH) ?
-	  vk::ClearDepthStencilValue(1.0f, 0) : vk::ClearColorValue(0, 0, 0, 0);
-      });
+	  vk::ClearValue(vk::ClearDepthStencilValue(1.0f, 0)) :
+	  vk::ClearValue(vk::ClearColorValue(0, 0, 0, 0));
+      };
 
   public:
-    vk::ClearValue clears[attachmentCount] = defaultClears;
+    Collections::CopyableArray<vk::ClearValue, attachmentCount> clears = defaultClears;
 
     BackedRenderTarget() : RenderTarget(LDM),
 			   fbs(fbs_t::creator_t_F::make(this, &SPECULUM::makeFBs),
 			       fbs_t::destroyer_t_F::make(this, &SPECULUM::destroyFBs))
     {
       //ci exists in parent class, parent creates render passes on demand from it.
-      ci.setAttachmentCount(attachmentCount).setPAttachments(attachmentDescriptions)
-	.setSubpassCount(DATA.steps.len).setPSubpasses(subpassDescriptions);
+      ci.setAttachmentCount(attachmentCount).setPAttachments(attachmentDescriptions.ptr())
+	.setSubpassCount(DATA.steps.len).setPSubpasses(subpassDescriptions.ptr());
       //NOTE: not providing any subpass dependency information because the entire render pass is already strongly-ordered at the commandbuffer layer elsewhere. It may eventually be necessary. Note that the dependency can contain a MemoryBarrier on it's pNext chain to describe a layout conversion, not sure if that's necessary.
     };
 

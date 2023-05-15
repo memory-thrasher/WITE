@@ -9,7 +9,7 @@ namespace WITE::Collections {
   template<class T, size_t MAX_LEN> requires std::is_default_constructible_v<T> struct OversizedCopyableArray {
 
     std::array<T, MAX_LEN> data;
-    size_t len;
+    size_t len = 0;
 
     constexpr OversizedCopyableArray() = default;
 
@@ -44,6 +44,8 @@ namespace WITE::Collections {
     constexpr inline const T& operator[](size_t i) const { return data[i]; };
     constexpr inline explicit operator const T*() const { return data.data(); };
     constexpr inline explicit operator T*() { return data.data(); };
+    constexpr inline T* ptr() { return data.data(); };
+    constexpr inline const T* ptr() const { return data.data(); };
 
     constexpr inline auto begin() { return data.begin(); };
     constexpr inline auto begin() const { return data.begin(); };

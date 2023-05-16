@@ -36,13 +36,13 @@ namespace WITE::GPU {
 
     consteval static inline size_t count(usage_t usage) {
       return SLOTS.countWhere([usage](auto s) {
-	return (s.getUsage() & usage) == usage;
+	return s.getUsage() & usage;
       });
     };
 
     consteval static inline size_t count(usage_t usage, GpuResourceType type) {
       return SLOTS.countWhere([usage, type](auto& s) {
-	return (s.getUsage() & usage) == usage && type == s.type;
+	return (s.getUsage() & usage) && type == s.type;
       });
     };
 
@@ -55,7 +55,7 @@ namespace WITE::GPU {
 
     template<usage_t usage, GpuResourceType type, size_t I>
     consteval static inline void where(size_t* ret) {
-      if constexpr(SLOTS[0].type == GpuResourceType::eImage && (SLOTS[0].getUsage() & usage) == usage)
+      if constexpr(SLOTS[0].type == type && (SLOTS[0].getUsage() & usage))
 	*ret++ = I;
       if constexpr(L > 1)
 	rest_t::template where<usage, type, I+1>(ret);
@@ -71,7 +71,7 @@ namespace WITE::GPU {
 
     template<class T, usage_t usage>
     void inline createIndex(T* odd, T* even) {
-      if constexpr((SLOTS[0].getUsage() & usage) == usage) {
+      if constexpr((SLOTS[0].getUsage() & usage)) {
 	auto& d = data.swapper.all();
 	*odd++ = auto_cast<T>(d[0]);
 	*even++ = auto_cast<T>(d[1]);
@@ -90,7 +90,7 @@ namespace WITE::GPU {
 
     template<class T, usage_t usage, GpuResourceType type>
     void inline createIndex(T* odd, T* even) {
-      if constexpr(SLOTS[0].type == type && (SLOTS[0].getUsage() & usage) == usage) {
+      if constexpr(SLOTS[0].type == type && (SLOTS[0].getUsage() & usage)) {
 	auto& d = data.swapper.all();
 	*odd++ = auto_cast<T>(d[0]);
 	*even++ = auto_cast<T>(d[1]);
@@ -109,7 +109,7 @@ namespace WITE::GPU {
 
     template<class T, usage_t usage, GpuResourceType type>
     void inline indexStagings(T* out) {
-      if constexpr(SLOTS[0].type == type && (SLOTS[0].getUsage() & usage) == usage)
+      if constexpr(SLOTS[0].type == type && (SLOTS[0].getUsage() & usage))
 	*out++ = auto_cast<T>(data.staging);
       if constexpr(L > 1)
 	rest.template indexStagings<T, usage, type>(out);
@@ -125,7 +125,7 @@ namespace WITE::GPU {
 
     template<usage_t usage, GpuResourceType type>
     void inline indexHostRams(void** out) {
-      if constexpr(SLOTS[0].type == type && (SLOTS[0].getUsage() & usage) == usage)
+      if constexpr(SLOTS[0].type == type && (SLOTS[0].getUsage() & usage))
 	*out++ = data.hostRam.get();
       if constexpr(L > 1)
 	rest.template indexHostRams<usage, type>(out);
@@ -140,7 +140,7 @@ namespace WITE::GPU {
     };
 
     template<usage_t usage> inline void makeImageViews(size_t gpuIdx, vk::ImageView* (&out)[2]) {
-      if constexpr(SLOTS[0].type == GpuResourceType::eImage && (SLOTS[0].getUsage() & usage) == usage)
+      if constexpr(SLOTS[0].type == GpuResourceType::eImage && (SLOTS[0].getUsage() & usage))
 	for(size_t i = 0;i < 2;i++)
 	  (*out[i]++) = data.swapper.all()[i].getVkImageView(gpuIdx);
       if constexpr(L > 1)
@@ -148,7 +148,7 @@ namespace WITE::GPU {
     };
 
     template<usage_t usage, GpuResourceType type> inline auto& first() {
-      if constexpr(SLOTS[0].type == type && (SLOTS[0].getUsage() & usage) == usage)
+      if constexpr(SLOTS[0].type == type && (SLOTS[0].getUsage() & usage))
 	return data;
       else
 	return rest.template first<usage, type>();

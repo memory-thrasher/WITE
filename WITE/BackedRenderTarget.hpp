@@ -29,6 +29,7 @@ namespace WITE::GPU {
 
     static constexpr size_t descriptorCount = resources_t::count(GpuResource::MUSAGE_ANY_DESCRIPTOR_SET);
     static constexpr size_t attachmentCount = resources_t::count(ATTACHMENT_IMAGES);
+    static_assert(attachmentCount > 0);
     static constexpr Collections::CopyableArray<size_t, attachmentCount> attachmentIndexes =
       resources_t::template where<ATTACHMENT_IMAGES>();
     static constexpr Collections::CopyableArray<vk::ImageLayout, attachmentCount> attachmentInitialLayouts =
@@ -81,7 +82,7 @@ namespace WITE::GPU {
     };
 
     static constexpr Collections::CopyableArray<SubpassDescriptionStorage, DATA.steps.len> subpassDescriptionStorage =
-      [](size_t i)constexpr{
+      [](size_t i)consteval{
 	std::vector<vk::AttachmentReference2> inputs, colors;
 	vk::AttachmentReference2 depthStencil = { VK_ATTACHMENT_UNUSED };
 	std::vector<uint32_t> preserves;
@@ -146,7 +147,7 @@ namespace WITE::GPU {
       vk::FramebufferCreateInfo fbci { {}, rp, attachmentCount, NULL, size.width, size.height, 1 };
       for(size_t i = 0;i < 2;i++) {
 	fbci.setPAttachments(ret[i].views);
-	VK_ASSERT(vkgpu.createFramebuffer(&fbci, ALLOCCB, &ret[i]), "Failed to create framebuffer");
+	VK_ASSERT(vkgpu.createFramebuffer(&fbci, ALLOCCB, &ret[i].fb, NULL), "Failed to create framebuffer");
       }
       *out = new Util::FrameSwappedResource<fb_t>(ret);
     };

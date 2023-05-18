@@ -13,13 +13,14 @@ namespace WITE::Util {
     typedefCB(onFrameSwitch_cb, void, T&, T&);
   private:
     static_assert(N > 0);
-    std::array<T, N> data;
+    Collections::CopyableArray<T, N> data;
     onFrameSwitch_cb onSwitch;
     std::atomic_uint64_t lastFrameFetch, lastFrameRelease;
   public:
-    FrameSwappedResource(const std::array<T, N>& data, onFrameSwitch_cb onSwitch) : data(data), onSwitch(onSwitch) {}
+    FrameSwappedResource(const Collections::CopyableArray<T, N>& data, onFrameSwitch_cb onSwitch) :
+      data(data), onSwitch(onSwitch) {}
     FrameSwappedResource(T* data, onFrameSwitch_cb onSwitch = NULL) : onSwitch(onSwitch) {
-      memcpy(this->data.data(), data, sizeof(T) * N);
+      memcpy(this->data.ptr(), data, sizeof(T) * N);
     }
     FrameSwappedResource(const std::initializer_list<T> data, onFrameSwitch_cb onSwitch) : data(data), onSwitch(onSwitch) {}
     FrameSwappedResource(onFrameSwitch_cb onSwitch) : data(), onSwitch(onSwitch) {}
@@ -47,8 +48,8 @@ namespace WITE::Util {
     }
     inline T& getWrite() { return get(0); };
     inline T& getRead() { return get(1); };
-    inline std::array<T, N>& all() { return data; };
-    inline const std::array<const T, N>& call() const { return data; };
+    inline Collections::CopyableArray<T, N>& all() { return data; };
+    inline const Collections::CopyableArray<const T, N>& call() const { return data; };
 
   };
 

@@ -108,7 +108,7 @@ namespace WITE::GPU {
 
     //bypasses compiler check, for RenderTarget because what shaders are on what layer is not presently described at compile time
     //data = c-array of GpuResource* of length deduced via ShaderData templates
-    virtual void bindResourcesUnchecked(GpuResource** (&resources)[2]) = 0;
+    virtual void bindResourcesUnchecked(GpuResource*** resources) = 0;
 
     virtual vk::DescriptorSet get(size_t gpu) = 0;
   };
@@ -153,7 +153,7 @@ namespace WITE::GPU {
     ShaderDescriptor(ShaderDescriptor&) = delete;
     ShaderDescriptor() {};
 
-    void bindResourcesUnchecked(GpuResource** (&resources)[2]) override {
+    void bindResourcesUnchecked(GpuResource*** resources) override {
       ASSERT_TRAP(resources, "null resource given to descriptor");
       uint64_t frame = Util::FrameCounter::getFrame();
       size_t fIdx = 0;

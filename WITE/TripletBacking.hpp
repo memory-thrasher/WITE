@@ -4,25 +4,30 @@
 
 namespace WITE::GPU {
 
-  template<GpuResourceSlotInfo SLOT> struct resourceFactory {
-    auto operator()() {
-      if constexpr(SLOT.type == GpuResourceType::eImage)
-	return Image<SLOT.imageData>();
-      else if constexpr(SLOT.type == GpuResourceType::eBuffer)
-	return Buffer<SLOT.bufferData>();
-    };
-  };
+  // template<GpuResourceSlotInfo SLOT> struct resourceFactory {
+  //   auto operator()() {
+  //     if constexpr(SLOT.type == GpuResourceType::eImage)
+  // 	return Image<SLOT.imageData>();
+  //     else if constexpr(SLOT.type == GpuResourceType::eBuffer)
+  // 	return Buffer<SLOT.bufferData>();
+  //   };
+  // };
 
-  template<GpuResourceSlotInfo SLOT> using gpuResource_t = std::invoke_result<resourceFactory<SLOT>>::type;
+  // template<GpuResourceSlotInfo SLOT> using gpuResource_t = std::invoke_result<resourceFactory<SLOT>>::type;
+  template<GpuResourceSlotInfo SLOT, GpuResourceType GRT = SLOT.type> struct gpuResourceFromSlotInfo {};
+  template<GpuResourceSlotInfo SLOT> struct gpuResourceFromSlotInfo<SLOT, GpuResourceType::eImage> {
+    typedef Image<SLOT.imageData> type;
+  };
+  template<GpuResourceSlotInfo SLOT> struct gpuResourceFromSlotInfo<SLOT, GpuResourceType::eBuffer> {
+    typedef Buffer<SLOT.bufferData> type;
+  };
+  template<GpuResourceSlotInfo SLOT> using gpuResource_t = gpuResourceFromSlotInfo<SLOT, SLOT.type>::type;
 
   template<GpuResourceSlotInfo SLOT> struct TripletBacking {
     typedef gpuResource_t<SLOT.stagingResourceSlot()> staging_t;
-    staging_t staging = resourceFactory<SLOT.stagingResourceSlot()>()();
+    staging_t staging = {};//resourceFactory<SLOT.stagingResourceSlot()>()();
     typedef gpuResource_t<SLOT.externallyStagedResourceSlot()> T;
-    Util::FrameSwappedResource<T, 2> swapper = { {
-	resourceFactory<SLOT.externallyStagedResourceSlot()>()(),
-	resourceFactory<SLOT.externallyStagedResourceSlot()>()()
-      }, NULL };
+    Util::FrameSwappedResource<T, 2> swapper;//default init of gpu resources is always allowed
     void* hostRam;
     ~TripletBacking() { if(hostRam) free(hostRam); };
   };
@@ -83,9 +88,9 @@ namespace WITE::GPU {
     template<class T, usage_t usage, GpuResourceType type>
     auto inline createIndex() {
       constexpr static size_t LEN = count(usage, type);
-      std::array<T[LEN], 2> ret;
-      createIndex<T, usage, type>(ret[0], ret[1]);
-      return Util::FrameSwappedResource<T[LEN]>(ret, NULL);
+      Collections::CopyableArray<Collections::CopyableArray<T, LEN>, 2> ret;
+      createIndex<T, usage, type>(ret[0].ptr(), ret[1].ptr());
+      return Util::FrameSwappedResource<Collections::CopyableArray<T, LEN>>(ret, NULL);
     };
 
     template<class T, usage_t usage, GpuResourceType type>
@@ -126,7 +131,7 @@ namespace WITE::GPU {
     template<usage_t usage, GpuResourceType type>
     void inline indexHostRams(void** out) {
       if constexpr(SLOTS[0].type == type && (SLOTS[0].getUsage() & usage))
-	*out++ = data.hostRam.get();
+	*out++ = data.hostRam;
       if constexpr(L > 1)
 	rest.template indexHostRams<usage, type>(out);
     };

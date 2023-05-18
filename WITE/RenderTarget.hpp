@@ -48,6 +48,12 @@ namespace WITE::GPU {
     friend class ShaderBase;
     virtual void renderQueued(WorkBatch cmd) = 0;//implementation is expected to do something with the rendered image
     virtual void bindResourcesTo(ShaderDescriptorBase*) = 0;
+  public:
+    RenderTarget() = delete;
+    RenderTarget(const RenderTarget&) = delete;
+    virtual ~RenderTarget() = default;
+    void render(std::initializer_list<RenderableBase*> except);
+    virtual void cull() = 0;
     template<ShaderData SD> ShaderDescriptorBase* getDescriptor() {
       constexpr auto hc = SD.hashCode();
       if(!descriptorSets.contains(hc)) {
@@ -58,12 +64,6 @@ namespace WITE::GPU {
       } else
 	return descriptorSets.at(hc).get();
     };
-  public:
-    RenderTarget() = delete;
-    RenderTarget(const RenderTarget&) = delete;
-    virtual ~RenderTarget() = default;
-    void render(std::initializer_list<RenderableBase*> except);
-    virtual void cull() = 0;
   };
 
 }

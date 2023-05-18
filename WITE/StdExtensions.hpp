@@ -87,6 +87,14 @@ namespace WITE {
     memcpy(&out, in, L * sizeof(T));
   }
 
+  template<typename T, size_t L> inline void memcpy(T* out, const T(&in)[L]) {
+    memcpy(out, &in, L * sizeof(T));
+  }
+
+  template<typename T, size_t L> inline void memcpy(T(&out)[L], const T* in) {
+    memcpy(&out, in, L * sizeof(T));
+  }
+
   // template<typename CVT, typename T = std::remove_cv_t<CVT>> inline T cv_cast(CVT i) {
   //   return const_cast<T>(i);
   // }
@@ -136,11 +144,17 @@ namespace WITE {
 
   // template<class U, class T> concept is_collection_of_recursive = std::convertible_to<typename remove_collection<U>::type, T>;
 
-  template<class T> inline T* auto_cast(T* i) { return i; };//ptr to ptr
-  template<class T> inline T* auto_cast(T& i) { return &i; };//ref to ptr
-  template<class T, class U> inline T* auto_cast(U* i) { return reinterpret_cast<T*>(i); };//crosstype cast ptr to ptr
-  template<class T, class U> inline T* auto_cast(U i)  { return reinterpret_cast<T*>(i); };//downcast numeric to ptr
-  template<class T, class U> inline T* auto_cast(U& i) { return reinterpret_cast<T*>(&i); };//crosstype cast ref to ptr
+  template<class T> requires std::is_pointer<T>::value inline T auto_cast(T* i) { return i; };
+  template<class T> requires std::is_pointer<T>::value inline T auto_cast(T& i) { return &i; };
+  template<class T, class U> requires std::is_pointer<T>::value inline T auto_cast(U* i) { return reinterpret_cast<T>(i); };
+  template<class T, class U> requires std::is_pointer<T>::value inline T auto_cast(U& i) { return reinterpret_cast<T>(&i); };
+  // template<std::copy_constructible T, std::copy_constructible U> requires requires {
+  //   !std::is_pointer<U>::value;
+  //   !std::is_reference<U>::value;
+  //   !std::is_pointer<T>::value;
+  //   !std::is_reference<T>::value;
+  // }
+  // inline T auto_cast(U i) { return reinterpret_cast<T>(i); };
   //TODO more as needed (non-ptr with caution)
 
 }

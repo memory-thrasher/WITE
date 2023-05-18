@@ -122,7 +122,7 @@ namespace WITE::GPU {
     };
     typedef PerGpu<Util::FrameSwappedResource<fb_t>*> fbs_t;
     fbs_t fbs;
-    Util::FrameSwappedResource<ImageBase*[attachmentCount]> attachments =
+    Util::FrameSwappedResource<Collections::CopyableArray<ImageBase*, attachmentCount>> attachments =
       resources.template createIndex<ImageBase*, ATTACHMENT_IMAGES>();
     Collections::CopyableArray<ImageBase*, attachmentCount> attachmentStagings =
       resources.template indexStagings<ImageBase*, ATTACHMENT_IMAGES>();
@@ -147,7 +147,7 @@ namespace WITE::GPU {
       vk::FramebufferCreateInfo fbci { {}, rp, attachmentCount, NULL, size.width, size.height, 1 };
       for(size_t i = 0;i < 2;i++) {
 	fbci.setPAttachments(ret[i].views);
-	VK_ASSERT(vkgpu.createFramebuffer(&fbci, ALLOCCB, &ret[i].fb, NULL), "Failed to create framebuffer");
+	VK_ASSERT(vkgpu.createFramebuffer(&fbci, ALLOCCB, &ret[i].fb), "Failed to create framebuffer");
       }
       *out = new Util::FrameSwappedResource<fb_t>(ret);
     };
@@ -158,7 +158,7 @@ namespace WITE::GPU {
       auto fbs = (*f)->all();
       for(size_t i = 0;i < 2;i++) {
 	for(auto vw : fbs[i].views)
-	  vkgpu.destroyImageView(*vw, ALLOCCB);
+	  vkgpu.destroyImageView(vw, ALLOCCB);
 	vkgpu.destroyFramebuffer(fbs[i].fb, ALLOCCB);
       }
       delete *f;
@@ -167,20 +167,24 @@ namespace WITE::GPU {
   protected:
     virtual const Collections::IteratorWrapper<const RenderStep*> getRenderSteps() const override { return { DATA.steps }; };
     virtual void getRenderInfo(WorkBatch::renderInfo* out, size_t gpuIdx) override {
-      out->rpbi = { renderPasses.get(gpuIdx), fbs.get(gpuIdx)->getWrite().fb,
-	resources.template get<attachmentIndexes[0]>()->data.swapper.getWrite().getAllInclusiveSubresource(),
-	attachmentCount, clears };
+      out->rpbi = vk::RenderPassBeginInfo{
+	renderPasses.get(gpuIdx),
+	fbs.get(gpuIdx)->getWrite().fb,
+	{ {}, resources.template get<attachmentIndexes[0]>()->data.swapper.getWrite().getVkSize() },
+	attachmentCount,
+	clears.ptr()
+      };
       out->resourceCount = attachmentCount;
       static_assert(attachmentCount <= MAX_RESOURCES);
-      memcpy(out->resources, attachments.getRead());
-      memcpy(out->initialLayouts, attachmentInitialLayouts);
+      memcpy(out->resources, attachments.getRead().ptr());
+      memcpy(out->initialLayouts, attachmentInitialLayouts.ptr());
       memset<attachmentCount>(out->finalLayouts, vk::ImageLayout::eTransferSrcOptimal);
       out->sc = vk::SubpassContents::eInline;
     };
 
     void renderQueued(WorkBatch cmd) override {
       size_t gpu = cmd.getGpuIdx();
-      WorkBatch::batchDistributeAcrossLdm(gpu, attachmentCount, attachments.getWrite(), attachmentStagings, attachmentHostRams);
+      WorkBatch::batchDistributeAcrossLdm(gpu, attachmentCount, attachments.getWrite().ptr(), attachmentStagings.ptr(), attachmentHostRams.ptr());
     };
 
     static constexpr Collections::CopyableArray<vk::ClearValue, attachmentCount> defaultClears =
@@ -204,7 +208,8 @@ namespace WITE::GPU {
     };
 
     void bindResourcesTo(ShaderDescriptorBase* sdb) override {
-      sdb->bindResourcesUnchecked(descriptorSets.all());
+      if constexpr(descriptorCount > 0)
+	sdb->bindResourcesUnchecked(descriptorSets.all().ptr());
     };
 
     template<size_t i> inline auto* getRead() {

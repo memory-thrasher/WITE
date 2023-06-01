@@ -3,7 +3,7 @@
 
 namespace WITE::GPU {
 
-  Collections::PerGpuPerThread<std::unique_ptr<std::map<ShaderData::hashcode_t, ShaderDescriptorLifeguard>>> all; //static
+  Collections::PerGpuPerThread<std::unique_ptr<std::map<ShaderData::hashcode_t, ShaderDescriptorLifeguard>>> ShaderDescriptorLifeguard::all; //static
 
   ShaderDescriptorLifeguard::ShaderDescriptorLifeguard(const ConstructorData& data) :
     poolCI(data.poolCI),

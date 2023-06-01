@@ -1,7 +1,11 @@
 BUILDLIBS="WITE"
 BUILDTESTS="Tests"
 BUILDAPP=""
-LINKOPTS="-lrt -latomic -lvulkan -lSDL2"
+vk_lib_path="$(cat ../path_to_debug_vulkan)"
+if [ -n "$vk_lib_path" ]; then
+    PATH="$vk_lib_path:$PATH"
+fi;
+LINKOPTS="-L${vk_lib_path} -lrt -latomic -lvulkan -lSDL2"
 BOTHOPTS="-pthread -DDEBUG -g"
 BASEDIR="$(cd "$(dirname "$0")"; pwd -L)"
 OUTDIR="${BASEDIR}/build" #TODO not just WITE but all subdirs
@@ -114,6 +118,7 @@ if ! [ -f "${ERRLOG}" ] || [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
 		test -f "${TESTNAME}" && cp "${TESTNAME}" "${TESTNAME}.bak.$(date '+%y%m%d%H%M')"
 		$WORKNICE $COMPILER "$OFILE" -o "$TESTNAME" -L "${OUTDIR}" "-Wl,-rpath,$OUTDIR" $BUILTLIBS $LINKOPTS $BOTHOPTS 2>>"${ERRLOG}" >>"${LOGFILE}"
 		echo running test "${TESTNAME}" >>"${LOGFILE}"
+		#VK_LOADER_DEBUG=all
 		$WORKNICE time $TESTNAME 2>>"${ERRLOG}" >>"${LOGFILE}"
 		code=$?
 		if [ $code -ne 0 ]; then echo "Exit code: " $code >>"${ERRLOG}"; fi;

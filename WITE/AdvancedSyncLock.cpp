@@ -32,7 +32,9 @@ namespace WITE::Util {
 
   void AdvancedSyncLock::release() {
     ScopeLock lock(&mutex);
-    ASSERT_TRAP(currentOwner == Platform::Thread::getCurrentTid(), "Mutex Failure!!!");
+    auto tid = Platform::Thread::getCurrentTid();
+    ASSERT_TRAP(holds > 0, "Mutex hold underflow!");
+    ASSERT_TRAP(currentOwner == tid, "Mutex Failure!!! tid: ", tid, " owner: ", currentOwner, " holds: ", holds);
     --holds;
   };
 
@@ -51,7 +53,8 @@ namespace WITE::Util {
   };
 
   AdvancedScopeLock::~AdvancedScopeLock() {
-    release();
+    if(isHeld())
+      release();
   };
 
   void AdvancedScopeLock::reacquire(uint64_t timeoutNS) {

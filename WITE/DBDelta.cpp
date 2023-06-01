@@ -5,7 +5,7 @@
 
 namespace WITE::DB {
 
-  void DBDelta::applyTo(volatile DBRecord* out) const {//may be in the data mmap, may be a temp during a read op
+  void DBDelta::applyTo(DBRecord* out) const {//may be in the data mmap, may be a temp during a read op
     ASSERT_TRAP(!len || dstStart < MAX_DELTA_SIZE, "dstStart out of bounds");
     if(len)
       memcpy(&out->content[dstStart], content, len);

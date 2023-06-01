@@ -9,6 +9,7 @@ namespace WITE::Collections {
   class LinkedTreeBase {
   protected:
     typedef uint64_t invertedPtr;
+    static_assert(sizeof(uint64_t) == sizeof(void*));
     struct node {
       invertedPtr data;
       node* low, *high, *parent;
@@ -46,7 +47,7 @@ namespace WITE::Collections {
     class Iterator : public IteratorBase {
     public:
       Iterator(node* t, LinkedTreeBase* ltb) : IteratorBase(t, ltb) {};
-      inline T* operator()() { return reverse(getNext()->data); };
+      inline T* operator()() { auto n = getNext(); return n ? reverse(n->data) : NULL; };
     };
     inline void insert(T* t) { LinkedTreeBase::insert(reverse(t)); };
     inline void remove(T* t) { LinkedTreeBase::remove(reverse(t)); };

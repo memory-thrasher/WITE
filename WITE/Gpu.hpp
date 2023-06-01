@@ -31,7 +31,7 @@ namespace WITE::GPU {
     static deviceMask_t gpuMaskByLdm(deviceMask_t ldm);
 
     size_t idx;
-    std::map<vk::Format, vk::FormatProperties> formatProperties;
+    std::map<vk::Format, vk::FormatProperties> formatProperties {};
     vk::PhysicalDevice pv;
     vk::PhysicalDeviceProperties2 pvp;
     typedef struct {
@@ -63,7 +63,7 @@ namespace WITE::GPU {
     static inline bool ldmHasMultiplePhysical(logicalDeviceMask_t ldm) { return gpuCountByLdm(ldm) > 1; };
     static inline bool ldmContains(logicalDeviceMask_t ldm, size_t gpu) { return gpuMaskByLdm(ldm) & (1 << gpu); };
     static inline Collections::BitmaskIterator gpusForLdm(logicalDeviceMask_t ldm) { return { gpuMaskByLdm(ldm) }; };
-    static vk::Format getBestImageFormat(uint8_t comp, uint8_t compSize, usage_t usage, logicalDeviceMask_t ldm = 1);
+    static vk::Format getBestImageFormat(uint8_t comp, uint8_t compSize, usage_t usage, logicalDeviceMask_t ldm, bool linear);
     static inline const char* getAppName() { return appName; };
     static inline auto getVkInstance() { return vkInstance; };
 

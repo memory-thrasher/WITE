@@ -22,7 +22,7 @@ namespace WITE::DB {
     DBRecordFlag flagWriteMask, flagWriteValues;
     DBDelta() : frame(~0) {}//for constructing temps and arrays, so no need to init very much
     DBDelta(const DBDelta&);//copy constructor that only copies the first len bytes of content
-    void applyTo(volatile DBRecord*) const;
+    void applyTo(DBRecord*) const;
     void clear();
     DBDelta& operator=(const DBDelta& src) noexcept;
     void integrityCheck(Database* = NULL) const;

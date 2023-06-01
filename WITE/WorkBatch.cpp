@@ -425,9 +425,9 @@ namespace WITE::GPU {
 	  }
 	}
 	doBarrier(cmd);
-	cmd.then([gpu, cnt, ramCopy, srcCopy]() {
+	cmd.then([gpu, cnt, srcs, ram]() {
 	  for(size_t i = 0;i < cnt;i++)
-	    srcCopy[i]->mem.getPtr(gpu)->write(ramCopy[i]);
+	    srcs[i]->mem.getPtr(gpu)->write(ram[i]);
 	});
 	cmd.thenOnGpu(gpu);
 	for(size_t i = 0;i < cnt;i++)

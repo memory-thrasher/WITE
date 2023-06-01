@@ -1,10 +1,10 @@
 namespace WITE::Collections {
 
-  template<class Node> using SynchronizedLinkedListNodeMember = Node*volatile;
+  template<class Node> using SynchronizedLinkedListNodeMember = Node*;
 
   template<class Node, SynchronizedLinkedListNodeMember<Node> Node::*NodePtr> class SynchronizedLinkedList {
   private:
-    Node*volatile first, *volatile last;
+    Node *first, *last;
     mutable Util::SyncLock mutex;
     SynchronizedLinkedList(SynchronizedLinkedList&) = delete;
   public:

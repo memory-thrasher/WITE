@@ -22,13 +22,13 @@ namespace WITE::GPU {
     static std::atomic<pipelineId_t> idSeed;
     static std::vector<ShaderBase*> allShaders;//all shaders should be created before anything gets rendered, so no syncing
     static PerGpu<std::map<ShaderData::hashcode_t, vk::PipelineLayout>> layoutsByData;
-    static Util::SyncLock layoutsByData_mutex;
     std::map<layer_t, Collections::FrameBufferedCollection<RenderableBase*>> renderablesByLayer;
     const QueueType queueType;
     static void renderAllOfTypeTo(RenderTarget&, WorkBatch cmd, QueueType, layerCollection_t&, std::initializer_list<RenderableBase*>& except);
     void renderTo(RenderTarget&, WorkBatch cmd, layerCollection_t&, std::initializer_list<RenderableBase*>& except);
     friend class RenderTarget;
   protected:
+    static Util::SyncLock layoutsByData_mutex;
     ShaderBase(QueueType qt);
     virtual ~ShaderBase();
     ShaderBase(ShaderBase&) = delete;
@@ -61,6 +61,7 @@ namespace WITE::GPU {
   public:
     constexpr static auto dataLayout = D;
     static vk::PipelineLayout getLayout(size_t gpuIdx) {
+      Util::ScopeLock lock(&layoutsByData_mutex);
       if(ShaderBase::hasLayout(D.hashCode(), gpuIdx))
 	return ShaderBase::getLayout(D.hashCode(), gpuIdx);
       vk::DescriptorSetLayout layouts[3] {
@@ -69,7 +70,7 @@ namespace WITE::GPU {
 	ShaderDescriptorLifeguard::getDSLayout<D, ShaderResourceProvider::eRenderable>(gpuIdx)
       };
       vk::PipelineLayoutCreateInfo pipeCI { {}, 3, layouts };
-      ShaderBase::makeLayout(DHC, &pipeCI, gpuIdx);
+      return ShaderBase::makeLayout(DHC, &pipeCI, gpuIdx);
     };
     //an instance-level resource could be a small buffer with a color for tint etc.
     //writable instance-level resources are useless because the instance may be executed to multiple targets in parallel

@@ -103,13 +103,16 @@ namespace WITE::GPU {
     pv.getProperties2(&pvp);
     uint32_t cnt = 0;
     pv.getQueueFamilyProperties2(&cnt, NULL);
-    std::unique_ptr<vk::QueueFamilyProperties2[]> temp_qfp = std::make_unique<vk::QueueFamilyProperties2[]>(cnt);
-    qfp = std::make_unique<qfp_t[]>(cnt);
-    for(size_t i = 0;i < cnt;i++) {
-      temp_qfp[i].pNext = reinterpret_cast<void*>(&qfp[i].p);
-      qfp[i].p.pNext = reinterpret_cast<void*>(&qfp[i].gpp);
+    {
+      std::unique_ptr<vk::QueueFamilyProperties2[]> temp_qfp = std::make_unique<vk::QueueFamilyProperties2[]>(cnt);
+      qfp = std::make_unique<qfp_t[]>(cnt);
+      for(size_t i = 0;i < cnt;i++)
+	temp_qfp[i].pNext = reinterpret_cast<void*>(&qfp[i].gpp);
+      pv.getQueueFamilyProperties2(&cnt, temp_qfp.get());
+      for(size_t i = 0;i < cnt;i++)
+	qfp[i].p = temp_qfp[i];
+      //delete temp_qfp
     }
-    pv.getQueueFamilyProperties2(&cnt, temp_qfp.get());
     bool hasGraphics = false, hasTransfer = false, hasCompute = false;
     uint32_t graphics, transfer, compute;
     for(size_t i = 0;i < cnt;i++) {
@@ -173,7 +176,6 @@ namespace WITE::GPU {
     pdf.geometryShader = true;
     pdf.tessellationShader = true;
     pdf.logicOp = true;
-    pdf.depthBounds = true;
     pdf.vertexPipelineStoresAndAtomics = true;
     pdf.fragmentStoresAndAtomics = true;
     pdf.shaderStorageImageMultisample = true;
@@ -186,7 +188,6 @@ namespace WITE::GPU {
     pdf11.storageBuffer16BitAccess = true;
     pdf11.uniformAndStorageBuffer16BitAccess = true;
     pdf11.storagePushConstant16 = true;
-    pdf11.storageInputOutput16 = true;
     pdf11.multiview = true;//TODO read more on this
     pdf11.multiviewGeometryShader = true;
     pdf11.multiviewTessellationShader = true;
@@ -201,6 +202,10 @@ namespace WITE::GPU {
     vk::DeviceCreateInfo dci((vk::DeviceCreateFlags)0, cnt, dqcis);
     dci.pEnabledFeatures = &pdf;
     dci.pNext = reinterpret_cast<void*>(&pdf11);
+    std::vector<const char*> deviceExtensions;
+    deviceExtensions.push_back("VK_KHR_swapchain");
+    dci.enabledExtensionCount = deviceExtensions.size();
+    dci.ppEnabledExtensionNames = deviceExtensions.data();
     VK_ASSERT(pv.createDevice(&dci, ALLOCCB, &dev), "Failed to create device");
 
     queues = std::unique_ptr<Queue[]>(calloc<Queue>(cnt));
@@ -275,7 +280,10 @@ namespace WITE::GPU {
     layers.push_back("VK_LAYER_KHRONOS_validation");
 #endif
     Window::addInstanceExtensionsTo(extensions);
-    extensions.push_back("VK_EXT_swapchain_colorspace");
+    for(const char* e : extensions)
+      LOG("Using extension: ", e);
+    for(const char* l : layers)
+      LOG("Using layer: ", l);
     ci.enabledLayerCount = layers.size();
     ci.ppEnabledLayerNames = layers.data();
     ci.enabledExtensionCount = extensions.size();
@@ -309,7 +317,7 @@ namespace WITE::GPU {
     }
     logicalDevices = std::make_unique<struct LogicalGpu[]>(logicalDeviceCount);
     Gpu::logicalDeviceCount = logicalDeviceCount;
-    struct LogicalGpu blank;
+    #error TODO fix this mess vvv
     for(size_t i = 0;i < logicalDeviceCount;i++) {
       struct LogicalGpu& l = logicalDevices[i];
       Collections::IteratorWrapper<Collections::BitmaskIterator>
@@ -355,20 +363,24 @@ namespace WITE::GPU {
     return ret;
   }
 
-  vk::Format Gpu::getBestImageFormat(uint8_t comp, uint8_t compSize, usage_t usage, logicalDeviceMask_t ldm) {
+  vk::Format Gpu::getBestImageFormat(uint8_t comp, uint8_t compSize, usage_t usage, logicalDeviceMask_t ldm, bool linear) {
     //TODO better definition of "best", for now just use first that checks all the boxes
     vk::FormatFeatureFlags features = usageFormatFeatures(usage);
     for(vk::Format format : formatsByFamily.at({comp, compSize})) {
       bool supported = true;
-      for(size_t i : Collections::IteratorWrapper(Collections::BitmaskIterator(ldm), {}))
-	if((logicalDevices[i].formatProperties[format].optimalTilingFeatures & features) != features) {
+      for(size_t i : Collections::IteratorWrapper(Collections::BitmaskIterator(ldm), {})) {
+	auto props = logicalDevices[i].formatProperties[format];
+	if(((linear ? props.linearTilingFeatures : props.optimalTilingFeatures) & features) != features) {
+	  if(usage == 1792)
+	    asm("INT3");
 	  supported = false;
 	  break;
 	}
+      }
       if(supported)
 	return format;
     }
-    WARN("Suitable format not found");
+    ASSERT_TRAP(false, "Suitable format not found for usage ", usage, " tiling ", (linear ? "linear" : "optimal"));
     return vk::Format::eUndefined;
   };
 

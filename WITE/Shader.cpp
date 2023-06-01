@@ -59,12 +59,10 @@ namespace WITE::GPU {
   };
 
   bool ShaderBase::hasLayout(ShaderData::hashcode_t d, size_t gpuIdx) { //static
-    Util::ScopeLock lock(&layoutsByData_mutex);
     return layoutsByData.contains(gpuIdx, d);
   };
 
   vk::PipelineLayout ShaderBase::getLayout(ShaderData::hashcode_t d, size_t gpu) { //static
-    Util::ScopeLock lock(&layoutsByData_mutex);
     return layoutsByData.get(gpu, d);
   };
 
@@ -73,12 +71,9 @@ namespace WITE::GPU {
     auto vkDev = Gpu::get(gpuIdx).getVkDevice();
     VK_ASSERT(vkDev.createPipelineLayout(pipeCI, ALLOCCB, &ret), "failed pipeline layout");
     {
-      Util::ScopeLock lock(&layoutsByData_mutex);
       layoutsByData.get(gpuIdx, d) = ret;
     }
     return ret;
   };
-
-  constexpr vk::Format VertexAspectSpecifier::getFormat() const { return formatsBySizeTypeQty.at(*this); };
 
 };

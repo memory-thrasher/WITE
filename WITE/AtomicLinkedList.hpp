@@ -4,7 +4,7 @@
 
 namespace WITE::Collections {
 
-  template<class Node> using AtomicLinkedListNodeMember = Node*volatile;
+  template<class Node> using AtomicLinkedListNodeMember = Node*;
 
   template<class Node, AtomicLinkedListNodeMember<Node> Node::*NodePtr> class AtomicLinkedList {
   private:

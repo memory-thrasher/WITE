@@ -20,7 +20,7 @@ namespace WITE::GPU {
   Util::IntBox3D getSplashBox() {
     auto wholeScreen = Window::getScreenBounds(0);
     auto center = wholeScreen.center();
-    uint64_t w = Util::max(192, wholeScreen.width()/4), h = w * 192 / 108;
+    uint64_t w = Util::max(192, wholeScreen.width()/4), h = w * 108 / 192;
     return Util::IntBox3D(center.x - w/2, center.x + w/2, center.y - h/2, center.y + h/2);
   };
 
@@ -31,7 +31,7 @@ namespace WITE::GPU {
   //a rendered image is always blitted to the window's swapchain image (for now. HUD overlay might make sense to take the rendered image as an input attachment and color attach the swapchain image. Or maybe the hud elements will be rendered to a mostly transparent image and the two or more are composited here by alpha)
   Window::Window(uint32_t x, uint32_t y, uint32_t w, uint32_t h) // : x(x), y(y), w(w), h(h)
   {
-    swapCI.setMinImageCount(3).setImageColorSpace(vk::ColorSpaceKHR::ePassThroughEXT).setImageArrayLayers(1)
+    swapCI.setMinImageCount(3).setImageColorSpace(vk::ColorSpaceKHR::eSrgbNonlinear).setImageArrayLayers(1)
       .setImageUsage(vk::ImageUsageFlagBits::eTransferDst).setImageSharingMode(vk::SharingMode::eExclusive)
       .setPreTransform(vk::SurfaceTransformFlagBitsKHR::eIdentity).setPresentMode(vk::PresentModeKHR::eMailbox)
       .setClipped(true);

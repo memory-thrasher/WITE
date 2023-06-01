@@ -32,7 +32,7 @@ namespace WITE::DB {
   class Database {
   private:
     uint64_t currentFrame = 0;
-    volatile bool shuttingDown = false, started = false;
+    std::atomic<bool> shuttingDown = false, started = false;
     DBThread* threads;
     std::map<int, size_t> threadsByTid;
     size_t entityCount;
@@ -42,7 +42,7 @@ namespace WITE::DB {
     deltaIsInPast_cb_t deltaIsInPast_cb;
     DBEntity* metadata;//TODO make this expandable IF a backing file was provided?
     union {//mmap'ed file
-      volatile DBRecord* data;
+      DBRecord* data;
       void* data_raw;
     };
     std::map<DBRecord::type_t, struct entity_type> types;

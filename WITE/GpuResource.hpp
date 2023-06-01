@@ -27,6 +27,7 @@ namespace WITE::GPU {
       ImageFormatFamily(comp, comp_size),
       dimensions(dim), samples(sam), usage(usage), externalUsage(externalUsage), logicalDeviceMask(ldm), arrayLayers(al), mipLevels(mip) {};
     constexpr ~ImageSlotData() = default;
+    constexpr inline bool shouldBeLinear() const;
   };
 
   struct BufferSlotData {
@@ -110,12 +111,16 @@ namespace WITE::GPU {
     };
     constexpr inline GpuResourceSlotInfo stagingResourceSlot() const {
       //replace usage with those flags needed to move data in and out for staging
-      return mutateUsage(GpuResource::USAGE_TRANSFER | GpuResource::MUSAGE_ANY_HOST);
+      return mutateUsage(GpuResource::USAGE_TRANSFER | GpuResource::MUSAGE_ANY_HOST, ~0);
     };
     constexpr inline GpuResourceSlotInfo externallyStagedResourceSlot() const {
       //remove host access flags, add transfer flag, because transfer will be used to copy to/from staging
       return mutateUsage(GpuResource::USAGE_TRANSFER, GpuResource::MUSAGE_ANY_HOST);
     };
+  };
+
+  constexpr inline bool ImageSlotData::shouldBeLinear() const {
+    return (usage | externalUsage) & GpuResource::MUSAGE_ANY_HOST;
   };
 
 };

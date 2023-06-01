@@ -63,7 +63,7 @@ namespace WITE::GPU {
 			       mip,//TODO reduce dynamically based on format capabilities
 			       al,
 			       (vk::SampleCountFlagBits)sam,
-			       usage & MUSAGE_ANY_HOST ? vk::ImageTiling::eLinear : vk::ImageTiling::eOptimal,
+			       slotData.shouldBeLinear() ? vk::ImageTiling::eLinear : vk::ImageTiling::eOptimal,
 			       getVkUsageFlags(),
 			       vk::SharingMode::eExclusive //TODO? concurrent access images (on readonly cycle)?
 			       );//default: layout as undefined

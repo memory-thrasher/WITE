@@ -55,7 +55,7 @@ defineShaderData(basicRenderingPayloadData,
 ShaderModule basicShaderFrag { basicShader_frag, vk::ShaderStageFlagBits::eFragment },
   basicShaderVert { basicShader_vert, vk::ShaderStageFlagBits::eVertex };
 
-VertexShader<basicRenderingPayloadData, VertexPrefab::basic3d> basicShader { &basicShaderFrag, &basicShaderVert };
+VertexShader<basicRenderingPayloadData, VertexPrefab::basic3d> basicShader { &basicShaderVert, &basicShaderFrag };
 
 constexpr Vertex<VertexPrefab::basic3d> pyramid_verts[] {
   { { 0, 0, 0 } }, { { 1, 1, 0 } }, { { 1, 0.5, 1 } },
@@ -83,11 +83,9 @@ public:
   };
   static void onSpinUp(DBEntity* dbe) {
     dbe->transientData = new transients();
-    #error TODO
-    //TODO create renderable
   };
   static void onSpinDown(DBEntity* dbe) {
-    //TODO destroy renderable
+    delete (transients*)dbe->transientData;
   };
   static constexpr struct entity_type et = entity_type::makeFrom<pyramid_t>(1);
 };
@@ -114,10 +112,8 @@ public:
   };
   static void onSpinUp(DBEntity* dbe) {
     dbe->transientData = new transients();
-    //TODO create camera
   };
   static void onSpinDown(DBEntity* dbe) {
-    //TODO destroy camera
     delete transient;
   };
   static constexpr struct entity_type et = entity_type::makeFrom<camera_t>(2);

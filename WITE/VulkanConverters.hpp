@@ -264,9 +264,9 @@ namespace WITE::GPU {
   };
 
   constexpr static vk::ImageAspectFlags aspectMaskForUsage(usage_t usage) {
-    vk::ImageAspectFlags ret = vk::ImageAspectFlagBits::eMetadata;
+    vk::ImageAspectFlags ret = {};
     if(usage & GpuResource::USAGE_ATT_DEPTH)
-      ret |= vk::ImageAspectFlagBits::eStencil | vk::ImageAspectFlagBits::eDepth;
+      ret |= vk::ImageAspectFlagBits::eDepth;//vk::ImageAspectFlagBits::eStencil | ??
     if(!ret || (usage & GpuResource::USAGE_ATT_OUTPUT))
       ret |= vk::ImageAspectFlagBits::eColor;
     //TODO other options if needed see vk::ImageAspectFlagBits

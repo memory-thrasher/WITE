@@ -49,10 +49,19 @@ namespace WITE::Collections {
 
 namespace WITE {
 
-  template<typename D, typename S> inline void memcpy(D* dst, const S* src, size_t len)
-    requires std::negation_v<std::is_volatile<D>> {
+  inline void memcpy(uint8_t* dst, const uint8_t* src, size_t len) {
     std::memcpy(reinterpret_cast<void*>(dst), reinterpret_cast<const void*>(src), len);
   }
+
+  template<typename T> inline void cpy(T* dst, const T* src, size_t len)
+    requires std::negation_v<std::is_volatile<T>> {
+    std::memcpy(reinterpret_cast<void*>(dst), reinterpret_cast<const void*>(src), len * sizeof(T));
+  }
+
+  // template<typename D, typename S> inline void memcpy(D* dst, const S* src, size_t len)
+  //   requires std::negation_v<std::is_volatile<D>> {
+  //   std::memcpy(reinterpret_cast<void*>(dst), reinterpret_cast<const void*>(src), len);
+  // }
 
   // template<typename D, typename S> inline void memcpy(D* dst, const S* src, size_t len)
   //   requires std::is_volatile_v<D> {
@@ -75,7 +84,7 @@ namespace WITE {
     else if constexpr(cnt > 1) {
       constexpr size_t m = (cnt+1)>>1;
       memset<m, T>(dst, value);
-      memcpy(dst+m, dst, (cnt-m)*sizeof(T));
+      cpy(dst+m, dst, (cnt-m));
     }
   }
 

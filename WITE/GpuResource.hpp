@@ -33,9 +33,8 @@ namespace WITE::GPU {
   struct BufferSlotData {
     logicalDeviceMask_t logicalDeviceMask;
     usage_t usage;
-    uint32_t size;
-    constexpr BufferSlotData(logicalDeviceMask_t logicalDeviceMask, usage_t usage, uint32_t size) :
-      logicalDeviceMask(logicalDeviceMask), usage(usage), size(size) {};
+    constexpr BufferSlotData(logicalDeviceMask_t logicalDeviceMask, usage_t usage) :
+      logicalDeviceMask(logicalDeviceMask), usage(usage) {};
     constexpr ~BufferSlotData() = default;
   };
 
@@ -81,6 +80,29 @@ namespace WITE::GPU {
   };
 
   enum class GpuResourceType : uint32_t { eImage, eBuffer };
+
+  struct GpuResourceInitData {
+    //unified package to hold data for any type of gpu resource (expand as needed).
+    //mostly for BackingTuple/BackedRenderTarget
+    GpuResourceType type;
+    struct bufferData_t {
+      size_t len;
+      constexpr bufferData_t(size_t l) : len(l) {};
+    };
+    struct imageData_t {
+      size_t w, h, z;
+      constexpr imageData_t(size_t w, size_t h, size_t z) : w(w), h(h), z(z) {};
+    };
+    union {
+      imageData_t imageData;
+      bufferData_t bufferData;
+    };
+    constexpr GpuResourceInitData(bufferData_t d) : bufferData(d) {};
+    constexpr GpuResourceInitData(imageData_t d) : imageData(d) {};
+    constexpr GpuResourceInitData(size_t l) : GpuResourceInitData(bufferData_t(l)) {};
+    constexpr GpuResourceInitData(size_t w, size_t h, size_t z = 1) : GpuResourceInitData(imageData_t(w, h, z)) {};
+    constexpr ~GpuResourceInitData() = default;
+  };
 
   struct GpuResourceSlotInfo {
     GpuResourceType type;

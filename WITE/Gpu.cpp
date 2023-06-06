@@ -27,7 +27,7 @@ const std::map<vk::MemoryPropertyFlags, int64_t> memoryScoreByFlag =
 const std::map<const WITE::GPU::ImageFormatFamily, const std::vector<vk::Format>> formatsByFamily =
   {
    { { 2, 4 }, { vk::Format::eR4G4UnormPack8 } },
-   { { 4, 4 }, { vk::Format::eR4G4B4A4UnormPack16 } },
+   { { 4, 4 }, { vk::Format::eR4G4B4A4UnormPack16, vk::Format::eB4G4R4A4UnormPack16 } },
    { { 1, 8 }, { vk::Format::eR8Unorm, vk::Format::eR8Snorm,
 		 vk::Format::eR8Uscaled, vk::Format::eR8Sscaled,
 		 vk::Format::eR8Uint, vk::Format::eR8Sint } },
@@ -55,7 +55,7 @@ const std::map<const WITE::GPU::ImageFormatFamily, const std::vector<vk::Format>
    { { 1, 16}, { vk::Format::eR16Unorm, vk::Format::eR16Snorm,
 		 vk::Format::eR16Uscaled, vk::Format::eR16Sscaled,
 		 vk::Format::eR16Uint, vk::Format::eR16Sint,
-		 vk::Format::eR16Sfloat } },
+		 vk::Format::eR16Sfloat, vk::Format::eD16Unorm } },
    { { 2, 16}, { vk::Format::eR16G16Unorm, vk::Format::eR16G16Snorm,
 		 vk::Format::eR16G16Uscaled, vk::Format::eR16G16Sscaled,
 		 vk::Format::eR16G16Uint, vk::Format::eR16G16Sint,
@@ -68,8 +68,9 @@ const std::map<const WITE::GPU::ImageFormatFamily, const std::vector<vk::Format>
 		 vk::Format::eR16G16B16A16Uscaled, vk::Format::eR16G16B16A16Sscaled,
 		 vk::Format::eR16G16B16A16Uint, vk::Format::eR16G16B16A16Sint,
 		 vk::Format::eR16G16B16A16Sfloat } },
+   { { 2, 24}, { vk::Format::eX8D24UnormPack32, vk::Format::eD24UnormS8Uint } },//technically not 2 24-bitters
    { { 1, 32}, { vk::Format::eR32Uint, vk::Format::eR32Sint,
-		 vk::Format::eR32Sfloat } },
+		 vk::Format::eR32Sfloat, vk::Format::eD32Sfloat, vk::Format::eD32SfloatS8Uint } },
    { { 2, 32}, { vk::Format::eR32G32Uint, vk::Format::eR32G32Sint,
 		 vk::Format::eR32G32Sfloat } },
    { { 3, 32}, { vk::Format::eR32G32B32Uint, vk::Format::eR32G32B32Sint,
@@ -85,6 +86,103 @@ const std::map<const WITE::GPU::ImageFormatFamily, const std::vector<vk::Format>
    { { 4, 64}, { vk::Format::eR64G64B64A64Uint, vk::Format::eR64G64B64A64Sint,
 		 vk::Format::eR64G64B64A64Sfloat } },
   };
+
+// #define FF vk::FormatFeatureFlagBits
+
+// const std::map<const vk::Format, const vk::FormatFeatureFlags> mandatorySupport =
+//   { //note: this list may be incomplete. Conditionally required features are intentionally omitted
+//     { vk::Format::eB4G4R4A4UnormPack16, FF::eSampledImageFilterLinear | FF::eBlitSrc | FF::eSampledImage },
+//     //skipping 565
+//     //skipping 1555
+//     { vk::Format::eR8Unorm, FF::eSampledImageFilterLinear | FF::eBlitSrc | FF::eSampledImage |  },
+//     { vk::Format::eR8Snorm, FF::eZ },
+//     { vk::Format::eR8Uscaled, FF::eZ },
+//     { vk::Format::eR8Sscaled, FF::eZ },
+//     { vk::Format::eR8Uint, FF::eZ },
+//     { vk::Format::eR8Sint, FF::eZ },
+//     { vk::Format::eR8G8Unorm, FF::eZ },
+//     { vk::Format::eR8G8Snorm, FF::eZ },
+//     { vk::Format::eR8G8Uscaled, FF::eZ },
+//     { vk::Format::eR8G8Sscaled, FF::eZ },
+//     { vk::Format::eR8G8Uint, FF::eZ },
+//     { vk::Format::eR8G8Sint, FF::eZ },
+//     { vk::Format::eR8G8B8Unorm, FF::eZ },
+//     { vk::Format::eR8G8B8Snorm, FF::eZ },
+//     { vk::Format::eR8G8B8Uscaled, FF::eZ },
+//     { vk::Format::eR8G8B8Sscaled, FF::eZ },
+//     { vk::Format::eR8G8B8Uint, FF::eZ },
+//     { vk::Format::eR8G8B8Sint, FF::eZ },
+//     { vk::Format::eB8G8R8Unorm, FF::eZ },
+//     { vk::Format::eB8G8R8Snorm, FF::eZ },
+//     { vk::Format::eB8G8R8Uscaled, FF::eZ },
+//     { vk::Format::eB8G8R8Sscaled, FF::eZ },
+//     { vk::Format::eB8G8R8Uint, FF::eZ },
+//     { vk::Format::eB8G8R8Sint, FF::eZ },
+//     { vk::Format::eR8G8B8A8Unorm, FF::eZ },
+//     { vk::Format::eR8G8B8A8Snorm, FF::eZ },
+//     { vk::Format::eR8G8B8A8Uscaled, FF::eZ },
+//     { vk::Format::eR8G8B8A8Sscaled, FF::eZ },
+//     { vk::Format::eR8G8B8A8Uint, FF::eZ },
+//     { vk::Format::eR8G8B8A8Sint, FF::eZ },
+//     { vk::Format::eB8G8R8A8Unorm, FF::eZ },
+//     { vk::Format::eB8G8R8A8Snorm, FF::eZ },
+//     { vk::Format::eB8G8R8A8Uscaled, FF::eZ },
+//     { vk::Format::eB8G8R8A8Sscaled, FF::eZ },
+//     { vk::Format::eB8G8R8A8Uint, FF::eZ },
+//     { vk::Format::eB8G8R8A8Sint, FF::eZ },
+//     { vk::Format::eR16Unorm, FF::eZ },
+//     { vk::Format::eR16Snorm, FF::eZ },
+//     { vk::Format::eR16Uscaled, FF::eZ },
+//     { vk::Format::eR16Sscaled, FF::eZ },
+//     { vk::Format::eR16Uint, FF::eZ },
+//     { vk::Format::eR16Sint, FF::eZ },
+//     { vk::Format::eR16Sfloat, FF::eZ },
+//     { vk::Format::eR16G16Unorm, FF::eZ },
+//     { vk::Format::eR16G16Snorm, FF::eZ },
+//     { vk::Format::eR16G16Uscaled, FF::eZ },
+//     { vk::Format::eR16G16Sscaled, FF::eZ },
+//     { vk::Format::eR16G16Uint, FF::eZ },
+//     { vk::Format::eR16G16Sint, FF::eZ },
+//     { vk::Format::eR16G16Sfloat, FF::eZ },
+//     { vk::Format::eR16G16B16Unorm, FF::eZ },
+//     { vk::Format::eR16G16B16Snorm, FF::eZ },
+//     { vk::Format::eR16G16B16Uscaled, FF::eZ },
+//     { vk::Format::eR16G16B16Sscaled, FF::eZ },
+//     { vk::Format::eR16G16B16Uint, FF::eZ },
+//     { vk::Format::eR16G16B16Sint, FF::eZ },
+//     { vk::Format::eR16G16B16Sfloat, FF::eZ },
+//     { vk::Format::eR16G16B16A16Unorm, FF::eZ },
+//     { vk::Format::eR16G16B16A16Snorm, FF::eZ },
+//     { vk::Format::eR16G16B16A16Uscaled, FF::eZ },
+//     { vk::Format::eR16G16B16A16Sscaled, FF::eZ },
+//     { vk::Format::eR16G16B16A16Uint, FF::eZ },
+//     { vk::Format::eR16G16B16A16Sint, FF::eZ },
+//     { vk::Format::eR16G16B16A16Sfloat, FF::eZ },
+//     { vk::Format::eR32Uint, FF::eZ },
+//     { vk::Format::eR32Sint, FF::eZ },
+//     { vk::Format::eR32Sfloat, FF::eZ },
+//     { vk::Format::eR32G32Uint, FF::eZ },
+//     { vk::Format::eR32G32Sint, FF::eZ },
+//     { vk::Format::eR32G32Sfloat, FF::eZ },
+//     { vk::Format::eR32G32B32Uint, FF::eZ },
+//     { vk::Format::eR32G32B32Sint, FF::eZ },
+//     { vk::Format::eR32G32B32Sfloat, FF::eZ },
+//     { vk::Format::eR32G32B32A32Uint, FF::eZ },
+//     { vk::Format::eR32G32B32A32Sint, FF::eZ },
+//     { vk::Format::eR32G32B32A32Sfloat, FF::eZ },
+//     { vk::Format::eR64Uint, FF::eZ },
+//     { vk::Format::eR64Sint, FF::eZ },
+//     { vk::Format::eR64Sfloat, FF::eZ },
+//     { vk::Format::eR64G64Uint, FF::eZ },
+//     { vk::Format::eR64G64Sint, FF::eZ },
+//     { vk::Format::eR64G64Sfloat, FF::eZ },
+//     { vk::Format::eR64G64B64Uint, FF::eZ },
+//     { vk::Format::eR64G64B64Sint, FF::eZ },
+//     { vk::Format::eR64G64B64Sfloat, FF::eZ },
+//     { vk::Format::eR64G64B64A64Uint, FF::eZ },
+//     { vk::Format::eR64G64B64A64Sint, FF::eZ },
+//     { vk::Format::eR64G64B64A64Sfloat, FF::eZ }
+//   };
 
 namespace WITE::GPU {
 
@@ -199,11 +297,16 @@ namespace WITE::GPU {
     pdf12.shaderBufferInt64Atomics = true;
     pdf12.shaderSharedInt64Atomics = true;
     pdf12.shaderInt8 = true;
+    pdf12.timelineSemaphore = true;
+    vk::PhysicalDeviceVulkan13Features pdf13;
+    pdf12.pNext = reinterpret_cast<void*>(&pdf13);
+    pdf13.synchronization2 = true;
     vk::DeviceCreateInfo dci((vk::DeviceCreateFlags)0, cnt, dqcis);
     dci.pEnabledFeatures = &pdf;
     dci.pNext = reinterpret_cast<void*>(&pdf11);
     std::vector<const char*> deviceExtensions;
     deviceExtensions.push_back("VK_KHR_swapchain");
+    // deviceExtensions.push_back("VK_KHR_synchronization2");
     dci.enabledExtensionCount = deviceExtensions.size();
     dci.ppEnabledExtensionNames = deviceExtensions.data();
     VK_ASSERT(pv.createDevice(&dci, ALLOCCB, &dev), "Failed to create device");
@@ -280,6 +383,7 @@ namespace WITE::GPU {
     layers.push_back("VK_LAYER_KHRONOS_validation");
 #endif
     Window::addInstanceExtensionsTo(extensions);
+    // extensions.push_back("VK_KHR_get_physical_device_properties2");
     for(const char* e : extensions)
       LOG("Using extension: ", e);
     for(const char* l : layers)
@@ -317,20 +421,24 @@ namespace WITE::GPU {
     }
     logicalDevices = std::make_unique<struct LogicalGpu[]>(logicalDeviceCount);
     Gpu::logicalDeviceCount = logicalDeviceCount;
-    #error TODO fix this mess vvv
     for(size_t i = 0;i < logicalDeviceCount;i++) {
       struct LogicalGpu& l = logicalDevices[i];
       Collections::IteratorWrapper<Collections::BitmaskIterator>
 	gpuIt((Collections::BitmaskIterator(logicalPhysicalDeviceMatrix[i])), (Collections::BitmaskIterator()));
-      for(auto kvp : gpus[*gpuIt].formatProperties) {
+      auto first = *gpuIt;
+      gpuIt++;
+      for(auto kvp : gpus[first].formatProperties) {
 	auto fp = kvp.second;
-	gpuIt++;
 	for(size_t gpuNext : gpuIt) {
 	  auto limiter = gpus[gpuNext].formatProperties[kvp.first];
 	  fp.linearTilingFeatures &= limiter.linearTilingFeatures;
 	  fp.optimalTilingFeatures &= limiter.optimalTilingFeatures;
 	  fp.bufferFeatures &= limiter.bufferFeatures;
 	}
+	// LOG("Image Format Support:: LD: ", i, " Format: ", (int)kvp.first, " Supported KHR usages all: ", std::hex,
+	//     (decltype(fp.linearTilingFeatures)::MaskType)(fp.linearTilingFeatures | fp.optimalTilingFeatures),
+	//     " linear: ", (decltype(fp.linearTilingFeatures)::MaskType)(fp.linearTilingFeatures),
+	//     " optimal: ", (decltype(fp.linearTilingFeatures)::MaskType)(fp.optimalTilingFeatures));
 	l.formatProperties[kvp.first] = fp;
       }
     }
@@ -338,6 +446,7 @@ namespace WITE::GPU {
   };
 
   Gpu& Gpu::get(size_t i) {//static
+    ASSERT_TRAP(i < gpuCount, "invalid gpu id");
     return gpus[i];
   }
 
@@ -363,24 +472,26 @@ namespace WITE::GPU {
     return ret;
   }
 
-  vk::Format Gpu::getBestImageFormat(uint8_t comp, uint8_t compSize, usage_t usage, logicalDeviceMask_t ldm, bool linear) {
+  vk::Format Gpu::getBestImageFormat(uint8_t minComp, uint8_t compSize, usage_t usage, logicalDeviceMask_t ldm, bool linear) {
     //TODO better definition of "best", for now just use first that checks all the boxes
     vk::FormatFeatureFlags features = usageFormatFeatures(usage);
-    for(vk::Format format : formatsByFamily.at({comp, compSize})) {
-      bool supported = true;
-      for(size_t i : Collections::IteratorWrapper(Collections::BitmaskIterator(ldm), {})) {
-	auto props = logicalDevices[i].formatProperties[format];
-	if(((linear ? props.linearTilingFeatures : props.optimalTilingFeatures) & features) != features) {
-	  if(usage == 1792)
-	    asm("INT3");
-	  supported = false;
-	  break;
+    for(uint8_t comp = minComp;comp <= 4;comp++) {
+      for(vk::Format format : formatsByFamily.at({comp, compSize})) {
+	bool supported = true;
+	for(size_t i : Collections::IteratorWrapper(Collections::BitmaskIterator(ldm), {})) {
+	  auto props = logicalDevices[i].formatProperties[format];
+	  if(((linear ? props.linearTilingFeatures : props.optimalTilingFeatures) & features) != features) {
+	    // if(usage == 1792)
+	    //   asm("INT3");
+	    supported = false;
+	    break;
+	  }
 	}
+	if(supported)
+	  return format;
       }
-      if(supported)
-	return format;
     }
-    ASSERT_TRAP(false, "Suitable format not found for usage ", usage, " tiling ", (linear ? "linear" : "optimal"));
+    ASSERT_TRAP(false, "Suitable format not found for components: ", (int)minComp, " compSize: ", (int)compSize, " usage: ", std::hex, usage, " = vk features: ", (decltype(features)::MaskType)features, std::dec, " tiling: ", (linear ? "linear" : "optimal"));
     return vk::Format::eUndefined;
   };
 

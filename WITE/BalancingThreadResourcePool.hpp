@@ -17,7 +17,7 @@ namespace WITE::Collections {
     public:
       scrap() {};
       scrap(const scrap& o) {
-	memcpy(data, o.data, sizeof(data));
+	cpy(data, o.data, bundleSize);
       };
       inline T*& operator[](int i) { return data[i]; };
     };

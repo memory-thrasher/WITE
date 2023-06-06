@@ -37,8 +37,12 @@ namespace WITE::GPU {
     };
 
     struct Work {
-      thenCB cpu;//if this contains both cpu and gpu work, do the cpu work first.
+    private:
       size_t gpu = ~0;
+    public:
+      inline size_t getGpu() { return gpu; };
+      void setGpu(size_t gpu);
+      thenCB cpu;//if this contains both cpu and gpu work, do the cpu work first.
       Queue* q;
       cmd_t cmd;
       vk::Fence* fence;//if populated, wait fence after cpu but before gpu
@@ -54,7 +58,7 @@ namespace WITE::GPU {
       std::vector<WorkBatch> prerequisits;//, waiters;//waiters get tested and potentailly triggered when this work is done
       std::vector<vk::SemaphoreSubmitInfo> waitedSemsStaging, signalSemsStaging;
       std::vector<vk::CommandBufferSubmitInfo> cmdStaging;
-      uint64_t nextStep;
+      uint64_t step;
       renderInfo currentRP;
       bool isRecordingRP;
 
@@ -84,12 +88,13 @@ namespace WITE::GPU {
     inline vk::CommandBuffer getCmd(QueueType qt) { return get()->getCmd(qt); };
     inline vk::CommandBuffer getCmd() { return get()->getCmd(); };
     uint32_t currentQFam();
+    void reset();//internal because it might cause flow to break if mishandled
 
     //begin cmd duplication helpers
     // WorkBatch& copyImage(ImageBase* src, ImageBase* dst);
     static void quickImageBarrier(vk::CommandBuffer, vk::Image, vk::ImageLayout, vk::ImageLayout);
     static void discardImage(vk::CommandBuffer, vk::Image, vk::ImageLayout post);
-    static result presentImpl(vk::Fence fence, ImageBase*, vk::Image*, vk::SwapchainKHR, Queue*, WorkBatch);
+    static result presentImpl(ImageBase*, vk::Image*, vk::SwapchainKHR, Queue*, WorkBatch);
     static result presentImpl2(vk::SwapchainKHR, uint32_t, WorkBatch wb);
 
     WorkBatch(WorkBatchResources* batch);
@@ -105,6 +110,7 @@ namespace WITE::GPU {
     WorkBatch thenOnGpu(size_t gpuIdx, thenCB = NULL);
     WorkBatch thenOnAGpu(logicalDeviceMask_t ldm);
     WorkBatch submit();//begins execution. Some or all may be blocking/synchronous.
+    vk::Fence useFence();
     void mustHappenAfter(WorkBatch& p);
     bool isDone() const;//done, null, and recording hasn't started are the same thing
     bool isSubmitted() const;//post-submission states also return true

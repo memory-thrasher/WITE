@@ -3,12 +3,23 @@
 
 namespace WITE::GPU {
 
-  BufferBase::BufferBase(BufferSlotData bsd) :
+  BufferBase::BufferBase(BufferSlotData bsd, GpuResourceInitData grid) :
     buffers(PerGpu<vk::Buffer>::creator_t_F::make(this, &BufferBase::makeBuffer),
 	    PerGpu<vk::Buffer>::destroyer_t_F::make(&BufferBase::destroyBuffer)),
     slotData(bsd),
-    transfersRequired(Gpu::gpuCountByLdm(bsd.logicalDeviceMask) > 1)
+    transfersRequired(Gpu::gpuCountByLdm(bsd.logicalDeviceMask) > 1),
+    size(grid.bufferData.len)
   {};
+
+  BufferBase::BufferBase(const BufferBase& o) :
+    buffers(PerGpu<vk::Buffer>::creator_t_F::make(this, &BufferBase::makeBuffer),
+	    PerGpu<vk::Buffer>::destroyer_t_F::make(&BufferBase::destroyBuffer)),
+    slotData(o.slotData),
+    transfersRequired(Gpu::gpuCountByLdm(slotData.logicalDeviceMask) > 1),
+    size(o.size)
+  {
+    ASSERT_TRAP(!o.buffers.anyAllocated(), "Cannot move a buffer after it's been used!");
+  };
 
   void BufferBase::getCreateInfo(Gpu& gpu, vk::BufferCreateInfo* out) {
     //assume this will be used with the same queues the gpu has chosen
@@ -28,7 +39,7 @@ namespace WITE::GPU {
     bool dsWrite = usage & USAGE_DS_WRITE;
 #define MAPU(x, r) ((usage & USAGE_ ##x) ? vk::BufferUsageFlagBits::e ##r : (vk::BufferUsageFlags)0)
 #define MAPRW(x, r, w) ((usage & USAGE_ ##x) ? (dsWrite ? vk::BufferUsageFlagBits::e ##r : vk::BufferUsageFlagBits::e ##w) : (vk::BufferUsageFlags)0)
-    *out = { {}, slotData.size,
+    *out = { {}, size,
       MAPU(TRANSFER, TransferSrc) | MAPU(TRANSFER, TransferDst) |
       MAPU(HOST_READ, TransferSrc) | MAPU(HOST_WRITE, TransferDst) |
       MAPU(DS_READ, UniformBuffer) | MAPU(DS_WRITE, StorageBuffer) | MAPRW(DS_SAMPLED, UniformTexelBuffer, StorageTexelBuffer) |

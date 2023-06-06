@@ -160,7 +160,7 @@ namespace WITE::GPU {
       for(perFrame& pf : data.all()) {
 	Util::ScopeLock lock(&pf.lock);
 	pf.lastResourceUpdated = frame;
-	memcpy(pf.resources, resources[fIdx], resourceCount*sizeof(GpuResource*));
+	cpy(pf.resources, resources[fIdx], resourceCount);
 #ifdef DEBUG
 	for(size_t i = 0;i < resourceCount;i++)
 	  ASSERT_TRAP(resources[i * 2 + fIdx], "null resource given to descriptor");

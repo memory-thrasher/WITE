@@ -38,7 +38,7 @@ constexpr BackedRenderTargetData COLOR_TARGET { COLOR_TARGET_REZ, COLOR_TARGET_S
 #define FRAME_COUNT 500
 #define transient reinterpret_cast<transients*>(dbe->transientData)
 
-typedef Util::FrameSwappedResource<Buffer<BufferSlotData(LDM_RENDERER, GRU(DS_READ) | GRU(HOST_WRITE), sizeof(glm::dmat4))>> TransformBuffer;
+typedef Util::FrameSwappedResource<Buffer<BufferSlotData(LDM_RENDERER, GRU(DS_READ) | GRU(HOST_WRITE))>> TransformBuffer;
 
 // constexpr auto basicRenderingPayloadData =
 // 	    makeShaderData(
@@ -69,7 +69,7 @@ typedef StaticMeshRenderable<basicRenderingPayloadData, VertexPrefab::basic3d, L
 class pyramid_t {
 private:
   struct transients {
-    TransformBuffer transformBuffer;
+    //TransformBuffer transformBuffer { GpuResourceInitData(sizeof(glm::dmat4)) };
     pyramid_mesh mesh { LAYER_PRIMARY, &basicShader };
   };
 public:
@@ -78,14 +78,14 @@ public:
     pyramid_t dis;
     dbe->completeRead(&dis, data);
     glm::rotate(dis.transform, glm::radians(1.0), glm::dvec3(0, 0, 1));
-    transient->transformBuffer.getWrite().write(&dis.transform);
+    //    transient->transformBuffer.getWrite().write(&dis.transform);
     dbe->write(&dis);
   };
   static void onSpinUp(DBEntity* dbe) {
     dbe->transientData = new transients();
   };
   static void onSpinDown(DBEntity* dbe) {
-    delete (transients*)dbe->transientData;
+    delete transient;
   };
   static constexpr struct entity_type et = entity_type::makeFrom<pyramid_t>(1);
 };
@@ -95,10 +95,15 @@ private:
   uint64_t frameCounter;
   struct transients {
     Window window;
-    BackedRenderTarget<COLOR_TARGET, LDM_RENDERER> canvas;
+    BackedRenderTarget<COLOR_TARGET, LDM_RENDERER> canvas {
+      BackingTupleInitData_cb_F::make([this](size_t idx, const GpuResourceSlotInfo& grsi){
+	auto sz = this->window.getSize();
+	return GpuResourceInitData(sz.width, sz.height);
+      })};
   };
 public:
   static void onUpdate(DBRecord* data, DBEntity* dbe) {
+    if(transient->window.queueDepth() > 5) return;//basic frame skipping
     Database* db = dbe->getDb();
     auto dbf = db->getFrame();
     camera_t dis;

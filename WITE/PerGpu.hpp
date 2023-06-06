@@ -65,6 +65,7 @@ namespace WITE::GPU {
 	return NULL;
       }
     };
+    inline bool anyAllocated() const { return dataAllocationMask; };
   };
 
   template<class T, class ST = std::unique_ptr<T>> class PerGpuUP : public PerGpu<ST> {

@@ -15,16 +15,23 @@ namespace WITE::GPU {
     };
     vk::SemaphoreCreateInfo ci { {}, reinterpret_cast<const void*>(&tci) };
     VK_ASSERT(gpu->getVkDevice().createSemaphore(&ci, ALLOCCB, &sem), "failed to create semaphore");
+    // LOG("create semaphore for gpu ", gpu->getIndex());
   };
 
-  Semaphore::Semaphore(Semaphore&& o) : targetValue(o.targetValue.load()), id(o.id) {
+  Semaphore::Semaphore(Semaphore&& o) : targetValue(o.targetValue.load()), id(o.id), sem(o.sem), dev(o.dev) {
     o.sem = VK_NULL_HANDLE;
   };
 
-  Semaphore::~Semaphore() {
-    if(sem)
+  void Semaphore::dispose() {
+    if(sem) {
+      // LOG("delete semaphore for gpu ", dev->getIndex());
       dev->getVkDevice().destroySemaphore(sem);
-    sem = VK_NULL_HANDLE;
+      sem = VK_NULL_HANDLE;
+    }
+  };
+
+  Semaphore::~Semaphore() {
+    dispose();
   };
 
   uint64_t Semaphore::notePromise() {
@@ -33,7 +40,7 @@ namespace WITE::GPU {
 
   uint64_t Semaphore::getCurrentValue() {
     uint64_t ret;
-    VK_ASSERT(dev->getVkDevice().getSemaphoreCounterValue(sem, &ret), "Failedto query semaphore");
+    VK_ASSERT(dev->getVkDevice().getSemaphoreCounterValue(sem, &ret), "Failed to query semaphore");
     return ret;
   };
 

@@ -29,9 +29,12 @@ namespace WITE::GPU {
     WorkBatch::renderInfo ri;
     getRenderInfo(&ri, cmd.getGpuIdx());
     cmd.beginRenderPass(&ri);
+    bool first = true;
     for(const RenderStep& step : steps) {
       if(step.type == QueueType::eCompute && !cmd.getGpu().canGraphicsCompute()) {
 	CRASH("NOT YET IMPLEMENTED: render pass containing both graphics and compute steps, on a gpu that does not have a queue family that supports both (must split render pass between queues, or make multiple RPs)");
+      } else if(first) {
+	first = false;
       } else {
 	cmd.nextSubpass(vk::SubpassContents::eInline);
       }

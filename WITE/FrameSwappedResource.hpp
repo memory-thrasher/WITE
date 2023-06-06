@@ -20,12 +20,16 @@ namespace WITE::Util {
     FrameSwappedResource(const Collections::CopyableArray<T, N>& data, onFrameSwitch_cb onSwitch) :
       data(data), onSwitch(onSwitch) {}
     FrameSwappedResource(T* data, onFrameSwitch_cb onSwitch = NULL) : onSwitch(onSwitch) {
-      memcpy(this->data.ptr(), data, sizeof(T) * N);
+      cpy(this->data.ptr(), data, N);
     }
-    FrameSwappedResource(const std::initializer_list<T> data, onFrameSwitch_cb onSwitch) : data(data), onSwitch(onSwitch) {}
+    FrameSwappedResource(const std::initializer_list<T> data, onFrameSwitch_cb onSwitch = NULL) :
+      data(data), onSwitch(onSwitch) {}
     FrameSwappedResource(onFrameSwitch_cb onSwitch) : data(), onSwitch(onSwitch) {}
     FrameSwappedResource(const FrameSwappedResource&) = delete;
     FrameSwappedResource() {}
+    template<class... Args> requires requires(Args... args) { T(std::forward<Args>(args)...); }
+    FrameSwappedResource(Args... args) : data(std::forward<Args>(args)...) {};//construct each element with same arguments
+
     size_t getIdx(ssize_t offset = 0) {
       auto frame = FrameCounter::getFrame();
       if(onSwitch) {
@@ -36,9 +40,9 @@ namespace WITE::Util {
 	  while(lastFrameRelease > frame);
       }
       size_t idx = frame + offset;
-      if(idx < 0) [[unlikely]] idx = N + idx % N;
-      else if(idx > (N << 1)) [[unlikely]] idx = idx % N;
-      else if(idx > N) [[unlikely]] idx -= N;
+      if(idx < 0) [[unlikely]] idx = (N + idx) % N;
+      else if(idx >= (N << 1)) [[unlikely]] idx = idx % N;
+      else if(idx >= N) [[unlikely]] idx -= N;
       return idx;
     };
     size_t getWriteIdx() { return getIdx(0); ;}

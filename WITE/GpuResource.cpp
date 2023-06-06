@@ -24,7 +24,7 @@ namespace WITE::GPU {
   void GpuResource::copy(size_t gpuSrc, size_t gpuDst) {
     void* src = map(gpuSrc);
     void* dst = map(gpuDst);
-    memcpy(dst, src, mem.getRef(gpuSrc)->mai.allocationSize);//assumes both buffers are the same size
+    std::memcpy(dst, src, mem.getRef(gpuSrc)->mai.allocationSize);//assumes both buffers are the same size
   };
 
 };

@@ -87,20 +87,24 @@ namespace WITE::GPU {
 	vk::AttachmentReference2 depthStencil = { VK_ATTACHMENT_UNUSED };
 	std::vector<uint32_t> preserves;
 	for(uint32_t j = 0;j < attachmentCount;j++) {
+	  usage_t usage = DATA.steps[i].resourceUsages[j];
 	  ImageSlotData isd = DATA.resources[attachmentIndexes[j]].imageData;
 	  bool used = false;
-	  if(isd.usage & GpuResource::USAGE_ATT_INPUT) {
+	  vk::ImageLayout layout = isd.usage & GpuResource::USAGE_ATT_OUTPUT ?
+	    isd.usage & GpuResource::USAGE_ATT_DEPTH ? vk::ImageLayout::eGeneral : vk::ImageLayout::eColorAttachmentOptimal :
+	    isd.usage & GpuResource::USAGE_ATT_DEPTH ? vk::ImageLayout::eDepthStencilAttachmentOptimal : vk::ImageLayout::eGeneral;//just in case something screwy is asked, but both eGeneral cases are unlikely (and of questionable value)
+	  if(usage & GpuResource::USAGE_ATT_INPUT) {
 	    used = true;
-	    inputs.emplace_back(j, attachmentInitialLayouts[j], aspectMaskForUsage(isd.usage));
+	    inputs.emplace_back(j, layout, aspectMaskForUsage(usage));
 	  }
-	  if(isd.usage & GpuResource::USAGE_ATT_OUTPUT) {
+	  if(usage & GpuResource::USAGE_ATT_OUTPUT) {
 	    used = true;
-	    colors.emplace_back(j, attachmentInitialLayouts[j], aspectMaskForUsage(isd.usage));
+	    colors.emplace_back(j, layout, aspectMaskForUsage(usage));
 	  }
-	  if(isd.usage & GpuResource::USAGE_ATT_DEPTH) {//only one of these is allowed per step
+	  if(usage & GpuResource::USAGE_ATT_DEPTH) {//only one of these is allowed per step
 	    used = true;
 	    ASSERT_CONSTEXPR(depthStencil.attachment == VK_ATTACHMENT_UNUSED);
-	    depthStencil = { j, attachmentInitialLayouts[j], aspectMaskForUsage(isd.usage) };
+	    depthStencil = { j, layout, aspectMaskForUsage(usage) };
 	  }
 	  if(used) continue;
 	  //now decide if it needs to be preserved
@@ -176,8 +180,12 @@ namespace WITE::GPU {
       };
       out->resourceCount = attachmentCount;
       static_assert(attachmentCount <= MAX_RESOURCES);
-      memcpy(out->resources, attachments.getRead().ptr());
-      memcpy(out->initialLayouts, attachmentInitialLayouts.ptr());
+      cpy(out->resources, attachments.getRead().ptr(), attachmentCount);
+#ifdef DEBUG
+      for(size_t i = 0;i < attachmentCount;i++)
+	ASSERT_TRAP(out->resources[i], "null attachment");
+#endif
+      cpy(out->initialLayouts, attachmentInitialLayouts.ptr(), attachmentCount);
       memset<attachmentCount>(out->finalLayouts, vk::ImageLayout::eTransferSrcOptimal);
       out->sc = vk::SubpassContents::eInline;
     };
@@ -197,11 +205,14 @@ namespace WITE::GPU {
   public:
     Collections::CopyableArray<vk::ClearValue, attachmentCount> clears = defaultClears;
 
-    BackedRenderTarget() : RenderTarget(LDM),
-			   fbs(fbs_t::creator_t_F::make(this, &SPECULUM::makeFBs),
-			       fbs_t::destroyer_t_F::make(this, &SPECULUM::destroyFBs))
+    BackedRenderTarget(BackingTupleInitData_cb bcb) : RenderTarget(LDM),
+						      resources(bcb),
+						      fbs(fbs_t::creator_t_F::make(this, &SPECULUM::makeFBs),
+							  fbs_t::destroyer_t_F::make(this, &SPECULUM::destroyFBs))
     {
       //ci exists in parent class, parent creates render passes on demand from it.
+      for(size_t i = 0;i < attachmentCount;i++)
+	attachmentDescriptions[i].setFormat(ImageBase::getBestImageFormat(DATA.resources[attachmentIndexes[i]].imageData));
       ci.setAttachmentCount(attachmentCount).setPAttachments(attachmentDescriptions.ptr())
 	.setSubpassCount(DATA.steps.len).setPSubpasses(subpassDescriptions.ptr());
       //NOTE: not providing any subpass dependency information because the entire render pass is already strongly-ordered at the commandbuffer layer elsewhere. It may eventually be necessary. Note that the dependency can contain a MemoryBarrier on it's pNext chain to describe a layout conversion, not sure if that's necessary.

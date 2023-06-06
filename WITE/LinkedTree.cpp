@@ -2,7 +2,7 @@
 
 namespace WITE::Collections {
 
-  LinkedTreeBase::LinkedTreeBase() = default;
+  LinkedTreeBase::LinkedTreeBase() : root(NULL) {};
 
   LinkedTreeBase::~LinkedTreeBase() = default;
 
@@ -36,6 +36,37 @@ namespace WITE::Collections {
     gnu->parent = n;
     gnu->data = i;
     return gnu;
+  };
+
+  bool LinkedTreeBase::isEmpty() {
+    return !root;
+  };
+
+#ifdef DEBUG
+  size_t LinkedTreeBase::count() {
+    if(!root) return 0;
+    IteratorBase i(root, this);
+    size_t ret = 0;
+    while(i.getNext() != root) ret++;
+    return ret;
+  };
+#endif
+
+  bool LinkedTreeBase::contains(invertedPtr i) {
+    if(!root) {
+      [[unlikely]]
+      //edge case: list is empty
+      return false;
+    }
+    node* n = root;
+    while(n->data != i) {
+      node** next = i > n->data ? &n->high : &n->low;
+      if(*next)
+	n = *next;
+      else
+	return false;//not found
+    }
+    return true;
   };
 
   void LinkedTreeBase::remove(invertedPtr i) {
@@ -88,8 +119,9 @@ namespace WITE::Collections {
     } else {
       newBranch = NULL;
     }
-    *(n->parent ? (n->parent->data < i ? &n->parent->low : &n->parent->high) : &root) = newBranch;
-    newBranch->parent = n->parent ? n->parent : NULL;
+    *(n->parent ? (n->parent->data < i ? &n->parent->high : &n->parent->low) : &root) = newBranch;
+    if(newBranch)
+      newBranch->parent = n->parent;
     n->data = 0;
   };
 
@@ -122,7 +154,7 @@ namespace WITE::Collections {
       target = target->high;
       return;
     }
-    while(target->parent && target == target->parent->high)
+    while(target->parent && (target == target->parent->high || !target->parent->high))
       target = target->parent;
     if(target->parent) {
       target = target->parent->high;

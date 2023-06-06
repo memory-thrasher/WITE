@@ -9,7 +9,7 @@ namespace WITE::Collections {
   class LinkedTreeBase {
   protected:
     typedef uint64_t invertedPtr;
-    static_assert(sizeof(uint64_t) == sizeof(void*));
+    static_assert(sizeof(invertedPtr) == sizeof(void*));
     struct node {
       invertedPtr data;
       node* low, *high, *parent;
@@ -35,6 +35,12 @@ namespace WITE::Collections {
     LinkedTreeBase();
     void insert(invertedPtr);
     void remove(invertedPtr);
+    bool contains(invertedPtr);
+  public:
+    bool isEmpty();
+#ifdef DEBUG //for firing in gdb while debugging only, very slow
+  size_t count();
+#endif
   };
 
   //Not inherently thread safe. Protect the collection itself with a mutex. Read only iterators are thread safe but may fail sporadically.
@@ -51,6 +57,7 @@ namespace WITE::Collections {
     };
     inline void insert(T* t) { LinkedTreeBase::insert(reverse(t)); };
     inline void remove(T* t) { LinkedTreeBase::remove(reverse(t)); };
+    inline bool contains(T* t) { return LinkedTreeBase::contains(reverse(t)); };
     inline Iterator iterate() { return { root, this }; };//nonstandard ENDLESS! iterator.
   };
 

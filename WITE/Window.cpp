@@ -92,7 +92,18 @@ namespace WITE::GPU {
   void Window::drawImpl(ImageBase* img) {
     WorkBatch cmd(presentQueue);
     ASSERT_TRAP(swapCI.imageExtent == img->getVkSize(), "NYI: rendering image of different size than window");
-    cmd.present(img, swapImages.get(), swap).submit();
+    queuedRenders++;
+    cmd.present(img, swapImages.get(), swap)
+      .then([this](){
+	queuedRenders--;
+      })
+      .submit();
+  };
+
+  vk::Extent2D Window::getSize() {
+    int w, h;
+    SDL_Vulkan_GetDrawableSize(window, &w, &h);
+    return { (uint32_t)w, (uint32_t)h };
   };
 
 }

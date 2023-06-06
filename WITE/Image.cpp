@@ -4,17 +4,33 @@
 
 namespace WITE::GPU {
 
-  ImageBase::ImageBase(const ImageSlotData isd)
+  ImageBase::ImageBase(const ImageSlotData isd, GpuResourceInitData grid)
     : accessors(accessors_t::creator_t_F::make(this, &ImageBase::makeAccessors),
 		accessors_t::destroyer_t_F::make(&ImageBase::destroyAccessors)),
       images(PerGpu<vk::Image>::creator_t_F::make(this, &ImageBase::makeImage),
 	     PerGpu<vk::Image>::destroyer_t_F::make(&ImageBase::destroyImage)),
-      w(512), h(isd.dimensions > 1 ? 512 : 1), z(1),
+      w(grid.imageData.w), h(isd.dimensions > 1 ? grid.imageData.h : 1), z(isd.dimensions > 2 ? grid.imageData.z : 1),
       accessStateTracker(PerGpu<StateSynchronizer<accessState>>::creator_t_F::make(this, &ImageBase::makeStateTracker)),
       slotData(isd),
       format(getBestImageFormat(isd)),
       transfersRequired(Gpu::gpuCountByLdm(isd.logicalDeviceMask) > 1 && (isd.externalUsage & MUSAGE_ANY_INTERMEDIATE))
-  {};
+  {
+    ASSERT_TRAP(format != vk::Format::eUndefined, "format undefined on image creation");
+  };
+
+  ImageBase::ImageBase(const ImageBase& i)
+    : accessors(accessors_t::creator_t_F::make(this, &ImageBase::makeAccessors),
+		accessors_t::destroyer_t_F::make(&ImageBase::destroyAccessors)),
+      images(PerGpu<vk::Image>::creator_t_F::make(this, &ImageBase::makeImage),
+	     PerGpu<vk::Image>::destroyer_t_F::make(&ImageBase::destroyImage)),
+      w(i.w), h(i.h), z(i.z),
+      accessStateTracker(PerGpu<StateSynchronizer<accessState>>::creator_t_F::make(this, &ImageBase::makeStateTracker)),
+      slotData(i.slotData),
+      format(i.format),
+      transfersRequired(i.transfersRequired)
+  {
+    ASSERT_TRAP(!i.images.anyAllocated(), "Cannot copy image after it's been used");
+  };
 
   void ImageBase::makeImage(vk::Image* ret, size_t gpu) {
     vk::ImageCreateInfo ci;
@@ -76,6 +92,8 @@ namespace WITE::GPU {
 #define hasu(x, r) ((usage & USAGE_ ##x) == USAGE_ ##x ? vk::ImageUsageFlagBits::e ##r : (vk::ImageUsageFlagBits)0)
     return hasu(DS_SAMPLED, Sampled) |
       hasu(DS_WRITE, Storage) |
+      hasu(TRANSFER, TransferSrc) |
+      hasu(TRANSFER, TransferDst) |
       hasu(ATT_OUTPUT, ColorAttachment) |
       hasu(ATT_DEPTH, DepthStencilAttachment) |
       hasu(ATT_INPUT, InputAttachment);
@@ -98,10 +116,15 @@ namespace WITE::GPU {
   void ImageBase::makeAccessors(accessObject* ret, size_t gpu) {
     auto vkDev = Gpu::get(gpu).getVkDevice();
     ret->view = makeVkImageView(gpu);
-    vk::SamplerCreateInfo sci { {}, vk::Filter::eLinear, vk::Filter::eLinear, vk::SamplerMipmapMode::eLinear,
-      vk::SamplerAddressMode::eClampToEdge, vk::SamplerAddressMode::eClampToEdge, vk::SamplerAddressMode::eClampToEdge,
-      0, true, 1.0f, false, vk::CompareOp::eNever, 0, static_cast<float>(slotData.mipLevels),
-      vk::BorderColor::eFloatTransparentBlack, false };
+    vk::SamplerCreateInfo sci;
+    sci.setMagFilter(vk::Filter::eLinear)
+      .setMinFilter(vk::Filter::eLinear)
+      .setMipmapMode(vk::SamplerMipmapMode::eLinear)
+      .setAddressModeU(vk::SamplerAddressMode::eClampToEdge)
+      .setAddressModeV(vk::SamplerAddressMode::eClampToEdge)
+      .setAddressModeW(vk::SamplerAddressMode::eClampToEdge)
+      //anisotropy disabled by default, needs extension
+      .setMaxLod(static_cast<float>(slotData.mipLevels));
     //TODO research and maybe options for filter, anisotropic filter, compare
     VK_ASSERT(vkDev.createSampler(&sci, ALLOCCB, &ret->sampler), "Failed to create sampler");
     ret->dsImageInfo = { ret->sampler, ret->view, optimalLayoutForUsage(slotData.externalUsage) };
@@ -132,7 +155,7 @@ namespace WITE::GPU {
   };
 
   vk::ImageAspectFlags ImageBase::getAspects() {
-    return slotData.usage & USAGE_ATT_DEPTH ? vk::ImageAspectFlagBits::eDepth | vk::ImageAspectFlagBits::eStencil : vk::ImageAspectFlagBits::eColor;
+    return slotData.usage & USAGE_ATT_DEPTH ? vk::ImageAspectFlagBits::eDepth : vk::ImageAspectFlagBits::eColor;
   };
 
   vk::ImageSubresourceRange ImageBase::getAllInclusiveSubresource() {

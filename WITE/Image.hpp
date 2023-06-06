@@ -52,8 +52,8 @@ namespace WITE::GPU {
     };
 
     virtual ~ImageBase() = default;
-    ImageBase(ImageBase&) = delete;
-    ImageBase(ImageSlotData isd);
+    ImageBase(const ImageBase&);
+    ImageBase(ImageSlotData isd, GpuResourceInitData grid);
     void getCreateInfo(Gpu&, vk::ImageCreateInfo* out, size_t width, size_t height, size_t z = 1);
     vk::ImageUsageFlags getVkUsageFlags();
     vk::AttachmentDescription getAttachmentDescription(bool clear = true);
@@ -77,7 +77,8 @@ namespace WITE::GPU {
   //MIP and SAM might be less than requested if the platform does not support it
   template<ImageSlotData ISD> class Image : public ImageBase {
   public:
-    Image() : ImageBase(ISD) {};
+    Image(const GpuResourceInitData grid) : ImageBase(ISD, grid) {};
+    Image(const Image<ISD>& i) : ImageBase(i) {};
     ~Image() override = default;
   };
 

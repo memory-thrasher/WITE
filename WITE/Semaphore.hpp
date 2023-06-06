@@ -22,6 +22,7 @@ namespace WITE::GPU {
     Semaphore(Gpu*);
     Semaphore(Semaphore&& o);//move constructor required by PerGpu
     ~Semaphore();
+    void dispose();
     inline operator vk::Semaphore() { return sem; };
     inline vk::Semaphore vkSem() { return sem; };
     uint64_t notePromise();
@@ -30,7 +31,7 @@ namespace WITE::GPU {
       return { vkSem(), notePromise(), vk::PipelineStageFlagBits2::eAllCommands, 0 };
     };
     inline uint64_t getPromisedValue() { return targetValue; };
-    inline bool pending() { return getCurrentValue() < getPromisedValue(); };
+    inline bool pending() { return !dev || getCurrentValue() < getPromisedValue(); };
     std::strong_ordering operator<=>(const Semaphore& r) const { return id <=> r.id; };//so semaphore& can be stored in a set
     static void make(Semaphore*, size_t gpu);//for PerGpu
   };

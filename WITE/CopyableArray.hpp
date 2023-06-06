@@ -21,6 +21,12 @@ namespace WITE::Collections {
       constexpr inline auto operator[](size_t i) { I v = begin; while(i--) ++v; return *v; };
     };//so parameter packs can be expanded to fetch the nth value from an iterator (slow; intended for consteval only)
 
+    template<class... Args> struct Factory {
+      const std::tuple<Args...> args;
+      constexpr Factory(std::tuple<Args...> args) : args(args) {};
+      constexpr inline T operator[](size_t) const { return std::make_from_tuple<T>(args); };
+    };//makes an instance for each call to operator with the same arguments
+
     static constexpr size_t LENGTH = LEN;
 
     std::array<T, LEN> data;
@@ -33,6 +39,11 @@ namespace WITE::Collections {
     template<iterable_unindexable<T> C> constexpr CopyableArray(const C c) : CopyableArray(c.begin(), c.end()) {};
     template<iterable_unindexable<T> C> constexpr CopyableArray(const C& c) : CopyableArray(c.begin(), c.end()) {};//vector
     constexpr CopyableArray(const std::initializer_list<T> il) : CopyableArray(il.begin()) {};
+
+    //often enough we want to create each element in-position with the same arguments
+    template<class... Args> requires requires(Args... args) { T(std::forward<Args>(args)...); }
+    constexpr CopyableArray(Args... args) :
+      CopyableArray(Factory<Args...>(std::forward_as_tuple(args...))) {};
 
     //L2 below somehow prevents this constructor being considered for the copy constructor with default initialized T
     template<size_t L2 = LEN-1, class... Args> requires (LEN > 1, L2 > 0)

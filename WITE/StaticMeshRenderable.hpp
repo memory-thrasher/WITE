@@ -19,9 +19,8 @@ namespace WITE::GPU {
     typedef VertexRenderable<D, VM> UBER;
     static_assert(UBER::vertBufferCount == 1);
     static constexpr usage_t USAGE = GpuResource::USAGE_VERTEX | GpuResource::USAGE_HOST_WRITE | GpuResource::USAGE_GRAPHICS;
-    //if we need to stage the data in a host-visible buffer first before putting it into the vertex buffer, that should be handled in Buffer
     static constexpr size_t vertSize = sizeof(typename shader_t::vertex_t);
-    typedef Buffer<BufferSlotData(LDM, USAGE, MESH.len * vertSize)> MeshBuffer;
+    typedef Buffer<BufferSlotData(LDM, USAGE)> MeshBuffer;
     deviceMask_t bufferInitialized;
   public:
     StaticMeshRenderable(layer_t layer, shader_t* s) : UBER(layer, s)
@@ -31,7 +30,7 @@ namespace WITE::GPU {
       BufferBase* b;
       if(!cache.meshBuffer)
 	[[unlikely]]
-	cache.meshBuffer.reset(b = new MeshBuffer());
+	cache.meshBuffer.reset(b = new MeshBuffer(MESH.len * vertSize));
       else
 	b = cache.meshBuffer.get();
       bufferInitialized = cache.bufferInitialized;

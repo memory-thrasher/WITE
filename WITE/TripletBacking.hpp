@@ -4,16 +4,6 @@
 
 namespace WITE::GPU {
 
-  // template<GpuResourceSlotInfo SLOT> struct resourceFactory {
-  //   auto operator()() {
-  //     if constexpr(SLOT.type == GpuResourceType::eImage)
-  // 	return Image<SLOT.imageData>();
-  //     else if constexpr(SLOT.type == GpuResourceType::eBuffer)
-  // 	return Buffer<SLOT.bufferData>();
-  //   };
-  // };
-
-  // template<GpuResourceSlotInfo SLOT> using gpuResource_t = std::invoke_result<resourceFactory<SLOT>>::type;
   template<GpuResourceSlotInfo SLOT, GpuResourceType GRT = SLOT.type> struct gpuResourceFromSlotInfo {};
   template<GpuResourceSlotInfo SLOT> struct gpuResourceFromSlotInfo<SLOT, GpuResourceType::eImage> {
     typedef Image<SLOT.imageData> type;
@@ -23,12 +13,21 @@ namespace WITE::GPU {
   };
   template<GpuResourceSlotInfo SLOT> using gpuResource_t = gpuResourceFromSlotInfo<SLOT, SLOT.type>::type;
 
+  typedefCB(BackingTupleInitData_cb, GpuResourceInitData, size_t, const GpuResourceSlotInfo&);
+
+  template<class T> BackingTupleInitData_cb makeBtidCbFromCollection(const T& d) {
+    return BackingTupleInitData_cb_F::make([d](size_t idx, const GpuResourceSlotInfo&) {
+      return d[idx];
+    });
+  };
+
   template<GpuResourceSlotInfo SLOT> struct TripletBacking {
     typedef gpuResource_t<SLOT.stagingResourceSlot()> staging_t;
-    staging_t staging = {};//resourceFactory<SLOT.stagingResourceSlot()>()();
+    staging_t staging = {};
     typedef gpuResource_t<SLOT.externallyStagedResourceSlot()> T;
-    Util::FrameSwappedResource<T, 2> swapper;//default init of gpu resources is always allowed
+    Util::FrameSwappedResource<T, 2> swapper;
     void* hostRam;
+    TripletBacking(GpuResourceInitData grid) : staging(grid), swapper(grid) {};
     ~TripletBacking() { if(hostRam) free(hostRam); };
   };
 
@@ -36,6 +35,8 @@ namespace WITE::GPU {
     TripletBacking<SLOTS[0]> data;
     typedef BackingTuple<SLOTS.sub(1, SLOTS.len - 1)> rest_t;
     rest_t rest;
+
+    BackingTuple(BackingTupleInitData_cb bcb, size_t i = 0) : data(bcb(i, SLOTS[0])), rest(bcb, i+1) {};
 
     template<size_t I> inline auto* get() { if constexpr(I == 0) return this; else return rest.template get<I-1>(); };
 
@@ -161,6 +162,8 @@ namespace WITE::GPU {
 
   };
 
-  template<Collections::LiteralList<GpuResourceSlotInfo> SLOTS> struct BackingTuple<SLOTS, 0> {};//empty
+  template<Collections::LiteralList<GpuResourceSlotInfo> SLOTS> struct BackingTuple<SLOTS, 0> {
+    template<class... A> BackingTuple(A... args) {};
+  };//empty
 
 }

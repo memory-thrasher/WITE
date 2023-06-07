@@ -13,6 +13,7 @@ int main(int argc, char** argv) {
     assert(!lt.contains(&data[i]));
     lt.insert(&data[i]);
     assert(lt.contains(&data[i]));
+    assert(lt.count() == i+1);
   }
   for(size_t i = 1;i < CNT;i+=2) {//note: odd only
     assert(lt.contains(&data[i]));

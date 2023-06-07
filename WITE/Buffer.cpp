@@ -58,7 +58,7 @@ namespace WITE::GPU {
     vk::MemoryRequirements mr;
     vkDev.getBufferMemoryRequirements(*ret, &mr);
     VRam* vram = mem.getRef(gpuIdx).get();
-    gpu.allocate(mr, vram);
+    gpu.allocate(mr, (vk::MemoryPropertyFlags)0, vram);
     vkDev.bindBufferMemory(*ret, *vram, 0);
   };
 

@@ -26,9 +26,7 @@ namespace WITE::GPU {
     staging_t staging = {};
     typedef gpuResource_t<SLOT.externallyStagedResourceSlot()> T;
     Util::FrameSwappedResource<T, 2> swapper;
-    void* hostRam;
     TripletBacking(GpuResourceInitData grid) : staging(grid), swapper(grid) {};
-    ~TripletBacking() { if(hostRam) free(hostRam); };
   };
 
   template<Collections::LiteralList<GpuResourceSlotInfo> SLOTS, size_t L = SLOTS.len> struct BackingTuple {
@@ -119,22 +117,6 @@ namespace WITE::GPU {
 	*out++ = auto_cast<T>(data.staging);
       if constexpr(L > 1)
 	rest.template indexStagings<T, usage, type>(out);
-    };
-
-    template<usage_t usage, GpuResourceType type>
-    auto inline indexHostRams() {
-      constexpr static size_t LEN = count(usage, type);
-      Collections::CopyableArray<void*, LEN> ret;
-      indexHostRams<usage, type>(ret.ptr());
-      return ret;
-    };
-
-    template<usage_t usage, GpuResourceType type>
-    void inline indexHostRams(void** out) {
-      if constexpr(SLOTS[0].type == type && (SLOTS[0].getUsage() & usage))
-	*out++ = data.hostRam;
-      if constexpr(L > 1)
-	rest.template indexHostRams<usage, type>(out);
     };
 
     template<usage_t usage, size_t imageCount = count(usage, GpuResourceType::eImage)>

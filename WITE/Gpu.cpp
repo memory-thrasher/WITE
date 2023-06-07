@@ -341,16 +341,19 @@ namespace WITE::GPU {
 	++j;
       };
       memoryScoreByType[i] = score;
+      memoryFlagsByType[i] = pdmp.memoryProperties.memoryTypes[i].propertyFlags;
     }
     for(size_t i = 0;i < pdmp.memoryProperties.memoryHeapCount;i++)
       freeMemoryByHeap[i] = pdmbp.heapBudget[i] - pdmbp.heapUsage[i];
   };
 
-  void Gpu::allocate(const vk::MemoryRequirements& mr, VRam* out) {
+  void Gpu::allocate(const vk::MemoryRequirements& mr, vk::MemoryPropertyFlags requiredFlags, VRam* out) {
     uint8_t type;
     int64_t bestScore = std::numeric_limits<int64_t>::lowest();
     for(auto t : Collections::BitmaskIterator(mr.memoryTypeBits)) {
-      if(memoryScoreByType[t] > bestScore && freeMemoryByHeap[pdmp.memoryProperties.memoryTypes[t].heapIndex] > mr.size) {
+      if(memoryScoreByType[t] > bestScore &&
+	 freeMemoryByHeap[pdmp.memoryProperties.memoryTypes[t].heapIndex] > mr.size &&
+	 (memoryFlagsByType[t] & requiredFlags) == requiredFlags) {
 	bestScore = memoryScoreByType[t];
 	type = t;
       }

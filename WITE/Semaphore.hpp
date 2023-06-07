@@ -31,7 +31,7 @@ namespace WITE::GPU {
       return { vkSem(), notePromise(), vk::PipelineStageFlagBits2::eAllCommands, 0 };
     };
     inline uint64_t getPromisedValue() { return targetValue; };
-    inline bool pending() { return !dev || getCurrentValue() < getPromisedValue(); };
+    inline bool pending() { return dev && getCurrentValue() < getPromisedValue(); };
     std::strong_ordering operator<=>(const Semaphore& r) const { return id <=> r.id; };//so semaphore& can be stored in a set
     static void make(Semaphore*, size_t gpu);//for PerGpu
   };

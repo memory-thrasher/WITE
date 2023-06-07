@@ -33,7 +33,6 @@ namespace WITE::GPU {
     state = state_t::recording;
     // waiters.clear();
     prerequisits.clear();
-    steps.clear();
     for(Work& w : steps) {
       if(w.fence) {
 	fences[w.getGpu()]->free(w.fence);
@@ -47,6 +46,7 @@ namespace WITE::GPU {
       if(w.q)
 	w.q = NULL;
     }
+    steps.clear();
   };
 
   bool WorkBatch::WorkBatchResources::canStart() {
@@ -120,7 +120,7 @@ namespace WITE::GPU {
     };
   };
 
-  
+
   WorkBatch::WorkBatch(WorkBatchResources* batch) : batch(batch), cycle(batch->cycle) {};
 
   void WorkBatch::WorkBatchResources::execute() {
@@ -413,9 +413,9 @@ namespace WITE::GPU {
       // 	}
       // }
       // srcCmd.then([srcGpu, cnt, ramCopy, srcCopy]() {
-      srcCmd.then([srcGpu, cnt, ram, srcs]() {
+      srcCmd.then([srcGpu, cnt, ram, srcs, stagings]() {
 	for(size_t i = 0;i < cnt;i++)
-	  srcs[i]->mem.getPtr(srcGpu)->read(ram[i]);
+	  (stagings && stagings[i] ? stagings[i] : srcs[i])->mem.getPtr(srcGpu)->read(ram[i]);
       });
       srcCmd.submit();
       // cleanupCmd.mustHappenAfter(srcCmd);
@@ -442,14 +442,15 @@ namespace WITE::GPU {
 	  }
 	}
 	doBarrier(cmd);
-	cmd.then([gpu, cnt, srcs, ram]() {
+	cmd.then([gpu, cnt, srcs, stagings, ram]() {
 	  for(size_t i = 0;i < cnt;i++)
-	    srcs[i]->mem.getPtr(gpu)->write(ram[i]);
+	    (stagings && stagings[i] ? stagings[i] : srcs[i])->mem.getPtr(gpu)->write(ram[i]);
 	});
 	cmd.thenOnGpu(gpu);
-	for(size_t i = 0;i < cnt;i++)
-	  if(stagings && stagings[i])
-	    cmd.copyImage(stagings[i], srcs[i]);
+	if(stagings)
+	  for(size_t i = 0;i < cnt;i++)
+	    if(stagings[i])
+	      cmd.copyImage(stagings[i], srcs[i]);
 	cmd.submit();
 	cleanupCmd.mustHappenAfter(cmd);
       }
@@ -562,14 +563,14 @@ namespace WITE::GPU {
     return *fence;
   };
 
-  WorkBatch::result WorkBatch::presentImpl2(vk::SwapchainKHR swap, uint32_t target, WorkBatch wb) { //static
+  WorkBatch::result WorkBatch::presentImpl2(vk::SwapchainKHR swap, uint32_t target, Queue* q, WorkBatch wb) { //static
+    LOG("PresentImpl2 called");
     //WorkBatch unused but present to allow this to be a raw thenCB
-    Work& current = wb.get()->getCurrent();
     vk::PresentInfoKHR pi;
     pi.setSwapchainCount(1)
       .setPSwapchains(&swap)
       .setPImageIndices(&target);
-    current.q->present(&pi);
+    q->present(&pi);
     return result::done;
   };
 
@@ -583,6 +584,7 @@ namespace WITE::GPU {
     LOG("Fence: acquired image with pending signaling of fence ", f, " on Work ", stage2.get());
     switch(res) {
     case vk::Result::eNotReady:
+      LOG("Resetting fence ", f, " and cancelling work ", stage2.get());
       stage2.reset();
       return result::yield;
     case vk::Result::eSuboptimalKHR: WARN("NYI suboptimal flag received while presenting: should recreate swapchain"); break;
@@ -592,7 +594,7 @@ namespace WITE::GPU {
     }
     //this is in a then. The primary call to present has already queued fence as a requirement for this batch. The copy commands, however, could not be recorded before the output was chosen by acquire above. Batches cannot be added to while running, So spawn a new batch that depends on this one.
     stage2.copyImageToVk(src, swapImages[target], vk::ImageLayout::ePresentSrcKHR);
-    stage2.then(thenCB_F::make<vk::SwapchainKHR, uint32_t>(swap, target, &WorkBatch::presentImpl2));
+    stage2.then(thenCB_F::make<vk::SwapchainKHR, uint32_t, Queue*>(swap, target, q, &WorkBatch::presentImpl2));
     stage2.submit();
     LOG("Work list now has ", allBatches.allocatedCount(), " works scheduled");
     return result::done;

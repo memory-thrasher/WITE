@@ -95,7 +95,7 @@ namespace WITE::GPU {
     static void quickImageBarrier(vk::CommandBuffer, vk::Image, vk::ImageLayout, vk::ImageLayout);
     static void discardImage(vk::CommandBuffer, vk::Image, vk::ImageLayout post);
     static result presentImpl(ImageBase*, vk::Image*, vk::SwapchainKHR, Queue*, WorkBatch);
-    static result presentImpl2(vk::SwapchainKHR, uint32_t, WorkBatch wb);
+    static result presentImpl2(vk::SwapchainKHR, uint32_t, Queue*, WorkBatch wb);
 
     WorkBatch(WorkBatchResources* batch);
   public:
@@ -117,7 +117,7 @@ namespace WITE::GPU {
     size_t getGpuIdx();
     Gpu& getGpu();
     // bool isWaiting() const;
-    operator bool() const { return !isDone(); };
+    // operator bool() const { return !isDone(); };
     auto operator <=>(const WorkBatch&) const = default;
 
     //SFINAE overload to support lambdas, including options to ignore the param or return void (mapped to done)

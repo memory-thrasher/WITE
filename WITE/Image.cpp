@@ -41,7 +41,7 @@ namespace WITE::GPU {
     vk::MemoryRequirements mr;
     vkDev.getImageMemoryRequirements(*ret, &mr);
     VRam* vram = mem.getPtr(gpu);
-    g.allocate(mr, vram);
+    g.allocate(mr, getMemFlags(), vram);
     vkDev.bindImageMemory(*ret, *vram, 0);
   };
 
@@ -62,7 +62,7 @@ namespace WITE::GPU {
   };
 
   void ImageBase::getCreateInfo(Gpu& gpu, vk::ImageCreateInfo* out, size_t width, size_t height, size_t z) {
-    const auto usage = slotData.usage;
+    const auto usage = slotData.usage | slotData.externalUsage;
     const auto dim = slotData.dimensions;
     const auto sam = slotData.samples;
     const auto al = slotData.arrayLayers;
@@ -85,6 +85,11 @@ namespace WITE::GPU {
 			       );//default: layout as undefined
 #undef has
 #undef hasc
+  };
+
+  vk::MemoryPropertyFlags ImageBase::getMemFlags() {
+    const auto usage = slotData.usage | slotData.externalUsage;
+    return (usage & MUSAGE_ANY_HOST) ? vk::MemoryPropertyFlagBits::eHostVisible : (vk::MemoryPropertyFlags)0;
   };
 
   vk::ImageUsageFlags ImageBase::getVkUsageFlags() {

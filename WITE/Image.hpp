@@ -55,6 +55,7 @@ namespace WITE::GPU {
     ImageBase(const ImageBase&);
     ImageBase(ImageSlotData isd, GpuResourceInitData grid);
     void getCreateInfo(Gpu&, vk::ImageCreateInfo* out, size_t width, size_t height, size_t z = 1);
+    vk::MemoryPropertyFlags getMemFlags();
     vk::ImageUsageFlags getVkUsageFlags();
     vk::AttachmentDescription getAttachmentDescription(bool clear = true);
     vk::ImageSubresourceLayers getAllSubresourceLayers();

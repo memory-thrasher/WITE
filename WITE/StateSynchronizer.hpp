@@ -14,6 +14,7 @@ namespace WITE::GPU {
     std::vector<WorkBatch> usingCurrentState;
     WorkBatch providingCurrentState;
     changeState change;
+    bool firstUse = true;
   public:
     StateSynchronizer(S initial, changeState c) : state(initial), change(c) {};
     StateSynchronizer() {};//allocation dummy
@@ -28,8 +29,10 @@ namespace WITE::GPU {
 	state = s;
 	return;
       }
-      if(providingCurrentState)
+      if(!firstUse) [[likely]]
 	batch.mustHappenAfter(providingCurrentState);
+      else
+	firstUse = false;
       if(s == state) {
 	usingCurrentState.push_back(batch);
       } else {
@@ -50,8 +53,10 @@ namespace WITE::GPU {
 	state = s;
 	return old;
       }
-      if(providingCurrentState)
+      if(!firstUse) [[likely]]
 	batch.mustHappenAfter(providingCurrentState);
+      else
+	firstUse = false;
       if(s == state) {
 	if(!Collections::contains(usingCurrentState, batch))
 	  usingCurrentState.push_back(batch);

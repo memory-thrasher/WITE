@@ -130,8 +130,7 @@ namespace WITE::GPU {
       resources.template createIndex<ImageBase*, ATTACHMENT_IMAGES>();
     Collections::CopyableArray<ImageBase*, attachmentCount> attachmentStagings =
       resources.template indexStagings<ImageBase*, ATTACHMENT_IMAGES>();
-    Collections::CopyableArray<void*, attachmentCount> attachmentHostRams =
-      resources.template indexHostRams<ATTACHMENT_IMAGES>();
+    Collections::CopyableArray<void*, attachmentCount> attachmentHostRams;
     Collections::CopyableArray<vk::AttachmentDescription2, attachmentCount> attachmentDescriptions =
       attachmentDescriptionsDefault;
     Util::FrameSwappedResource<GpuResource*[descriptorCount]> descriptorSets =
@@ -192,6 +191,9 @@ namespace WITE::GPU {
 
     void renderQueued(WorkBatch cmd) override {
       size_t gpu = cmd.getGpuIdx();
+      if(!attachmentHostRams[0])
+	for(size_t i = 0;i < attachmentCount;i++)
+	  attachmentHostRams[i] = malloc(attachments.getWrite()[i]->getMemSize(gpu));
       WorkBatch::batchDistributeAcrossLdm(gpu, attachmentCount, attachments.getWrite().ptr(), attachmentStagings.ptr(), attachmentHostRams.ptr());
     };
 
@@ -216,6 +218,12 @@ namespace WITE::GPU {
       ci.setAttachmentCount(attachmentCount).setPAttachments(attachmentDescriptions.ptr())
 	.setSubpassCount(DATA.steps.len).setPSubpasses(subpassDescriptions.ptr());
       //NOTE: not providing any subpass dependency information because the entire render pass is already strongly-ordered at the commandbuffer layer elsewhere. It may eventually be necessary. Note that the dependency can contain a MemoryBarrier on it's pNext chain to describe a layout conversion, not sure if that's necessary.
+    };
+
+    ~BackedRenderTarget() {
+      for(size_t i = 0;i < attachmentCount;i++)
+	if(attachmentHostRams[i])
+	  free(attachmentHostRams[i]);
     };
 
     void bindResourcesTo(ShaderDescriptorBase* sdb) override {

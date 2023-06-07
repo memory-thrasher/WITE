@@ -46,7 +46,8 @@ namespace WITE::Collections {
   size_t LinkedTreeBase::count() {
     if(!root) return 0;
     IteratorBase i(root, this);
-    size_t ret = 0;
+    size_t ret = 1;
+    i.getNext();
     while(i.getNext() != root) ret++;
     return ret;
   };

@@ -42,6 +42,7 @@ namespace WITE::GPU {
     }
     cmd.endRenderPass();
     renderQueued(cmd);
+    cmd.submit();
   };
 
 }

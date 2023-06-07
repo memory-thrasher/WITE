@@ -46,6 +46,7 @@ namespace WITE::GPU {
     vk::PhysicalDeviceMemoryProperties2 pdmp;
     vk::PhysicalDeviceMemoryBudgetPropertiesEXT pdmbp;
     std::array<int64_t, VK_MAX_MEMORY_TYPES> memoryScoreByType;
+    std::array<vk::MemoryPropertyFlags, VK_MAX_MEMORY_TYPES> memoryFlagsByType;
     std::array<std::atomic_uint64_t, VK_MAX_MEMORY_HEAPS> freeMemoryByHeap;
 
     Gpu(size_t idx, vk::PhysicalDevice);
@@ -75,7 +76,7 @@ namespace WITE::GPU {
     inline Queue* getTransfer() { return transfer; };
     inline bool canGraphicsCompute() { return getGraphics()->supportsCompute(); };
     vk::PipelineCache getPipelineCache() { return pipelineCache; };
-    void allocate(const vk::MemoryRequirements&, VRam* out);
+    void allocate(const vk::MemoryRequirements&, vk::MemoryPropertyFlags requiredFlags, VRam* out);
     void deallocate(VRam*);
     inline auto getPhysical() { return pv; };
   };

@@ -25,6 +25,7 @@ namespace WITE::GPU {
     void dispose();
     inline operator vk::Semaphore() { return sem; };
     inline vk::Semaphore vkSem() { return sem; };
+    inline operator bool() { return sem; };
     uint64_t notePromise();
     uint64_t getCurrentValue();
     inline vk::SemaphoreSubmitInfo prepareForBatchSubmit() {

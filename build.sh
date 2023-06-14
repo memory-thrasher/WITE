@@ -119,7 +119,7 @@ if ! [ -f "${ERRLOG}" ] || [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
 		$WORKNICE $COMPILER "$OFILE" -o "$TESTNAME" -L "${OUTDIR}" "-Wl,-rpath,$OUTDIR" $BUILTLIBS $LINKOPTS $BOTHOPTS 2>>"${ERRLOG}" >>"${LOGFILE}"
 		echo running test "${TESTNAME}" >>"${LOGFILE}"
 		#VK_LOADER_DEBUG=all
-		$WORKNICE time $TESTNAME 2>>"${ERRLOG}" >>"${LOGFILE}"
+		$WORKNICE time timeout 30s timeout -s9 35s $TESTNAME 2>>"${ERRLOG}" >>"${LOGFILE}"
 		code=$?
 		if [ $code -ne 0 ]; then echo "Exit code: " $code >>"${ERRLOG}"; fi;
 		test -f "${TESTNAME}.bak" && ! test -f "${TESTNAME}" && cp "${TESTNAME}.bak" "${TESTNAME}"

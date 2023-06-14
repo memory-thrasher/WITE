@@ -33,6 +33,7 @@ namespace WITE::GPU {
   };
 
   void VRam::read(void* dst, size_t cnt) {
+    Util::ScopeLock lock(&mmapLock);
     //TODO assert that memory is host visible and/or transfer_dst usable
     auto& gpu = Gpu::get(gpuIdx);
     auto dev = gpu.getVkDevice();
@@ -45,6 +46,7 @@ namespace WITE::GPU {
   };
 
   void VRam::write(const void* src, size_t cnt) {
+    Util::ScopeLock lock(&mmapLock);
     //TODO assert that memory is host visible and/or transfer_dst usable
     auto& gpu = Gpu::get(gpuIdx);
     auto dev = gpu.getVkDevice();

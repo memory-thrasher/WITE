@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Vulkan.hpp"
+#include "SyncLock.hpp"
 
 namespace WITE::GPU {
 
@@ -10,6 +11,7 @@ namespace WITE::GPU {
   class VRam {
   private:
     vk::DeviceMemory mem;
+    Util::SyncLock mmapLock;
     VRam(vk::MemoryRequirements mr, uint8_t type, Gpu*);
     friend class Gpu;
   public:

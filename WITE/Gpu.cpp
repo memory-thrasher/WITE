@@ -197,6 +197,8 @@ namespace WITE::GPU {
   bool Gpu::running;
   char Gpu::appName[1024];
 
+  Gpu::Gpu() {};//init dummy
+
   Gpu::Gpu(size_t idx, vk::PhysicalDevice pv) : idx(idx), pv(pv) {
     pv.getProperties2(&pvp);
     uint32_t cnt = 0;
@@ -311,7 +313,7 @@ namespace WITE::GPU {
     dci.ppEnabledExtensionNames = deviceExtensions.data();
     VK_ASSERT(pv.createDevice(&dci, ALLOCCB, &dev), "Failed to create device");
 
-    queues = std::unique_ptr<Queue[]>(calloc<Queue>(cnt));
+    queues = std::make_unique<Queue[]>(cnt);
     for(size_t i = 0;i < cnt;i++)
       new(&queues[i])Queue(this, dqcis[i], qfp[dqcis[i].queueFamilyIndex].p.queueFamilyProperties);
     this->graphics = &queues[go];
@@ -369,6 +371,9 @@ namespace WITE::GPU {
 
   void Gpu::shutdown() {
     running = false;
+    LOG("Shutting down gpu workers");
+    WorkBatch::joinPromiseThreads();
+    LOG("All gpu workers exited");
   };
 
   void Gpu::init(size_t logicalDeviceCount, const float* priorities, const char* appName,
@@ -399,7 +404,7 @@ namespace WITE::GPU {
     uint32_t cnt = MAX_GPUS;
     vk::PhysicalDevice pds[MAX_GPUS];
     VK_ASSERT(vkInstance.enumeratePhysicalDevices(&cnt, pds), "Failed to enumerate gpus");
-    gpus = std::unique_ptr<Gpu[]>(calloc<Gpu>(cnt));
+    gpus = std::make_unique<Gpu[]>(cnt);
     for(size_t i = 0;i < cnt;i++)
       new(&gpus[i])Gpu(i, pds[i]);
     gpuCount = cnt;

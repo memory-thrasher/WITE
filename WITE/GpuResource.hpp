@@ -92,6 +92,7 @@ namespace WITE::GPU {
     struct imageData_t {
       size_t w, h, z;
       constexpr imageData_t(size_t w, size_t h, size_t z) : w(w), h(h), z(z) {};
+      usage_t additionalFormatUsage;//for images that have to be copied to/from other images
     };
     union {
       imageData_t imageData;
@@ -101,6 +102,9 @@ namespace WITE::GPU {
     constexpr GpuResourceInitData(imageData_t d) : imageData(d) {};
     constexpr GpuResourceInitData(size_t l) : GpuResourceInitData(bufferData_t(l)) {};
     constexpr GpuResourceInitData(size_t w, size_t h, size_t z = 1) : GpuResourceInitData(imageData_t(w, h, z)) {};
+    constexpr GpuResourceInitData(const GpuResourceInitData& grid, usage_t format) : GpuResourceInitData(grid) {
+      imageData.additionalFormatUsage = format;
+    };
     constexpr ~GpuResourceInitData() = default;
   };
 
@@ -123,6 +127,14 @@ namespace WITE::GPU {
       }
       return ret;
     };
+    constexpr logicalDeviceMask_t getLDM() const {
+      logicalDeviceMask_t ret;
+      switch(type) {
+      case GpuResourceType::eImage: ret = imageData.logicalDeviceMask; break;
+      case GpuResourceType::eBuffer: ret = bufferData.logicalDeviceMask; break;
+      }
+      return ret;
+    };
     constexpr GpuResourceSlotInfo mutateUsage(usage_t add, usage_t remove = 0) const {
       GpuResourceSlotInfo ret = *this;
       switch(type) {
@@ -133,7 +145,9 @@ namespace WITE::GPU {
     };
     constexpr inline GpuResourceSlotInfo stagingResourceSlot() const {
       //replace usage with those flags needed to move data in and out for staging
-      return mutateUsage(GpuResource::USAGE_TRANSFER | GpuResource::MUSAGE_ANY_HOST, ~0);
+      //turns out there might not be a format that supports staging and is copyable, so just use a buffer
+      // return mutateUsage(GpuResource::USAGE_TRANSFER | GpuResource::MUSAGE_ANY_HOST, ~0);
+      return GpuResourceSlotInfo(BufferSlotData(getLDM(), GpuResource::USAGE_TRANSFER | GpuResource::MUSAGE_ANY_HOST));
     };
     constexpr inline GpuResourceSlotInfo externallyStagedResourceSlot() const {
       //remove host access flags, add transfer flag, because transfer will be used to copy to/from staging

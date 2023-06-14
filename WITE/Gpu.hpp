@@ -68,6 +68,7 @@ namespace WITE::GPU {
     static inline const char* getAppName() { return appName; };
     static inline auto getVkInstance() { return vkInstance; };
 
+    Gpu();//dummy for array init
     inline size_t getIndex() { return idx; };
     vk::Device getVkDevice() { return dev; };//vkHandle is an opaque handle
     Queue* getQueue(QueueType qt);

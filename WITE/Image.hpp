@@ -48,7 +48,8 @@ namespace WITE::GPU {
     const bool transfersRequired;//if this image is to be transferred from it's device: ie if it's used by multiple phys devs
 
     static inline auto getBestImageFormat(const ImageSlotData isd) {
-      return Gpu::getBestImageFormat(isd.components, isd.componentsSize, isd.usage, isd.logicalDeviceMask, isd.shouldBeLinear());
+      return Gpu::getBestImageFormat(isd.components, isd.componentsSize, isd.usage | isd.externalUsage,
+				     isd.logicalDeviceMask, isd.shouldBeLinear());
     };
 
     virtual ~ImageBase() = default;
@@ -69,15 +70,19 @@ namespace WITE::GPU {
     inline vk::Extent3D getVkSize3D() { return { w, h, z }; };
     vk::ImageAspectFlags getAspects();
     vk::ImageSubresourceRange getAllInclusiveSubresource();
-    
+
     void populateDSWrite(vk::WriteDescriptorSet* out, size_t gpuIdx) override;
     void ensureExists(size_t gpu);
     size_t getMemSize(size_t gpu);
+    size_t getMaxMemSize();
+    inline void read(void* data, size_t len, size_t gpu) { mem.getRef(gpu).read(data, len); };
+    inline void write(void* data, size_t len, size_t gpu) { mem.getRef(gpu).write(data, len); };
   };
 
   //MIP and SAM might be less than requested if the platform does not support it
   template<ImageSlotData ISD> class Image : public ImageBase {
   public:
+    static constexpr ImageSlotData SLOT_DATA = ISD;
     Image(const GpuResourceInitData grid) : ImageBase(ISD, grid) {};
     Image(const Image<ISD>& i) : ImageBase(i) {};
     ~Image() override = default;

@@ -92,10 +92,10 @@ namespace WITE::GPU {
   void Window::drawImpl(ImageBase* img) {
     WorkBatch cmd(presentQueue);
     ASSERT_TRAP(swapCI.imageExtent == img->getVkSize(), "NYI: rendering image of different size than window");
-    queuedRenders++;
+    swapchain_mutex.WaitForLock(true);
     cmd.present(img, swapImages.get(), swap)
       .then([this](){
-	queuedRenders--;
+	swapchain_mutex.ReleaseLock();//this happens before the present actually happens, but after an image is acquired
       })
       .submit();
   };

@@ -15,10 +15,12 @@ namespace WITE::GPU {
     //TODO views? (requires texel buffer, so probably belongs in a subclass)
     PerGpu<vk::Buffer> buffers;
     PerGpu<vk::DescriptorBufferInfo> accessors;
-    PerGpu<std::unique_ptr<VRam>> mem;
+    PerGpu<VRam> mem;
 
     void makeBuffer(vk::Buffer*, size_t gpu);
     static void destroyBuffer(vk::Buffer*, size_t gpu);
+
+    friend class WorkBatch;
   public:
     const BufferSlotData slotData;
     const bool transfersRequired;//if this buffer is to be transferred from it's device: ie if it's used by multiple phys devs
@@ -29,9 +31,13 @@ namespace WITE::GPU {
     virtual ~BufferBase() = default;
     vk::Buffer getVkBuffer(size_t gpuIdx);
     void getCreateInfo(Gpu& gpu, vk::BufferCreateInfo* out);
+    vk::MemoryPropertyFlags getMemFlags();
     void populateDSWrite(vk::WriteDescriptorSet* out, size_t gpuIdx) override;
     inline size_t getSize() const { return size; };//TODO dynamic size?
-    template<class T> inline void write(const T* data, size_t tCnt, size_t gpu) { mem.getRef(gpu)->write(data, tCnt); };
+    inline void read(void* data, size_t len, size_t gpu) { mem.getRef(gpu).read(data, len); };
+    template<class T> inline void read(const T* data, size_t tCnt, size_t gpu) { mem.getRef(gpu).read(data, tCnt); };
+    inline void write(void* data, size_t len, size_t gpu) { mem.getRef(gpu).write(data, len); };
+    template<class T> inline void write(const T* data, size_t tCnt, size_t gpu) { mem.getRef(gpu).write(data, tCnt); };
     template<class T> inline void write(const T* data, size_t tCnt, logicalDeviceMask_t ldm) {
       for(size_t dev : Gpu::gpusForLdm(ldm))
 	write(data, tCnt, dev);

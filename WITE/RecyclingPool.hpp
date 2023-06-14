@@ -29,6 +29,7 @@ namespace WITE::Collections {
       T* ret;
       if(available.size()) {
 	ret = available.top();
+	available.pop();
       } else {
 	ret = &store.emplace_back();
       }
@@ -61,6 +62,7 @@ namespace WITE::Collections {
       T* ret;
       if(available.size()) {
 	ret = available.top();
+	available.pop();
       } else {
 	ret = &store.emplace_back();
       }

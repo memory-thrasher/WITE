@@ -34,8 +34,10 @@ namespace WITE::GPU {
       resources_t::template where<ATTACHMENT_IMAGES>();
     static constexpr Collections::CopyableArray<vk::ImageLayout, attachmentCount> attachmentInitialLayouts =
       [](size_t i)consteval{
-	return (DATA.resources[attachmentIndexes[i]].imageData.externalUsage & GpuResource::USAGE_HOST_WRITE) ?
-	  vk::ImageLayout::ePreinitialized : vk::ImageLayout::eUndefined;
+	// return (DATA.resources[attachmentIndexes[i]].imageData.externalUsage & GpuResource::USAGE_HOST_WRITE) ?
+	//   vk::ImageLayout::ePreinitialized : vk::ImageLayout::eUndefined;
+	return (DATA.resources[attachmentIndexes[i]].imageData.usage & GpuResource::USAGE_ATT_DEPTH) ?
+	  vk::ImageLayout::eDepthStencilAttachmentOptimal : vk::ImageLayout::eColorAttachmentOptimal;
       };
     static constexpr Collections::CopyableArray<vk::AttachmentDescription2, attachmentCount> attachmentDescriptionsDefault =
       [](size_t i)consteval{
@@ -49,7 +51,7 @@ namespace WITE::GPU {
 	  .setStoreOp(extUsage ? vk::AttachmentStoreOp::eStore : vk::AttachmentStoreOp::eDontCare)
 	  .setStencilLoadOp(preInit ? vk::AttachmentLoadOp::eLoad : vk::AttachmentLoadOp::eClear)
 	  .setStencilStoreOp(extUsage ? vk::AttachmentStoreOp::eStore : vk::AttachmentStoreOp::eDontCare)
-	  .setInitialLayout(attachmentInitialLayouts[i]).setFinalLayout(vk::ImageLayout::eTransferSrcOptimal);
+	  .setInitialLayout(attachmentInitialLayouts[i]).setFinalLayout(attachmentInitialLayouts[i]);
       };
 
     struct SubpassDescriptionStorage {
@@ -128,8 +130,8 @@ namespace WITE::GPU {
     fbs_t fbs;
     Util::FrameSwappedResource<Collections::CopyableArray<ImageBase*, attachmentCount>> attachments =
       resources.template createIndex<ImageBase*, ATTACHMENT_IMAGES>();
-    Collections::CopyableArray<ImageBase*, attachmentCount> attachmentStagings =
-      resources.template indexStagings<ImageBase*, ATTACHMENT_IMAGES>();
+    Collections::CopyableArray<BufferBase*, attachmentCount> attachmentStagings =
+      resources.template indexStagings<BufferBase*, ATTACHMENT_IMAGES>();//stagings are always buffers
     Collections::CopyableArray<void*, attachmentCount> attachmentHostRams;
     Collections::CopyableArray<vk::AttachmentDescription2, attachmentCount> attachmentDescriptions =
       attachmentDescriptionsDefault;
@@ -151,6 +153,7 @@ namespace WITE::GPU {
       for(size_t i = 0;i < 2;i++) {
 	fbci.setPAttachments(ret[i].views);
 	VK_ASSERT(vkgpu.createFramebuffer(&fbci, ALLOCCB, &ret[i].fb), "Failed to create framebuffer");
+	LOG("Created framebuffer ", ret[i].fb, " with images views ", fbci.pAttachments[0], ", ", fbci.pAttachments[1]);
       }
       *out = new Util::FrameSwappedResource<fb_t>(ret);
     };
@@ -179,7 +182,7 @@ namespace WITE::GPU {
       };
       out->resourceCount = attachmentCount;
       static_assert(attachmentCount <= MAX_RESOURCES);
-      cpy(out->resources, attachments.getRead().ptr(), attachmentCount);
+      cpy(out->resources, attachments.getWrite().ptr(), attachmentCount);
 #ifdef DEBUG
       for(size_t i = 0;i < attachmentCount;i++)
 	ASSERT_TRAP(out->resources[i], "null attachment");

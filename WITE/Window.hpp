@@ -25,7 +25,7 @@ namespace WITE::GPU {
     std::unique_ptr<vk::Image[]> swapImages;
     uint32_t swapImageCount;
     void drawImpl(ImageBase* img);
-    std::atomic_uint64_t queuedRenders;
+    Util::SyncLock swapchain_mutex;
   public:
     static void addInstanceExtensionsTo(std::vector<const char*>& extensions);
     static Util::IntBox3D getScreenBounds(size_t idx = 0);
@@ -39,10 +39,6 @@ namespace WITE::GPU {
       //TODO overloads that allow: multi-sample resolution, cubemap cropping, 3D image intersection etc as needed
       return ISD.dimensions == 2 && ISD.samples == 1 && (ISD.usage | ISD.externalUsage) & GpuResource::USAGE_TRANSFER &&
 	ISD.components >= 3;
-    };
-
-    uint64_t queueDepth() {
-      return queuedRenders;
     };
 
     //NOTE: Image's instance on this gpu MUST be in transfer_src layout. Generally called by RenderTarget.

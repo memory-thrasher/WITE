@@ -6,6 +6,7 @@
 #include "DBEntity.hpp"
 #include "DynamicRollingQueue.hpp"
 #include "LinkedList.hpp"
+#include "StdExtensions.hpp"
 
 #include <map>
 

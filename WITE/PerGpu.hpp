@@ -10,7 +10,7 @@ namespace WITE::GPU {
   //T should always be a trivial and tiny. If that's not the case just make T be a pointer
   template<class T> requires std::is_constructible_v<T> class PerGpu {
   public:
-    static_assert(sizeof(T) <= 4096);
+    static_assert(sizeof(T) <= 512);
     typedefCB(creator_t, void, T*, size_t);
     typedefCB(destroyer_t, void, T*, size_t);
     typedef T value_t;

@@ -54,6 +54,7 @@ namespace WITE::Util {
     inline T& getRead() { return get(1); };
     inline Collections::CopyableArray<T, N>& all() { return data; };
     inline const Collections::CopyableArray<const T, N>& call() const { return data; };
+    inline T& getWriteForFrame(size_t frame) { return data[frame % N]; };
 
   };
 

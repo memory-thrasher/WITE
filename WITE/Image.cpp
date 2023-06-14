@@ -1,6 +1,7 @@
 #include "Image.hpp"
 #include "Gpu.hpp"
 #include "VulkanConverters.hpp"
+#include "FrameCounter.hpp"
 
 namespace WITE::GPU {
 
@@ -115,6 +116,7 @@ namespace WITE::GPU {
 	aspectMaskForUsage(slotData.usage), 0, slotData.mipLevels, 0, slotData.arrayLayers } };
     vk::ImageView ret;
     VK_ASSERT(vkDev.createImageView(&ivci, ALLOCCB, &ret), "Failed to create image view");
+    // LOG("Made image view ", ret, " for image ", ivci.image);
     return ret;
   };
 
@@ -157,6 +159,7 @@ namespace WITE::GPU {
     di.pImageMemoryBarriers = &mb;
     di.imageMemoryBarrierCount = 1;
     wb.pipelineBarrier2(&di);
+    // LOG("Image ", mb.image, " now in layout ", (int)gnu->layout, " on frame ", WITE::Util::FrameCounter::getFrame());
   };
 
   vk::ImageAspectFlags ImageBase::getAspects() {
@@ -188,6 +191,13 @@ namespace WITE::GPU {
   size_t ImageBase::getMemSize(size_t gpu) {
     ensureExists(gpu);
     return mem.getRef(gpu).mai.allocationSize;
-  }
+  };
+
+  size_t ImageBase::getMaxMemSize() {
+    size_t ret = 0;
+    for(auto gpu : Gpu::gpusForLdm(slotData.logicalDeviceMask))
+      ret = std::max(ret, getMemSize(gpu));
+    return ret;
+  };
 
 }

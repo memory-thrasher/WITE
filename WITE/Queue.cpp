@@ -5,6 +5,8 @@
 
 namespace WITE::GPU {
 
+  Queue::Queue() : family(0) {};//dummy
+
   Queue::Queue(Gpu* gpu, const struct vk::DeviceQueueCreateInfo& ci, vk::QueueFamilyProperties& qfp) :
     gpu(gpu),
     queueInstanceCount(ci.queueCount),
@@ -49,7 +51,9 @@ namespace WITE::GPU {
     if(!*ret) {
       vk::CommandBufferAllocateInfo ai { ptr->pool, vk::CommandBufferLevel::ePrimary, 1 };
       VK_ASSERT(gpu->getVkDevice().allocateCommandBuffers(&ai, ret.cmd), "failed to allocate command buffer");
+      // LOG("Allocated new cmd ", *ret);
     } else {
+      // LOG("Allocated recycled cmd ", *ret);
       ret->reset({});
     }
     vk::CommandBufferBeginInfo bi { vk::CommandBufferUsageFlagBits::eOneTimeSubmit };
@@ -58,6 +62,7 @@ namespace WITE::GPU {
   };
 
   void Queue::free(cmd_t cmd) {
+    // LOG("Freed cmd ", *cmd);
     pools.get()->cmdPool.free(cmd.cmd);
   };
 

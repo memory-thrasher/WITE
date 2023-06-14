@@ -22,11 +22,11 @@ namespace WITE::GPU {
   };
 
   template<GpuResourceSlotInfo SLOT> struct TripletBacking {
-    typedef gpuResource_t<SLOT.stagingResourceSlot()> staging_t;
-    staging_t staging = {};
     typedef gpuResource_t<SLOT.externallyStagedResourceSlot()> T;
     Util::FrameSwappedResource<T, 2> swapper;
-    TripletBacking(GpuResourceInitData grid) : staging(grid), swapper(grid) {};
+    typedef gpuResource_t<SLOT.stagingResourceSlot()> staging_t;
+    staging_t staging = {};
+    TripletBacking(GpuResourceInitData grid) : swapper(grid), staging(swapper.get(0).getMaxMemSize()) {};
   };
 
   template<Collections::LiteralList<GpuResourceSlotInfo> SLOTS, size_t L = SLOTS.len> struct BackingTuple {

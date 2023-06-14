@@ -4,7 +4,7 @@
 
 #include "AdvancedSyncLock.hpp"
 #include "Callback.hpp"
-#include "Semaphore.hpp"
+#include "PooledSemaphore.hpp"
 #include "Vulkan.hpp"
 #include "BalancingThreadResourcePool.hpp"
 #include "IterableBalancingThreadResourcePool.hpp"
@@ -46,7 +46,7 @@ namespace WITE::GPU {
       Queue* q;
       cmd_t cmd;
       vk::Fence* fence;//if populated, wait fence after cpu but before gpu
-      Semaphore completeSem;
+      SharedSemaphore completeSem;
       Work() = default;
     };
 
@@ -56,11 +56,13 @@ namespace WITE::GPU {
       uint64_t cycle;
       std::vector<Work> steps;
       std::vector<WorkBatch> prerequisits;//, waiters;//waiters get tested and potentailly triggered when this work is done
+      //TODO ^ make prereqs a lifo stack and pop them when done
       std::vector<vk::SemaphoreSubmitInfo> waitedSemsStaging, signalSemsStaging;
       std::vector<vk::CommandBufferSubmitInfo> cmdStaging;
       uint64_t step;
       renderInfo currentRP;
       bool isRecordingRP;
+      uint64_t startFrame;
 
       inline bool canRecord();
       Work& getCurrent();
@@ -76,8 +78,10 @@ namespace WITE::GPU {
     };
 
     static Collections::IterableBalancingThreadResourcePool<WorkBatchResources> allBatches;
-    static void checkWorkerLoop();
+    static void checkWorkerLoop(uint32_t idx);
     static PerGpuUP<Collections::BalancingThreadResourcePool<vk::Fence>> fences;
+    static uint32_t promiseThreads[PROMISE_THREAD_COUNT];
+    static std::atomic_bool promiseThreadsRunning[PROMISE_THREAD_COUNT];
 
     WorkBatchResources* batch;
     uint64_t cycle;
@@ -105,11 +109,14 @@ namespace WITE::GPU {
     WorkBatch(const WorkBatch&) = default;
 
     static void init();
+    static void joinPromiseThreads();
 
     WorkBatch then(thenCB);
     WorkBatch thenOnGpu(size_t gpuIdx, thenCB = NULL);
     WorkBatch thenOnAGpu(logicalDeviceMask_t ldm);
     WorkBatch submit();//begins execution. Some or all may be blocking/synchronous.
+    inline uint64_t getFrame() { return get()->startFrame; };
+    inline void setFrame(uint64_t f) { get()->startFrame = f; };
     vk::Fence useFence();
     void mustHappenAfter(WorkBatch& p);
     bool isDone() const;//done, null, and recording hasn't started are the same thing
@@ -147,14 +154,20 @@ namespace WITE::GPU {
 				vk::PipelineStageFlags2 = vk::PipelineStageFlagBits2::eAllCommands);
 
     //static multi-batch helpers
-    static void batchDistributeAcrossLdm(size_t srcGpu, size_t cnt, ImageBase** srcs, ImageBase** stagings, void** ram);//stagings may be null or single elements may be null
+    static void batchDistributeAcrossLdm(size_t srcGpu, size_t cnt, ImageBase** srcs, BufferBase** stagings, void** ram);//stagings may be null or single elements may be null
 
     WorkBatch& pipelineBarrier2(vk::DependencyInfo* di);
     WorkBatch& beginRenderPass(const renderInfo*);
     WorkBatch& endRenderPass();
     WorkBatch& copyImage(ImageBase*, ImageBase*);//only on the current gpu like everything else, though each image can conatine multiple vk images each on a different gpu
+    WorkBatch& copyImage(ImageBase*, BufferBase*);
+    WorkBatch& copyImage(BufferBase*, ImageBase*);
     WorkBatch& copyImageToVk(ImageBase*, vk::Image, vk::ImageLayout);//mostly for swapchains
     // WorkBatch& copyImageToDev(Image<ISD>, size_t sgpu, size_t dgpu);
+    WorkBatch& readImage(ImageBase*, void*);
+    WorkBatch& writeImage(ImageBase*, void*);
+    WorkBatch& readBuffer(BufferBase*, void*);
+    WorkBatch& writeBuffer(BufferBase*, void*);
     WorkBatch& present(ImageBase*, vk::Image* swapImages, vk::SwapchainKHR swap);
     WorkBatch& bindDescriptorSets(vk::PipelineBindPoint pipelineBindPoint, vk::PipelineLayout layout,
 				  uint32_t firstSet, uint32_t descriptorSetCount, const vk::DescriptorSet* pDescriptorSets,

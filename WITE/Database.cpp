@@ -150,6 +150,7 @@ namespace WITE::DB {
       signalThreads(DBThread::state_updated, DBThread::state_maintaining, DBThread::state_maintained);
       if(anyThreadBroke() || shuttingDown) {
 	stop();
+	LOG("main thread returning from db start");
 	break;
       }
       currentFrame++;
@@ -163,11 +164,13 @@ namespace WITE::DB {
   }
 
   void Database::shutdown() {
+    LOG("shutdown requested");
     shuttingDown = true;
   }
 
   void Database::stop() {
     shuttingDown = true;
+    LOG("stop requested");
     for(size_t i = 0;i < DB_THREAD_COUNT;i++)
       threads[i].join();
   }

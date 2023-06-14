@@ -57,9 +57,14 @@ namespace WITE::GPU {
     VK_ASSERT(vkDev.createBuffer(&ci, ALLOCCB, ret), "Failed to create buffer");
     vk::MemoryRequirements mr;
     vkDev.getBufferMemoryRequirements(*ret, &mr);
-    VRam* vram = mem.getRef(gpuIdx).get();
-    gpu.allocate(mr, (vk::MemoryPropertyFlags)0, vram);
+    VRam* vram = mem.getPtr(gpuIdx);
+    gpu.allocate(mr, getMemFlags(), vram);
     vkDev.bindBufferMemory(*ret, *vram, 0);
+  };
+
+  vk::MemoryPropertyFlags BufferBase::getMemFlags() {
+    const auto usage = slotData.usage;
+    return (usage & MUSAGE_ANY_HOST) ? vk::MemoryPropertyFlagBits::eHostVisible : (vk::MemoryPropertyFlags)0;
   };
 
   vk::Buffer BufferBase::getVkBuffer(size_t gpuIdx) {
@@ -67,7 +72,8 @@ namespace WITE::GPU {
   };
 
   void BufferBase::destroyBuffer(vk::Buffer* d, size_t gpu) {//static
-    Gpu::get(gpu).getVkDevice().destroyBuffer(*d);
+    if(Gpu::running)
+      Gpu::get(gpu).getVkDevice().destroyBuffer(*d);
   };
 
   void BufferBase::populateDSWrite(vk::WriteDescriptorSet* out, size_t gpuIdx) {//note: texel buffers have a different type struct

@@ -19,6 +19,10 @@ namespace WITE::GPU {
     StateSynchronizer(S initial, changeState c) : state(initial), change(c) {};
     StateSynchronizer() {};//allocation dummy
 
+    void addConsumer(WorkBatch& batch) {
+      batch.mustHappenAfter(providingCurrentState);
+    }
+
     void inState(S s, WorkBatch& batch) {
       Util::ScopeLock l(&lock);
       if(providingCurrentState == batch) {
@@ -45,30 +49,31 @@ namespace WITE::GPU {
       }
     };
 
-    //for things like render pass completion that have side-effects on things like layout. Returns old state
-    S onExternalChange(S s, WorkBatch batch) {
-      Util::ScopeLock l(&lock);
-      S old = state;
-      if(providingCurrentState == batch) {
-	state = s;
-	return old;
-      }
-      if(!firstUse) [[likely]]
-	batch.mustHappenAfter(providingCurrentState);
-      else
-	firstUse = false;
-      if(s == state) {
-	if(!Collections::contains(usingCurrentState, batch))
-	  usingCurrentState.push_back(batch);
-      } else {
-	state = s;
-	for(WorkBatch& consumer : usingCurrentState)
-	  batch.mustHappenAfter(consumer);
-	providingCurrentState = batch;
-	usingCurrentState.clear();
-      }
-      return old;
-    };
+    // //for things like render pass completion that have side-effects on things like layout. Returns old state
+    // S onExternalChange(S s, WorkBatch batch) {
+    //   LOG("Image ? now in layout ", (int)s.layout, " on frame ", WITE::Util::FrameCounter::getFrame());
+    //   Util::ScopeLock l(&lock);
+    //   S old = state;
+    //   if(providingCurrentState == batch) {
+    // 	state = s;
+    // 	return old;
+    //   }
+    //   if(!firstUse) [[likely]]
+    // 	batch.mustHappenAfter(providingCurrentState);
+    //   else
+    // 	firstUse = false;
+    //   if(s == state) {
+    // 	if(!Collections::contains(usingCurrentState, batch))
+    // 	  usingCurrentState.push_back(batch);
+    //   } else {
+    // 	state = s;
+    // 	for(WorkBatch& consumer : usingCurrentState)
+    // 	  batch.mustHappenAfter(consumer);
+    // 	providingCurrentState = batch;
+    // 	usingCurrentState.clear();
+    //   }
+    //   return old;
+    // };
 
     S get() {
       Util::ScopeLock l(&lock);

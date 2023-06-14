@@ -4,6 +4,7 @@
 #include "Callback.hpp"
 #include "StdExtensions.hpp"
 #include "constants.hpp"
+#include "DEBUG.hpp"
 
 namespace WITE::Platform {
 
@@ -42,6 +43,7 @@ namespace WITE::Platform {
     }
     T* get();
     T* get(uint32_t tid) {
+      ASSERT_TRAP(tid < MAX_THREADS, "threaded resource overflow");
       if(typeInit && !data[tid]) {
 	Util::ScopeLock contextHold(&lock);
         if(typeInit && !data[tid])
@@ -50,6 +52,7 @@ namespace WITE::Platform {
       return data[tid];
     }
     T* getIfExists(size_t tid) {
+      ASSERT_TRAP(tid < MAX_THREADS, "threaded resource overflow");
       return data[tid];
     }
     size_t listAll(Tentry* out, size_t maxOut) {

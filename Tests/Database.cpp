@@ -17,7 +17,8 @@ std::atomic_uint64_t allocated, deallocated, spunUp, spunDown, skipped;
 
 WITE::Platform::ThreadResource<size_t> hitCounters;
 
-#define FRAME_COUNT 500
+//#define FRAME_COUNT 500
+#define FRAME_COUNT 10
 
 class timebomb_t {
 private:

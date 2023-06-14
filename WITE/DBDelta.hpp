@@ -1,8 +1,9 @@
 #pragma once
 
-#include "DBRecord.hpp"
-
 #include <ostream>
+
+#include "DBRecord.hpp"
+#include "StdExtensions.hpp"
 
 namespace WITE::DB {
 

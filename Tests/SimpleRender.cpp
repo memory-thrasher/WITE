@@ -103,17 +103,19 @@ private:
   };
 public:
   static void onUpdate(DBRecord* data, DBEntity* dbe) {
-    if(transient->window.queueDepth() > 5) return;//basic frame skipping
     Database* db = dbe->getDb();
     auto dbf = db->getFrame();
     camera_t dis;
     dbe->completeRead(&dis, data);
-    dis.frameCounter++;
+    auto frame = dis.frameCounter++;
     dbe->write(&dis);
     if(dbf >= FRAME_COUNT) db->shutdown();
     transient->canvas.render({});
-    auto* lastData = transient->canvas.getRead<0>();//0 = index of color attachment within resource list above
-    transient->window.draw(lastData);
+    //always present what was rendered last frame, so don't render the first frame
+    if(frame > 0) {
+      auto* lastData = transient->canvas.getRead<0>();//0 = index of color attachment within resource list above
+      transient->window.draw(lastData);
+    }
   };
   static void onSpinUp(DBEntity* dbe) {
     dbe->transientData = new transients();
@@ -134,12 +136,15 @@ const char* hw = "Hello World";
 char out[200];
 
 int main (int argc, char** argv) {
+  Platform::Thread::init();
   float p = 1;
   Gpu::init(1, &p, "Test: Simple Render", {}, {});
   Database* db = new Database(types, sizeof(types)/sizeof(types[0]), 100);
   assert(db->allocate(camera_t::et));
   assert(db->allocate(pyramid_t::et));
   db->start();
+  Gpu::shutdown();
   delete db;
+  LOG("db deleted, exiting");
 }
 

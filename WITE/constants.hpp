@@ -35,6 +35,10 @@
 
 static_assert(GENERATED_THREAD_COUNT + 1 < MAX_THREADS);//+1 for main
 
+#define CONCAT1(a, b) a ## b
+#define CONCAT(a, b) CONCAT1(a, b)
+#define UNIQUENAME(prefix) CONCAT(prefix, __LINE__)
+
 namespace WITE {
 
 };

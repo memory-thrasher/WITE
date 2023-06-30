@@ -193,11 +193,11 @@ namespace WITE::GPU {
     };
 
     void renderQueued(WorkBatch cmd) override {
-      size_t gpu = cmd.getGpuIdx();
-      if(!attachmentHostRams[0])
-	for(size_t i = 0;i < attachmentCount;i++)
-	  attachmentHostRams[i] = malloc(attachments.getWrite()[i]->getMemSize(gpu));
-      WorkBatch::batchDistributeAcrossLdm(gpu, attachmentCount, attachments.getWrite().ptr(), attachmentStagings.ptr(), attachmentHostRams.ptr());
+      // size_t gpu = cmd.getGpuIdx();
+      // if(!attachmentHostRams[0])
+      // 	for(size_t i = 0;i < attachmentCount;i++)
+      // 	  attachmentHostRams[i] = malloc(attachments.getWrite()[i]->getMemSize(gpu));
+      // WorkBatch::batchDistributeAcrossLdm(gpu, attachmentCount, attachments.getWrite().ptr(), attachmentStagings.ptr(), attachmentHostRams.ptr());
     };
 
     static constexpr Collections::CopyableArray<vk::ClearValue, attachmentCount> defaultClears =

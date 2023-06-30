@@ -5,6 +5,7 @@
 #include "Shader.hpp"
 #include "Thread.hpp"
 #include "FrameCounter.hpp"
+#include "Profiler.hpp"
 
 namespace WITE::GPU {
 
@@ -23,6 +24,7 @@ namespace WITE::GPU {
   };
 
   void RenderTarget::render(std::initializer_list<RenderableBase*> except) {
+    PROFILEME;
     lastRendered = Util::FrameCounter::getFrame();
     auto steps = getRenderSteps();
     WorkBatch cmd(ldm);

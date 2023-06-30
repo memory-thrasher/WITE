@@ -443,6 +443,12 @@ namespace WITE::GPU {
 	for(size_t i = 0;i < cnt;i++)
 	  if(stagings[i])
 	    srcCmd.copyImage(srcs[i], stagings[i]);
+
+      //with ram copy: 500 frames = 2:34, without it: 0:38
+      //22 seconds without staging
+      // srcCmd.submit();
+      // return;
+
       srcCmd.then([srcGpu, cnt, ram, srcs, stagings]() {
 	for(size_t i = 0;i < cnt;i++)
 	  if(stagings && stagings[i])

@@ -9,6 +9,7 @@
 #include "../WITE/Window.hpp"
 #include "../WITE/BackedRenderTarget.hpp"
 #include "../WITE/StaticMeshRenderable.hpp"
+#include "../WITE/Profiler.hpp"
 
 //include the compiled shader code which was outputted as a header in the build dir before c++ code gets compiled.
 #include "basicShader.frag.spv.h"
@@ -75,6 +76,7 @@ private:
 public:
   glm::dmat4 transform;
   static void onUpdate(DBRecord* data, DBEntity* dbe) {
+    PROFILEME;
     pyramid_t dis;
     dbe->completeRead(&dis, data);
     glm::rotate(dis.transform, glm::radians(1.0), glm::dvec3(0, 0, 1));
@@ -82,9 +84,11 @@ public:
     dbe->write(&dis);
   };
   static void onSpinUp(DBEntity* dbe) {
+    PROFILEME;
     dbe->transientData = new transients();
   };
   static void onSpinDown(DBEntity* dbe) {
+    PROFILEME;
     delete transient;
   };
   static constexpr struct entity_type et = entity_type::makeFrom<pyramid_t>(1);
@@ -103,6 +107,7 @@ private:
   };
 public:
   static void onUpdate(DBRecord* data, DBEntity* dbe) {
+    PROFILEME;
     Database* db = dbe->getDb();
     auto dbf = db->getFrame();
     camera_t dis;
@@ -118,9 +123,11 @@ public:
     }
   };
   static void onSpinUp(DBEntity* dbe) {
+    PROFILEME;
     dbe->transientData = new transients();
   };
   static void onSpinDown(DBEntity* dbe) {
+    PROFILEME;
     delete transient;
   };
   static constexpr struct entity_type et = entity_type::makeFrom<camera_t>(2);
@@ -146,5 +153,7 @@ int main (int argc, char** argv) {
   Gpu::shutdown();
   delete db;
   LOG("db deleted, exiting");
+  WITE::Platform::Thread::sleep(2000);
+  WITE::Util::Profiler::printProfileData();
 }
 

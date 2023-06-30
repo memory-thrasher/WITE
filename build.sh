@@ -6,7 +6,7 @@ if [ -n "$vk_lib_path" ]; then
     PATH="$vk_lib_path:$PATH"
 fi;
 LINKOPTS="-L${vk_lib_path} -lrt -latomic -lvulkan -lSDL2"
-BOTHOPTS="-pthread -DDEBUG -g"
+BOTHOPTS="-pthread -DDEBUG -DDO_PROFILE -g"
 BASEDIR="$(cd "$(dirname "$0")"; pwd -L)"
 OUTDIR="${BASEDIR}/build" #TODO not just WITE but all subdirs
 LOGFILE="${OUTDIR}/buildlog.txt"

@@ -4,6 +4,7 @@
 #include "Queue.hpp"
 #include "Math.hpp"
 #include "WorkBatch.hpp"
+#include "Profiler.hpp"
 
 namespace WITE::GPU {
 
@@ -90,13 +91,16 @@ namespace WITE::GPU {
   };
 
   void Window::drawImpl(ImageBase* img) {
+    PROFILEME;
     WorkBatch cmd(presentQueue);
     ASSERT_TRAP(swapCI.imageExtent == img->getVkSize(), "NYI: rendering image of different size than window");
-    swapchain_mutex.WaitForLock(true);
+    PROFILEME;
+    //swapchain_mutex.WaitForLock(true);
+    PROFILEME;
     cmd.present(img, swapImages.get(), swap)
-      .then([this](){
-	swapchain_mutex.ReleaseLock();//this happens before the present actually happens, but after an image is acquired
-      })
+      // .then([this](){
+      // 	swapchain_mutex.ReleaseLock();//this happens before the present actually happens, but after an image is acquired
+      // })
       .submit();
   };
 

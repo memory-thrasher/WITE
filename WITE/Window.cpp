@@ -95,12 +95,12 @@ namespace WITE::GPU {
     WorkBatch cmd(presentQueue);
     ASSERT_TRAP(swapCI.imageExtent == img->getVkSize(), "NYI: rendering image of different size than window");
     PROFILEME;
-    //swapchain_mutex.WaitForLock(true);
+    swapchain_mutex.WaitForLock(true);
     PROFILEME;
     cmd.present(img, swapImages.get(), swap)
-      // .then([this](){
-      // 	swapchain_mutex.ReleaseLock();//this happens before the present actually happens, but after an image is acquired
-      // })
+      .then([this](){
+	swapchain_mutex.ReleaseLock();//this happens before the present actually happens, but after an image is acquired
+      })
       .submit();
   };
 

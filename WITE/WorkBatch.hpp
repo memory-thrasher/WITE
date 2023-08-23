@@ -2,18 +2,84 @@
 
 #include <vector>
 
-#include "AdvancedSyncLock.hpp"
-#include "Callback.hpp"
-#include "PooledSemaphore.hpp"
+// #include "AdvancedSyncLock.hpp"
+// #include "Callback.hpp"
+// #include "PooledSemaphore.hpp"
 #include "Vulkan.hpp"
-#include "BalancingThreadResourcePool.hpp"
-#include "IterableBalancingThreadResourcePool.hpp"
-#include "types.hpp"
-#include "PerGpu.hpp"
-#include "constants.hpp"
-#include "Buffer.hpp"
+// #include "BalancingThreadResourcePool.hpp"
+// #include "IterableBalancingThreadResourcePool.hpp"
+// #include "types.hpp"
+// #include "PerGpu.hpp"
+// #include "constants.hpp"
+// #include "Buffer.hpp"
 
 namespace WITE::GPU {
+
+  class WorkBatch {
+  private:
+
+    typedef uint64_t flag_t;
+
+    static constexpr flag_t flag_onCmd = 1,
+      flag_queueTyped = 2;
+    static constexpr uint32_t state_empty = 0,
+      state_recording = 1,
+      state_running = 2;
+
+    struct stepType_t {
+
+      uint64_t id;
+      QueueType qt;
+      flag_t flags;
+
+    };
+
+    static constexpr stepType_t imageBarrier { __LINE__, {}, flag_onCmd },
+      waitForFence { __LINE__, {}, 0 },
+      waitForSemaphore { __LINE__, {}, flag_onCmd },
+      signalSemaphore { __LINE__, {}, flag_onCmd };
+
+    struct step_t { //a single thing, often a single command to be recorded to a buffer
+      const stepType_t* type;
+      Gpu* gpu;
+      union {
+	vk::Fence fenceWait;
+	SemaphorePointInTime sem;
+	//
+      };
+    };
+
+    struct cmd_t {
+      Gpu* gpu;
+      vk::CommandBuffer cmd;
+    };
+
+    struct prereq_t {
+      WorkBatch batch;
+      size_t stepIdx;
+    };
+
+    struct batch {
+      static constexpr size_t MAX_PREREQS = 256, MAX_STEPS = 128, MAX_CMDS = 16;
+      cmd_t cmd[MAX_CMDS];
+      size_t cmds, currentCmd;
+      std::unique_ptr<step_t[MAX_STEPS]> steps;
+      size_t stepCount;
+      std::unique_ptr<WorkBatch[MAX_PREREQS]> prereqs;
+      size_t prereqCount;
+      std::atomic_uint32_t state;
+
+      batch() : steps(std::make_unique<step[MAX_STEPS]>()), prereqs(std::make_unique<batch*[MAX_PREREQS]>()) {};
+      ~batch() = default;
+      void reset();
+      void append();
+
+    };
+
+  public:
+  };
+
+  //========================================================================================================================================================================================================
 
   class ImageBase;
   class Queue;

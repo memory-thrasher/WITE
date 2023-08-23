@@ -21,4 +21,8 @@ namespace WITE::GPU {
     semaphore = NULL;
   };
 
+  void SemaphorePointInTime::create(size_t g) {
+    sem = makeSharedSemaphore(g);
+  };
+
 }

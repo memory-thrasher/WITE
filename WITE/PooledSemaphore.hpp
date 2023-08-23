@@ -27,4 +27,12 @@ namespace WITE::GPU {
 
 #define makeSharedSemaphore(g) std::make_shared<WITE::GPU::PooledSemaphore>(g);
 
+  struct SemaphorePointInTime {
+    SharedSemaphore sem;
+    uint64_t value;
+    inline bool pending() { return sem && sem->get()->getCurrentValue() < value; };
+    inline bool reached() { return sem && sem->get()->getCurrentValue() >= value; };
+    void create(size_t gpuIdx);
+  };
+
 };

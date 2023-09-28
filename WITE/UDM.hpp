@@ -1,39 +1,111 @@
 //uniform data model
 
-#include "OversizedCopyableArray.hpp"
+#include "CopyableArray.hpp"
+#include "LiteralList.hpp"
+#include "Vulkan.hpp"
 
-namespace WITE {
+namespace WITE::Export {
 
-  // enum class dataType : uint8_t {
-  //   integer, floating, fixed;
-  // };
+  typedef LiteralList<vk::Format> udm;//for vertexes and uniform buffers etc
 
-  // struct field {
-  //   bool isSigned;
-  //   uint8_t bits;
-  //   dataType type;
-  //   uint32_t cnt;
-  // };
+  enum class Format : vk::Format {
+    eR8int = Vk::Format::eR8_SINT,
+    eR8uint = vk::Format::eR8_UINT,
+    eR16int = vk::Format::eR16_SINT,
+    eR16uint = vk::Format::eR16_UINT,
+    eR32int = vk::Format::eR32_SINT,
+    eR32uint = vk::Format::eR32_UINT,
+    eR32float = vk::Format::eR32_SFLOAT,
+    eR64int = vk::Format::eR64_SINT,
+    eR64uint = vk::Format::eR64_UINT,
+    eR64float = vk::Format::eR64_SFLOAT,
 
-  typedef LiteralList<field> udm;//for vertexes and uniform buffers etc
+    eRG8int = vk::Format::eR8G8_SINT,
+    eRG8uint = vk::Format::eR8G8_UINT,
+    eRG16int = vk::Format::eR16G16_SINT,
+    eRG16uint = vk::Format::eR16G16_UINT,
+    eRG32int = vk::Format::eR32G32_SINT,
+    eRG32uint = vk::Format::eR32G32_UINT,
+    eRG32float = vk::Format::eR32G32_SFLOAT,
+    eRG64int = vk::Format::eR64G64_SINT,
+    eRG64uint = vk::Format::eR64G64_UINT,
+    eRG64float = vk::Format::eR64G64_SFLOAT,
 
-  #error TODO replace this with the vulkan constants VK_FORMAT_R32G32etc
+    eRGB8int = vk::Format::eR8G8B8_SINT,
+    eRGB8uint = vk::Format::eR8G8B8_UINT,
+    eRGB16int = vk::Format::eR16G16B16_SINT,
+    eRGB16uint = vk::Format::eR16G16B16_UINT,
+    eRGB32int = vk::Format::eR32G32B32_SINT,
+    eRGB32uint = vk::Format::eR32G32B32_UINT,
+    eRGB32float = vk::Format::eR32G32B32_SFLOAT,
+    eRGB64int = vk::Format::eR64G64B64_SINT,
+    eRGB64uint = vk::Format::eR64G64B64_UINT,
+    eRGB64float = vk::Format::eR64G64B64_SFLOAT,
 
-  // template<bool isSigned, uint8_t bits, dataType type> struct fieldTypeFor {};
+    eRGBA8int = vk::Format::eR8G8B8A8_SINT,
+    eRGBA8uint = vk::Format::eR8G8B8A8_UINT,
+    eRGBA16int = vk::Format::eR16G16B16A16_SINT,
+    eRGBA16uint = vk::Format::eR16G16B16A16_UINT,
+    eRGBA32int = vk::Format::eR32G32B32A32_SINT,
+    eRGBA32uint = vk::Format::eR32G32B32A32_UINT,
+    eRGBA32float = vk::Format::eR32G32B32A32_SFLOAT,
+    eRGBA64int = vk::Format::eR64G64B64A64_SINT,
+    eRGBA64uint = vk::Format::eR64G64B64A64_UINT,
+    eRGBA64float = vk::Format::eR64G64B64A64_SFLOAT
+  }
 
-  // template<> struct fieldTypeFor<true, 8, dataType.integer> { typedef int8_t type; };
-  // template<> struct fieldTypeFor<true, 16, dataType.integer> { typedef int16_t type; };
-  // template<> struct fieldTypeFor<true, 32, dataType.integer> { typedef int32_t type; };
-  // template<> struct fieldTypeFor<true, 64, dataType.integer> { typedef int64_t type; };
-  // template<> struct fieldTypeFor<false, 8, dataType.integer> { typedef uint8_t type; };
-  // template<> struct fieldTypeFor<false, 16, dataType.integer> { typedef uint16_t type; };
-  // template<> struct fieldTypeFor<false, 32, dataType.integer> { typedef uint32_t type; };
-  // template<> struct fieldTypeFor<false, 64, dataType.integer> { typedef uint64_t type; };
-  // template<> struct fieldTypeFor<true, 32, dataType.floating> { typedef float type; };
-  // template<> struct fieldTypeFor<true, 64, dataType.floating> { typedef double type; };
+#define defineUDM(NOM, ...) defineLiteralListScalar(vk::Format, NOM, __VA_ARGS__)
 
-  template<field F> struct fieldFor {
-    typedef fieldTypeFor<F.isSigned, F.bits, F.type>::type[F.cnt] type;
+  defineUDM(
+
+  template<vk::Format> struct fieldTypeFor {}; //unsupported format for accessible data mapping
+
+  template<> struct fieldTypeFor<vk::Format::eR8_SINT> { typedef int8_t type; constexpr uint8_t qty = 1; };
+  template<> struct fieldTypeFor<vk::Format::eR8_UINT> { typedef uint8_t type; constexpr uint8_t qty = 1; };
+  template<> struct fieldTypeFor<vk::Format::eR16_SINT> { typedef int16_t type; constexpr uint8_t qty = 1; };
+  template<> struct fieldTypeFor<vk::Format::eR16_UINT> { typedef uint16_t type; constexpr uint8_t qty = 1; };
+  template<> struct fieldTypeFor<vk::Format::eR32_SINT> { typedef int32_t type; constexpr uint8_t qty = 1; };
+  template<> struct fieldTypeFor<vk::Format::eR32_UINT> { typedef uint32_t type; constexpr uint8_t qty = 1; };
+  template<> struct fieldTypeFor<vk::Format::eR32_SFLOAT> { typedef float type; constexpr uint8_t qty = 1; };
+  template<> struct fieldTypeFor<vk::Format::eR64_SINT> { typedef int64_t type; constexpr uint8_t qty = 1; };
+  template<> struct fieldTypeFor<vk::Format::eR64_UINT> { typedef uint64_t type; constexpr uint8_t qty = 1; };
+  template<> struct fieldTypeFor<vk::Format::eR64_SFLOAT> { typedef float type; constexpr uint8_t qty = 1; };
+
+  template<> struct fieldTypeFor<vk::Format::eR8G8_SINT> { typedef int8_t type; constexpr uint8_t qty = 2; };
+  template<> struct fieldTypeFor<vk::Format::eR8G8_UINT> { typedef uint8_t type; constexpr uint8_t qty = 2; };
+  template<> struct fieldTypeFor<vk::Format::eR16G16_SINT> { typedef int16_t type; constexpr uint8_t qty = 2; };
+  template<> struct fieldTypeFor<vk::Format::eR16G16_UINT> { typedef uint16_t type; constexpr uint8_t qty = 2; };
+  template<> struct fieldTypeFor<vk::Format::eR32G32_SINT> { typedef int32_t type; constexpr uint8_t qty = 2; };
+  template<> struct fieldTypeFor<vk::Format::eR32G32_UINT> { typedef uint32_t type; constexpr uint8_t qty = 2; };
+  template<> struct fieldTypeFor<vk::Format::eR32G32_SFLOAT> { typedef float type; constexpr uint8_t qty = 2; };
+  template<> struct fieldTypeFor<vk::Format::eR64G64_SINT> { typedef int64_t type; constexpr uint8_t qty = 2; };
+  template<> struct fieldTypeFor<vk::Format::eR64G64_UINT> { typedef uint64_t type; constexpr uint8_t qty = 2; };
+  template<> struct fieldTypeFor<vk::Format::eR64G64_SFLOAT> { typedef float type; constexpr uint8_t qty = 2; };
+
+  template<> struct fieldTypeFor<vk::Format::eR8G8B8_SINT> { typedef int8_t type; constexpr uint8_t qty = 3; };
+  template<> struct fieldTypeFor<vk::Format::eR8G8B8_UINT> { typedef uint8_t type; constexpr uint8_t qty = 3; };
+  template<> struct fieldTypeFor<vk::Format::eR16G16B16_SINT> { typedef int16_t type; constexpr uint8_t qty = 3; };
+  template<> struct fieldTypeFor<vk::Format::eR16G16B16_UINT> { typedef uint16_t type; constexpr uint8_t qty = 3; };
+  template<> struct fieldTypeFor<vk::Format::eR32G32B32_SINT> { typedef int32_t type; constexpr uint8_t qty = 3; };
+  template<> struct fieldTypeFor<vk::Format::eR32G32B32_UINT> { typedef uint32_t type; constexpr uint8_t qty = 3; };
+  template<> struct fieldTypeFor<vk::Format::eR32G32B32_SFLOAT> { typedef float type; constexpr uint8_t qty = 3; };
+  template<> struct fieldTypeFor<vk::Format::eR64G64B64_SINT> { typedef int64_t type; constexpr uint8_t qty = 3; };
+  template<> struct fieldTypeFor<vk::Format::eR64G64B64_UINT> { typedef uint64_t type; constexpr uint8_t qty = 3; };
+  template<> struct fieldTypeFor<vk::Format::eR64G64B64_SFLOAT> { typedef float type; constexpr uint8_t qty = 3; };
+
+  template<> struct fieldTypeFor<vk::Format::eR8G8B8A8_SINT> { typedef int8_t type; constexpr uint8_t qty = 4; };
+  template<> struct fieldTypeFor<vk::Format::eR8G8B8A8_UINT> { typedef uint8_t type; constexpr uint8_t qty = 4; };
+  template<> struct fieldTypeFor<vk::Format::eR16G16B16A16_SINT> { typedef int16_t type; constexpr uint8_t qty = 4; };
+  template<> struct fieldTypeFor<vk::Format::eR16G16B16A16_UINT> { typedef uint16_t type; constexpr uint8_t qty = 4; };
+  template<> struct fieldTypeFor<vk::Format::eR32G32B32A32_SINT> { typedef int32_t type; constexpr uint8_t qty = 4; };
+  template<> struct fieldTypeFor<vk::Format::eR32G32B32A32_UINT> { typedef uint32_t type; constexpr uint8_t qty = 4; };
+  template<> struct fieldTypeFor<vk::Format::eR32G32B32A32_SFLOAT> { typedef float type; constexpr uint8_t qty = 4; };
+  template<> struct fieldTypeFor<vk::Format::eR64G64B64A64_SINT> { typedef int64_t type; constexpr uint8_t qty = 4; };
+  template<> struct fieldTypeFor<vk::Format::eR64G64B64A64_UINT> { typedef uint64_t type; constexpr uint8_t qty = 4; };
+  template<> struct fieldTypeFor<vk::Format::eR64G64B64A64_SFLOAT> { typedef float type; constexpr uint8_t qty = 4; };
+
+  template<vk::Format F> struct fieldFor {
+    typedef fieldTypeFor<F>::type[fieldTypeFor<F>::qty] type;
   };
 
   //tuple-like struct that matches the given description, which can also be mapped to a verted buffer

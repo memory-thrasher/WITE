@@ -30,7 +30,7 @@ fi
 find "${OUTDIR}" -type f -iname '*.o' -print0 |
     while IFS= read -d '' OFILE; do
 	find $BUILDLIBS $BUILDAPP $BUILDTESTS -type f -iname "$(basename "${OFILE%.*}.cpp")" | grep -q . ||
-	    rm "${OFILE}" 2>/devnull;
+	    rm "${OFILE}" 2>/dev/null;
     done;
 
 #compile shaders first (so they can be imported as strings if desired)

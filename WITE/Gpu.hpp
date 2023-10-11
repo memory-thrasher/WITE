@@ -4,7 +4,6 @@
 #include <memory>
 #include <atomic>
 
-#include "GpuResource.hpp"
 #include "Queue.hpp"
 #include "Vulkan.hpp"
 #include "types.hpp"
@@ -12,6 +11,8 @@
 #include "BitmaskIterator.hpp"
 
 namespace WITE::GPU {
+
+  #error TODO remove ldm and logical gpu
 
   class Gpu {
   private:

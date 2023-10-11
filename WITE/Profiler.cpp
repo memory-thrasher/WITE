@@ -44,9 +44,9 @@ namespace WITE::Util {
     }
     printf("%100s:\t\ttotal: %15lu\texecutions: %15lu\taverage: %15lu\n",
 	   "Profiling overhead",
-	   allProfileMutexTime.load(),
+	   allProfilesMutexTime.load(),
 	   allProfilesExecutions.load(),
-	   allProfileMutexTime.load() / allProfilesExecutions.load());
+	   allProfilesMutexTime.load() / allProfilesExecutions.load());
   };
 
   Profiler::Profiler(hash_t hash, const char* filename, const char* funcname, uint64_t linenum, const char* message) :
@@ -69,9 +69,9 @@ namespace WITE::Util {
     }
     pd->executions++;
     pd->totalTimeNs += endTime - startTime;
-    allProfilesExecutions++
+    allProfilesExecutions++;
     postEnd = getNs();
-    allProfilesMutexTime += postEnd - endTime;;
+    allProfilesMutexTime += postEnd - endTime;
   };
 
 }

@@ -75,4 +75,7 @@ namespace WITE::Collections {
 
   };
 
+  template<typename T> struct CopyableArray<T, 0> {
+  };
+
 };

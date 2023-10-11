@@ -47,25 +47,27 @@ namespace WITE::Util {
   inline bool sameSize(IntBox3D& o) { return o.maxx - o.minx == maxx - minx && o.maxy - o.miny == maxy - miny && o.maxz - o.minz == maxz - minz; };
   };
 
-  template<class T, class Compare = std::less<T>> inline T clamp(T t, T min, T max) {
+  template<class T, class Compare = std::less<T>> inline T constexpr clamp(T t, T min, T max) {
     Compare lt;
     return lt(t, max) ? lt(min, t) ? t : min : max;
   };
 
-  template<class T, class U, class Compare = std::less<T>> inline T min(T a, U b) {
+  template<class T, class U, class Compare = std::less<T>> constexpr inline T min(T a, U b) {
     return Compare()(a, b) ? a : T(b);
   };
 
-  template<class T, class U, class V, class Compare = std::less<T>, class... WX> inline T min(T a, U b, V c, WX... more) {
+  template<class T, class U, class V, class Compare = std::less<T>, class... WX>
+  constexpr inline T min(T a, U b, V c, WX... more) {
     U bx = min<U, V, Compare, WX...>(b, c, std::forward<WX>(more)...);
     return min<T, U, Compare>(a, bx);
   };
   
-  template<class T, class U, class Compare = std::less<T>> inline T max(T a, U b) {
+  template<class T, class U, class Compare = std::less<T>> constexpr inline T max(T a, U b) {
     return Compare()(a, b) ? T(b) : a;
   };
 
-  template<class T, class U, class V, class Compare = std::less<T>, class... WX> inline T max(T a, U b, V c, WX... more) {
+  template<class T, class U, class V, class Compare = std::less<T>, class... WX>
+  constexpr inline T max(T a, U b, V c, WX... more) {
     U bx = max<U, V, Compare, WX...>(b, c, std::forward<WX>(more)...);
     return max<T, U, Compare>(a, bx);
   };

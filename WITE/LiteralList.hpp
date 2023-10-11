@@ -19,7 +19,7 @@ namespace WITE::Collections {
     size_t len;//maybe < data->length() if this is a sub-list
 
     constexpr size_t count() const { return len; };
-    constexpr LiteralList() = default;
+    constexpr LiteralList() : data(NULL), len(0) {};
     constexpr LiteralList(const LiteralList<T>& o) = default;
     consteval LiteralList(const T* data, const size_t len) : data(data), len(len) {};
     template<size_t LEN> consteval LiteralList(const CopyableArray<T, LEN>& o, size_t len) : LiteralList((const T*)o, len) {};

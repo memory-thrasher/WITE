@@ -76,15 +76,15 @@ constexpr shaderTargetInstanceLayout standardTarget = {
 int main(int argc, char** argv) {
   auto camera = onion.createTarget<standardTarget>();
   auto cube = onion.createSource<simpleShader.id>();
-  buffer<onion_t.shaderUniformBufferRequirements_v<simpleShader.id, standardTransformData.id>> cubeTransBuffer;
+  buffer<onion_t::shaderUniformBufferRequirements_v<simpleShader.id, standardTransformData.id>> cubeTransBuffer;
   cube.setUniformBuffer<standardTransformData.id>(&cubeTransBuffer);
-  buffer<onion_t.shaderVertexBufferRequirements_v<simpleShader.id, standardVertBufferLayout.id>> cubeVerts;
+  buffer<onion_t::shaderVertexBufferRequirements_v<simpleShader.id, standardVertBufferLayout.id>> cubeVerts;
   cube.setVertexBuffer<standardVertBufferLayout.id>(&cubeVerts);
-  buffer<onion_t.targetUniformBufferRequirements_v<standardTarget, standardTransformData.id>> cameraTransBuffer;
+  buffer<onion_t::targetUniformBufferRequirements_v<standardTarget, standardTransformData.id>> cameraTransBuffer;
   camera.setUniformBuffer<standardTransformData.id>(&cameraTransBuffer);
-  window<onion_t.getWindowRequirements<standardColor.id>> w;
+  window<onion_t::getWindowRequirements<standardColor.id>> w;
   camera.setAttachment<standardColor.id>(&w);
-  image<onion_t.targetAttachmentRequirements_v<standardTarget, standardDepth.id>> cameraDepth;
+  image<onion_t::targetAttachmentRequirements_v<standardTarget, standardDepth.id>> cameraDepth;
   camera.setAttachment<standardDepth.id>(&cameraDepth);
   cubeTransBuffer.set(glm::mat4d::identity);//TODO find real name for dmat4 identity
   cameraTransBuffer.set(glm::mat4d::identity);//TODO MATH

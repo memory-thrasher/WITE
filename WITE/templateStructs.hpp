@@ -53,4 +53,18 @@ namespace WITE {
 #define defineUniformBufferSlots(NOM, ...) defineLiteralList(shaderUniformBufferSlot, NOM, __VA_ARGS__)
 #define defineImageSlots(NOM, ...) defineLiteralList(shaderImageSlot, NOM, __VA_ARGS__)
 
+  struct imageRequirements {
+    enum class wflag { cube = 1 };//add more as needed
+    struct flowStep {
+      shader* shader;//can be null for non-shader layout transitions
+      uint64_t shaderStep;//index of subpass within the whold shader when the new layout must begin
+      vk::ImageLayout layout;
+    };
+    vk::ImageUsageFlags usage;
+    LiteralList<flowStep> flow;
+    uint8_t dimensions = 2, frameswapCount = 1;
+    uint16_t wflags;
+    uint32_t arrayLayers = 1, mipLevels = 1;
+  };
+
 }

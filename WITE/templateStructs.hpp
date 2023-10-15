@@ -13,19 +13,28 @@ namespace WITE {
 
   struct shaderUniformBufferSlot {
     uint64_t id;
-    vk::ShaderStageFlags readStages, writeStages;
+    vk::PipelineStageFlagBits2 readStages, writeStages;
     uint8_t frameswapCount = 1;
   };
+
+  typedef uint16_t imageFlags_t;
+  enum class imageFlags_e : imageFlags_t {//bitmask
+    eCube = 1,
+    e3DIs2DArray = 2,
+    eHostVisible = 4
+  };//add more as needed
 
   struct shaderImageSlot {//used for both attachments and descriptors
     uint64_t id;
     vk::Format format;
-    vk::ShaderStageFlags readStages, writeStages;//stage flags for sampled and storage only, not attachments
-    uint8_t frameswapCount = 1;
+    vk::PipelineStageFlagBits2 readStages, writeStages;//stage flags for sampled and storage only, not attachments
+    uint8_t dimensions = 2, frameswapCount = 1;
+    imageFlags_t imageFlags;
+    uint32_t arrayLayers = 1, mipLevels = 1;//arraylayers is a hint to the image creation but is not a hard slot requirement
   };
 
   struct shaderTargetLayout {
-    LiteralList<shaderVertexBufferSlot> vertexBuffers, indexBuffers;
+    LiteralList<shaderVertexBufferSlot> vertexBuffers, instanceBuffers;
     LiteralList<shaderUniformBufferSlot> uniformBuffers;
     LiteralList<shaderImageSlot> sampled, attachments;
   };
@@ -42,10 +51,13 @@ namespace WITE {
   struct shader {
     uint64_t id;
     LiteralList<shaderModule> modules;
-    shaderTargetLinkage targetLink;
-    LiteralList<shaderVertexBufferSlot> vertexBuffers, indexBuffers;
+    shaderTargetLinkage const targetLink;
+    //the remaining fields describe data that will be provided by the source (object being drawn)
+    shaderVertexBufferSlot const* vertexBuffer;
+    shaderVertexBufferSlot const* instanceBuffer;
     LiteralList<shaderUniformBufferSlot> uniformBuffers;
-    LiteralList<shaderImageSlot> sampled, attachments;
+    //TODO indexBuffer
+    LiteralList<shaderImageSlot> sampled;
   };
 
 #define defineShaderModules(NOM, ...) defineLiteralList(shaderModule, NOM, __VA_ARGS__)
@@ -54,17 +66,20 @@ namespace WITE {
 #define defineImageSlots(NOM, ...) defineLiteralList(shaderImageSlot, NOM, __VA_ARGS__)
 
   struct imageRequirements {
-    enum class wflag { cube = 1 };//add more as needed
     struct flowStep {
-      shader* shader;//can be null for non-shader layout transitions
-      uint64_t shaderStep;//index of subpass within the whold shader when the new layout must begin
+      uint64_t onionId,
+	shaderId;
       vk::ImageLayout layout;
+      vk::PipelineStageFlagBits2 stages;
+      vk::AccessFlags2 access;
     };
+    uint64_t deviceId;
     vk::ImageUsageFlags usage;
     LiteralList<flowStep> flow;
-    uint8_t dimensions = 2, frameswapCount = 1;
-    uint16_t wflags;
+    uint8_t dimensions = 2, frameswapCount = 0;
+    imageFlags_t imageFlags;
     uint32_t arrayLayers = 1, mipLevels = 1;
   };
 
 }
+

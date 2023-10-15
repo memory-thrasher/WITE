@@ -33,6 +33,7 @@ namespace WITE::Collections {
     constexpr inline const T& operator[](int i) const { return data[i]; };
     consteval inline const LiteralList sub(size_t start, size_t len) const { return { data+start, len }; };
     consteval inline const LiteralList sub(size_t start) const { return { data+start, len-start }; };
+    constexpr operator bool() const { return len; };
 
     // template<typename P> constexpr inline auto where(P p) {
     //   return std::ranges::views::filter(data, p);

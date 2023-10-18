@@ -2,7 +2,7 @@
 
 #include "SyncLock.hpp"
 #include "Callback.hpp"
-#include "StdExtensions.hpp"
+#include "stdExtensions.hpp"
 #include "constants.hpp"
 #include "DEBUG.hpp"
 

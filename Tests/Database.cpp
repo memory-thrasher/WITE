@@ -78,13 +78,13 @@ size_t sum(const size_t& a, const size_t& b) {
 
 int main (int argc, char** argv) {
   assert(types[1].onUpdate);
-  assert(WITE::Util::min(20, 200) == 20);
+  assert(WITE::min(20, 200) == 20);
   //set up absolute timeout so if the db hangs, the test can eventually exit.
   //Linux kernel makes this real easy for it's own benefit. TODO this might need help on other platforms
   if(argc < 2) {
     struct rlimit rlim;
     getrlimit(RLIMIT_CPU, &rlim);
-    rlim.rlim_max = WITE::Util::min<uint64_t, uint64_t>(3600, rlim.rlim_max);
+    rlim.rlim_max = WITE::min<uint64_t, uint64_t>(3600, rlim.rlim_max);
     rlim.rlim_cur = rlim.rlim_max - 5;
     setrlimit(RLIMIT_CPU, &rlim);
     getrlimit(RLIMIT_CPU, &rlim);

@@ -1,33 +1,62 @@
+#pragma once
+
+#include <vector>
+
+#include "templateStructs.hpp"
+#include "math.hpp"
+
+namespace vk {
+  template <> struct FlagTraits<WITE::imageFlags_e> {
+    static constexpr bool             isBitmask = true;
+    static constexpr WITE::imageFlags_t allFlags = WITE::imageFlags_e::eCube | WITE::imageFlags_e::e3DIs2DArray |
+      WITE::imageFlags_e::eHostVisible;
+  };
+}
+
 namespace WITE {
 
-  template<size_t FLOW_COUNT> struct packagedImageRequirements {
+  constexpr uint64_t NONE = ~0;
 
-    CopyableArray<imageRequirements::flowStep, FLOW_COUNT> flow;
-    imageRequirements requirements;
+  template<size_t STEP_COUNT> struct imageFlow {
 
-    template<typename T>
-    constexpr packagedImageRequirements(T flows, const imageRequirements& ir) : flow(flows), requirements(ir) {
-      requirements.flow = flow;
+    typedef copyableArray<imageRequirements::flowStep, STEP_COUNT> flow_t;
+
+    flow_t flow;
+
+    template<class T> consteval imageFlow(T t) : flow(t) {};
+    consteval imageFlow(imageRequirements::flowStep s) : flow(s) {};
+    consteval imageFlow(const imageFlow<STEP_COUNT>& o) = default;
+
+    consteval operator flow_t() const noexcept {
+      return flow;
     };
 
-    constexpr operator imageRequirements() const noexcept {
-      return requirements;
+    consteval operator literalList<imageRequirements::flowStep>() const {
+      return flow;
     };
 
-    //TODO finish when needed
+    template<size_t OST> consteval imageFlow<STEP_COUNT+OST> then(imageFlow<OST> o) const {
+      return flow + o.flow;
+    };
+
+    template<size_t OST> consteval imageFlow<STEP_COUNT+OST> operator+(imageFlow<OST> o) const {
+      return then(o);
+    };
 
   };
 
   //note: this does not create a flow
   consteval imageRequirements requirementsForSlot(const shaderImageSlot& sis) {
-    imageRequirements ret;
+    imageRequirements ret {
+      .format = sis.format,
+      .dimensions = sis.dimensions,
+      .frameswapCount = sis.frameswapCount,
+      .imageFlags = sis.imageFlags,
+      .arrayLayers = sis.arrayLayers,
+      .mipLevels = sis.mipLevels
+    };
     if(sis.writeStages) ret.usage |= vk::ImageUsageFlagBits::eStorage;
     if(sis.readStages) ret.usage |= vk::ImageUsageFlagBits::eSampled;
-    ret.frameswapCount = sis.frameswapCount;
-    ret.mipLevels = sis.mipLevels;
-    ret.dimensions = sis.dimensions;
-    ret.arrayLayers = sis.arrayLayers;
-    ret.imageFlags |= sis.imageFlags;
     return ret;
   };
 
@@ -44,40 +73,43 @@ namespace WITE {
     ASSERT_CONSTEXPR((~ir.imageFlags & imageFlags_e::e3DIs2DArray) || (ir.dimensions == 3));
   };
 
-  //imageRequirements is NOT a bitmask. & means union, as in "find criteria that will satisfy both these sets of criteria"
-  consteval imageRequirements operator&(const imageRequirements& l, const imageRequirements& r) {
-    if(l.frameswapCount == 0) return r;//l is not initialized, assume this is the first match in a compounding operation
-    ASSERT_CONSTEXPR(l.format == r.format);
+  consteval imageRequirements& operator&=(imageRequirements& l, const imageRequirements& r) {
+    if(l.format == vk::Format::eUndefined) l.format = r.format;
+    ASSERT_CONSTEXPR(l.format == r.format || r.format == vk::Format::eUndefined);
+    if(l.frameswapCount == 0) l.frameswapCount = r.frameswapCount;
     ASSERT_CONSTEXPR(l.frameswapCount == r.frameswapCount);
+    if(l.mipLevels == 0) l.mipLevels = r.mipLevels;
     ASSERT_CONSTEXPR(l.mipLevels == r.mipLevels);
+    if(l.deviceId == NONE) l.deviceId = r.deviceId;
     ASSERT_CONSTEXPR(l.deviceId == r.deviceId);
-    uint32_t arrayLayers;
-    uint8_t dimensions;
+    if(!l.flow) l.flow = r.flow;
     if(min(l.dimensions, r.dimensions) == 2 && max(l.dimensions, r.dimensions) == 3) {
       //special case: a 3D image can be used as an array of 2D images. In no case may a 3D image have >1 array layer.
-      dimensions = 3;
-      arrayLayers = 1;
+      l.dimensions = 3;
+      l.arrayLayers = 1;
+    } else if(l.dimensions == 0) {
+      l.dimensions = r.dimensions;
     } else {
-      ASSERT_CONSTEXPR(l.dimensions == r.dimensions);
-      dimensions = l.dimensions;
-      arrayLayers = max(l.arrayLayers, r.arrayLayers);
+      ASSERT_CONSTEXPR(l.dimensions == r.dimensions || r.dimensions == 0);
+      l.arrayLayers = max(l.arrayLayers, r.arrayLayers);
     }
-    return {
-      .deviceId = l.deviceId,
-      .usage = r.usage | l.usage,
-      .dimensions = dimensions,
-      .framewswapCount = l.frameswapCount,
-      .imageFlags = r.imageFlags | l.imageFlags,
-      .arrayLayers = arrayLayers,
-      .mipLevels = l.mipLevels
-    };
+    l.usage |= r.usage;
+    l.imageFlags |= r.imageFlags;
+    return l;
   };
 
-  consteval auto getImageFlow(uint64_t id, uint64_t onionId, const LiteralList<shader>& shaders) {
-    std::vector<imageRequirements.flowStep> ret;
+  //imageRequirements is NOT a bitmask. & means union, as in "find criteria that will satisfy both these sets of criteria"
+  consteval imageRequirements operator&(const imageRequirements& l, const imageRequirements& r) {
+    imageRequirements ret { l };
+    ret &= r;
+    return ret;
+  };
+
+  consteval auto getImageFlow(uint64_t id, uint64_t onionId, const literalList<shader> shaders) {
+    std::vector<imageRequirements::flowStep> ret;
     for(uint64_t sid = 0;sid < shaders.len;sid++) {
       vk::ImageLayout layout = vk::ImageLayout::eUndefined;
-      vk::PipelineStageFlagBits2 stages;
+      vk::PipelineStageFlags2 stages;
       vk::AccessFlags2 access;
       const shader& s = shaders[sid];
       //MAYBE assert no buffer use? Or implicitly create a texel buffer?
@@ -86,9 +118,12 @@ namespace WITE {
 	  if(layout != vk::ImageLayout::eGeneral)
 	    layout = sis.writeStages ? vk::ImageLayout::eGeneral : vk::ImageLayout::eReadOnlyOptimal;
 	  stages |= sis.readStages | sis.writeStages;
-	  access |= sis.writeStages ?
-	    (vk::AccessFlagBits2::eShaderStorageWrite | (sis.readStages ? vk::AccessFlagBits2::eShaderStorageRead : 0)) :
-	    vk::AccessFlagBits2::eShaderSampledRead;
+	  if(sis.writeStages) {
+	    access |= vk::AccessFlagBits2::eShaderStorageWrite;
+	    if(sis.readStages)
+	      access |= vk::AccessFlagBits2::eShaderStorageRead;
+	  } else
+	    access |= vk::AccessFlagBits2::eShaderSampledRead;
 	}
       }
       if(s.targetLink.depthStencil == id) {
@@ -108,7 +143,7 @@ namespace WITE {
 	ret[ret.size()-1].stages |= stages;
 	continue;
       }
-      ret.emplace_back({
+      ret.emplace_back(imageRequirements::flowStep{
 	  .onionId = onionId,
 	  .shaderId = sid,
 	  .layout = layout,
@@ -119,9 +154,17 @@ namespace WITE {
     return ret;
   };
 
-  consteval auto getImageRequirements<uint64_t id, uint64_t onionId, const LiteralList<shader>& shaders, uint64_t gpuId>() {
-    imageRequirements ret;
-    bool initialized = false;
+  template<uint64_t id, uint64_t onionId, const literalList<shader> shaders>
+  consteval size_t getImageFlowSize() {
+    return getImageFlow(id, onionId, shaders).size();
+  };
+
+  template<uint64_t id, const literalList<shader> shaders, uint64_t gpuId>
+  consteval imageRequirements getImageRequirements(literalList<imageRequirements::flowStep> flow) {
+    imageRequirements ret {
+      .deviceId = gpuId,
+      .flow = flow
+    };
     for(const shader& s : shaders) {
       for(const shaderImageSlot& sis : s.sampled)
 	if(sis.id == id)
@@ -129,25 +172,28 @@ namespace WITE {
       if(s.targetLink.depthStencil == id) ret.usage |= vk::ImageUsageFlagBits::eDepthStencilAttachment;
       if(s.targetLink.color == id) ret.usage |= vk::ImageUsageFlagBits::eColorAttachment;
     }
-    return packedImageRequirements<getImageFlow(id, onionId, shaders)> { getImageFlow(id, ONION_ID, S), ret };
+    return ret;
   };
 
   consteval auto getDefaultCI(imageRequirements r) {
     assertValid(r);
-    vk::ImageCreateInfo ret {
-      .imageType = (vk::ImageType)(r.dimensions-1),//yes, I'm that lazy
-      .format = r.format,
-      .mipLevels = r.mipLevels,
-      .arrayLayers = r.arrayLayers,
-      .samples = vk::SampleCountFlagBits::e1,
-      //TODO complicate "hostVisible" with automatic staging zone
-      .tiling = (r.imageFlags & imageFlags_e::hostVisible) ? vk::ImageTiling::eLinear : vk::ImageTiling::eOptimal,
-      .usage = r.usage,
-      .sharingMode = vk::SharingMode::eExclusive;
-    };
+    vk::ImageCreateInfo ret;
+    ret.setImageType((vk::ImageType)(r.dimensions-1))//yes, I'm that lazy
+      .setFormat(r.format)
+      .setMipLevels(r.mipLevels)
+      .setArrayLayers(r.arrayLayers)
+      .setSamples(vk::SampleCountFlagBits::e1)
+      .setTiling((r.imageFlags & imageFlags_e::eHostVisible) ? vk::ImageTiling::eLinear : vk::ImageTiling::eOptimal)
+      .setUsage(r.usage)
+      .setSharingMode(vk::SharingMode::eExclusive);
     if(r.imageFlags & imageFlags_e::eCube) ret.flags |= vk::ImageCreateFlagBits::eCubeCompatible;
     if(r.imageFlags & imageFlags_e::e3DIs2DArray) ret.flags |= vk::ImageCreateFlagBits::e2DArrayCompatible;
     return ret;
+  };
+
+  consteval imageRequirements reflow(imageRequirements r, literalList<imageRequirements::flowStep> nflow) {
+    r.flow = nflow;
+    return r;
   };
 
 }

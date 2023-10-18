@@ -2,13 +2,13 @@
 
 #include "Concepts.hpp"
 
-namespace WITE::Collections {
+namespace WITE {
 
   /*
     array-like object that can be returned by a constexpr function that does NOT require T to be default-constructible.
     T must be copy-constructible
    */
-  template<typename T, size_t LEN> struct CopyableArray {
+  template<typename T, size_t LEN> struct copyableArray {
     template<typename L> struct Generator {
       L l;
       constexpr Generator(const L l) : l(l) {};
@@ -31,34 +31,34 @@ namespace WITE::Collections {
 
     std::array<T, LEN> data;
 
-    constexpr CopyableArray() = default;
-    template<indexable_to<T> S, size_t... I> constexpr CopyableArray(const S s, std::index_sequence<I...>) : data({ s[I]... }) {};
-    template<indexable_to<T> S> constexpr CopyableArray(const S s) : CopyableArray(s, std::make_index_sequence<LEN>()) {};
-    template<lambda_indexer_to<T> L> consteval CopyableArray(const L l) : CopyableArray(Generator<L>(l)) {};
-    template<iterator_not_ptr<T> I> constexpr CopyableArray(const I begin) : CopyableArray(Uniterator(begin)) {};//end ignored
-    template<iterable_unindexable<T> C> constexpr CopyableArray(const C c) : CopyableArray(c.begin(), c.end()) {};
-    template<iterable_unindexable<T> C> constexpr CopyableArray(const C& c) : CopyableArray(c.begin(), c.end()) {};//vector
-    constexpr CopyableArray(const std::initializer_list<T> il) : CopyableArray(il.begin()) {};
+    constexpr copyableArray() = default;
+    template<indexable_to<T> S, size_t... I> constexpr copyableArray(const S s, std::index_sequence<I...>) : data({ s[I]... }) {};
+    template<indexable_to<T> S> constexpr copyableArray(const S s) : copyableArray(s, std::make_index_sequence<LEN>()) {};
+    template<lambda_indexer_to<T> L> consteval copyableArray(const L l) : copyableArray(Generator<L>(l)) {};
+    template<iterator_not_ptr<T> I> constexpr copyableArray(const I begin) : copyableArray(Uniterator(begin)) {};//end ignored
+    template<iterable_unindexable<T> C> constexpr copyableArray(const C c) : copyableArray(c.begin(), c.end()) {};
+    template<iterable_unindexable<T> C> constexpr copyableArray(const C& c) : copyableArray(c.begin(), c.end()) {};//vector
+    constexpr copyableArray(const std::initializer_list<T> il) : copyableArray(il.begin()) {};
 
     //often enough we want to create each element in-position with the same arguments
     template<class... Args> requires requires(Args... args) { T(std::forward<Args>(args)...); }
-    constexpr CopyableArray(Args... args) :
-      CopyableArray(Factory<Args...>(std::forward_as_tuple(args...))) {};
+    constexpr copyableArray(Args... args) :
+      copyableArray(Factory<Args...>(std::forward_as_tuple(args...))) {};
 
     //L2 below somehow prevents this constructor being considered for the copy constructor with default initialized T
-    template<size_t L2 = LEN-1, class... Args> requires (LEN > 1, L2 > 0)
-      consteval CopyableArray(CopyableArray<T, L2>&& firstBit, Args... nextBit) :
-		 CopyableArray([&firstBit, nextBit...](size_t i)constexpr{
-		   if(i < LEN-1) return std::move(firstBit[i]);
-		   else return T{nextBit...};
-		 }) {};//recursion aid
-    template<size_t L2 = LEN-1, class... Args> requires (LEN > 1, L2 > 0)
-      consteval CopyableArray(const CopyableArray<T, L2>& firstBit, Args... nextBit) :
-		 CopyableArray([&firstBit, nextBit...](size_t i)constexpr{
-		   if(i < LEN-1) return firstBit[i];
-		   else return T{nextBit...};
-		 }) {};//recursion aid
-    template<class... Args> requires (LEN == 1) constexpr CopyableArray(Args... nextBit) : data({{nextBit...}}) {};
+    // template<size_t L2 = LEN-1, class... Args> requires (LEN > 1, L2 > 0)
+    //   consteval copyableArray(copyableArray<T, L2>&& firstBit, Args... nextBit) :
+    // 		 copyableArray([&firstBit, nextBit...](size_t i)constexpr{
+    // 		   if(i < LEN-1) return std::move(firstBit[i]);
+    // 		   else return T{nextBit...};
+    // 		 }) {};//recursion aid
+    // template<size_t L2 = LEN-1, class... Args> requires (LEN > 1, L2 > 0)
+    //   consteval copyableArray(const copyableArray<T, L2>& firstBit, Args... nextBit) :
+    // 		 copyableArray([&firstBit, nextBit...](size_t i)constexpr{
+    // 		   if(i < LEN-1) return firstBit[i];
+    // 		   else return T{nextBit...};
+    // 		 }) {};//recursion aid
+    // template<class... Args> requires (LEN == 1) constexpr copyableArray(Args... nextBit) : data({{nextBit...}}) {};
 
     constexpr inline T& operator[](size_t i) { return data[i]; };
     constexpr inline const T& operator[](size_t i) const { return data[i]; };
@@ -73,9 +73,13 @@ namespace WITE::Collections {
     constexpr inline auto end() { return data.end(); };
     constexpr inline auto end() const { return data.end(); };
 
+    template<size_t OLEN> constexpr copyableArray<T, LEN+OLEN> operator+(const copyableArray<T, OLEN>& o) const {
+      return [this, o](size_t i){ return i < LEN ? data[i] : o.data[i - LEN]; };
+    };
+
   };
 
-  template<typename T> struct CopyableArray<T, 0> {
+  template<typename T> struct copyableArray<T, 0> {
   };
 
 };

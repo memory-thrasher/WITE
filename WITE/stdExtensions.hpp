@@ -5,7 +5,7 @@
 #include <cstring> //memcpy
 #include <map>
 
-namespace WITE::Collections {
+namespace WITE {
 
   template<typename T> inline void remove(std::vector<T>& t, T p) {
     t.erase(std::remove(t.begin(), t.end(), p), t.end());
@@ -44,10 +44,6 @@ namespace WITE::Collections {
 	return true;
     return false;
   };
-
-}
-
-namespace WITE {
 
   inline void memcpy(uint8_t* dst, const uint8_t* src, size_t len) {
     std::memcpy(reinterpret_cast<void*>(dst), reinterpret_cast<const void*>(src), len);

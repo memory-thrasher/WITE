@@ -3,7 +3,7 @@
 #include <ostream>
 
 #include "DBRecord.hpp"
-#include "StdExtensions.hpp"
+#include "stdExtensions.hpp"
 
 namespace WITE::DB {
 

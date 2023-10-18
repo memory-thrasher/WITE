@@ -1,8 +1,8 @@
 //uniform data model
 
-#include "CopyableArray.hpp"
-#include "LiteralList.hpp"
-#include "Vulkan.hpp"
+#include "copyableArray.hpp"
+#include "literalList.hpp"
+#include "wite_vulkan.hpp"
 
 namespace WITE {
 
@@ -60,7 +60,7 @@ namespace WITE {
 
   };
 
-  typedef WITE::Collections::LiteralList<vk::Format> udm;//for vertexes and uniform buffers etc
+  typedef WITE::literalList<vk::Format> udm;//for vertexes and uniform buffers etc
 
 #define defineUDM(NOM, ...) defineLiteralListScalar(vk::Format, NOM, __VA_ARGS__)
 

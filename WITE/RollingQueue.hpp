@@ -1,8 +1,8 @@
 #pragma once
 
 #include "Thread.hpp"
-#include "Math.hpp"
-#include "StdExtensions.hpp"
+#include "math.hpp"
+#include "stdExtensions.hpp"
 #include "DEBUG.hpp"
 
 namespace WITE::Collections {
@@ -60,7 +60,7 @@ namespace WITE::Collections {
     size_t bulkPush(T* in, size_t count, T** handleOut) {
       size_t target = nextIn, targetCount;
       size_t tail = nextOut;
-      targetCount = Util::min(count, tail > target ? SIZE - tail + target - 1 : target - tail);
+      targetCount = min(count, tail > target ? SIZE - tail + target - 1 : target - tail);
       if(!targetCount)
 	return 0;//"full"
       nextIn = wrap(target + targetCount);
@@ -82,7 +82,7 @@ namespace WITE::Collections {
       size_t target = nextOut, nextTarget, targetCount;
       if(condition && !condition->call(&data[target]))
 	return 0;
-      targetCount = Util::min(count, freeSpace());
+      targetCount = min(count, freeSpace());
       if(!targetCount)
 	return 0;
       //condition binary search

@@ -2,9 +2,9 @@
 
 #include <glm/glm.hpp>
 
-#include "StdExtensions.hpp"
+#include "stdExtensions.hpp"
 
-namespace WITE::Util {
+namespace WITE {
   
   class BBox3D {
   public:
@@ -29,13 +29,13 @@ namespace WITE::Util {
   constexpr inline double height2D() const { return maxy - miny; };
   };
 
-  class IntBox3D {
+  class intBox3D {
   public:
   union {
     uint64_t comp[1];
     struct { uint64_t minx, miny, minz, maxx, maxy, maxz; };
   };
-  IntBox3D(uint64_t minx = 0, uint64_t maxx = 0, uint64_t miny = 0, uint64_t maxy = 0, uint64_t minz = 0, uint64_t maxz = 0) :
+  intBox3D(uint64_t minx = 0, uint64_t maxx = 0, uint64_t miny = 0, uint64_t maxy = 0, uint64_t minz = 0, uint64_t maxz = 0) :
   minx(minx), miny(miny), minz(minz), maxx(maxx), maxy(maxy), maxz(maxz) {};
   inline int width()  { return (int)(maxx - minx); };
   inline int height() { return (int)(maxy - miny); };
@@ -43,8 +43,8 @@ namespace WITE::Util {
   constexpr inline glm::ivec3 min() const { return glm::ivec3(minx, miny, minz); };
   constexpr inline glm::ivec3 max() const { return glm::ivec3(maxx, maxy, maxz); };
   constexpr inline glm::ivec3 center() const { return (min() + max())/2; };
-  inline bool operator==(IntBox3D& o) { return memcmp(comp, o.comp, sizeof(comp)) == 0; };
-  inline bool sameSize(IntBox3D& o) { return o.maxx - o.minx == maxx - minx && o.maxy - o.miny == maxy - miny && o.maxz - o.minz == maxz - minz; };
+  inline bool operator==(intBox3D& o) { return memcmp(comp, o.comp, sizeof(comp)) == 0; };
+  inline bool sameSize(intBox3D& o) { return o.maxx - o.minx == maxx - minx && o.maxy - o.miny == maxy - miny && o.maxz - o.minz == maxz - minz; };
   };
 
   template<class T, class Compare = std::less<T>> inline T constexpr clamp(T t, T min, T max) {

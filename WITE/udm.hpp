@@ -1,4 +1,5 @@
 //uniform data model
+#pragma once
 
 #include "copyableArray.hpp"
 #include "literalList.hpp"
@@ -58,6 +59,8 @@ namespace WITE {
     constexpr vk::Format D24unormS8uint = vk::Format::eD24UnormS8Uint;
     constexpr vk::Format D32sfloatS8uint = vk::Format::eD32SfloatS8Uint;
 
+    constexpr vk::Format standardFormats[] = { R8int, R8uint, R16int, R16uint, R32int, R32uint, R32float, R64int, R64uint, R64float, RG8int, RG8uint, RG16int, RG16uint, RG32int, RG32uint, RG32float, RG64int, RG64uint, RG64float, RGB8int, RGB8uint, RGB16int, RGB16uint, RGB32int, RGB32uint, RGB32float, RGB64int, RGB64uint, RGB64float, RGBA8int, RGBA8uint, RGBA16int, RGBA16uint, RGBA32int, RGBA32uint, RGBA32float, RGBA64int, RGBA64uint, RGBA64float, D16unorm, D32sfloat, D16unormS8uint, D24unormS8uint, D32sfloatS8uint };
+
   };
 
   typedef WITE::literalList<vk::Format> udm;//for vertexes and uniform buffers etc
@@ -111,7 +114,7 @@ namespace WITE {
     defineUDM(RGBA64float, Format::RGBA64float);
 
     defineUDM(D16unorm, Format::D16unorm);
-    defineUDM(D32sfloat, Format::D32sfloat);
+    defineUDM(D32float, Format::D32sfloat);
     defineUDM(D16unormS8uint, Format::D16unormS8uint);
     defineUDM(D24unormS8uint, Format::D24unormS8uint);
     defineUDM(D32sfloatS8uint, Format::D32sfloatS8uint);
@@ -164,17 +167,31 @@ namespace WITE {
   template<> struct fieldTypeFor<vk::Format::eR64G64B64A64Uint> { typedef uint64_t type; static constexpr uint8_t qty = 4; };
   template<> struct fieldTypeFor<vk::Format::eR64G64B64A64Sfloat> { typedef float type; static constexpr uint8_t qty = 4; };
 
-  template<vk::Format F> struct fieldFor {
-    typedef fieldTypeFor<F>::type type[fieldTypeFor<F>::qty];
+  template<udm U> consteval uint32_t sizeofUdm() {
+    if constexpr(U.len == 0)
+      return 0;
+    else {
+      uint32_t ret = sizeof(typename fieldTypeFor<U[0]>::type) * fieldTypeFor<U[0]>::qty;
+      if constexpr(U.len > 1)
+	ret += sizeofUdm<U.sub(1)>();
+      return ret;
+    }
   };
 
-  //tuple-like struct that matches the given description, which can also be mapped to a verted buffer
-  template<udm U, size_t remaining = U.len> struct udmObject {
-    fieldFor<U[U.len-remaining]>::type data;
+  template<vk::Format F> using fieldFor = fieldTypeFor<F>::type[fieldTypeFor<F>::qty];
+
+  //tuple-like struct that matches the given description, which can also be mapped to a vert buffer
+  template<udm U, size_t remaining = U.len> struct alignas(0) udmObject {
+    fieldFor<U[U.len-remaining]> data;
     udmObject<U, remaining-1> next;
     //TODO more stuff
   };
 
-  template<udm U> struct udmObject<U, 0> {};
+  template<udm U> struct alignas(0) udmObject<U, 1> {
+    fieldFor<U[U.len-1]> data;
+  };
+
+  static_assert(sizeof(fieldFor<UDM::RGB32float[0]>) == 32/8*3);
+  static_assert(sizeof(udmObject<Format::RGB32float>) == 32/8*3);
 
 }

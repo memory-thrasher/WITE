@@ -54,6 +54,12 @@ namespace WITE {
     std::memcpy(reinterpret_cast<void*>(dst), reinterpret_cast<const void*>(src), len * sizeof(T));
   }
 
+  template<typename D, typename S> inline void memcpy(D& dst, const S& src)
+    requires std::negation_v<std::is_volatile<D>> {
+    static_assert(sizeof(D) == sizeof(S));
+    std::memcpy(reinterpret_cast<void*>(&dst), reinterpret_cast<const void*>(&src), sizeof(S));
+  }
+
   // template<typename D, typename S> inline void memcpy(D* dst, const S* src, size_t len)
   //   requires std::negation_v<std::is_volatile<D>> {
   //   std::memcpy(reinterpret_cast<void*>(dst), reinterpret_cast<const void*>(src), len);

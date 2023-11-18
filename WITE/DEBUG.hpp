@@ -70,6 +70,12 @@ void constexprAssertFailed();//note: NOT constexpr
 #define ASSERT_CONSTEXPR(X) { if(!(X)) ::constexprAssertFailed(); }
 #define ASSERT_CONSTEXPR_RET(X, RET) { if(!(X)) { ::constexprAssertFailed(); return RET; } }
 
+template<bool condition, class T, T values> struct static_assert_show_t {
+  static_assert(condition);
+  constexpr ~static_assert_show_t() {};//non-default destructor suppresses unused variable warning
+};
+#define static_assert_show(C, V) constexpr static static_assert_show_t<C, decltype(V), V> sast ## __LINE__;
+
 template<class T> void hexdump(T* src) {
   uint8_t* data = reinterpret_cast<uint8_t*>(src);
   for(size_t i = 0;i < sizeof(T);i++)

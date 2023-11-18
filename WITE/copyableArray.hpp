@@ -8,7 +8,7 @@ namespace WITE {
     array-like object that can be returned by a constexpr function that does NOT require T to be default-constructible.
     T must be copy-constructible
    */
-  template<typename T, size_t LEN> struct copyableArray {
+  template<typename T, size_t LEN> struct alignas(T) copyableArray {
     template<typename L> struct Generator {
       L l;
       constexpr Generator(const L l) : l(l) {};
@@ -29,7 +29,7 @@ namespace WITE {
 
     static constexpr size_t LENGTH = LEN;
 
-    std::array<T, LEN> data;
+    alignas(T) std::array<T, LEN> data;
 
     constexpr copyableArray() = default;
     template<indexable_to<T> S, size_t... I> constexpr copyableArray(const S s, std::index_sequence<I...>) : data({ s[I]... }) {};

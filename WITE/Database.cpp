@@ -54,7 +54,7 @@ namespace WITE::DB {
 	struct rlimit rlim;
 	if(getrlimit(RLIMIT_DATA, &rlim)) CRASH_PREINIT("Failed to fetch data rlimit");
 	WARN("Data rlimt old: ", rlim.rlim_cur);
-	rlim.rlim_cur = Util::max(rlim.rlim_cur + mmapsize, rlim.rlim_max);
+	rlim.rlim_cur = max(rlim.rlim_cur + mmapsize, rlim.rlim_max);
 	WARN("Data rlimt new: ", rlim.rlim_cur);
 	if(rlim.rlim_cur < mmapsize) CRASH_PREINIT("Data rlimit hard limit too low");
 	if(setrlimit(RLIMIT_DATA, &rlim)) CRASH_PREINIT("Failed to set data rlimit");

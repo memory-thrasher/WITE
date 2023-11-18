@@ -7,7 +7,7 @@
 #include "Thread.hpp"
 #include "DEBUG.hpp"
 #include "Database.hpp"
-#include "StdExtensions.hpp"
+#include "stdExtensions.hpp"
 
 #define MAX_DELTA_AGE 5
 
@@ -88,11 +88,11 @@ namespace WITE::DB {
 	if(slice_toBeAdded.size() + slice_toBeRemoved.size()) {
 	  Util::ScopeLock lock(&sliceAlterationPoolMutex);//TODO maybe this should be a FrameBufferedCollection
 	  if(slice_toBeRemoved.size()) {
-	    auto up = [this](auto e){ return Collections::contains(slice_toBeRemoved, e); };
-	    Collections::remove_if(slice_withUpdates, up);
-	    Collections::remove_if(slice_withoutUpdates, up);
+	    auto up = [this](auto e){ return contains(slice_toBeRemoved, e); };
+	    remove_if(slice_withUpdates, up);
+	    remove_if(slice_withoutUpdates, up);
 	    temp_uniqTypes.clear();
-	    Collections::uniq(slice_toBeRemoved, [](DBEntity* dbe) { return dbe->getType(); }, temp_uniqTypes);
+	    uniq(slice_toBeRemoved, [](DBEntity* dbe) { return dbe->getType(); }, temp_uniqTypes);
 	    for(int i = 0;i < temp_uniqTypes.size();i++)
 	      typeIndex[temp_uniqTypes[i]].remove_if(up);
 #ifdef DEBUG_THREAD_SLICES

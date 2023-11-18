@@ -10,8 +10,17 @@
 namespace WITE {
 
   class gpu {
-  private:
+  public:
+    struct vram {
+      vk::DeviceMemory handle;
+      const vk::MemoryAllocateInfo mai;
+      gpu* dev;
+      vram() = default;//dummy for cpu-ram allocation
+      vram(const vk::MemoryRequirements& mr, uint8_t type, gpu* dev);
+      ~vram();
+    };
 
+  private:
     static std::atomic_bool inited;
     static vk::Instance vkInstance;
     static size_t gpuCount;
@@ -19,7 +28,7 @@ namespace WITE {
     static char appName[1024];
 
     size_t idx;
-    std::map<vk::Format, vk::FormatProperties> formatProperties {};
+    std::map<vk::Format, vk::FormatProperties> formatProperties;
     vk::PhysicalDevice pv;
     vk::PhysicalDeviceProperties2 pvp;
     typedef struct {
@@ -38,6 +47,7 @@ namespace WITE {
 
     gpu(size_t idx, vk::PhysicalDevice);
     gpu(gpu&&) = delete;
+    void recordDeallocate(vram* doomed);
   public:
     static void init(const char* appName,
 		     std::initializer_list<const char*> appRequestedLayers = {},
@@ -49,11 +59,13 @@ namespace WITE {
     static inline const char* getAppName() { return appName; };
     static inline auto getVkInstance() { return vkInstance; };
 
+    gpu();//dummy
     inline size_t getIndex() { return idx; };
     vk::Device getVkDevice() { return dev; };//vkHandle is an opaque handle
-    vk::Queue getQueue();
+    inline vk::Queue getQueue() { return queue; };
     vk::PipelineCache getPipelineCache() { return pipelineCache; };
     inline auto getPhysical() { return pv; };
+    void allocate(const vk::MemoryRequirements& mr, vk::MemoryPropertyFlags requiredFlags, vram* out);
   };
 
 }

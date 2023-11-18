@@ -20,7 +20,7 @@ namespace WITE::DB {
       db->getEntity(record.header.nextGlobalId)->read(dst, maxSize, offset - DBRecord::CONTENT_SIZE);
     } else {
       read(&record);
-      size_t overlap = Util::min(DBRecord::CONTENT_SIZE, maxSize) - offset;
+      size_t overlap = min(DBRecord::CONTENT_SIZE, maxSize) - offset;
       memcpy(dst, record.content + offset, overlap);//TODO don't memcpy content twice, content-only read into dst
       if(maxSize > DBRecord::CONTENT_SIZE - offset) {
     	ASSERT_TRAP((record.header.flags & DBRecordFlag::has_next) != 0, "DB large object read underflow");
@@ -38,7 +38,7 @@ namespace WITE::DB {
     DBDelta delta;
     delta.clear();
     while(offset < DBRecord::CONTENT_SIZE && len) {
-      delta.len = Util::min(DBDelta::MAX_DELTA_SIZE, DBRecord::CONTENT_SIZE - offset, len);
+      delta.len = min(DBDelta::MAX_DELTA_SIZE, DBRecord::CONTENT_SIZE - offset, len);
       memcpy(delta.content, src, delta.len);
       src += delta.len;
       offset += delta.len;
@@ -87,7 +87,7 @@ namespace WITE::DB {
   }
 
   void DBEntity::completeRead(uint8_t* out, DBRecord* record, size_t len) {
-    size_t thisLen = Util::min(len, DBRecord::CONTENT_SIZE);
+    size_t thisLen = min(len, DBRecord::CONTENT_SIZE);
     memcpy(out, record->content, thisLen);
     if(len > thisLen && (record->header.flags & DBRecordFlag::has_next) != 0) {
       db->getEntity(record->header.nextGlobalId)->read(out + DBRecord::CONTENT_SIZE, len - thisLen);

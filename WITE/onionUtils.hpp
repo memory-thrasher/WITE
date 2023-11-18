@@ -4,6 +4,7 @@
 
 #include "templateStructs.hpp"
 #include "math.hpp"
+#include "DEBUG.hpp"
 
 namespace vk {
   template <> struct FlagTraits<WITE::imageFlags_e> {
@@ -15,34 +16,41 @@ namespace vk {
 
 namespace WITE {
 
-  constexpr uint64_t NONE = ~0;
-
-  template<size_t STEP_COUNT> struct imageFlow {
-
-    typedef copyableArray<imageRequirements::flowStep, STEP_COUNT> flow_t;
-
-    flow_t flow;
-
-    template<class T> consteval imageFlow(T t) : flow(t) {};
-    consteval imageFlow(imageRequirements::flowStep s) : flow(s) {};
-    consteval imageFlow(const imageFlow<STEP_COUNT>& o) = default;
-
-    consteval operator flow_t() const noexcept {
-      return flow;
-    };
-
-    consteval operator literalList<imageRequirements::flowStep>() const {
-      return flow;
-    };
-
-    template<size_t OST> consteval imageFlow<STEP_COUNT+OST> then(imageFlow<OST> o) const {
-      return flow + o.flow;
-    };
-
-    template<size_t OST> consteval imageFlow<STEP_COUNT+OST> operator+(imageFlow<OST> o) const {
-      return then(o);
-    };
-
+  consteval void appendFlow(imageRequirements& r, imageRequirements::flowStep f) {
+    if((r.flowCount == 1 && r.flow[0].layout == vk::ImageLayout::eGeneral) ||
+       (r.flowCount > 0 && r.flow[r.flowCount-1].layout == f.layout)) {
+      size_t lastIdx = r.flowCount-1;
+      //an image using general should stay in general (could mean flow count overflowed previously)
+      //two flows in a row with the same layout can be merged
+      r.flow[lastIdx].stages |= f.stages;
+      r.flow[lastIdx].access |= f.access;
+      if(r.flow[lastIdx].onionId != f.onionId) r.flow[lastIdx].onionId = NONE;
+      if(r.flow[lastIdx].shaderId != f.shaderId) r.flow[lastIdx].shaderId = NONE;
+      return;
+    }
+    if(r.flowCount == 0) {
+      //append to empty list, trivial
+      r.flowCount = 1;
+      r.flow[0] = f;
+      return;
+    }
+    if(f.layout == vk::ImageLayout::eGeneral || r.flowCount == imageRequirements::MAX_FLOW_STEPS) {
+      //new layout is general, or overflow, convert the entire flow to general only
+      r.flow[0].layout = vk::ImageLayout::eGeneral;
+      for(size_t i = 1;i < r.flowCount;i++) {
+	r.flow[0].stages |= r.flow[i].stages;
+	r.flow[0].access |= r.flow[i].access;
+	if(r.flow[0].onionId != r.flow[i].onionId) r.flow[0].onionId = NONE;
+	if(r.flow[0].shaderId != r.flow[i].shaderId) r.flow[0].shaderId = NONE;
+      }
+      r.flow[0].stages |= f.stages;
+      r.flow[0].access |= f.access;
+      if(r.flow[0].onionId != f.onionId) r.flow[0].onionId = NONE;
+      if(r.flow[0].shaderId != f.shaderId) r.flow[0].shaderId = NONE;
+      return;
+    }
+    //and finally, ordinary append
+    r.flow[r.flowCount++] = f;
   };
 
   //note: this does not create a flow
@@ -60,36 +68,52 @@ namespace WITE {
     return ret;
   };
 
-  consteval void assertValid(const imageRequirements& ir) {
-    ASSERT_CONSTEXPR(ir.flow);
-    ASSERT_CONSTEXPR(ir.dimensions > 1);
-    ASSERT_CONSTEXPR(ir.dimensions < 4);
-    ASSERT_CONSTEXPR(ir.arrayLayers > 0);
-    ASSERT_CONSTEXPR(ir.dimensions < 3 || ir.arrayLayers == 1);
-    ASSERT_CONSTEXPR(ir.frameswapCount > 0);
-    ASSERT_CONSTEXPR(ir.mipLevels > 0);
-    ASSERT_CONSTEXPR(ir.mipLevels == 1 || ir.dimensions > 1);
-    ASSERT_CONSTEXPR((~ir.imageFlags & imageFlags_e::eCube) || (ir.arrayLayers % 6 == 0));
-    ASSERT_CONSTEXPR((~ir.imageFlags & imageFlags_e::e3DIs2DArray) || (ir.dimensions == 3));
+  //note: this does not create a flow
+  consteval imageRequirements requirementsForSlot(const shaderAttachmentSlot& sis) {
+    return {
+      .format = sis.format
+    };
+  };
+
+  constexpr bool isValid(const imageRequirements& ir) {
+    return (ir.flowCount)
+      && (ir.dimensions > 1)
+      && (ir.dimensions < 4)
+      && (ir.arrayLayers > 0)
+      && (ir.dimensions < 3 || ir.arrayLayers == 1)
+      && (ir.frameswapCount > 0)
+      && (ir.mipLevels > 0)
+      && (ir.mipLevels == 1 || ir.dimensions > 1)
+      && ((~ir.imageFlags & imageFlags_e::eCube) || (ir.arrayLayers % 6 == 0))
+      && ((~ir.imageFlags & imageFlags_e::e3DIs2DArray) || (ir.dimensions == 3));
+  };
+
+  inline void assertValidRuntime(const imageRequirements& ir) {
+    ASSERT_TRAP(isValid(ir), "invalid image requirements (runtime check)");
+  };
+
+  consteval void assertValidCE(const imageRequirements& ir) {
+    ASSERT_CONSTEXPR(isValid(ir));
   };
 
   consteval imageRequirements& operator&=(imageRequirements& l, const imageRequirements& r) {
     if(l.format == vk::Format::eUndefined) l.format = r.format;
     ASSERT_CONSTEXPR(l.format == r.format || r.format == vk::Format::eUndefined);
     if(l.frameswapCount == 0) l.frameswapCount = r.frameswapCount;
-    ASSERT_CONSTEXPR(l.frameswapCount == r.frameswapCount);
+    ASSERT_CONSTEXPR(l.frameswapCount == r.frameswapCount || r.frameswapCount == 0);
     if(l.mipLevels == 0) l.mipLevels = r.mipLevels;
-    ASSERT_CONSTEXPR(l.mipLevels == r.mipLevels);
+    ASSERT_CONSTEXPR(l.mipLevels == r.mipLevels || r.mipLevels == 0);
     if(l.deviceId == NONE) l.deviceId = r.deviceId;
-    ASSERT_CONSTEXPR(l.deviceId == r.deviceId);
-    if(!l.flow) l.flow = r.flow;
+    ASSERT_CONSTEXPR(l.deviceId == r.deviceId || r.deviceId == NONE);
+    for(size_t i = 0;i < r.flowCount;i++)
+      appendFlow(l, r.flow[i]);
     if(min(l.dimensions, r.dimensions) == 2 && max(l.dimensions, r.dimensions) == 3) {
       //special case: a 3D image can be used as an array of 2D images. In no case may a 3D image have >1 array layer.
       l.dimensions = 3;
       l.arrayLayers = 1;
-    } else if(l.dimensions == 0) {
-      l.dimensions = r.dimensions;
     } else {
+      if(l.dimensions == 0)
+	l.dimensions = r.dimensions;
       ASSERT_CONSTEXPR(l.dimensions == r.dimensions || r.dimensions == 0);
       l.arrayLayers = max(l.arrayLayers, r.arrayLayers);
     }
@@ -105,78 +129,77 @@ namespace WITE {
     return ret;
   };
 
-  consteval auto getImageFlow(uint64_t id, uint64_t onionId, const literalList<shader> shaders) {
-    std::vector<imageRequirements::flowStep> ret;
-    for(uint64_t sid = 0;sid < shaders.len;sid++) {
-      vk::ImageLayout layout = vk::ImageLayout::eUndefined;
-      vk::PipelineStageFlags2 stages;
-      vk::AccessFlags2 access;
-      const shader& s = shaders[sid];
-      //MAYBE assert no buffer use? Or implicitly create a texel buffer?
-      for(const shaderImageSlot& sis : s.sampled) {
-	if(sis.id == id) {
-	  if(layout != vk::ImageLayout::eGeneral)
-	    layout = sis.writeStages ? vk::ImageLayout::eGeneral : vk::ImageLayout::eReadOnlyOptimal;
-	  stages |= sis.readStages | sis.writeStages;
-	  if(sis.writeStages) {
-	    access |= vk::AccessFlagBits2::eShaderStorageWrite;
-	    if(sis.readStages)
-	      access |= vk::AccessFlagBits2::eShaderStorageRead;
-	  } else
-	    access |= vk::AccessFlagBits2::eShaderSampledRead;
-	}
-      }
-      if(s.targetLink.depthStencil == id) {
-	ASSERT_CONSTEXPR(layout == vk::ImageLayout::eUndefined);
-	layout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
-	stages |= vk::PipelineStageFlagBits2::eEarlyFragmentTests | vk::PipelineStageFlagBits2::eLateFragmentTests;
-	access |= vk::AccessFlagBits2::eDepthStencilAttachmentWrite | vk::AccessFlagBits2::eDepthStencilAttachmentRead;
-      }
-      if(s.targetLink.color == id) {
-	ASSERT_CONSTEXPR(layout == vk::ImageLayout::eUndefined);
-	layout = vk::ImageLayout::eColorAttachmentOptimal;
-	stages |= vk::PipelineStageFlagBits2::eColorAttachmentOutput;
-	access |= vk::AccessFlagBits2::eColorAttachmentWrite | vk::AccessFlagBits2::eColorAttachmentRead;
-      }
-      if(layout == vk::ImageLayout::eUndefined) continue;
-      if(ret.size() > 0 && ret[ret.size()-1].layout == layout) {
-	ret[ret.size()-1].stages |= stages;
-	continue;
-      }
-      ret.emplace_back(imageRequirements::flowStep{
-	  .onionId = onionId,
-	  .shaderId = sid,
-	  .layout = layout,
-	  .stages = stages,
-	  .access = access
-	});
-    }
-    return ret;
+  consteval imageRequirements& operator&=(imageRequirements& l, const shaderAttachmentSlot& r) {
+    return operator&=(l, requirementsForSlot(r));
   };
 
-  template<uint64_t id, uint64_t onionId, const literalList<shader> shaders>
-  consteval size_t getImageFlowSize() {
-    return getImageFlow(id, onionId, shaders).size();
+  consteval imageRequirements operator&(const imageRequirements& l, const shaderAttachmentSlot& r) {
+    return operator&(l, requirementsForSlot(r));
   };
 
-  template<uint64_t id, const literalList<shader> shaders, uint64_t gpuId>
-  consteval imageRequirements getImageRequirements(literalList<imageRequirements::flowStep> flow) {
-    imageRequirements ret {
-      .deviceId = gpuId,
-      .flow = flow
+  consteval imageRequirements& operator&=(imageRequirements& l, const shaderImageSlot& r) {
+    return operator&=(l, requirementsForSlot(r));
+  };
+
+  consteval imageRequirements operator&(const imageRequirements& l, const shaderImageSlot& r) {
+    return operator&(l, requirementsForSlot(r));
+  };
+
+  consteval shaderAttachmentSlot attach(shaderImageSlot sis) {
+    return {
+      .id = sis.id,
+      .format = sis.format
     };
-    for(const shader& s : shaders) {
+  }
+
+  template<uint64_t id, uint64_t onionId, const literalList<shader> shaders, uint64_t gpuId>
+  consteval imageRequirements getImageRequirements() {
+    imageRequirements ret {
+      .deviceId = gpuId
+    };
+    for(size_t i = 0;i < shaders.len;i++) {
+      imageRequirements::flowStep flow {
+	.onionId = onionId,
+	.layout = vk::ImageLayout::eUndefined
+      };
+      const shader& s = shaders[i];
       for(const shaderImageSlot& sis : s.sampled)
-	if(sis.id == id)
+	if(sis.id == id) {
 	  ret &= requirementsForSlot(sis);
-      if(s.targetLink.depthStencil == id) ret.usage |= vk::ImageUsageFlagBits::eDepthStencilAttachment;
-      if(s.targetLink.color == id) ret.usage |= vk::ImageUsageFlagBits::eColorAttachment;
+	  if(flow.layout != vk::ImageLayout::eGeneral)
+	    flow.layout = sis.writeStages ? vk::ImageLayout::eGeneral : vk::ImageLayout::eShaderReadOnlyOptimal;
+	  flow.stages |= sis.readStages | sis.writeStages;
+	  if(sis.writeStages) {
+	    flow.access |= vk::AccessFlagBits2::eShaderStorageWrite;
+	    if(sis.readStages)
+	      flow.access |= vk::AccessFlagBits2::eShaderStorageRead;
+	  } else
+	    flow.access |= vk::AccessFlagBits2::eShaderSampledRead;
+	}
+      if(s.targetLink.depthStencil.id == id) {
+	ASSERT_CONSTEXPR(flow.layout == vk::ImageLayout::eUndefined);
+	flow.layout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
+	flow.stages |= vk::PipelineStageFlagBits2::eEarlyFragmentTests | vk::PipelineStageFlagBits2::eLateFragmentTests;
+	flow.access |= vk::AccessFlagBits2::eDepthStencilAttachmentWrite | vk::AccessFlagBits2::eDepthStencilAttachmentRead;
+	ret.usage |= vk::ImageUsageFlagBits::eDepthStencilAttachment;
+	ret &= requirementsForSlot(s.targetLink.depthStencil);
+      }
+      if(s.targetLink.color.id == id) {
+	ASSERT_CONSTEXPR(flow.layout == vk::ImageLayout::eUndefined);
+	flow.layout = vk::ImageLayout::eColorAttachmentOptimal;
+	flow.stages |= vk::PipelineStageFlagBits2::eColorAttachmentOutput;
+	flow.access |= vk::AccessFlagBits2::eColorAttachmentWrite | vk::AccessFlagBits2::eColorAttachmentRead;
+	ret.usage |= vk::ImageUsageFlagBits::eColorAttachment;
+	ret &= requirementsForSlot(s.targetLink.color);
+      }
+      if(flow.layout != vk::ImageLayout::eUndefined)
+	appendFlow(ret, flow);
     }
     return ret;
   };
 
   consteval auto getDefaultCI(imageRequirements r) {
-    assertValid(r);
+    assertValidCE(r);
     vk::ImageCreateInfo ret;
     ret.setImageType((vk::ImageType)(r.dimensions-1))//yes, I'm that lazy
       .setFormat(r.format)
@@ -191,9 +214,107 @@ namespace WITE {
     return ret;
   };
 
-  consteval imageRequirements reflow(imageRequirements r, literalList<imageRequirements::flowStep> nflow) {
-    r.flow = nflow;
-    return r;
+  consteval bufferRequirements requirementsForSlot(const shaderUniformBufferSlot& subs) {
+    return {
+      .usage = subs.writeStages ? vk::BufferUsageFlagBits::eStorageBuffer : vk::BufferUsageFlagBits::eUniformBuffer,
+      .readStages = subs.readStages,
+      .writeStages = subs.writeStages,
+      .size = subs.size,
+      .frameswapCount = subs.frameswapCount
+    };
+  };
+
+  template<shaderVertexBufferSlot svbs>//sizeofUdm must be served the format as a template argument
+  consteval bufferRequirements requirementsForSlot() {
+    return {
+      .usage = vk::BufferUsageFlagBits::eVertexBuffer,
+      .readStages = vk::PipelineStageFlagBits2::eVertexInput,
+      .size = svbs.vertCount * sizeofUdm<svbs.format>(),
+      .frameswapCount = svbs.frameswapCount
+    };
+  };
+
+  consteval bufferRequirements& operator&=(bufferRequirements& l, bufferRequirements r) {
+    l.usage |= r.usage;
+    l.readStages |= r.readStages;
+    l.writeStages |= r.writeStages;
+    l.size = max(l.size, r.size);
+    if(l.frameswapCount == 0) l.frameswapCount = r.frameswapCount;
+    ASSERT_CONSTEXPR(l.frameswapCount == r.frameswapCount || r.frameswapCount == 0);
+    if(l.deviceId == NONE) l.deviceId = r.deviceId;
+    ASSERT_CONSTEXPR(l.deviceId == r.deviceId || r.deviceId == NONE);
+    return l;
+  };
+
+  //bufferRequirements is NOT a bitmask. & means union, as in "find criteria that will satisfy both these sets of criteria"
+  consteval bufferRequirements operator&(const bufferRequirements& l, const bufferRequirements& r) {
+    bufferRequirements ret { l };
+    ret &= r;
+    return ret;
+  };
+
+  consteval bufferRequirements& operator&=(bufferRequirements& l, const shaderUniformBufferSlot& r) {
+    return operator&=(l, requirementsForSlot(r));
+  };
+
+  consteval bufferRequirements operator&(const bufferRequirements& l, const shaderUniformBufferSlot& r) {
+    return operator&(l, requirementsForSlot(r));
+  };
+
+  template<uint64_t id, literalList<shader> shaders>
+  consteval bufferRequirements getVertexBufferRequirements() {
+    if constexpr(shaders.len == 0)
+      return {};
+    else {
+      bufferRequirements ret;
+      constexpr const shader& s = shaders[0];
+      if constexpr(s.vertexBuffer && s.vertexBuffer->id == id)
+	ret &= requirementsForSlot<*s.vertexBuffer>();
+      if constexpr(s.instanceBuffer && s.instanceBuffer->id == id)
+	ret &= requirementsForSlot<*s.instanceBuffer>();
+      return ret & getVertexBufferRequirements<id, shaders.sub(1)>();
+    }
+  };
+
+  template<uint64_t id, literalList<shaderVertexBufferSlot> slots>
+  consteval bufferRequirements getVertexBufferRequirements() {
+    if constexpr(slots.len == 0)
+      return {};
+    else {
+      if constexpr(slots[0].id != id) return getVertexBufferRequirements<id, slots.sub(1)>();
+      return requirementsForSlot<slots[0]>() &
+	getVertexBufferRequirements<id, slots.sub(1)>();
+    }
+  };
+
+  template<uint64_t id, shaderTargetLayout TL, literalList<shader> shaders, uint64_t gpuId>
+  consteval bufferRequirements getBufferRequirements() {
+    bufferRequirements ret {
+      .deviceId = gpuId
+    };
+    ret &= getVertexBufferRequirements<id, shaders>();
+    for(const shader& s : shaders)
+      for(const shaderUniformBufferSlot& ub : s.uniformBuffers)
+	if(ub.id == id)
+	  ret &= ub;
+    ret &= getVertexBufferRequirements<id, TL.vertexBuffers>();
+    ret &= getVertexBufferRequirements<id, TL.instanceBuffers>();
+    for(const shaderUniformBufferSlot& ub : TL.uniformBuffers)
+      if(ub.id == id)
+	ret &= ub;
+    return ret;
+  };
+
+  constexpr bool isValid(const bufferRequirements& b) {
+    return b.usage && (b.readStages | b.writeStages) && b.size && b.frameswapCount && b.deviceId != NONE;
+  };
+
+  consteval vk::BufferCreateInfo getDefaultCI(bufferRequirements r) {
+    ASSERT_CONSTEXPR(isValid(r));
+    vk::BufferCreateInfo ret;
+    ret.setSize(r.size);
+    ret.setUsage(r.usage);
+    return ret;
   };
 
 }

@@ -13,10 +13,12 @@ using namespace WITE;
 constexpr shaderUniformBufferSlot objectTransformData {
   .id = __LINE__,
   .readStages = vk::PipelineStageFlagBits2::eVertexShader,
+  .size = sizeof(glm::dmat4),
   .frameswapCount = 2
 }, cameraTransformData {
   .id = __LINE__,
   .readStages = vk::PipelineStageFlagBits2::eVertexShader,
+  .size = sizeof(glm::dmat4),
   .frameswapCount = 2
 };
 
@@ -41,13 +43,14 @@ constexpr shaderTargetLayout standardRenderTargetLayout {
 };
 
 constexpr shaderTargetLinkage standardRenderTargetLink {
-  .depthStencil = standardDepth.id,
-  .color = standardColor.id
+  .depthStencil = attach(standardDepth),
+  .color = attach(standardColor)
 };
 
 constexpr shaderVertexBufferSlot standardVertBufferSlot {
   .id = __LINE__,
   .format = UDM::RGB32float, // UDM can have multiple attributes but we only need position today
+  .vertCount = 36,
   .frameswapCount = 1 //static mesh: no need to double-buffer in this case
 };
 
@@ -72,33 +75,30 @@ constexpr shaderTargetInstanceLayout standardTarget = {
   .targetType = targetType_t::e2D, //other options: 2D, 3D, Cube
 };
 
-//flow must have static allocation, so give it it's own constexpr.
-constexpr auto presentableColorFlow = onion_t::imageFlow_v<standardColor.id> + window<0>::presentationFlow;
-
 int main(int argc, char** argv) {
-  window<0> w;//default window size is a centered rectangle meant for splash screens and tests
+  window w;//default window size is a centered rectangle meant for splash screens and tests
   // auto camera = onion.createTarget<standardTarget>();
   // auto cube = onion.createSource<simpleShader.id>();
-  // buffer<onion_t::bufferRequirements_v<standardTransformData.id>> cubeTransBuffer;
+  buffer<onion_t::bufferRequirements_v<objectTransformData.id>> cubeTransBuffer;
   // cube.setUniformBuffer<standardTransformData.id>(&cubeTransBuffer);
-  // buffer<onion_t::bufferRequirements_v<standardVertBufferLayout.id>> cubeVerts;
+  buffer<onion_t::bufferRequirements_v<standardVertBufferSlot.id>> cubeVerts;
   // cube.setVertexBuffer<standardVertBufferLayout.id>(&cubeVerts);
-  // buffer<onion_t::bufferRequirements_v<standardTarget, standardTransformData.id>> cameraTransBuffer;
+  buffer<onion_t::bufferRequirements_v<cameraTransformData.id>> cameraTransBuffer;
   // camera.setUniformBuffer<standardTransformData.id>(&cameraTransBuffer);
-  image<reflow(onion_t::imageRequirements_v<standardColor.id> & window<0>::presentationRequirements, presentableColorFlow)> cameraColor(w.getSize());
+  image<onion_t::imageRequirements_v<standardColor.id> & window::presentationSuggestions & standardColor> cameraColor(w.getSize());
   // camera.setAttachment<standardDepth.id>(&cameraColor);
-  image<onion_t::imageRequirements_v<standardDepth.id>> cameraDepth(w.getSize());
+  image<onion_t::imageRequirements_v<standardDepth.id> & standardDepth> cameraDepth(w.getSize());
   // camera.setAttachment<standardDepth.id>(&cameraDepth);
-  // cubeTransBuffer.set(glm::mat4d::identity);//TODO find real name for dmat4 identity
-  // cameraTransBuffer.set(glm::mat4d::identity);//TODO MATH
-  // cubeVerts.set({
-  //     {0, 0, 0}, {1, 1, 0}, {1, 0, 0}, {0, 0, 0}, {0, 1, 0}, {1, 1, 0},
-  //     {0, 0, 1}, {1, 1, 1}, {1, 0, 1}, {0, 0, 1}, {0, 1, 1}, {1, 1, 1},
-  //     {0, 0, 0}, {1, 0, 1}, {1, 0, 0}, {0, 0, 0}, {0, 0, 1}, {1, 0, 1},
-  //     {0, 1, 0}, {1, 1, 1}, {1, 1, 0}, {0, 1, 0}, {0, 1, 1}, {1, 1, 1},
-  //     {0, 0, 0}, {0, 1, 1}, {0, 1, 0}, {0, 0, 0}, {0, 0, 1}, {0, 1, 1},
-  //     {1, 0, 0}, {1, 1, 1}, {1, 1, 0}, {1, 0, 0}, {1, 0, 1}, {1, 1, 1}
-  //   });
+  // cubeTransBuffer.set(glm::dmat4::identity);//TODO find real name for dmat4 identity
+  // cameraTransBuffer.set(glm::dmat4::identity);//TODO MATH
+  cubeVerts.set<standardVertBufferSlot.format>({
+      {{0, 0, 0}}, {{1, 1, 0}}, {{1, 0, 0}}, {{0, 0, 0}}, {{0, 1, 0}}, {{1, 1, 0}},
+      {{0, 0, 1}}, {{1, 1, 1}}, {{1, 0, 1}}, {{0, 0, 1}}, {{0, 1, 1}}, {{1, 1, 1}},
+      {{0, 0, 0}}, {{1, 0, 1}}, {{1, 0, 0}}, {{0, 0, 0}}, {{0, 0, 1}}, {{1, 0, 1}},
+      {{0, 1, 0}}, {{1, 1, 1}}, {{1, 1, 0}}, {{0, 1, 0}}, {{0, 1, 1}}, {{1, 1, 1}},
+      {{0, 0, 0}}, {{0, 1, 1}}, {{0, 1, 0}}, {{0, 0, 0}}, {{0, 0, 1}}, {{0, 1, 1}},
+      {{1, 0, 0}}, {{1, 1, 1}}, {{1, 1, 0}}, {{1, 0, 0}}, {{1, 0, 1}}, {{1, 1, 1}}
+    });
   // camera.render();
   // TODO advance frame
   w.blit(cameraColor);//goes onto same queue as render so fence handled internally

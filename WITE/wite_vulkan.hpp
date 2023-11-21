@@ -3,6 +3,7 @@
 #define VULKAN_HPP_FLAGS_MASK_TYPE_AS_PUBLIC //makes vk::Floags<T> qualify as "structural" so it can be used in templates
 #include <vulkan/vulkan.hpp>
 #include <glm/glm.hpp>
+#include <glm/ext.hpp>
 
 #define ALLOCCB (static_cast<const VULKAN_HPP_NAMESPACE::AllocationCallbacks*>(NULL)) //might actually use this later, so pass it everywhere
 

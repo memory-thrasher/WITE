@@ -89,8 +89,10 @@ int main(int argc, char** argv) {
   // camera.setAttachment<standardDepth.id>(&cameraColor);
   image<onion_t::imageRequirements_v<standardDepth.id> & standardDepth> cameraDepth(w.getSize());
   // camera.setAttachment<standardDepth.id>(&cameraDepth);
-  // cubeTransBuffer.set(glm::dmat4::identity);//TODO find real name for dmat4 identity
-  // cameraTransBuffer.set(glm::dmat4::identity);//TODO MATH
+  cubeTransBuffer.set(glm::dmat4(1));//diagonal identity
+  cameraTransBuffer.set(glm::dmat4(1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 1) * //clip
+			glm::perspectiveFov<double>(glm::radians(45.0f), 16.0, 9.0, 0.1, 100.0) * //projection
+			glm::lookAt(glm::dvec3(-5, 3, -10), glm::dvec3(0, 0, 0), glm::dvec3(0, -1, 0))); //view
   cubeVerts.set<standardVertBufferSlot.format>({
       {{0, 0, 0}}, {{1, 1, 0}}, {{1, 0, 0}}, {{0, 0, 0}}, {{0, 1, 0}}, {{1, 1, 0}},
       {{0, 0, 1}}, {{1, 1, 1}}, {{1, 0, 1}}, {{0, 0, 1}}, {{0, 1, 1}}, {{1, 1, 1}},

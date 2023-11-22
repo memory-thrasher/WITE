@@ -69,7 +69,7 @@ constexpr shader simpleShader {
 //takes a LiteralList of shaders, normally there'd be much more than one
 //second is the target layout
 typedef WITE::onion<simpleShader, standardRenderTargetLayout, __LINE__> onion_t;
-onion_t onion;
+onion_t primaryOnion;
 
 constexpr shaderTargetInstanceLayout standardTarget = {
   .targetType = targetType_t::e2D, //other options: 2D, 3D, Cube
@@ -77,19 +77,20 @@ constexpr shaderTargetInstanceLayout standardTarget = {
 
 int main(int argc, char** argv) {
   window w;//default window size is a centered rectangle meant for splash screens and tests
-  // auto camera = onion.createTarget<standardTarget>();
+  auto camera = primaryOnion.createTarget<standardTarget>(w.getGlSize());
   // auto cube = onion.createSource<simpleShader.id>();
   buffer<onion_t::bufferRequirements_v<objectTransformData.id>> cubeTransBuffer;
   // cube.setUniformBuffer<standardTransformData.id>(&cubeTransBuffer);
   buffer<onion_t::bufferRequirements_v<standardVertBufferSlot.id>> cubeVerts;
   // cube.setVertexBuffer<standardVertBufferLayout.id>(&cubeVerts);
   buffer<onion_t::bufferRequirements_v<cameraTransformData.id>> cameraTransBuffer;
-  // camera.setUniformBuffer<standardTransformData.id>(&cameraTransBuffer);
+  camera.setUniformBuffer<cameraTransformData.id>(&cameraTransBuffer);
   image<onion_t::imageRequirements_v<standardColor.id> & window::presentationSuggestions & standardColor> cameraColor(w.getSize());
-  // camera.setAttachment<standardDepth.id>(&cameraColor);
+  camera.setAttachment<standardColor.id>(&cameraColor);
   image<onion_t::imageRequirements_v<standardDepth.id> & standardDepth> cameraDepth(w.getSize());
-  // camera.setAttachment<standardDepth.id>(&cameraDepth);
-  cubeTransBuffer.set(glm::dmat4(1));//diagonal identity
+  camera.setAttachment<standardDepth.id>(&cameraDepth);
+  cubeTransBuffer.set(glm::dmat4(1));//model: diagonal identity
+  //TODO abstract out the below math to a camera object
   cameraTransBuffer.set(glm::dmat4(1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 1) * //clip
 			glm::perspectiveFov<double>(glm::radians(45.0f), 16.0, 9.0, 0.1, 100.0) * //projection
 			glm::lookAt(glm::dvec3(-5, 3, -10), glm::dvec3(0, 0, 0), glm::dvec3(0, -1, 0))); //view

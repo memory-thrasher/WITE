@@ -95,6 +95,8 @@ namespace WITE {
       vk::ImageLayout layout;
       vk::PipelineStageFlags2 stages;
       vk::AccessFlags2 access;
+
+      friend consteval bool operator==(const flowStep& l, const flowStep& r) = default;
     };
     uint64_t deviceId = NONE;
     vk::Format format = vk::Format::eUndefined;
@@ -103,6 +105,8 @@ namespace WITE {
     uint8_t flowCount, dimensions, frameswapCount;
     imageFlags_t imageFlags;
     uint32_t arrayLayers, mipLevels;
+
+    friend consteval bool operator==(const imageRequirements& l, const imageRequirements& r) = default;
   };
 
   struct bufferRequirements {
@@ -112,6 +116,8 @@ namespace WITE {
     vk::PipelineStageFlags2 readStages = {}, writeStages = {};
     uint32_t size = 0;
     uint8_t frameswapCount = 0;
+
+    friend consteval auto operator<=>(const bufferRequirements& l, const bufferRequirements& r) = default;
   };
 
   constexpr bufferRequirements hostVisibleBufferRequirements {

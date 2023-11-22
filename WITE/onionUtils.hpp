@@ -317,4 +317,20 @@ namespace WITE {
     return ret;
   };
 
+  template<bufferRequirements R, class T> consteval bool satisfies(T t) {
+    return (R & t) == R;
+  };
+
+  template<imageRequirements R, class T> consteval bool satisfies(T t) {
+    return (R & t) == R;
+  };
+
+  template<class T> consteval size_t findId(literalList<T> l, uint64_t id) {
+    for(size_t i = 0;i < l.len;i++)
+      if(l[i].id == id)
+	return i;
+    constexprAssertFailed();
+    return l.len;
+  };
+
 }

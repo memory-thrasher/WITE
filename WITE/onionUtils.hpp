@@ -261,6 +261,38 @@ namespace WITE {
     return operator&(l, requirementsForSlot(r));
   };
 
+  /// L <= R means "is L a subset of R", which means "does any resource that satisfies R always satisfy L"
+  consteval bool operator<=(const bufferRequirements& l, const bufferRequirements& r) {
+    return l.deviceId == r.deviceId && !(l.memoryFlags & ~r.memoryFlags) && !(l.usage & ~r.usage) && !(l.readStages & ~r.readStages) && !(l.writeStages & ~r.writeStages) && l.size <= r.size && l.frameswapCount == r.frameswapCount;
+  };
+
+  /// L <= R means "is L a subset of R", which means "does any resource that satisfies R always satisfy L"
+  consteval bool operator<=(const imageRequirements& l, const imageRequirements& r) {
+    if(l.flowCount) {
+      if(r.flowCount == 1 && r.flow[0].layout == vk::ImageLayout::eGeneral) {
+	//if general layout is ever used, it's all that's used. So it's a superset of everything
+	//onionId and shaderId no longer mean anything but stages and access do
+	for(size_t i = 0;i < l.flowCount;i++)
+	  if((l.flow[i].stages & ~r.flow[0].stages) || (l.flow[i].access & ~r.flow[0].access))
+	    return false;
+      } else {
+	if(l.flowCount > r.flowCount) return false;
+	bool foundMatch = false;
+	for(size_t i = 0;i <= r.flowCount - l.flowCount && !foundMatch;i++) {
+	  foundMatch = true;
+	  for(size_t j = 0;j < l.flowCount && foundMatch;j++) {
+	    auto rf = r.flow[i + j],
+	      lf = l.flow[j];
+	    foundMatch = rf.onionId == lf.onionId && rf.shaderId == lf.shaderId && rf.layout == lf.layout &&
+	      !(lf.access & ~rf.access) && !(lf.stages & ~rf.stages);
+	  }
+	}
+	if(!foundMatch) return false;
+      }
+    }
+    return l.deviceId == r.deviceId && l.format == r.format && !(l.usage & ~r.usage) && l.dimensions == r.dimensions && l.frameswapCount == r.frameswapCount && !(l.imageFlags & ~r.imageFlags) && l.arrayLayers <= r.arrayLayers && l.mipLevels == r.mipLevels;
+  };
+
   template<uint64_t id, literalList<shader> shaders>
   consteval bufferRequirements getVertexBufferRequirements() {
     if constexpr(shaders.len == 0)
@@ -315,14 +347,6 @@ namespace WITE {
     ret.setSize(r.size);
     ret.setUsage(r.usage);
     return ret;
-  };
-
-  template<bufferRequirements R, class T> consteval bool satisfies(T t) {
-    return (R & t) == R;
-  };
-
-  template<imageRequirements R, class T> consteval bool satisfies(T t) {
-    return (R & t) == R;
   };
 
   template<class T> consteval size_t findId(literalList<T> l, uint64_t id) {

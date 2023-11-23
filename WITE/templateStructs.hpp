@@ -90,13 +90,11 @@ namespace WITE {
   struct imageRequirements {
     static constexpr size_t MAX_FLOW_STEPS = 4;//going beyond this just means using general for everything
     struct flowStep {
-      uint64_t onionId,
-	shaderId;
-      vk::ImageLayout layout;
-      vk::PipelineStageFlags2 stages;
-      vk::AccessFlags2 access;
-
-      friend consteval bool operator==(const flowStep& l, const flowStep& r) = default;
+      uint64_t onionId = NONE,
+	shaderId = NONE;
+      vk::ImageLayout layout = vk::ImageLayout::eGeneral;
+      vk::PipelineStageFlags2 stages = {};
+      vk::AccessFlags2 access = {};
     };
     uint64_t deviceId = NONE;
     vk::Format format = vk::Format::eUndefined;
@@ -105,8 +103,6 @@ namespace WITE {
     uint8_t flowCount, dimensions, frameswapCount;
     imageFlags_t imageFlags;
     uint32_t arrayLayers, mipLevels;
-
-    friend consteval bool operator==(const imageRequirements& l, const imageRequirements& r) = default;
   };
 
   struct bufferRequirements {

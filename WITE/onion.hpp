@@ -13,67 +13,65 @@ namespace WITE {
 
     template<uint64_t id> inline static constexpr auto bufferRequirements_v = getBufferRequirements<id, TL, S, GPUID>();
 
-    template<shaderTargetInstanceLayout IL> class camera_t {
+    template<shaderTargetInstanceLayout IL> class target_t {
     private:
       bufferBase* vertexBuffers[TL.vertexBuffers.len];
       bufferBase* instanceBuffers[TL.instanceBuffers.len];
       bufferBase* uniformBuffers[TL.uniformBuffers.len];
       imageBase* sampledImages[TL.sampled.len];
       imageBase* attachments[TL.attachments.len];
-      glm::uvec4 size;//which components are used depends on IL. cube = x, 2d = xy, 3d = xyz, 4d = xyzw (if ever implemented)
 
-      camera_t() = delete;
-      camera_t(const camera_t&) = delete;
+      target_t(const target_t&) = delete;
+      target_t() = default;
+
+      friend onion;
 
     public:
 
-      camera_t(glm::uvec4 size) : size(size) {};
+      ~target_t() = default;
 
       template<uint64_t ID, bufferRequirements R> void setVertexBuffer(buffer<R>* b) {
 	constexpr static uint64_t idx = findId(TL.vertexBuffers, ID);
-	static_assert(satisfies<R>(TL.vertexBuffers[idx]));
+	static_assert_show(bufferRequirements_v<ID> <= R, bufferRequirements_v<ID>);
 	vertexBuffers[idx] = b;
       };
 
       template<uint64_t ID, bufferRequirements R> void setInstanceBuffer(buffer<R>* b) {
 	constexpr static uint64_t idx = findId(TL.instanceBuffers, ID);
-	static_assert(satisfies<R>(TL.instanceBuffers[idx]));
+	static_assert_show(bufferRequirements_v<ID> <= R, bufferRequirements_v<ID>);
 	instanceBuffers[idx] = b;
       };
 
       template<uint64_t ID, bufferRequirements R> void setUniformBuffer(buffer<R>* b) {
 	constexpr static uint64_t idx = findId(TL.uniformBuffers, ID);
-	static_assert(satisfies<R>(TL.uniformBuffers[idx]));
+	static_assert_show(bufferRequirements_v<ID> <= R, bufferRequirements_v<ID>);
 	uniformBuffers[idx] = b;
       };
 
       template<uint64_t ID, imageRequirements R> void setAttachment(image<R>* b) {
 	constexpr static uint64_t idx = findId(TL.attachments, ID);
-	static_assert(satisfies<R>(TL.attachments[idx]));
+	static_assert_show(imageRequirements_v<ID> <= R, imageRequirements_v<ID>);
 	attachments[idx] = b;
       };
 
       template<uint64_t ID, imageRequirements R> void setSampledImage(image<R>* b) {
 	constexpr static uint64_t idx = findId(TL.sampled, ID);
-	static_assert(satisfies<R>(TL.sampled[idx]));
+	static_assert_show(imageRequirements_v<ID> <= R, imageRequirements_v<ID>);
 	sampledImages[idx] = b;
       };
 
     };
 
-    template<shaderTargetInstanceLayout IL> camera_t<IL> createTarget(unsigned int x) {
-      static_assert(IL.targetType == targetType_t::eCube);
-      return {{ x, 0, 0, 0 }};
+    template<shaderTargetInstanceLayout IL> target_t<IL> createTarget() {
+      return {};
     };
 
-    template<shaderTargetInstanceLayout IL> camera_t<IL> createTarget(glm::uvec2 v) {
-      static_assert(IL.targetType == targetType_t::e2D);
-      return {{ v.x, v.y, 0, 0 }};
-    };
+    template<uint64_t SHADER_ID> class source_t {
+    public:
+      static constexpr size_t SHADER_IDX = findId(S, SHADER_ID);
 
-    template<shaderTargetInstanceLayout IL> camera_t<IL> createTarget(glm::uvec3 v) {
-      static_assert(IL.targetType == targetType_t::e3D);
-      return {{ v.x, v.y, v.z, 0 }};
+    private:
+      //
     };
 
   };

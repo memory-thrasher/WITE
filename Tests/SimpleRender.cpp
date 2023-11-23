@@ -77,7 +77,7 @@ constexpr shaderTargetInstanceLayout standardTarget = {
 
 int main(int argc, char** argv) {
   window w;//default window size is a centered rectangle meant for splash screens and tests
-  auto camera = primaryOnion.createTarget<standardTarget>(w.getGlSize());
+  auto camera = primaryOnion.createTarget<standardTarget>();
   // auto cube = onion.createSource<simpleShader.id>();
   buffer<onion_t::bufferRequirements_v<objectTransformData.id>> cubeTransBuffer;
   // cube.setUniformBuffer<standardTransformData.id>(&cubeTransBuffer);

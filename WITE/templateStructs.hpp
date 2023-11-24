@@ -26,7 +26,9 @@ namespace WITE {
   enum class imageFlags_e : uint16_t {//bitmask
     eCube = 1,
     e3DIs2DArray = 2,
-    eHostVisible = 4
+    eHostVisible = 4,
+    eAlwaysGeneralLayout = 8, //ignore layout, image will never be transitioned
+    metaMustMatch = eAlwaysGeneralLayout
   };//add more as needed
   using imageFlags_t = vk::Flags<imageFlags_e>;//thx to the folks at vk for doing the legwork on a flag template
 
@@ -88,7 +90,8 @@ namespace WITE {
 #define defineImageSlots(NOM, ...) defineLiteralList(shaderImageSlot, NOM, __VA_ARGS__)
 
   struct imageRequirements {
-    static constexpr size_t MAX_FLOW_STEPS = 4;//going beyond this just means using general for everything
+    //image transitions are expensive. Use always general layout flag to avoid them if an image is used a ton of different ways
+    static constexpr size_t MAX_FLOW_STEPS = 4;
     struct flowStep {
       uint64_t onionId = NONE,
 	shaderId = NONE;

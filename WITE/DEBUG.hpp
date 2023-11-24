@@ -68,6 +68,8 @@
 
 void constexprAssertFailed();//note: NOT constexpr
 #define ASSERT_CONSTEXPR(X) { if(!(X)) ::constexprAssertFailed(); }
+//alternate syntax that resembles static_assert
+#define constexpr_assert(X) ASSERT_CONSTEXPR(X)
 #define ASSERT_CONSTEXPR_RET(X, RET) { if(!(X)) { ::constexprAssertFailed(); return RET; } }
 
 template<bool condition, class T, T values> struct static_assert_show_t {

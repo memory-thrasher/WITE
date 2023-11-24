@@ -61,7 +61,8 @@ namespace WITE {
     template<imageRequirements R> void blit(image<R>&) {
       static_assert(R.dimensions == 2);//TODO option to split a 3d image?
       static_assert(R.usage & vk::ImageUsageFlagBits::eTransferSrc);
-      static_assert(R.flow[R.flowCount-1].layout == vk::ImageLayout::eGeneral ||
+      static_assert((R.imageFlags & imageFlags_e::eAlwaysGeneralLayout) ||
+		    R.flow[R.flowCount-1].layout == vk::ImageLayout::eGeneral ||
 		    R.flow[R.flowCount-1].layout == vk::ImageLayout::eTransferSrcOptimal ||
 		    R.flow[R.flowCount-1].layout == vk::ImageLayout::eSharedPresentKHR);
       #error TODO

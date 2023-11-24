@@ -17,10 +17,10 @@ namespace vk {
 namespace WITE {
 
   consteval void appendFlow(imageRequirements& r, imageRequirements::flowStep f) {
-    if((r.flowCount == 1 && r.flow[0].layout == vk::ImageLayout::eGeneral) ||
-       (r.flowCount > 0 && r.flow[r.flowCount-1].layout == f.layout)) {
+    if(r.imageFlags & imageFlags_e::eAlwaysGeneralLayout)
+      return;//already in always general layout mode, nothing to do
+    if(r.flowCount > 0 && r.flow[r.flowCount-1].layout == f.layout) {
       size_t lastIdx = r.flowCount-1;
-      //an image using general should stay in general (could mean flow count overflowed previously)
       //two flows in a row with the same layout can be merged
       r.flow[lastIdx].stages |= f.stages;
       r.flow[lastIdx].access |= f.access;
@@ -35,18 +35,9 @@ namespace WITE {
       return;
     }
     if(f.layout == vk::ImageLayout::eGeneral || r.flowCount == imageRequirements::MAX_FLOW_STEPS) {
-      //new layout is general, or overflow, convert the entire flow to general only
-      r.flow[0].layout = vk::ImageLayout::eGeneral;
-      for(size_t i = 1;i < r.flowCount;i++) {
-	r.flow[0].stages |= r.flow[i].stages;
-	r.flow[0].access |= r.flow[i].access;
-	if(r.flow[0].onionId != r.flow[i].onionId) r.flow[0].onionId = NONE;
-	if(r.flow[0].shaderId != r.flow[i].shaderId) r.flow[0].shaderId = NONE;
-      }
-      r.flow[0].stages |= f.stages;
-      r.flow[0].access |= f.access;
-      if(r.flow[0].onionId != f.onionId) r.flow[0].onionId = NONE;
-      if(r.flow[0].shaderId != f.shaderId) r.flow[0].shaderId = NONE;
+      //new layout is general, or overflow, convert the entire image requirement to always general mode
+      r.imageFlags |= imageFlags_e::eAlwaysGeneralLayout;
+      r.flowCount = 0;
       return;
     }
     //and finally, ordinary append
@@ -76,8 +67,7 @@ namespace WITE {
   };
 
   constexpr bool isValid(const imageRequirements& ir) {
-    return (ir.flowCount)
-      && (ir.dimensions > 1)
+    return (ir.dimensions > 1)
       && (ir.dimensions < 4)
       && (ir.arrayLayers > 0)
       && (ir.dimensions < 3 || ir.arrayLayers == 1)
@@ -85,7 +75,9 @@ namespace WITE {
       && (ir.mipLevels > 0)
       && (ir.mipLevels == 1 || ir.dimensions > 1)
       && ((~ir.imageFlags & imageFlags_e::eCube) || (ir.arrayLayers % 6 == 0))
-      && ((~ir.imageFlags & imageFlags_e::e3DIs2DArray) || (ir.dimensions == 3));
+      && ((~ir.imageFlags & imageFlags_e::e3DIs2DArray) || (ir.dimensions == 3))
+      //flow needed if and only if we're not using general mode
+      && (bool(ir.imageFlags & imageFlags_e::eAlwaysGeneralLayout) ^ (ir.flowCount > 0));
   };
 
   inline void assertValidRuntime(const imageRequirements& ir) {
@@ -105,8 +97,13 @@ namespace WITE {
     ASSERT_CONSTEXPR(l.mipLevels == r.mipLevels || r.mipLevels == 0);
     if(l.deviceId == NONE) l.deviceId = r.deviceId;
     ASSERT_CONSTEXPR(l.deviceId == r.deviceId || r.deviceId == NONE);
-    for(size_t i = 0;i < r.flowCount;i++)
-      appendFlow(l, r.flow[i]);
+    if(r.imageFlags & imageFlags_e::eAlwaysGeneralLayout) {
+      l.imageFlags |= imageFlags_e::eAlwaysGeneralLayout;
+      l.flowCount = 0;
+    }
+    if(~l.imageFlags & imageFlags_e::eAlwaysGeneralLayout)
+      for(size_t i = 0;i < r.flowCount;i++)
+	appendFlow(l, r.flow[i]);
     if(min(l.dimensions, r.dimensions) == 2 && max(l.dimensions, r.dimensions) == 3) {
       //special case: a 3D image can be used as an array of 2D images. In no case may a 3D image have >1 array layer.
       l.dimensions = 3;
@@ -269,7 +266,7 @@ namespace WITE {
 
   /// L <= R means "is L a subset of R", which means "does any resource that satisfies R always satisfy L"
   consteval bool operator<=(const imageRequirements& l, const imageRequirements& r) {
-    if(l.flowCount) {
+    if(l.flowCount && (~l.imageFlags & imageFlags_e::eAlwaysGeneralLayout)) {
       if(r.flowCount == 1 && r.flow[0].layout == vk::ImageLayout::eGeneral) {
 	//if general layout is ever used, it's all that's used. So it's a superset of everything
 	//onionId and shaderId no longer mean anything but stages and access do
@@ -298,7 +295,7 @@ namespace WITE {
       (l.frameswapCount == r.frameswapCount || l.frameswapCount == 0) &&
       (l.arrayLayers <= r.arrayLayers || l.arrayLayers == 0) &&
       (l.mipLevels == r.mipLevels || l.mipLevels == 0) &&
-      !(l.imageFlags & ~r.imageFlags) &&
+      !((l.imageFlags ^ r.imageFlags) & imageFlags_e::metaMustMatch) &&
       !(l.usage & ~r.usage);
   };
 

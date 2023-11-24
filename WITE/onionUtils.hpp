@@ -158,11 +158,12 @@ namespace WITE {
       .deviceId = gpuId
     };
     for(size_t i = 0;i < shaders.len;i++) {
+      const shader& s = shaders[i];
       imageRequirements::flowStep flow {
 	.onionId = onionId,
+	.shaderId = s.id,
 	.layout = vk::ImageLayout::eUndefined
       };
-      const shader& s = shaders[i];
       for(const shaderImageSlot& sis : s.sampled)
 	if(sis.id == id) {
 	  ret &= requirementsForSlot(sis);
@@ -290,7 +291,15 @@ namespace WITE {
 	if(!foundMatch) return false;
       }
     }
-    return l.deviceId == r.deviceId && l.format == r.format && !(l.usage & ~r.usage) && l.dimensions == r.dimensions && l.frameswapCount == r.frameswapCount && !(l.imageFlags & ~r.imageFlags) && l.arrayLayers <= r.arrayLayers && l.mipLevels == r.mipLevels;
+    //most of these fields, treat 0 as "do not care" for l only
+    return (l.deviceId == r.deviceId || l.deviceId == NONE) &&
+      (l.format == r.format || l.format == vk::Format::eUndefined) &&
+      (l.dimensions == r.dimensions || l.dimensions == 0) &&
+      (l.frameswapCount == r.frameswapCount || l.frameswapCount == 0) &&
+      (l.arrayLayers <= r.arrayLayers || l.arrayLayers == 0) &&
+      (l.mipLevels == r.mipLevels || l.mipLevels == 0) &&
+      !(l.imageFlags & ~r.imageFlags) &&
+      !(l.usage & ~r.usage);
   };
 
   template<uint64_t id, literalList<shader> shaders>

@@ -48,16 +48,16 @@ namespace WITE {
 	uniformBuffers[idx] = b;
       };
 
-      template<uint64_t ID, imageRequirements R> void setAttachment(image<R>* b) {
-	constexpr static uint64_t idx = findId(TL.attachments, ID);
-	static_assert_show(imageRequirements_v<ID> <= R, imageRequirements_v<ID>);
-	attachments[idx] = b;
-      };
-
       template<uint64_t ID, imageRequirements R> void setSampledImage(image<R>* b) {
 	constexpr static uint64_t idx = findId(TL.sampled, ID);
 	static_assert_show(imageRequirements_v<ID> <= R, imageRequirements_v<ID>);
 	sampledImages[idx] = b;
+      };
+
+      template<uint64_t ID, imageRequirements R> void setAttachment(image<R>* b) {
+	constexpr static uint64_t idx = findId(TL.attachments, ID);
+	static_assert_show(imageRequirements_v<ID> <= R, imageRequirements_v<ID>);
+	attachments[idx] = b;
       };
 
     };
@@ -69,9 +69,46 @@ namespace WITE {
     template<uint64_t SHADER_ID> class source_t {
     public:
       static constexpr size_t SHADER_IDX = findId(S, SHADER_ID);
+      static constexpr shader SHADER_PARAMS = S[SHADER_IDX];
 
     private:
-      //
+      bufferBase* vertexBuffer;
+      bufferBase* instanceBuffer;
+      bufferBase* uniformBuffers[SHADER_PARAMS.uniformBuffers.len];
+      imageBase* sampledImages[SHADER_PARAMS.sampled.len];
+
+      friend onion;
+
+    public:
+
+      template<bufferRequirements R> void setVertexBuffer(buffer<R>* b) {
+	static_assert_show(SHADER_PARAMS.vertexBuffer && bufferRequirements_v<SHADER_PARAMS.vertexBuffer->id> <= R,
+			   SHADER_PARAMS.vertexBuffer);
+	vertexBuffer = b;
+      };
+
+      template<bufferRequirements R> void setInstanceBuffer(buffer<R>* b) {
+	static_assert_show(SHADER_PARAMS.instanceBuffer && bufferRequirements_v<SHADER_PARAMS.instanceBuffer->id> <= R,
+			   SHADER_PARAMS.instanceBuffer);
+	instanceBuffer = b;
+      };
+
+      template<uint64_t ID, bufferRequirements R> void setUniformBuffer(buffer<R>* b) {
+	constexpr static uint64_t idx = findId(SHADER_PARAMS.uniformBuffers, ID);
+	static_assert_show(bufferRequirements_v<ID> <= R, bufferRequirements_v<ID>);
+	uniformBuffers[idx] = b;
+      };
+
+      template<uint64_t ID, imageRequirements R> void setSampledImage(image<R>* b) {
+	constexpr static uint64_t idx = findId(SHADER_PARAMS.sampled, ID);
+	static_assert_show(imageRequirements_v<ID> <= R, imageRequirements_v<ID>);
+	sampledImages[idx] = b;
+      };
+
+    };
+
+    template<uint64_t shaderId> source_t<shaderId> createSource() {
+      return {};
     };
 
   };

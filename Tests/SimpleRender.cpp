@@ -78,11 +78,11 @@ constexpr shaderTargetInstanceLayout standardTarget = {
 int main(int argc, char** argv) {
   window w;//default window size is a centered rectangle meant for splash screens and tests
   auto camera = primaryOnion.createTarget<standardTarget>();
-  // auto cube = onion.createSource<simpleShader.id>();
+  auto cube = primaryOnion.createSource<simpleShader.id>();
   buffer<onion_t::bufferRequirements_v<objectTransformData.id>> cubeTransBuffer;
-  // cube.setUniformBuffer<standardTransformData.id>(&cubeTransBuffer);
+  cube.setUniformBuffer<objectTransformData.id>(&cubeTransBuffer);
   buffer<onion_t::bufferRequirements_v<standardVertBufferSlot.id>> cubeVerts;
-  // cube.setVertexBuffer<standardVertBufferLayout.id>(&cubeVerts);
+  cube.setVertexBuffer(&cubeVerts);
   buffer<onion_t::bufferRequirements_v<cameraTransformData.id>> cameraTransBuffer;
   camera.setUniformBuffer<cameraTransformData.id>(&cameraTransBuffer);
   image<onion_t::imageRequirements_v<standardColor.id> & window::presentationSuggestions & standardColor> cameraColor(w.getSize());

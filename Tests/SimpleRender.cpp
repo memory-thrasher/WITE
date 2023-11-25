@@ -6,52 +6,106 @@
 
 using namespace WITE;
 
-//NOTE: all .id fields need only be unique within the onion. __LINE__ is a cute way to do that when all in one file.
-//more complex use cases may map multiple resources to the same id to reuse that resource in a different manner within the onion
-//obviously some things with ids are not compatible like shaders and buffers
+//TODO store some of these configurations in a canned header
 
-constexpr shaderUniformBufferSlot objectTransformData {
+constexpr uint64_t gpuId = 0;
+
+constexpr bufferRequirements BR_singleTransform {
+  .deviceId = gpuId,
   .id = __LINE__,
-  .readStages = vk::PipelineStageFlagBits2::eVertexShader,
   .size = sizeof(glm::dmat4),
-  .frameswapCount = 2
-}, cameraTransformData {
-  .id = __LINE__,
-  .readStages = vk::PipelineStageFlagBits2::eVertexShader,
-  .size = sizeof(glm::dmat4),
-  .frameswapCount = 2
+  .frameswapCount = 2,//transforms usually can be updated during execution
+  .hostToDevice = false
 };
 
-constexpr shaderImageSlot standardDepth {
+constexpr bufferRequirements BR_cubeMesh {
+  .deviceId = gpuId,
+  .id = __LINE__,
+  .size = sizeofUdm<UDM::RGB32float>() * 36,
+  .frameswapCount = 2,//transforms usually can be updated during execution
+  .hostToDevice = false
+};
+
+constexpr imageFlowStep IFS_clearAndDepth {
+  .id = __LINE__,
+  .layout = vk::ImageLayout::eDepthStencilAttachmentOptimal,
+  .clearOnAttach = true
+};
+
+constexpr imageFlowStep IFS_clearAndColor {
+  .id = __LINE__,
+  .clearOnAttach = true,
+  .clearTo = {
+    .color = { 0.2f, 0.2f, 0.2f, 0.2f }
+  }
+};
+
+constexpr imageFlowStep IFS_present {
+  .id = __LINE__,
+  .layout = vk::ImageLayout::eTransferSrcOptimal
+};
+
+constexpr uint64_t IF_color[] = { IFS_clearAndColor.id, IFS_present.id };
+
+constexpr imageRequirements IR_standardDepth {
+  .deviceId = gpuId,
   .id = __LINE__,
   .format = Format::D16unorm,
+  .usage = vk::ImageUsageFlagBits::eDepthStencilAttachment,
+  .flow = IFS_clearAndDepth.id,
   .frameswapCount = 1
-}, standardColor {
+};
+
+constexpr imageRequirements IR_standardColor {
   .id = __LINE__,
   .format = Format::RGB8uint,
+  .usage = vk::ImageUsageFlagBits::eColorAttachment,
+  .flow = IF_color,
   .frameswapCount = 2
 };
-constexpr shaderImageSlot standardImagery[2] { standardDepth, standardColor };
 
-constexpr shaderTargetLayout standardRenderTargetLayout {
-  .uniformBuffers = cameraTransformData,
-  .attachments = standardImagery
-  //remaining options are default so could be skipped here but included for sample clarity
-  // .sampled = NULL
-  // .vertexBuffers = NULL
-  // .instanceBuffers = NULL
+constexpr resourceMap
+RM_depth = {
+  .id = __LINE__,
+  .requirementId = IR_standardDepth.id,
+  .flowId = IFS_clearAndDepth.id,
+  .readStages = vk::PipelineStageFlagBits2::eEarlyFragmentTests,
+  .writeStages = vk::PipelineStageFlagBits2::eLateFragmentTests,
+  .access = vk::AccessFlagBits2::eDepthStencilAttachmentWrite | vk::AccessFlagBits2::eDepthStencilAttachmentRead
+}, RM_color = {
+  .id = __LINE__,
+  .requirementId = IR_standardColor.id,
+  .flowId = IFS_clearAndColor.id,
+  .writeStages = vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+  .access = vk::AccessFlagBits2::eColorAttachmentWrite
+}, RM_cameraTrans = {
+  .id = __LINE__,
+  .requirementId = BR_singleTransform.id,
+  .readStages = vk::PipelineStageFlagBits2::eVertexShader,
+  .access = vk::AccessFlagBits2::eUniformRead
+}, RM_target[] = {
+  RM_depth, RM_color, RM_cameraTrans
+}, RM_cubeTransform = {
+  .id = __LINE__,
+  .requirementId = BR_singleTransform.id,
+  .readStages = vk::PipelineStageFlagBits2::eVertexShader,
+  .access = vk::AccessFlagBits2::eUniformRead
+}, RM_cubeMesh = {
+  .id = __LINE__,
+  .requirementId = BR_cubeMesh.id,
+  .readStages = vk::PipelineStageFlagBits2::eVertexShader,
+  .access = vk::AccessFlagBits2::eVertexAttributeRead
+}, RM_source[] = {
+  RM_cubeTrans, RM_cubeMesh
+};
+
+constexpr targetLayout standardRenderTargetLayout {
+  .targetProvidedResources = RM_target //pass by reference (with extra steps), so prior declaration is necessary
 };
 
 constexpr shaderTargetLinkage standardRenderTargetLink {
-  .depthStencil = attach(standardDepth),
-  .color = attach(standardColor)
-};
-
-constexpr shaderVertexBufferSlot standardVertBufferSlot {
-  .id = __LINE__,
-  .format = UDM::RGB32float, // UDM can have multiple attributes but we only need position today
-  .vertCount = 36,
-  .frameswapCount = 1 //static mesh: no need to double-buffer in this case
+  .depthStencil = RM_depth.id,
+  .color = RM_color.id
 };
 
 defineShaderModules(simpleShaderModules,
@@ -62,49 +116,59 @@ constexpr shader simpleShader {
   .id = __LINE__,
   .modules = simpleShaderModules,
   .targetLink = standardRenderTargetLink,
-  .vertexBuffer = &standardVertBufferSlot,//pointer only so it can be nullable
-  .uniformBuffers = objectTransformData//could be an array
+  .sourceProvidedResources = RM_cubeTrans
 };
 
-//takes a LiteralList of shaders, normally there'd be much more than one
-//second is the target layout
-typedef WITE::onion<simpleShader, standardRenderTargetLayout, __LINE__> onion_t;
+constexpr imageFlowStep allFlows[] = {
+  IFS_clearAndDepth,
+  IFS_clearAndColor,
+  IFS_present
+};
+
+constexpr imageRequirements allImageRequirements[] = {
+  IR_standardDepth,
+  IR_standardColor
+};
+
+constexpr bufferRequirements allBufferRequirements[] = {
+  BR_singleTransform,
+  BR_cubeMesh
+};
+
+//takes a literalList of shaders, normally there'd be much more than one
+typedef WITE::onion<allFlows, allImageRequirements, allBufferRequirements, simpleShader, standardRenderTargetLayout, __LINE__, gpuId> onion_t;
 onion_t primaryOnion;
-
-constexpr shaderTargetInstanceLayout standardTarget = {
-  .targetType = targetType_t::e2D, //other options: 2D, 3D, Cube
-};
 
 int main(int argc, char** argv) {
   window w;//default window size is a centered rectangle meant for splash screens and tests
-  auto camera = primaryOnion.createTarget<standardTarget>();
-  auto cube = primaryOnion.createSource<simpleShader.id>();
-  buffer<onion_t::bufferRequirements_v<objectTransformData.id>> cubeTransBuffer;
-  cube.setUniformBuffer<objectTransformData.id>(&cubeTransBuffer);
-  buffer<onion_t::bufferRequirements_v<standardVertBufferSlot.id>> cubeVerts;
-  cube.setVertexBuffer(&cubeVerts);
-  buffer<onion_t::bufferRequirements_v<cameraTransformData.id>> cameraTransBuffer;
-  camera.setUniformBuffer<cameraTransformData.id>(&cameraTransBuffer);
-  image<onion_t::imageRequirements_v<standardColor.id> & window::presentationSuggestions & standardColor> cameraColor(w.getSize());
-  camera.setAttachment<standardColor.id>(&cameraColor);
-  image<onion_t::imageRequirements_v<standardDepth.id> & standardDepth> cameraDepth(w.getSize());
-  camera.setAttachment<standardDepth.id>(&cameraDepth);
-  cubeTransBuffer.set(glm::dmat4(1));//model: diagonal identity
-  //TODO abstract out the below math to a camera object
-  cameraTransBuffer.set(glm::dmat4(1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 1) * //clip
-			glm::perspectiveFov<double>(glm::radians(45.0f), 16.0, 9.0, 0.1, 100.0) * //projection
-			glm::lookAt(glm::dvec3(-5, 3, -10), glm::dvec3(0, 0, 0), glm::dvec3(0, -1, 0))); //view
-  cubeVerts.set<standardVertBufferSlot.format>({
-      {{0, 0, 0}}, {{1, 1, 0}}, {{1, 0, 0}}, {{0, 0, 0}}, {{0, 1, 0}}, {{1, 1, 0}},
-      {{0, 0, 1}}, {{1, 1, 1}}, {{1, 0, 1}}, {{0, 0, 1}}, {{0, 1, 1}}, {{1, 1, 1}},
-      {{0, 0, 0}}, {{1, 0, 1}}, {{1, 0, 0}}, {{0, 0, 0}}, {{0, 0, 1}}, {{1, 0, 1}},
-      {{0, 1, 0}}, {{1, 1, 1}}, {{1, 1, 0}}, {{0, 1, 0}}, {{0, 1, 1}}, {{1, 1, 1}},
-      {{0, 0, 0}}, {{0, 1, 1}}, {{0, 1, 0}}, {{0, 0, 0}}, {{0, 0, 1}}, {{0, 1, 1}},
-      {{1, 0, 0}}, {{1, 1, 1}}, {{1, 1, 0}}, {{1, 0, 0}}, {{1, 0, 1}}, {{1, 1, 1}}
-    });
+  // auto camera = primaryOnion.createTarget();
+  // auto cube = primaryOnion.createSource<simpleShader.id>();
+  // buffer<BR_singleTransform> cubeTransBuffer, cameraTransBuffer;
+  // cube.setUniformBuffer<RM_cubeTrans.id>(&cubeTransBuffer);
+  // camera.setUniformBuffer<RM_cameraTrans.id>(&cameraTransBuffer);
+  // buffer<BR_cubeMesh> cubeVerts;
+  // cube.setVertexBuffer(&cubeVerts);
+  // image<IR_standardColor> cameraColor(w.getSize());
+  // camera.setAttachment<RM_color.id>(&cameraColor);
+  // ////////////////////////////////////////////////////////////
+  // image<IR_standardColor> cameraDepth(w.getSize());
+  // camera.setAttachment<RM_depth.id>(&cameraDepth);
+  // cubeTransBuffer.set(glm::dmat4(1));//model: diagonal identity
+  // //TODO abstract out the below math to a camera object or helper function
+  // cameraTransBuffer.set(glm::dmat4(1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 1) * //clip
+  // 			glm::perspectiveFov<double>(glm::radians(45.0f), 16.0, 9.0, 0.1, 100.0) * //projection
+  // 			glm::lookAt(glm::dvec3(-5, 3, -10), glm::dvec3(0, 0, 0), glm::dvec3(0, -1, 0))); //view
+  // cubeVerts.set<BR_cubeMesh.format>({
+  //     {{0, 0, 0}}, {{1, 1, 0}}, {{1, 0, 0}}, {{0, 0, 0}}, {{0, 1, 0}}, {{1, 1, 0}},
+  //     {{0, 0, 1}}, {{1, 1, 1}}, {{1, 0, 1}}, {{0, 0, 1}}, {{0, 1, 1}}, {{1, 1, 1}},
+  //     {{0, 0, 0}}, {{1, 0, 1}}, {{1, 0, 0}}, {{0, 0, 0}}, {{0, 0, 1}}, {{1, 0, 1}},
+  //     {{0, 1, 0}}, {{1, 1, 1}}, {{1, 1, 0}}, {{0, 1, 0}}, {{0, 1, 1}}, {{1, 1, 1}},
+  //     {{0, 0, 0}}, {{0, 1, 1}}, {{0, 1, 0}}, {{0, 0, 0}}, {{0, 0, 1}}, {{0, 1, 1}},
+  //     {{1, 0, 0}}, {{1, 1, 1}}, {{1, 1, 0}}, {{1, 0, 0}}, {{1, 0, 1}}, {{1, 1, 1}}
+  //   });
   // camera.render();
   // TODO advance frame
-  w.blit(cameraColor);//goes onto same queue as render so fence handled internally
+  // w.blit(cameraColor);//goes onto same queue as render so fence handled internally
   // Thread::sleep(5000);
 }
 

@@ -20,7 +20,7 @@ namespace WITE {
     vk::Buffer vkBuffer[R.frameswapCount];
     vk::MemoryRequirements mrs[R.frameswapCount];
     gpu::vram rams[R.frameswapCount];
-    uint8_t data[R.size];
+    // uint8_t data[R.size];
     std::atomic_bool dirty;
 
     buffer() {
@@ -28,8 +28,9 @@ namespace WITE {
       for(size_t i = 0;i < R.frameswapCount;i++) {
 	VK_ASSERT(dev.getVkDevice().createBuffer(&ci, ALLOCCB, &vkBuffer[i]), "failed to create buffer");
 	dev.getVkDevice().getBufferMemoryRequirements(vkBuffer[i], &mrs[i]);
-	dev.allocate(mrs[i], R.memoryFlags, &rams[i]);
+	dev.allocate(mrs[i], vk::MemoryPropertyFlagBits::eDeviceLocal, &rams[i]);
       }
+      #error TODO staging buffer
     };
 
     virtual vk::Buffer frameBuffer(int64_t frame) const override {

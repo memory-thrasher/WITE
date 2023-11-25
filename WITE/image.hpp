@@ -28,7 +28,7 @@ namespace WITE {
       /* .layerCount =*/ R.arrayLayers
     };
 
-    static constexpr copyableArray<vk::ImageMemoryBarrier2, R.flowCount> defaultFlowTransitions = [](size_t i){
+    static constexpr copyableArray<vk::ImageMemoryBarrier2, R.flow.len> defaultFlowTransitions = [](size_t i){
       const auto& src = R.flow[i],
 	dst = R.flow[(i+1)%R.flowCount];
       vk::ImageMemoryBarrier2 ret;

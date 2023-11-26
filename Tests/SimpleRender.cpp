@@ -69,6 +69,7 @@ constexpr imageRequirements IR_standardDepth {
 };
 
 constexpr imageRequirements IR_standardColor {
+  .deviceId = gpuId,
   .id = __LINE__,
   .format = Format::RGB8uint,
   .usage = vk::ImageUsageFlagBits::eColorAttachment,
@@ -162,10 +163,10 @@ int main(int argc, char** argv) {
   camera.set<RM_cameraTrans.id>(&cameraTransBuffer);
   buffer<BR_cubeMesh> cubeVerts;
   cube.set<RM_cubeMesh.id>(&cubeVerts);
-  // image<IR_standardColor> cameraColor(w.getSize());
-  // camera.set<RM_color.id>(&cameraColor);
-  // image<IR_standardColor> cameraDepth(w.getSize());
-  // camera.set<RM_depth.id>(&cameraDepth);
+  image<IR_standardColor> cameraColor(w.getSize());
+  camera.set<RM_color.id>(&cameraColor);
+  image<IR_standardDepth> cameraDepth(w.getSize());
+  camera.set<RM_depth.id>(&cameraDepth);
   // cubeTransBuffer.set(glm::dmat4(1));//model: diagonal identity
   // //TODO abstract out the below math to a camera object or helper function
   // cameraTransBuffer.set(glm::dmat4(1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 1) * //clip

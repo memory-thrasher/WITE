@@ -11,7 +11,6 @@ namespace WITE {
     virtual ~imageBase() = default;
 
     virtual vk::Image frameImage(int64_t frame) const = 0;
-    virtual vk::ImageMemoryBarrier2 memoryBarrier(size_t previousStep, int64_t frame) const = 0;
 
   };
 

@@ -9,13 +9,13 @@ namespace WITE {
 
   template<literalList<imageFlowStep> IFS, literalList<imageRequirements> IRS, literalList<bufferRequirements> BRS, literalList<shader> S, targetLayout TL, uint64_t ONION_ID, uint64_t GPUID> struct onion { // because layers
 
-    template<resourceMap, size_t = 0> struct mappedResourceTuple_t : std::false_type {};
+    template<resourceMap> struct mappedResourceTuple_t : std::false_type {};
 
-    template<resourceMap RM> struct mappedResourceTuple_t<RM, findId(IRS, RM.requirementId)> {
+    template<resourceMap RM> requires(containsId(IRS, RM.requirementId)) struct mappedResourceTuple_t<RM> {
       typedef image<IRS[findId(IRS, RM.requirementId)]> type;
     };
 
-    template<resourceMap RM> struct mappedResourceTuple_t<RM, findId(BRS, RM.requirementId)> {
+    template<resourceMap RM> requires(containsId(BRS, RM.requirementId)) struct mappedResourceTuple_t<RM> {
       typedef buffer<BRS[findId(BRS, RM.requirementId)]> type;
     };
 

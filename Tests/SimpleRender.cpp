@@ -15,7 +15,6 @@ constexpr bufferRequirements BR_singleTransform {
   .id = __LINE__,
   .size = sizeof(glm::dmat4),
   .frameswapCount = 2,//transforms usually can be updated during execution
-  .hostToDevice = false
 };
 
 constexpr bufferRequirements BR_cubeMesh {
@@ -23,7 +22,22 @@ constexpr bufferRequirements BR_cubeMesh {
   .id = __LINE__,
   .size = sizeofUdm<UDM::RGB32float>() * 36,
   .frameswapCount = 2,//transforms usually can be updated during execution
-  .hostToDevice = false
+};
+
+constexpr bufferRequirements BRS_singleTransform {
+  .deviceId = gpuId,
+  .id = __LINE__,
+  .size = sizeof(glm::dmat4),
+  .frameswapCount = 2,//transforms usually can be updated during execution
+  .hostVisible = true
+};
+
+constexpr bufferRequirements BRS_cubeMesh {
+  .deviceId = gpuId,
+  .id = __LINE__,
+  .size = sizeofUdm<UDM::RGB32float>() * 36,
+  .frameswapCount = 2,//transforms usually can be updated during execution
+  .hostVisible = true
 };
 
 constexpr imageFlowStep IFS_clearAndDepth {
@@ -35,9 +49,7 @@ constexpr imageFlowStep IFS_clearAndDepth {
 constexpr imageFlowStep IFS_clearAndColor {
   .id = __LINE__,
   .clearOnAttach = true,
-  .clearTo = {
-    .color = { 0.2f, 0.2f, 0.2f, 0.2f }
-  }
+  .clearTo = {{ 0.2f, 0.2f, 0.2f, 0.2f }}
 };
 
 constexpr imageFlowStep IFS_present {
@@ -85,7 +97,7 @@ RM_depth = {
   .access = vk::AccessFlagBits2::eUniformRead
 }, RM_target[] = {
   RM_depth, RM_color, RM_cameraTrans
-}, RM_cubeTransform = {
+}, RM_cubeTrans = {
   .id = __LINE__,
   .requirementId = BR_singleTransform.id,
   .readStages = vk::PipelineStageFlagBits2::eVertexShader,
@@ -116,7 +128,7 @@ constexpr shader simpleShader {
   .id = __LINE__,
   .modules = simpleShaderModules,
   .targetLink = standardRenderTargetLink,
-  .sourceProvidedResources = RM_cubeTrans
+  .sourceProvidedResources = RM_source
 };
 
 constexpr imageFlowStep allFlows[] = {
@@ -132,7 +144,9 @@ constexpr imageRequirements allImageRequirements[] = {
 
 constexpr bufferRequirements allBufferRequirements[] = {
   BR_singleTransform,
-  BR_cubeMesh
+  BR_cubeMesh,
+  BRS_singleTransform,
+  BRS_cubeMesh
 };
 
 //takes a literalList of shaders, normally there'd be much more than one
@@ -141,18 +155,17 @@ onion_t primaryOnion;
 
 int main(int argc, char** argv) {
   window w;//default window size is a centered rectangle meant for splash screens and tests
-  // auto camera = primaryOnion.createTarget();
-  // auto cube = primaryOnion.createSource<simpleShader.id>();
-  // buffer<BR_singleTransform> cubeTransBuffer, cameraTransBuffer;
-  // cube.setUniformBuffer<RM_cubeTrans.id>(&cubeTransBuffer);
-  // camera.setUniformBuffer<RM_cameraTrans.id>(&cameraTransBuffer);
-  // buffer<BR_cubeMesh> cubeVerts;
-  // cube.setVertexBuffer(&cubeVerts);
+  auto camera = primaryOnion.createTarget();
+  auto cube = primaryOnion.createSource<simpleShader.id>();
+  buffer<BR_singleTransform> cubeTransBuffer, cameraTransBuffer;
+  cube.set<RM_cubeTrans.id>(&cubeTransBuffer);
+  camera.set<RM_cameraTrans.id>(&cameraTransBuffer);
+  buffer<BR_cubeMesh> cubeVerts;
+  cube.set<RM_cubeMesh.id>(&cubeVerts);
   // image<IR_standardColor> cameraColor(w.getSize());
-  // camera.setAttachment<RM_color.id>(&cameraColor);
-  // ////////////////////////////////////////////////////////////
+  // camera.set<RM_color.id>(&cameraColor);
   // image<IR_standardColor> cameraDepth(w.getSize());
-  // camera.setAttachment<RM_depth.id>(&cameraDepth);
+  // camera.set<RM_depth.id>(&cameraDepth);
   // cubeTransBuffer.set(glm::dmat4(1));//model: diagonal identity
   // //TODO abstract out the below math to a camera object or helper function
   // cameraTransBuffer.set(glm::dmat4(1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 1) * //clip
@@ -166,9 +179,7 @@ int main(int argc, char** argv) {
   //     {{0, 0, 0}}, {{0, 1, 1}}, {{0, 1, 0}}, {{0, 0, 0}}, {{0, 0, 1}}, {{0, 1, 1}},
   //     {{1, 0, 0}}, {{1, 1, 1}}, {{1, 1, 0}}, {{1, 0, 0}}, {{1, 0, 1}}, {{1, 1, 1}}
   //   });
-  // camera.render();
-  // TODO advance frame
-  // w.blit(cameraColor);//goes onto same queue as render so fence handled internally
+  // //TODO create virtual thread
   // Thread::sleep(5000);
 }
 

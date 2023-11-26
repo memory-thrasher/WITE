@@ -7,109 +7,88 @@
 
 namespace WITE {
 
-  template<literalList<imageFlowStep> IFS, literalList<imageRequirements> IRS, literalList<bufferRequirements> BRS, literalList<shader> S, shaderTargetLayout TL, uint64_t ONION_ID, uint64_t GPUID> struct onion { // because layers
+  template<literalList<imageFlowStep> IFS, literalList<imageRequirements> IRS, literalList<bufferRequirements> BRS, literalList<shader> S, targetLayout TL, uint64_t ONION_ID, uint64_t GPUID> struct onion { // because layers
 
-    // template<uint64_t id> inline static constexpr auto imageRequirements_v = getImageRequirements<id, ONION_ID, S, GPUID>();
+    template<resourceMap, size_t = 0> struct mappedResourceTuple_t : std::false_type {};
 
-    // template<uint64_t id> inline static constexpr auto bufferRequirements_v = getBufferRequirements<id, TL, S, GPUID>();
+    template<resourceMap RM> struct mappedResourceTuple_t<RM, findId(IRS, RM.requirementId)> {
+      typedef image<IRS[findId(IRS, RM.requirementId)]> type;
+    };
 
-    // template<shaderTargetInstanceLayout IL> class target_t {
-    // private:
-    //   bufferBase* vertexBuffers[TL.vertexBuffers.len];
-    //   bufferBase* instanceBuffers[TL.instanceBuffers.len];
-    //   bufferBase* uniformBuffers[TL.uniformBuffers.len];
-    //   imageBase* sampledImages[TL.sampled.len];
-    //   imageBase* attachments[TL.attachments.len];
+    template<resourceMap RM> struct mappedResourceTuple_t<RM, findId(BRS, RM.requirementId)> {
+      typedef buffer<BRS[findId(BRS, RM.requirementId)]> type;
+    };
 
-    //   target_t(const target_t&) = delete;
-    //   target_t() = default;
+    template<literalList<resourceMap> RM>
+    struct mappedResourceTuple {
+      mappedResourceTuple_t<RM[0]>::type* data;
+      mappedResourceTuple<RM.sub(1)> rest;
 
-    //   friend onion;
+      template<size_t IDX> inline auto*& at() {
+	if constexpr(IDX == 0) {
+	  return data;
+	} else {
+	  return rest.template at<IDX-1>();
+	}
+      }
 
-    // public:
+    };
 
-    //   ~target_t() = default;
+    template<literalList<resourceMap> RM> requires(RM.len == 0)
+      struct mappedResourceTuple<RM> : std::false_type {};
 
-    //   template<uint64_t ID, bufferRequirements R> void setVertexBuffer(buffer<R>* b) {
-    // 	constexpr static uint64_t idx = findId(TL.vertexBuffers, ID);
-    // 	static_assert_show(bufferRequirements_v<ID> <= R, bufferRequirements_v<ID>);
-    // 	vertexBuffers[idx] = b;
-    //   };
+    class target_t {
+    private:
+      mappedResourceTuple<TL.targetProvidedResources> resources;
 
-    //   template<uint64_t ID, bufferRequirements R> void setInstanceBuffer(buffer<R>* b) {
-    // 	constexpr static uint64_t idx = findId(TL.instanceBuffers, ID);
-    // 	static_assert_show(bufferRequirements_v<ID> <= R, bufferRequirements_v<ID>);
-    // 	instanceBuffers[idx] = b;
-    //   };
+      target_t(const target_t&) = delete;
+      target_t() = default;
 
-    //   template<uint64_t ID, bufferRequirements R> void setUniformBuffer(buffer<R>* b) {
-    // 	constexpr static uint64_t idx = findId(TL.uniformBuffers, ID);
-    // 	static_assert_show(bufferRequirements_v<ID> <= R, bufferRequirements_v<ID>);
-    // 	uniformBuffers[idx] = b;
-    //   };
+      friend onion;
 
-    //   template<uint64_t ID, imageRequirements R> void setSampledImage(image<R>* b) {
-    // 	constexpr static uint64_t idx = findId(TL.sampled, ID);
-    // 	static_assert_show(imageRequirements_v<ID> <= R, imageRequirements_v<ID>);
-    // 	sampledImages[idx] = b;
-    //   };
+    public:
 
-    //   template<uint64_t ID, imageRequirements R> void setAttachment(image<R>* b) {
-    // 	constexpr static uint64_t idx = findId(TL.attachments, ID);
-    // 	static_assert_show(imageRequirements_v<ID> <= R, imageRequirements_v<ID>);
-    // 	attachments[idx] = b;
-    //   };
+      ~target_t() = default;
 
-    // };
+      template<uint64_t resourceMapId> void set(auto* v) {
+	resources.template at<findId(TL.targetProvidedResources, resourceMapId)>() = v;
+      };
 
-    // template<shaderTargetInstanceLayout IL> target_t<IL> createTarget() {
-    //   return {};
-    // };
+      template<uint64_t resourceMapId> auto* get() {
+	return resources.template at<findId(TL.targetProvidedResources, resourceMapId)>();
+      };
 
-    // template<uint64_t SHADER_ID> class source_t {
-    // public:
-    //   static constexpr size_t SHADER_IDX = findId(S, SHADER_ID);
-    //   static constexpr shader SHADER_PARAMS = S[SHADER_IDX];
+    };
 
-    // private:
-    //   bufferBase* vertexBuffer;
-    //   bufferBase* instanceBuffer;
-    //   bufferBase* uniformBuffers[SHADER_PARAMS.uniformBuffers.len];
-    //   imageBase* sampledImages[SHADER_PARAMS.sampled.len];
+    target_t createTarget() {
+      return {};
+    };
 
-    //   friend onion;
+    template<uint64_t SHADER_ID> class source_t {
+    public:
+      static constexpr size_t SHADER_IDX = findId(S, SHADER_ID);
+      static constexpr shader SHADER_PARAMS = S[SHADER_IDX];
 
-    // public:
+    private:
+      mappedResourceTuple<SHADER_PARAMS.sourceProvidedResources> resources;
 
-    //   template<bufferRequirements R> void setVertexBuffer(buffer<R>* b) {
-    // 	static_assert_show(SHADER_PARAMS.vertexBuffer && bufferRequirements_v<SHADER_PARAMS.vertexBuffer->id> <= R,
-    // 			   SHADER_PARAMS.vertexBuffer);
-    // 	vertexBuffer = b;
-    //   };
+      friend onion;
 
-    //   template<bufferRequirements R> void setInstanceBuffer(buffer<R>* b) {
-    // 	static_assert_show(SHADER_PARAMS.instanceBuffer && bufferRequirements_v<SHADER_PARAMS.instanceBuffer->id> <= R,
-    // 			   SHADER_PARAMS.instanceBuffer);
-    // 	instanceBuffer = b;
-    //   };
+    public:
 
-    //   template<uint64_t ID, bufferRequirements R> void setUniformBuffer(buffer<R>* b) {
-    // 	constexpr static uint64_t idx = findId(SHADER_PARAMS.uniformBuffers, ID);
-    // 	static_assert_show(bufferRequirements_v<ID> <= R, bufferRequirements_v<ID>);
-    // 	uniformBuffers[idx] = b;
-    //   };
+      template<uint64_t resourceMapId> void set(auto* v) {
+	resources.template at<findId(SHADER_PARAMS.sourceProvidedResources, resourceMapId)>() = v;
+      };
 
-    //   template<uint64_t ID, imageRequirements R> void setSampledImage(image<R>* b) {
-    // 	constexpr static uint64_t idx = findId(SHADER_PARAMS.sampled, ID);
-    // 	static_assert_show(imageRequirements_v<ID> <= R, imageRequirements_v<ID>);
-    // 	sampledImages[idx] = b;
-    //   };
+      template<uint64_t resourceMapId> auto* get() {
+	return resources.template at<findId(SHADER_PARAMS.sourceProvidedResources, resourceMapId)>();
+      };
 
-    // };
+    };
 
-    // template<uint64_t shaderId> source_t<shaderId> createSource() {
-    //   return {};
-    // };
+    template<uint64_t shaderId> source_t<shaderId> createSource() {
+      return {};
+    };
 
   };
 

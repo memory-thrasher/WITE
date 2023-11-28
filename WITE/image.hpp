@@ -45,6 +45,8 @@ namespace WITE {
       }
     };
 
+    image() : image(256, 256) {}
+
     virtual vk::Image frameImage(int64_t frame) const override {
       ASSERT_TRAP(frame >= -R.frameswapCount, "requested frame too far before frame 0");
       if(frame < 0) [[unlikely]] frame += R.frameswapCount;

@@ -10,7 +10,6 @@ namespace WITE {
 
   struct bufferBase {
     virtual ~bufferBase() = default;
-    virtual vk::Buffer frameBuffer(int64_t frame) const = 0;
   };
 
   template<bufferRequirements R> struct buffer : public bufferBase {
@@ -37,34 +36,47 @@ namespace WITE {
       }
     };
 
-    size_t frameBufferIdx(int64_t frame) const {
-      ASSERT_TRAP(frame >= -R.frameswapCount, "requested frame too far before frame 0");
-      if(frame < 0) [[unlikely]] frame += R.frameswapCount;
-      return frame % R.frameswapCount;
-    };
+    // size_t frameBufferIdx(int64_t frame) const {
+    //   ASSERT_TRAP(frame >= -R.frameswapCount, "requested frame too far before frame 0");
+    //   if(frame < 0) [[unlikely]] frame += R.frameswapCount;
+    //   return frame % R.frameswapCount;
+    // };
 
-    virtual vk::Buffer frameBuffer(int64_t frame) const override {
-      return vkBuffer[frameBufferIdx(frame)];
-    };
+    // virtual vk::Buffer frameBuffer(int64_t frame) const override {
+    //   return vkBuffer[frameBufferIdx(frame)];
+    // };
 
-    //frame is important to decide which buffer is to be used. Frame may be a lie, especially a negative number for setting up initial values.
-    template<class T> void setOnFrame(int64_t frame, const T& t) {
-      static_assert(R.hostVisible);
-      constexpr struct { size_t t = sizeof(T), r = R.size; } debugdata;
-      static_assert_show(sizeof(T) == R.size, debugdata);
-      size_t idx = frameBuffer(frame);
-      auto dev = gpu::get(R.deviceId).getVkDevice();
-      void* data;
-      VK_ASSERT(dev.mapMemory(rams[idx], 0, R.size, {}, &data), "Failed to mep memory.");
-      memcpy(data, t);
-      dev.unmapMemory(rams[idx]);
-      lastUpdated = frame;
-    };
+    // //frame is important to decide which buffer is to be used. Frame may be a lie, especially a negative number for setting up initial values.
+    // template<class T> void set(int64_t frame, const T& t) {
+    //   static_assert(R.hostVisible);
+    //   constexpr struct { size_t t = sizeof(T), r = R.size; } debugdata;
+    //   static_assert_show(sizeof(T) == R.size, debugdata);
+    //   size_t idx = frameBuffer(frame);
+    //   auto dev = gpu::get(R.deviceId).getVkDevice();
+    //   void* data;
+    //   VK_ASSERT(dev.mapMemory(rams[idx], 0, R.size, {}, &data), "Failed to mep memory.");
+    //   memcpy(data, t);
+    //   dev.unmapMemory(rams[idx]);
+    //   lastUpdated = frame;
+    // };
 
     template<udm U = R.format, class T = copyableArray<udmObject<U>, R.size / sizeofUdm<U>()>> void set(int64_t frame, const T& src) {
       static_assert((R.size % sizeofUdm<U>()) == 0);
       set<T>(frame, src);
     };
+
+    // template<class T> void setAll(const T& t) {
+    //   static_assert(R.hostVisible);
+    //   constexpr struct { size_t t = sizeof(T), r = R.size; } debugdata;
+    //   static_assert_show(sizeof(T) == R.size, debugdata);
+    //   auto dev = gpu::get(R.deviceId).getVkDevice();
+    //   void* data;
+    //   for(size_t idx = 0;idx < R.frameswapCount;idx++) {
+    // 	VK_ASSERT(dev.mapMemory(rams[idx], 0, R.size, {}, &data), "Failed to mep memory.");
+    // 	memcpy(data, t);
+    // 	dev.unmapMemory(rams[idx]);
+    //   }
+    // };
 
     // //waits for frame before pulling the data.
     // template<class T> T getOnFrame(int64_t frame) {

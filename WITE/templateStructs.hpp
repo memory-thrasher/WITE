@@ -19,9 +19,11 @@ namespace WITE {
     uint64_t id, requirementId, flowId;//flowId for images with flows only
     vk::PipelineStageFlags2 readStages, writeStages;
     vk::AccessFlags2 access = {};
+    uint8_t frameLatency = 0; //must be < requirement.frameswapCount. Generally 0 is the one being written this frame, 1 is the one that was written last frame.
   };
 
   struct targetLayout {
+    uint64_t id;
     literalList<resourceMap> targetProvidedResources;
   };
 
@@ -50,7 +52,7 @@ namespace WITE {
     vk::ImageUsageFlags usage = {};
     literalList<uint64_t> flow;
     size_t flowOverwrapIdx = 0;//when advancing past the final flow, which flow becomes current? (so the first N can be skipped, i.e. preinitialized)
-    uint8_t dimensions = 2, frameswapCount = 2;
+    uint8_t dimensions = 2, frameswapCount = 1;
     bool isCube = false, hostVisible = false;
     uint32_t arrayLayers = 1, mipLevels = 1;
   };

@@ -113,6 +113,7 @@ RM_depth = {
 };
 
 constexpr targetLayout standardRenderTargetLayout {
+  .id = __LINE__,
   .targetProvidedResources = RM_target //pass by reference (with extra steps), so prior declaration is necessary
 };
 
@@ -156,18 +157,9 @@ onion_t primaryOnion;
 
 int main(int argc, char** argv) {
   window w;//default window size is a centered rectangle meant for splash screens and tests
-  auto camera = primaryOnion.createTarget();
+  auto camera = primaryOnion.createTarget<standardRenderTargetLayout.id>();
   auto cube = primaryOnion.createSource<simpleShader.id>();
-  buffer<BR_singleTransform> cubeTransBuffer, cameraTransBuffer;
-  cube.set<RM_cubeTrans.id>(&cubeTransBuffer);
-  camera.set<RM_cameraTrans.id>(&cameraTransBuffer);
-  buffer<BR_cubeMesh> cubeVerts;
-  cube.set<RM_cubeMesh.id>(&cubeVerts);
-  image<IR_standardColor> cameraColor(w.getSize());
-  camera.set<RM_color.id>(&cameraColor);
-  image<IR_standardDepth> cameraDepth(w.getSize());
-  camera.set<RM_depth.id>(&cameraDepth);
-  // cubeTransBuffer.set(glm::dmat4(1));//model: diagonal identity
+  //cubeTransBuffer.setAll(glm::dmat4(1));//model: diagonal identity
   // //TODO abstract out the below math to a camera object or helper function
   // cameraTransBuffer.set(glm::dmat4(1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 1) * //clip
   // 			glm::perspectiveFov<double>(glm::radians(45.0f), 16.0, 9.0, 0.1, 100.0) * //projection

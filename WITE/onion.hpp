@@ -7,7 +7,7 @@
 
 namespace WITE {
 
-  template<literalList<imageFlowStep> IFS, literalList<imageRequirements> IRS, literalList<bufferRequirements> BRS, literalList<shader> S, targetLayout TL, uint64_t ONION_ID, uint64_t GPUID> struct onion { // because layers
+  template<literalList<imageFlowStep> IFS, literalList<imageRequirements> IRS, literalList<bufferRequirements> BRS, literalList<shader> S, literalList<targetLayout> TLS, uint64_t ONION_ID, uint64_t GPUID> struct onion { // because layers
 
     template<resourceMap> struct mappedResourceTuple_t : std::false_type {};
 
@@ -21,10 +21,10 @@ namespace WITE {
 
     template<literalList<resourceMap> RM>
     struct mappedResourceTuple {
-      mappedResourceTuple_t<RM[0]>::type* data;
+      mappedResourceTuple_t<RM[0]>::type data;
       mappedResourceTuple<RM.sub(1)> rest;
 
-      template<size_t IDX> inline auto*& at() {
+      template<size_t IDX> inline auto& at() {
 	if constexpr(IDX == 0) {
 	  return data;
 	} else {
@@ -37,7 +37,11 @@ namespace WITE {
     template<literalList<resourceMap> RM> requires(RM.len == 0)
       struct mappedResourceTuple<RM> : std::false_type {};
 
-    class target_t {
+    template<uint64_t TARGET_ID> class target_t {
+    public:
+      static constexpr size_t TARGET_IDX = findId(TLS, TARGET_ID);
+      static constexpr targetLayout TL = TLS[TARGET_IDX];
+
     private:
       mappedResourceTuple<TL.targetProvidedResources> resources;
 
@@ -60,7 +64,7 @@ namespace WITE {
 
     };
 
-    target_t createTarget() {
+    template<uint64_t targetId> target_t<targetId> createTarget() {
       return {};
     };
 

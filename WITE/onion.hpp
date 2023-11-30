@@ -7,16 +7,18 @@
 
 namespace WITE {
 
-  template<literalList<imageFlowStep> IFS, literalList<imageRequirements> IRS, literalList<bufferRequirements> BRS, literalList<shader> S, literalList<targetLayout> TLS, uint64_t ONION_ID, uint64_t GPUID> struct onion { // because layers
+  template<onionDescriptor OD> struct onion {
+
+    // #error TODO internal frame counter
 
     template<resourceMap> struct mappedResourceTuple_t : std::false_type {};
 
-    template<resourceMap RM> requires(containsId(IRS, RM.requirementId)) struct mappedResourceTuple_t<RM> {
-      typedef image<IRS[findId(IRS, RM.requirementId)]> type;
+    template<resourceMap RM> requires(containsId(OD.IRS, RM.requirementId)) struct mappedResourceTuple_t<RM> {
+      typedef image<OD.IRS[findId(OD.IRS, RM.requirementId)]> type;
     };
 
-    template<resourceMap RM> requires(containsId(BRS, RM.requirementId)) struct mappedResourceTuple_t<RM> {
-      typedef buffer<BRS[findId(BRS, RM.requirementId)]> type;
+    template<resourceMap RM> requires(containsId(OD.BRS, RM.requirementId)) struct mappedResourceTuple_t<RM> {
+      typedef buffer<OD.BRS[findId(OD.BRS, RM.requirementId)]> type;
     };
 
     template<literalList<resourceMap> RM>
@@ -39,8 +41,8 @@ namespace WITE {
 
     template<uint64_t TARGET_ID> class target_t {
     public:
-      static constexpr size_t TARGET_IDX = findId(TLS, TARGET_ID);
-      static constexpr targetLayout TL = TLS[TARGET_IDX];
+      static constexpr size_t TARGET_IDX = findId(OD.TLS, TARGET_ID);
+      static constexpr targetLayout TL = OD.TLS[TARGET_IDX];
 
     private:
       mappedResourceTuple<TL.targetProvidedResources> resources;
@@ -54,9 +56,9 @@ namespace WITE {
 
       ~target_t() = default;
 
-      template<uint64_t resourceMapId> void set(auto* v) {
-	resources.template at<findId(TL.targetProvidedResources, resourceMapId)>() = v;
-      };
+      // template<uint64_t resourceMapId> void set(auto* v) {
+      // 	resources.template at<findId(TL.targetProvidedResources, resourceMapId)>() = v;
+      // };
 
       template<uint64_t resourceMapId> auto* get() {
 	return resources.template at<findId(TL.targetProvidedResources, resourceMapId)>();
@@ -68,29 +70,29 @@ namespace WITE {
       return {};
     };
 
-    template<uint64_t SHADER_ID> class source_t {
+    template<uint64_t SOURCE_ID> class source_t {
     public:
-      static constexpr size_t SHADER_IDX = findId(S, SHADER_ID);
-      static constexpr shader SHADER_PARAMS = S[SHADER_IDX];
+      static constexpr size_t SOURCE_IDX = findId(OD.SLS, SOURCE_ID);
+      static constexpr sourceLayout SOURCE_PARAMS = OD.SLS[SOURCE_IDX];
 
     private:
-      mappedResourceTuple<SHADER_PARAMS.sourceProvidedResources> resources;
+      mappedResourceTuple<SOURCE_PARAMS.sourceProvidedResources> resources;
 
       friend onion;
 
     public:
 
-      template<uint64_t resourceMapId> void set(auto* v) {
-	resources.template at<findId(SHADER_PARAMS.sourceProvidedResources, resourceMapId)>() = v;
-      };
+      // template<uint64_t resourceMapId> void set(auto* v) {
+      // 	resources.template at<findId(SOURCE_PARAMS.sourceProvidedResources, resourceMapId)>() = v;
+      // };
 
       template<uint64_t resourceMapId> auto* get() {
-	return resources.template at<findId(SHADER_PARAMS.sourceProvidedResources, resourceMapId)>();
+	return resources.template at<findId(SOURCE_PARAMS.sourceProvidedResources, resourceMapId)>();
       };
 
     };
 
-    template<uint64_t shaderId> source_t<shaderId> createSource() {
+    template<uint64_t sourceId> source_t<sourceId> createSource() {
       return {};
     };
 

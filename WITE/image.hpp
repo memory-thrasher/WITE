@@ -29,8 +29,8 @@ namespace WITE {
     image(uint32_t w, uint32_t h, uint32_t d = 1) {
       ci = getDefaultCI(R);
       ci.extent.width = w;
-      ci.extent.height = h;
-      ci.extent.depth = d;
+      ci.extent.height = R.dimensions > 1 ? h : 1;
+      ci.extent.depth = R.dimensions > 2 ? d : 1;
       gpu& dev = gpu::get(R.deviceId);
       vk::MemoryPropertyFlags flags;
       if constexpr(R.hostVisible) {
@@ -46,6 +46,8 @@ namespace WITE {
     };
 
     image() : image(256, 256) {}
+
+    //TODO resize
 
     virtual vk::Image frameImage(int64_t frame) const override {
       ASSERT_TRAP(frame >= -R.frameswapCount, "requested frame too far before frame 0");

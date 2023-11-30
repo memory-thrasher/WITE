@@ -10,61 +10,65 @@ using namespace WITE;
 
 constexpr uint64_t gpuId = 0;
 
+/*
+prefix acronyms:
+BR buffer requirements
+BRS buffer requirements - staging
+IR image requirements
+RR resource reference
+RRL resource reference list
+RMT resource map target
+RMS resource map source
+TL target layout
+SL source layout
+S shader
+RP render pass
+C copy step
+L layer
+IDL id list
+ */
+
 constexpr bufferRequirements BR_singleTransform {
   .deviceId = gpuId,
   .id = __LINE__,
+  .usage = vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eUniformBuffer,
   .size = sizeof(glm::dmat4),
-  .frameswapCount = 2,//transforms usually can be updated during execution
+  .frameswapCount = 1,//staging is frameswapped, updated transform will blow away this buffer every frame
 };
 
 constexpr bufferRequirements BR_cubeMesh {
   .deviceId = gpuId,
   .id = __LINE__,
-  .size = sizeofUdm<UDM::RGB32float>() * 36,
-  .frameswapCount = 2,//transforms usually can be updated during execution
+  .usage = vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer,
+  .size = sizeofUdm<UDM::RGB32float>() * 36,//TODO allow runtime size
+  .frameswapCount = 1,
 };
 
 constexpr bufferRequirements BRS_singleTransform {
   .deviceId = gpuId,
   .id = __LINE__,
+  .usage = vk::BufferUsageFlagBits::eTransferSrc | vk::BufferUsageFlagBits::eTransferDst,
   .size = sizeof(glm::dmat4),
   .frameswapCount = 2,//transforms usually can be updated during execution
   .hostVisible = true
 };
 
+//TODO packed function to push constants or otherwise rarely updated without a persisting staging buffer
+// ¿cares about whether the target buffer is mappable by the local driver features?
 constexpr bufferRequirements BRS_cubeMesh {
   .deviceId = gpuId,
   .id = __LINE__,
+  .usage = vk::BufferUsageFlagBits::eTransferSrc | vk::BufferUsageFlagBits::eTransferDst,
   .size = sizeofUdm<UDM::RGB32float>() * 36,
-  .frameswapCount = 2,//transforms usually can be updated during execution
+  .frameswapCount = 1,
   .hostVisible = true
 };
-
-constexpr imageFlowStep IFS_clearAndDepth {
-  .id = __LINE__,
-  .layout = vk::ImageLayout::eDepthStencilAttachmentOptimal,
-  .clearOnAttach = true
-};
-
-constexpr imageFlowStep IFS_clearAndColor {
-  .id = __LINE__,
-  .clearOnAttach = true,
-  .clearTo = {{ 0.2f, 0.2f, 0.2f, 0.2f }}
-};
-
-constexpr imageFlowStep IFS_present {
-  .id = __LINE__,
-  .layout = vk::ImageLayout::eTransferSrcOptimal
-};
-
-constexpr uint64_t IF_color[] = { IFS_clearAndColor.id, IFS_present.id };
 
 constexpr imageRequirements IR_standardDepth {
   .deviceId = gpuId,
   .id = __LINE__,
   .format = Format::D16unorm,
   .usage = vk::ImageUsageFlagBits::eDepthStencilAttachment,
-  .flow = IFS_clearAndDepth.id,
   .frameswapCount = 1
 };
 
@@ -72,71 +76,136 @@ constexpr imageRequirements IR_standardColor {
   .deviceId = gpuId,
   .id = __LINE__,
   .format = Format::RGB8uint,
-  .usage = vk::ImageUsageFlagBits::eColorAttachment,
-  .flow = IF_color,
-  .frameswapCount = 2
+  .usage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferSrc,
+  .frameswapCount = 1
 };
 
-constexpr resourceMap
-RM_depth = {
+constexpr copyStep C_updateCubeTransforms = {
   .id = __LINE__,
-  .requirementId = IR_standardDepth.id,
-  .flowId = IFS_clearAndDepth.id,
+  .src = {
+    .id = __LINE__
+  },
+  .dst = {
+    .id = __LINE__
+  },
+}, C_updateCubeMesh = {
+  .id = __LINE__,
+  .src = {
+    .id = __LINE__
+  },
+  .dst = {
+    .id = __LINE__
+  },
+}, C_updateCameraTransforms = {
+  .id = __LINE__,
+  .src = {
+    .id = __LINE__
+  },
+  .dst = {
+    .id = __LINE__
+  },
+}, C_all[] = {
+  C_updateCubeTransforms, C_updateCubeMesh, C_updateCameraTransforms
+};
+
+constexpr resourceReference
+RR_depth = {
+  .id = __LINE__,
   .readStages = vk::PipelineStageFlagBits2::eEarlyFragmentTests,
   .writeStages = vk::PipelineStageFlagBits2::eLateFragmentTests,
   .access = vk::AccessFlagBits2::eDepthStencilAttachmentWrite | vk::AccessFlagBits2::eDepthStencilAttachmentRead
-}, RM_color = {
+}, RR_color = {
   .id = __LINE__,
-  .requirementId = IR_standardColor.id,
-  .flowId = IFS_clearAndColor.id,
   .writeStages = vk::PipelineStageFlagBits2::eColorAttachmentOutput,
   .access = vk::AccessFlagBits2::eColorAttachmentWrite
-}, RM_cameraTrans = {
+}, RR_cameraTrans = {
   .id = __LINE__,
-  .requirementId = BR_singleTransform.id,
   .readStages = vk::PipelineStageFlagBits2::eVertexShader,
   .access = vk::AccessFlagBits2::eUniformRead
-}, RM_target[] = {
-  RM_depth, RM_color, RM_cameraTrans
-}, RM_cubeTrans = {
+}, RR_cubeTrans = {
   .id = __LINE__,
-  .requirementId = BR_singleTransform.id,
   .readStages = vk::PipelineStageFlagBits2::eVertexShader,
   .access = vk::AccessFlagBits2::eUniformRead
-}, RM_cubeMesh = {
+}, RR_cubeMesh = {
   .id = __LINE__,
-  .requirementId = BR_cubeMesh.id,
   .readStages = vk::PipelineStageFlagBits2::eVertexShader,
   .access = vk::AccessFlagBits2::eVertexAttributeRead
-}, RM_source[] = {
-  RM_cubeTrans, RM_cubeMesh
+}, RRL_simpleSource[] = {
+  RR_cubeTrans, RR_cubeMesh
 };
 
-constexpr targetLayout standardRenderTargetLayout {
+uint64_t RR_IDL_cubeTrans[] = { RR_cubeTrans.id, C_updateCubeTransforms.dst.id },
+  RR_IDL_cubeTransStaging[] = { C_updateCubeTransforms.src.id },
+  RR_IDL_cubeMesh[] = { RR_cubeMesh.id, C_updateCubeMesh.dst.id },
+  RR_IDL_cubeMeshStaging[] = { C_updateCubeMesh.src.id },
+  RR_IDL_cameraTrans[] = { RR_cameraTrans.id, C_updateCameraTransforms.dst.id },
+  RR_IDL_cameraTransStaging[] = { C_updateCameraTransforms.src.id },
+  C_IDL_L1[] = { C_updateCameraTransforms.id, C_updateCubeMesh.id, C_updateCubeTransforms.id };
+
+constexpr resourceMap RMT_target[] = {{
+    .id = __LINE__,
+    .requirementId = IR_standardDepth.id,
+    .resourceReferences = RR_depth.id
+  }, {
+    .id = __LINE__,
+    .requirementId = IR_standardColor.id,
+    .resourceReferences = RR_color.id
+  }, {
+    .id = __LINE__,
+    .requirementId = BR_singleTransform.id,
+    .resourceReferences = RR_IDL_cameraTrans
+  }};
+
+constexpr resourceMap RMS_cube[] = {{
+    .id = __LINE__,
+    .requirementId = BR_singleTransform.id,
+    .resourceReferences = RR_IDL_cubeTrans
+  }, {
+    .id = __LINE__,
+    .requirementId = BR_cubeMesh.id,
+    .resourceReferences = RR_IDL_cubeMesh
+  }, {
+    .id = __LINE__,
+    .requirementId = BRS_singleTransform.id,
+    .resourceReferences = RR_IDL_cubeTransStaging
+  }, {
+    .id = __LINE__,
+    .requirementId = BRS_cubeMesh.id,
+    .resourceReferences = RR_IDL_cubeMeshStaging
+  }};
+
+constexpr targetLayout TL_standardRender {
   .id = __LINE__,
-  .targetProvidedResources = RM_target //pass by reference (with extra steps), so prior declaration is necessary
-};
-
-constexpr shaderTargetLinkage standardRenderTargetLink {
-  .depthStencil = RM_depth.id,
-  .color = RM_color.id
+  .targetProvidedResources = RMT_target //pass by reference (with extra steps), so prior declaration is necessary
 };
 
 defineShaderModules(simpleShaderModules,
 		    { basicShader_vert, vk::ShaderStageFlagBits::eVertex },
 		    { basicShader_frag, vk::ShaderStageFlagBits::eFragment });
 
-constexpr shader simpleShader {
+constexpr graphicsShaderRequirements S_simple {
   .id = __LINE__,
   .modules = simpleShaderModules,
-  .targetLink = standardRenderTargetLink,
-  .sourceProvidedResources = RM_source
+  .targetProvidedResources = RR_cameraTrans,
+  .sourceProvidedResources = RRL_simpleSource
 };
 
-constexpr imageFlowStep allFlows[] = {
-  IFS_clearAndDepth,
-  IFS_clearAndColor,
-  IFS_present
+constexpr renderPassRequirements RP_simple {
+  .depthStencil = RR_depth,
+  .color = RR_color,
+  .shaders = S_simple//takes a literalList of shaders, normally there'd be much more than one
+};
+
+constexpr sourceLayout SL_simple {
+  .id = __LINE__,
+  .sourceProvidedResources = RMS_cube
+};
+
+constexpr layerRequirements L_1 {
+  .sourceLayouts = SL_simple.id,
+  .targetLayouts = TL_standardRender.id,
+  .copies = C_IDL_L1,
+  .renders = RP_simple.id
 };
 
 constexpr imageRequirements allImageRequirements[] = {
@@ -151,14 +220,24 @@ constexpr bufferRequirements allBufferRequirements[] = {
   BRS_cubeMesh
 };
 
-//takes a literalList of shaders, normally there'd be much more than one
-typedef WITE::onion<allFlows, allImageRequirements, allBufferRequirements, simpleShader, standardRenderTargetLayout, __LINE__, gpuId> onion_t;
+constexpr onionDescriptor od = {
+  .IRS = allImageRequirements,
+  .BRS = allBufferRequirements,
+  .RPRS = RP_simple,
+  .CSS = C_all,
+  .LRS = L_1,
+  .TLS = TL_standardRender,
+  .SLS = SL_simple,
+  .GPUID = gpuId
+};
+
+typedef WITE::onion<od> onion_t;
 onion_t primaryOnion;
 
 int main(int argc, char** argv) {
   window w;//default window size is a centered rectangle meant for splash screens and tests
-  auto camera = primaryOnion.createTarget<standardRenderTargetLayout.id>();
-  auto cube = primaryOnion.createSource<simpleShader.id>();
+  auto camera = primaryOnion.createTarget<TL_standardRender.id>();
+  auto cube = primaryOnion.createSource<SL_simple.id>();
   //cubeTransBuffer.setAll(glm::dmat4(1));//model: diagonal identity
   // //TODO abstract out the below math to a camera object or helper function
   // cameraTransBuffer.set(glm::dmat4(1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 1) * //clip

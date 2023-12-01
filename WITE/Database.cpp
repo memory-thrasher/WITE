@@ -66,7 +66,7 @@ namespace WITE::DB {
 		      " flags ", mmapFlags, " and errno ", e);
     }
     DBEntity* entities = reinterpret_cast<DBEntity*>(malloc(sizeof(DBEntity) * entityCount));
-    Util::ScopeLock lock(&free_mutex);
+    scopeLock lock(&free_mutex);
     for(size_t i = 0;i < entityCount;i++) {
       //TODO progress report callback for loading bar?
       DBEntity* dbe = new(&entities[i])DBEntity(this, i);
@@ -187,7 +187,7 @@ namespace WITE::DB {
     DBThread* t = getLightestThread();//TODO something cleverer
     DBEntity* ret;
     {
-      Util::ScopeLock lock(&free_mutex);
+      scopeLock lock(&free_mutex);
       if(free.empty()) return NULL;
       ret = free.front();
       if(started && ret->lastWrittenFrame == currentFrame)//the chosen entity was deallocated on this frame
@@ -306,7 +306,7 @@ namespace WITE::DB {
 	dbe->lastAppliedDeallocationTranFrame = currentFrame;
 	dbe->lastAppliedDeallocationTranOpIdx = dbe->operationIdx++;
 #endif
-	Util::ScopeLock lock(&free_mutex);
+	scopeLock lock(&free_mutex);
 	free.push(dbe);
       }
       if((transaction.flagWriteMask >> DBRecordFlag::allocated) &&

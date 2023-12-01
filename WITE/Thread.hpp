@@ -1,6 +1,6 @@
 #pragma once
 
-#include "SyncLock.hpp"
+#include "syncLock.hpp"
 #include "Callback.hpp"
 #include "stdExtensions.hpp"
 #include "constants.hpp"
@@ -19,7 +19,7 @@ namespace WITE::Platform {
       WITE::memset(data, 0, sizeof(data));
     };
     ~ThreadResource() {
-      Util::ScopeLock contextHold(&lock);
+      scopeLock contextHold(&lock);
       size_t i;
       for (i = 0;i < MAX_THREADS;i++)
 	if (data[i]) {
@@ -45,7 +45,7 @@ namespace WITE::Platform {
     T* get(uint32_t tid) {
       ASSERT_TRAP(tid < MAX_THREADS, "threaded resource overflow");
       if(typeInit && !data[tid]) {
-	Util::ScopeLock contextHold(&lock);
+	scopeLock contextHold(&lock);
         if(typeInit && !data[tid])
           data[tid] = typeInit->call();
       }
@@ -83,7 +83,7 @@ namespace WITE::Platform {
     Initer typeInit;
     Destroyer typeDestroy;
     Tentry data[MAX_THREADS];
-    Util::SyncLock lock;
+    syncLock lock;
   };
 
   class Thread {

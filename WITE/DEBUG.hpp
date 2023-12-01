@@ -37,18 +37,18 @@
 #ifdef DEBUG
 
 #include <iostream>
-#include "SyncLock.hpp"
+#include "syncLock.hpp"
 //#include "Thread.hpp"
 
-::WITE::Util::SyncLock* LOG_MUTEX();
+::WITE::syncLock* LOG_MUTEX();
 
 #define WARN1(msg) { std::cerr << msg; }
 #define LOG1(msg) { std::cout << msg; }
 // " tid: ", ::WITE::Platform::Thread::getCurrentTid(),
-#define WARN(...) { ::WITE::Util::ScopeLock lock(LOG_MUTEX()); MAP(WARN1, __VA_ARGS__, " (", std::dec, __FILE__, ": ", __LINE__, ")", std::endl, std::flush); }
+#define WARN(...) { ::WITE::scopeLock lock(LOG_MUTEX()); MAP(WARN1, __VA_ARGS__, " (", std::dec, __FILE__, ": ", __LINE__, ")", std::endl, std::flush); }
 #define ERROR(...) { WARN(__VA_ARGS__); asm("INT3"); }//TODO set global failure flag that db should read to graceful stop
 #define ASSERT_TRAP(cond, ...) { if(!(cond)) { ERROR(__VA_ARGS__); } }
-#define LOG(...) { ::WITE::Util::ScopeLock lock(LOG_MUTEX()); MAP(LOG1, __VA_ARGS__, " (", std::dec, __FILE__, ": ", __LINE__, ")", std::endl, std::flush); }
+#define LOG(...) { ::WITE::scopeLock lock(LOG_MUTEX()); MAP(LOG1, __VA_ARGS__, " (", std::dec, __FILE__, ": ", __LINE__, ")", std::endl, std::flush); }
 
 #else //release
 

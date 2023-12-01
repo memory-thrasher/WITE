@@ -29,7 +29,6 @@ namespace WITE {
     //MAYBE isTexel
   };
   //TODO better way to make constant buffers (so staging buffer doesn't sit around forever)
-  //TODO specifify frame offset for host access?
 
   struct resourceReference {
     uint64_t id;//unique among resource references
@@ -43,6 +42,7 @@ namespace WITE {
     uint64_t id = NONE;//only need be unique within the layout(s) it's a member of, and only if accessed from outside the onion
     uint64_t requirementId;//FK to imageRequirement or bufferRequirement (never both!)
     literalList<uint64_t> resourceReferences;//FK to resourceReference
+    uint8_t hostAccessOffset = 0;
   };
 
   struct targetLayout {

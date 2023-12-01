@@ -71,6 +71,14 @@ namespace WITE {
     return false;
   };
 
+  template<class T> consteval auto findById(literalList<T> l, uint64_t id) {
+    for(size_t i = 0;i < l.len;i++)
+      if(l[i].id == id)
+	return l[i];
+    constexprAssertFailed();
+    return l[0];
+  };
+
   // consteval vk::ImageSubresourceRange getAllInclusiveSubresource(const imageRequirements R) {
   //   return {
   //     /* .aspectMask =*/ (R.usage & vk::ImageUsageFlagBits::eDepthStencilAttachment) ? vk::ImageAspectFlagBits::eDepth | vk::ImageAspectFlagBits::eStencil : vk::ImageAspectFlagBits::eColor, //MAYBE multiplanar someday?

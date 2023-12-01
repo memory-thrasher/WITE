@@ -35,10 +35,10 @@ namespace WITE::Platform {
 
   }
 
-  Util::SyncLock initLock;
+  syncLock initLock;
   void Thread::init() {//static
     if (seed.load() == 0) {
-      Util::ScopeLock lock(&initLock);
+      scopeLock lock(&initLock);
       if (seed.load() == 0) {
 	if(pthread_key_create(&ThreadInternal::threadObjKey, &ThreadInternal::threadDestructorWrapper))
 	  CRASH("Failed to allocate thread key. This should not happen.");

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "IteratorWrapper.hpp"
-#include "SyncLock.hpp"
+#include "syncLock.hpp"
 #include "DBDelta.hpp"
 #include "DBEntity.hpp"
 #include "DynamicRollingQueue.hpp"
@@ -50,7 +50,7 @@ namespace WITE::DB {
     std::vector<std::pair<DBEntity*, DBRecord::type_t>> slice_toBeAdded;
     std::vector<DBRecord::type_t> temp_uniqTypes;
     std::map<DBRecord::type_t, Collections::LinkedList<DBEntity, &DBEntity::nextOfTypeInThread>> typeIndex;
-    Util::SyncLock sliceAlterationPoolMutex;
+    syncLock sliceAlterationPoolMutex;
     Collections::DynamicRollingQueue<DBDelta> transactionPool;
     uint64_t nsSpentOnLastFrame;
     friend class Database;

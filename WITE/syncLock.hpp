@@ -2,11 +2,11 @@
 
 #include <atomic>
 
-namespace WITE::Util {
+namespace WITE {
 
-  class SyncLock {
+  class syncLock {
   public:
-    SyncLock();
+    syncLock();
     void WaitForLock(bool busy = false);
     void ReleaseLock();
     void yield();
@@ -17,15 +17,15 @@ namespace WITE::Util {
     uint32_t owningThread;
   };
 
-  class ScopeLock {
+  class scopeLock {
   public:
     void yield();
     void release();
-    ScopeLock(SyncLock* lock);
-    ScopeLock(ScopeLock& o);
-    ~ScopeLock();
+    scopeLock(syncLock* lock);
+    scopeLock(scopeLock& o);
+    ~scopeLock();
   private:
-    SyncLock *lock;
+    syncLock *lock;
     bool held;
   };
 

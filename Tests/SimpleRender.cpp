@@ -28,6 +28,15 @@ L layer
 IDL id list
  */
 
+constexpr udmObject<UDM::RGB32float> cubeMesh[] = {
+  {{0, 0, 0}}, {{1, 1, 0}}, {{1, 0, 0}}, {{0, 0, 0}}, {{0, 1, 0}}, {{1, 1, 0}},
+  {{0, 0, 1}}, {{1, 1, 1}}, {{1, 0, 1}}, {{0, 0, 1}}, {{0, 1, 1}}, {{1, 1, 1}},
+  {{0, 0, 0}}, {{1, 0, 1}}, {{1, 0, 0}}, {{0, 0, 0}}, {{0, 0, 1}}, {{1, 0, 1}},
+  {{0, 1, 0}}, {{1, 1, 1}}, {{1, 1, 0}}, {{0, 1, 0}}, {{0, 1, 1}}, {{1, 1, 1}},
+  {{0, 0, 0}}, {{0, 1, 1}}, {{0, 1, 0}}, {{0, 0, 0}}, {{0, 0, 1}}, {{0, 1, 1}},
+  {{1, 0, 0}}, {{1, 1, 1}}, {{1, 1, 0}}, {{1, 0, 0}}, {{1, 0, 1}}, {{1, 1, 1}}
+};
+
 constexpr bufferRequirements BR_singleTransform {
   .deviceId = gpuId,
   .id = __LINE__,
@@ -40,7 +49,7 @@ constexpr bufferRequirements BR_cubeMesh {
   .deviceId = gpuId,
   .id = __LINE__,
   .usage = vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer,
-  .size = sizeofUdm<UDM::RGB32float>() * 36,//TODO allow runtime size
+  .size = sizeof(cubeMesh),//TODO allow dynamic size for meshes
   .frameswapCount = 1,
 };
 
@@ -142,7 +151,13 @@ uint64_t RR_IDL_cubeTrans[] = { RR_cubeTrans.id, C_updateCubeTransforms.dst.id }
   RR_IDL_cameraTransStaging[] = { C_updateCameraTransforms.src.id },
   C_IDL_L1[] = { C_updateCameraTransforms.id, C_updateCubeMesh.id, C_updateCubeTransforms.id };
 
-constexpr resourceMap RMT_target[] = {{
+constexpr resourceMap RMT_cameraTrans = {
+  .id = __LINE__,
+  .requirementId = BRS_singleTransform.id,
+  .resourceReferences = RR_IDL_cubeTransStaging
+}, RMT_target[] = {
+  RMT_cameraTrans,
+  {
     .id = __LINE__,
     .requirementId = IR_standardDepth.id,
     .resourceReferences = RR_depth.id
@@ -156,7 +171,15 @@ constexpr resourceMap RMT_target[] = {{
     .resourceReferences = RR_IDL_cameraTrans
   }};
 
-constexpr resourceMap RMS_cube[] = {{
+constexpr resourceMap RMS_cubeTrans = {
+  .id = __LINE__,
+  .requirementId = BRS_singleTransform.id,
+  .resourceReferences = RR_IDL_cubeTransStaging
+}, RMS_cubeMesh = {
+  .id = __LINE__,
+  .requirementId = BRS_cubeMesh.id,
+  .resourceReferences = RR_IDL_cubeMeshStaging
+}, RMS_cube[] = {{
     .id = __LINE__,
     .requirementId = BR_singleTransform.id,
     .resourceReferences = RR_IDL_cubeTrans
@@ -164,15 +187,10 @@ constexpr resourceMap RMS_cube[] = {{
     .id = __LINE__,
     .requirementId = BR_cubeMesh.id,
     .resourceReferences = RR_IDL_cubeMesh
-  }, {
-    .id = __LINE__,
-    .requirementId = BRS_singleTransform.id,
-    .resourceReferences = RR_IDL_cubeTransStaging
-  }, {
-    .id = __LINE__,
-    .requirementId = BRS_cubeMesh.id,
-    .resourceReferences = RR_IDL_cubeMeshStaging
-  }};
+  },
+  RMS_cubeTrans,
+  RMS_cubeMesh
+};
 
 constexpr targetLayout TL_standardRender {
   .id = __LINE__,
@@ -238,20 +256,14 @@ int main(int argc, char** argv) {
   window w;//default window size is a centered rectangle meant for splash screens and tests
   auto camera = primaryOnion.createTarget<TL_standardRender.id>();
   auto cube = primaryOnion.createSource<SL_simple.id>();
-  //cubeTransBuffer.setAll(glm::dmat4(1));//model: diagonal identity
-  // //TODO abstract out the below math to a camera object or helper function
-  // cameraTransBuffer.set(glm::dmat4(1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 1) * //clip
-  // 			glm::perspectiveFov<double>(glm::radians(45.0f), 16.0, 9.0, 0.1, 100.0) * //projection
-  // 			glm::lookAt(glm::dvec3(-5, 3, -10), glm::dvec3(0, 0, 0), glm::dvec3(0, -1, 0))); //view
-  // cubeVerts.set<BR_cubeMesh.format>({
-  //     {{0, 0, 0}}, {{1, 1, 0}}, {{1, 0, 0}}, {{0, 0, 0}}, {{0, 1, 0}}, {{1, 1, 0}},
-  //     {{0, 0, 1}}, {{1, 1, 1}}, {{1, 0, 1}}, {{0, 0, 1}}, {{0, 1, 1}}, {{1, 1, 1}},
-  //     {{0, 0, 0}}, {{1, 0, 1}}, {{1, 0, 0}}, {{0, 0, 0}}, {{0, 0, 1}}, {{1, 0, 1}},
-  //     {{0, 1, 0}}, {{1, 1, 1}}, {{1, 1, 0}}, {{0, 1, 0}}, {{0, 1, 1}}, {{1, 1, 1}},
-  //     {{0, 0, 0}}, {{0, 1, 1}}, {{0, 1, 0}}, {{0, 0, 0}}, {{0, 0, 1}}, {{0, 1, 1}},
-  //     {{1, 0, 0}}, {{1, 1, 1}}, {{1, 1, 0}}, {{1, 0, 0}}, {{1, 0, 1}}, {{1, 1, 1}}
-  //   });
-  // //TODO create virtual thread
+  cube.write<RMS_cubeTrans.id>(glm::dmat4(1));//model: diagonal identity
+  //TODO abstract out the below math to a camera object or helper function
+  // camera.write<RMT_cameraTrans.id>(glm::dmat4(1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 1) * //clip
+  // 				   glm::perspectiveFov<double>(glm::radians(45.0f), 16.0, 9.0, 0.1, 100.0) * //projection
+  // 				   glm::lookAt(glm::dvec3(-5, 3, -10), glm::dvec3(0, 0, 0), glm::dvec3(0, -1, 0))); //view
+  cube.write<RMS_cubeMesh.id>(cubeMesh);
+  // primaryOnion.render();
+  //TODO present
   // Thread::sleep(5000);
 }
 

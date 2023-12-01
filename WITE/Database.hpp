@@ -18,7 +18,7 @@ number of threads can be changed at runtime but expect lag (user setting or simi
 #include <memory>
 
 #include "IteratorMultiplexer.hpp"
-#include "SyncLock.hpp"
+#include "syncLock.hpp"
 #include "DBRecord.hpp"
 #include "DBThread.hpp"
 #include "entity_type.hpp"
@@ -37,7 +37,7 @@ namespace WITE::DB {
     std::map<int, size_t> threadsByTid;
     size_t entityCount;
     std::queue<DBEntity*> free;
-    Util::SyncLock free_mutex;
+    syncLock free_mutex;
     typedefCB(deltaIsInPast_cb_t, bool, const DBDelta*)
     deltaIsInPast_cb_t deltaIsInPast_cb;
     DBEntity* metadata;//TODO make this expandable IF a backing file was provided?

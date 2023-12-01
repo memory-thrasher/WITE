@@ -1,23 +1,23 @@
 #include "time.hpp"
-#include "AdvancedSyncLock.hpp"
+#include "advancedSyncLock.hpp"
 #include "Thread.hpp"
 #include "DEBUG.hpp"
 
-namespace WITE::Util {
+namespace WITE {
 
-  AdvancedSyncLock::AdvancedSyncLock() {};
+  advancedSyncLock::advancedSyncLock() {};
 
-  AdvancedSyncLock::~AdvancedSyncLock() {
-    ScopeLock lock(&mutex);
+  advancedSyncLock::~advancedSyncLock() {
+    scopeLock lock(&mutex);
     currentOwner = ~0;
     holds = (~0)>>1;
   };
 
-  bool AdvancedSyncLock::acquire(uint64_t timeoutNS) {
-    timespec startTime = now();
+  bool advancedSyncLock::acquire(uint64_t timeoutNS) {
+    timespec startTime = Util::now();
     auto tid = Platform::Thread::getCurrentTid();
     do {
-      ScopeLock lock(&mutex);
+      scopeLock lock(&mutex);
       if(holds == 0 || currentOwner == tid) {
 	currentOwner = tid;
 	holds++;
@@ -26,42 +26,42 @@ namespace WITE::Util {
       lock.release();
       if(timeoutNS > 0)
 	Platform::Thread::sleepShort();
-    } while(toNS(since(startTime)) < timeoutNS);
+    } while(Util::toNS(Util::since(startTime)) < timeoutNS);
     return false;
   };
 
-  void AdvancedSyncLock::release() {
-    ScopeLock lock(&mutex);
+  void advancedSyncLock::release() {
+    scopeLock lock(&mutex);
     auto tid = Platform::Thread::getCurrentTid();
     ASSERT_TRAP(holds > 0, "Mutex hold underflow!");
     ASSERT_TRAP(currentOwner == tid, "Mutex Failure!!! tid: ", tid, " owner: ", currentOwner, " holds: ", holds);
     --holds;
   };
 
-  bool AdvancedSyncLock::heldBy(uint32_t tid) {
-    ScopeLock lock(&mutex);
+  bool advancedSyncLock::heldBy(uint32_t tid) {
+    scopeLock lock(&mutex);
     return holds && currentOwner == tid;
   };
 
-  bool AdvancedSyncLock::isHeld() {
-    ScopeLock lock(&mutex);
+  bool advancedSyncLock::isHeld() {
+    scopeLock lock(&mutex);
     return holds;
   };
 
-  AdvancedScopeLock::AdvancedScopeLock(AdvancedSyncLock& l, uint64_t timeoutNS) : l(l) {
+  advancedScopeLock::advancedScopeLock(advancedSyncLock& l, uint64_t timeoutNS) : l(l) {
     reacquire(timeoutNS);
   };
 
-  AdvancedScopeLock::~AdvancedScopeLock() {
+  advancedScopeLock::~advancedScopeLock() {
     if(isHeld())
       release();
   };
 
-  void AdvancedScopeLock::reacquire(uint64_t timeoutNS) {
+  void advancedScopeLock::reacquire(uint64_t timeoutNS) {
     l.acquire(timeoutNS);
   };
 
-  void AdvancedScopeLock::release() {
+  void advancedScopeLock::release() {
     l.release();
   };
 

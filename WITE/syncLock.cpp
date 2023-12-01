@@ -1,13 +1,13 @@
 #include <stdlib.h>
 
-#include "SyncLock.hpp"
+#include "syncLock.hpp"
 #include "Thread.hpp"
 
-namespace WITE::Util {
+namespace WITE {
 
-  SyncLock::SyncLock() {}
+  syncLock::syncLock() {}
 
-  void SyncLock::WaitForLock(bool busy) {
+  void syncLock::WaitForLock(bool busy) {
     uint64_t seed;
     seed = queueSeed.fetch_add(1);//take a number
     while (seed > queueCurrent.load())
@@ -16,12 +16,12 @@ namespace WITE::Util {
     owningThread = Platform::Thread::getCurrentTid();
   }
 
-  void SyncLock::ReleaseLock() {
+  void syncLock::ReleaseLock() {
     owningThread = ~0;
     queueCurrent.fetch_add(1);
   }
 
-  void SyncLock::yield() {
+  void syncLock::yield() {
     uint64_t newSeed;
     newSeed = queueSeed.fetch_add(1);
     owningThread = ~0;
@@ -30,34 +30,34 @@ namespace WITE::Util {
     owningThread = Platform::Thread::getCurrentTid();
   }
 
-  bool SyncLock::isHeld() {
+  bool syncLock::isHeld() {
     return queueSeed.load(std::memory_order_consume) > queueCurrent.load(std::memory_order_consume);
   };
 
-  ScopeLock::ScopeLock(SyncLock * sl) {
+  scopeLock::scopeLock(syncLock * sl) {
     sl->WaitForLock(false);//maybe make this optional?
     lock = sl;
     held = true;
   }
 
-  ScopeLock::ScopeLock(ScopeLock& o) : lock(o.lock) {
+  scopeLock::scopeLock(scopeLock& o) : lock(o.lock) {
     o.lock = NULL;
     held = false;
   }
 
-  void ScopeLock::release() {
+  void scopeLock::release() {
     if(held)
       lock->ReleaseLock();
     held = false;
   };
 
-  ScopeLock::~ScopeLock() {
+  scopeLock::~scopeLock() {
     if (held)
       lock->ReleaseLock();
     held = false;
   }
 
-  void ScopeLock::yield() {
+  void scopeLock::yield() {
     lock->yield();
   }
 

@@ -86,7 +86,7 @@ namespace WITE::DB {
 	  break;
 	//shifts in slices should not count against this threads work units because they are unrelated to slice size
 	if(slice_toBeAdded.size() + slice_toBeRemoved.size()) {
-	  Util::ScopeLock lock(&sliceAlterationPoolMutex);//TODO maybe this should be a FrameBufferedCollection
+	  scopeLock lock(&sliceAlterationPoolMutex);//TODO maybe this should be a FrameBufferedCollection
 	  if(slice_toBeRemoved.size()) {
 	    auto up = [this](auto e){ return contains(slice_toBeRemoved, e); };
 	    remove_if(slice_withUpdates, up);
@@ -156,13 +156,13 @@ namespace WITE::DB {
   }
 
   void DBThread::addToSlice(DBEntity* in, DBRecord::type_t type) {
-    Util::ScopeLock lock(&sliceAlterationPoolMutex);
+    scopeLock lock(&sliceAlterationPoolMutex);
     in->masterThread = dbId;
     slice_toBeAdded.push_back(std::pair(in, type));
   }
 
   void DBThread::removeFromSlice(DBEntity* in) {
-    Util::ScopeLock lock(&sliceAlterationPoolMutex);
+    scopeLock lock(&sliceAlterationPoolMutex);
     slice_toBeRemoved.push_back(in);
   }
 

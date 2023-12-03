@@ -155,9 +155,6 @@ namespace WITE {
 
   void gpu::shutdown() {
     running = false;
-    LOG("shutting down gpu worker");
-    #error TODO WorkBatch::joinPromiseThreads();//TODO
-    LOG("gpu worker exited");
   };
 
   void gpu::init(const char* appName,
@@ -195,7 +192,6 @@ namespace WITE {
     if(gpuCount < 1) {
       CRASH("No gpu found.");
     }
-#error TODO WorkBatch::init();
   };
 
   gpu& gpu::get(size_t i) {//static

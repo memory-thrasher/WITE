@@ -39,7 +39,7 @@ namespace WITE {
   };
 
   struct resourceMap {
-    uint64_t id = NONE;//only need be unique within the layout(s) it's a member of, and only if accessed from outside the onion
+    uint64_t id = NONE;//unique among resource maps
     uint64_t requirementId;//FK to imageRequirement or bufferRequirement (never both!)
     literalList<uint64_t> resourceReferences;//FK to resourceReference
     uint8_t hostAccessOffset = 0;
@@ -63,7 +63,11 @@ namespace WITE {
 #define defineShaderModules(NOM, ...) defineLiteralList(shaderModule, NOM, __VA_ARGS__)
 
   struct computeShaderRequirements {
-    //TODO
+    uint64_t id;//unique among shaders
+    literalList<shaderModule> modules;
+    literalList<resourceReference> targetProvidedResources;
+    literalList<resourceReference> sourceProvidedResources;
+    //TODO work unit size
   };
 
   struct graphicsShaderRequirements {
@@ -84,6 +88,7 @@ namespace WITE {
     resourceReference src, dst;
   };
 
+  //NOTE: barriers are NOT allowed between executions of individual copies or shaders of the same type. Barriers are allowed between types of executions. Barrier between copy and render is allowed, barrier between shader 1 and 2 of the same RP is not.
   struct layerRequirements {
     literalList<uint64_t> sourceLayouts, targetLayouts;
     literalList<uint64_t> copies, renders, computeShaders;

@@ -48,6 +48,13 @@ namespace WITE {
       return ret;
     };
 
+    inline constexpr bool contains(T e) const {
+      for(auto v : *this)
+	if(v == e)
+	  return true;
+      return false;
+    };
+
   };
 
   template<class T, literalList<T> LL, class P, P p, size_t cnt = LL.countWhere(p)> copyableArray<T, cnt> where() {

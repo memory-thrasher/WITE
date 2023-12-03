@@ -28,7 +28,7 @@ L layer
 IDL id list
  */
 
-constexpr udmObject<UDM::RGB32float> cubeMesh[] = {
+constexpr copyableArray<udmObject<UDM::RGB32float>, 6*6> cubeMesh = {
   {{0, 0, 0}}, {{1, 1, 0}}, {{1, 0, 0}}, {{0, 0, 0}}, {{0, 1, 0}}, {{1, 1, 0}},
   {{0, 0, 1}}, {{1, 1, 1}}, {{1, 0, 1}}, {{0, 0, 1}}, {{0, 1, 1}}, {{1, 1, 1}},
   {{0, 0, 0}}, {{1, 0, 1}}, {{1, 0, 0}}, {{0, 0, 0}}, {{0, 0, 1}}, {{1, 0, 1}},
@@ -256,13 +256,13 @@ int main(int argc, char** argv) {
   window w;//default window size is a centered rectangle meant for splash screens and tests
   auto camera = primaryOnion.createTarget<TL_standardRender.id>();
   auto cube = primaryOnion.createSource<SL_simple.id>();
-  cube.write<RMS_cubeTrans.id>(glm::dmat4(1));//model: diagonal identity
+  cube->write<RMS_cubeTrans.id>(glm::dmat4(1));//model: diagonal identity
   //TODO abstract out the below math to a camera object or helper function
-  // camera.write<RMT_cameraTrans.id>(glm::dmat4(1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 1) * //clip
-  // 				   glm::perspectiveFov<double>(glm::radians(45.0f), 16.0, 9.0, 0.1, 100.0) * //projection
-  // 				   glm::lookAt(glm::dvec3(-5, 3, -10), glm::dvec3(0, 0, 0), glm::dvec3(0, -1, 0))); //view
-  cube.write<RMS_cubeMesh.id>(cubeMesh);
-  // primaryOnion.render();
+  camera->write<RMT_cameraTrans.id>(glm::dmat4(1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 1) * //clip
+				   glm::perspectiveFov<double>(glm::radians(45.0f), 16.0, 9.0, 0.1, 100.0) * //projection
+				   glm::lookAt(glm::dvec3(-5, 3, -10), glm::dvec3(0, 0, 0), glm::dvec3(0, -1, 0))); //view
+  cube->write<RMS_cubeMesh.id>(cubeMesh);
+  primaryOnion.render();
   //TODO present
   // Thread::sleep(5000);
 }

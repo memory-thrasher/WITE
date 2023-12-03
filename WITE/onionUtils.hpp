@@ -79,6 +79,40 @@ namespace WITE {
     return l[0];
   };
 
+  enum class substep_e : uint8_t { barrier1, copy, barrier2, render, barrier3, compute, barrier4 };
+
+  struct resourceUsage {
+    size_t layerIdx;
+    substep_e substep;
+    resourceReference usage;
+    constexpr bool operator<(const resourceUsage& r) const {
+      return usage.frameLatency < r.usage.frameLatency || (usage.frameLatency == r.usage.frameLatency &&
+							   (layerIdx < r.layerIdx || (layerIdx == r.layerIdx &&
+										      substep < r.substep)));
+    };
+  };
+
+  struct resourceBarrier {
+    uint8_t frameLatency = 0;
+    resourceUsage before, after;
+    uint64_t layoutId, resourceId;
+  };
+
+  struct resourceBarrierTiming {//used to key a map to ask what barrier(s) should happen at a given step, so frameLatency is not a factor
+    size_t layerIdx;
+    substep_e substep;
+    constexpr auto operator<=>(const resourceBarrierTiming& r) const = default;
+  };
+
+  consteval resourceReference& operator|=(resourceReference& l, const resourceReference& r) {
+    l.readStages |= r.readStages;
+    l.writeStages |= r.writeStages;
+    l.access |= r.access;
+    l.id = r.id;
+    l.frameLatency = r.frameLatency;
+    return l;
+  }
+
   // consteval vk::ImageSubresourceRange getAllInclusiveSubresource(const imageRequirements R) {
   //   return {
   //     /* .aspectMask =*/ (R.usage & vk::ImageUsageFlagBits::eDepthStencilAttachment) ? vk::ImageAspectFlagBits::eDepth | vk::ImageAspectFlagBits::eStencil : vk::ImageAspectFlagBits::eColor, //MAYBE multiplanar someday?

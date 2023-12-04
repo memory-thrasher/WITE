@@ -92,16 +92,17 @@ namespace WITE {
     };
   };
 
-  struct resourceBarrier {
-    uint8_t frameLatency = 0;
-    resourceUsage before, after;
-    uint64_t layoutId, resourceId;
-  };
-
   struct resourceBarrierTiming {//used to key a map to ask what barrier(s) should happen at a given step, so frameLatency is not a factor
     size_t layerIdx;
     substep_e substep;
     constexpr auto operator<=>(const resourceBarrierTiming& r) const = default;
+  };
+
+  struct resourceBarrier {
+    resourceBarrierTiming timing;
+    uint8_t frameLatency = 0;
+    resourceUsage before, after;
+    uint64_t layoutId, resourceId, requirementId;
   };
 
   consteval resourceReference& operator|=(resourceReference& l, const resourceReference& r) {
@@ -113,57 +114,31 @@ namespace WITE {
     return l;
   }
 
-  // consteval vk::ImageSubresourceRange getAllInclusiveSubresource(const imageRequirements R) {
-  //   return {
-  //     /* .aspectMask =*/ (R.usage & vk::ImageUsageFlagBits::eDepthStencilAttachment) ? vk::ImageAspectFlagBits::eDepth | vk::ImageAspectFlagBits::eStencil : vk::ImageAspectFlagBits::eColor, //MAYBE multiplanar someday?
-  //     /* .baseMipLevel =*/ 0,
-  //     /* .levelCount =*/ R.mipLevels,
-  //     /* .baseArrayLayer =*/ 0,
-  //     /* .layerCount =*/ R.arrayLayers
-  //   };
-  // };
+  consteval vk::ImageSubresourceRange getAllInclusiveSubresource(const imageRequirements R) {
+    return {
+      /* .aspectMask =*/ (R.usage & vk::ImageUsageFlagBits::eDepthStencilAttachment) ? vk::ImageAspectFlagBits::eDepth | vk::ImageAspectFlagBits::eStencil : vk::ImageAspectFlagBits::eColor, //MAYBE multiplanar someday?
+      /* .baseMipLevel =*/ 0,
+      /* .levelCount =*/ R.mipLevels,
+      /* .baseArrayLayer =*/ 0,
+      /* .layerCount =*/ R.arrayLayers
+    };
+  };
 
-  // template<imageRequirements R, literalList<imageFlowStep> IFS, literalList<shader> S, targetLayout TL>
-  // consteval copyableArray<vk::ImageMemoryBarrier2, R.flow.len> getDefaultFlowTransitions() {
-  //   return [](size_t i){
-  //     uint64_t srcId = R.flow[i],
-  // 	dstId = R.flow[i >= R.flow.len - 1 ? R.flowOverwrapIdx : i + 1];
-  //     const auto& src = IFS[findId(IFS, srcId)],
-  // 	dst = IFS[findId(IFS, dstId)];
-  //     vk::AccessFlags2 dstAccess, srcAccess;
-  //     vk::PipelineStageFlags2 dstStages, srcStages;
-  //     for(auto& s : S) {
-  // 	for(auto& mr : s.sourceProvidedResources) {
-  // 	  if(mr.requirementId == R.id && mr.flowId == srcId) {
-  // 	    srcAccess |= mr.access;
-  // 	    srcStages |= mr.readStages | mr.writeStages;
-  // 	  }
-  // 	  if(mr.requirementId == R.id && mr.flowId == dstId) {
-  // 	    dstAccess |= mr.access;
-  // 	    dstStages |= mr.readStages | mr.writeStages;
-  // 	  }
-  // 	}
-  //     }
-  //     for(auto& mr : TL.targetProvidedResources) {
-  // 	if(mr.requirementId == R.id && mr.flowId == srcId) {
-  // 	  srcAccess |= mr.access;
-  // 	  srcStages |= mr.readStages | mr.writeStages;
-  // 	}
-  // 	if(mr.requirementId == R.id && mr.flowId == dstId) {
-  // 	  dstAccess |= mr.access;
-  // 	  dstStages |= mr.readStages | mr.writeStages;
-  // 	}
-  //     }
-  //     vk::ImageMemoryBarrier2 ret;
-  //     ret.setSrcStageMask(srcStages)
-  // 	.setSrcAccessMask(srcAccess)
-  // 	.setDstStageMask(dstStages)
-  // 	.setDstAccessMask(dstAccess)
-  // 	.setOldLayout(src.layout)
-  // 	.setNewLayout(dst.layout)
-  // 	.setSubresourceRange(getAllInclusiveSubresource(R));
-  //     return ret;
-  //   };
-  // };
+  consteval vk::ImageLayout imageLayoutFor(vk::AccessFlags2 access) {
+    vk::ImageLayout ret = vk::ImageLayout::eUndefined;
+    if(access & (vk::AccessFlagBits2::eIndirectCommandRead | vk::AccessFlagBits2::eIndexRead | vk::AccessFlagBits2::eVertexAttributeRead | vk::AccessFlagBits2::eUniformRead | vk::AccessFlagBits2::eInputAttachmentRead | vk::AccessFlagBits2::eShaderRead | vk::AccessFlagBits2::eShaderSampledRead | vk::AccessFlagBits2::eShaderStorageRead))
+      ret = vk::ImageLayout::eShaderReadOnlyOptimal;
+    if(access & (vk::AccessFlagBits2::eShaderWrite | vk::AccessFlagBits2::eHostRead | vk::AccessFlagBits2::eHostWrite | vk::AccessFlagBits2::eMemoryRead | vk::AccessFlagBits2::eMemoryWrite | vk::AccessFlagBits2::eShaderStorageWrite))
+      ret = vk::ImageLayout::eGeneral;
+    if(access & (vk::AccessFlagBits2::eColorAttachmentWrite | vk::AccessFlagBits2::eColorAttachmentRead))
+      ret = ret == vk::ImageLayout::eUndefined ? vk::ImageLayout::eColorAttachmentOptimal : vk::ImageLayout::eGeneral;
+    if(access & (vk::AccessFlagBits2::eDepthStencilAttachmentWrite | vk::AccessFlagBits2::eDepthStencilAttachmentRead))
+      ret = ret == vk::ImageLayout::eUndefined ? vk::ImageLayout::eDepthStencilAttachmentOptimal : vk::ImageLayout::eGeneral;
+    if(access & vk::AccessFlagBits2::eTransferRead)
+      ret = ret == vk::ImageLayout::eUndefined ? vk::ImageLayout::eTransferSrcOptimal : vk::ImageLayout::eGeneral;
+    if(access & vk::AccessFlagBits2::eTransferWrite)
+      ret = ret == vk::ImageLayout::eUndefined ? vk::ImageLayout::eTransferDstOptimal : vk::ImageLayout::eGeneral;
+    return ret;
+  };
 
 }

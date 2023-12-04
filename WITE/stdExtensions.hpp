@@ -22,7 +22,13 @@ namespace WITE {
     return false;
   }
 
-  template<typename T, class C> inline void concat_move(C& dst, C& src) {
+  template<class C> constexpr inline void concat(C& dst, const C& src) {
+    dst.reserve(dst.size() + src.size());
+    for(auto i = src.begin();i != src.end();i++)
+      dst.push_back(*i);
+  }
+
+  template<class C> inline void concat_move(C& dst, C& src) {
     dst.reserve(dst.size() + src.size());
     for(auto i = src.begin();i != src.end();i++)
       dst.push_back(std::move(*i));

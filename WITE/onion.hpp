@@ -157,7 +157,7 @@ namespace WITE {
       allSources.template ofLayout<sourceId>().free(d);
     };
 
-    template<resourceMap RM, uint64_t layoutId> consteval std::vector<resourceUsage> findUsages() {
+    consteval std::vector<resourceUsage> findUsages(resourceMap RM, uint64_t layoutId) {
       std::vector<resourceUsage> ret;
       for(size_t layerIdx = 0;layerIdx < OD.LRS.len;layerIdx++) {
 	const layerRequirements& layer = OD.LRS[layerIdx];
@@ -171,6 +171,8 @@ namespace WITE {
 	  if(RM.resourceReferences.contains(substep.dst.id))
 	    ret.push_back({ layerIdx, substep_e::copy, { substep.dst.id, {}, vk::PipelineStageFlagBits2::eAllTransfer, vk::AccessFlagBits2::eTransferWrite, substep.src.frameLatency }});
 	}
+	constexpr size_t urrLen = std::numeric_limits<decltype(resourceBarrier::frameLatency)>::max();
+	static_assert(std::numeric_limits<decltype(resourceBarrier::frameLatency)>::min() == 0);
 	//rendering:
 	for(size_t substepIdx : layer.renders) {
 	  const auto& substep = findById(OD.RPRS, substepIdx);
@@ -178,7 +180,7 @@ namespace WITE {
 	    ret.push_back({ layerIdx, substep_e::render, substep.depthStencil });
 	  if(RM.resourceReferences.contains(substep.color.id))
 	    ret.push_back({ layerIdx, substep_e::render, substep.color });
-	  std::map<uint8_t, resourceReference> urr;
+	  resourceReference urr[256];
 	  for(const graphicsShaderRequirements& gsr : substep.shaders) {
 	    for(const resourceReference& srr : gsr.targetProvidedResources)
 	      if(RM.resourceReferences.contains(srr.id))
@@ -187,12 +189,12 @@ namespace WITE {
 	      if(RM.resourceReferences.contains(srr.id))
 		urr[srr.frameLatency] |= srr;
 	  }
-	  for(const auto& pair : urr) {
-	    ret.push_back({ layerIdx, substep_e::render, pair.second });
-	  }
+	  for(size_t fl = 0;fl < urrLen;fl++)
+	    if(urr[fl].access)
+	      ret.push_back({ layerIdx, substep_e::render, urr[fl] });
 	}
 	//compute:
-	std::map<uint8_t, resourceReference> urr;
+	resourceReference urr[urrLen];
 	for(size_t csrId : layer.computeShaders) {
 	  const computeShaderRequirements& csr = findById(OD.CSRS, csrId);
 	  for(const resourceReference& srr : csr.targetProvidedResources)
@@ -202,40 +204,106 @@ namespace WITE {
 	    if(RM.resourceReferences.contains(srr.id))
 	      urr[srr.frameLatency] |= srr;
 	}
-	for(const auto& pair : urr) {
-	  ret.push_back({ layerIdx, substep_e::render, pair.second });
-	}
+	for(size_t fl = 0;fl < urrLen;fl++)
+	  if(urr[fl].access)
+	    ret.push_back({ layerIdx, substep_e::render, urr[fl] });
       }
       std::sort(ret.begin(), ret.end());
       return ret;
     };
 
-    template<resourceMap RM, uint64_t layoutId> consteval std::map<resourceBarrierTiming, std::vector<resourceBarrier>> findBarriers() {
-      auto usage = findUsages<RM, layoutId>();
+    consteval std::vector<resourceBarrier> findBarriers(resourceMap RM, uint64_t layoutId) {
+      auto usage = findUsages(RM, layoutId);
       size_t afterIdx = 0, beforeIdx = usage.size()-1;
-      std::map<resourceBarrierTiming, std::vector<resourceBarrier>> ret;
+      std::vector<resourceBarrier> ret;
       if(usage.size() < 2) return ret;
       while(afterIdx < usage.size()) {
 	resourceBarrier rb;
-	resourceBarrierTiming rbt;
 	rb.before = usage[beforeIdx];
 	rb.after = usage[afterIdx];
 	rb.resourceId = RM.id;
+	rb.requirementId = RM.requirementId;
 	rb.layoutId = layoutId;
 	constexpr_assert(rb.before < rb.after || afterIdx == 0);
-	rbt.layerIdx = rb.after.layerIdx;
+	rb.timing.layerIdx = rb.after.layerIdx;
 	rb.frameLatency = rb.after.usage.frameLatency;
 	if(rb.before.layerIdx != rb.after.layerIdx) {//prefer top of layer for barriers
-	  rbt.substep = substep_e::barrier1;
+	  rb.timing.substep = substep_e::barrier1;
 	} else {
 	  constexpr_assert(rb.after.substep != rb.before.substep);
-	  rbt.substep = (substep_e)((int)rb.after.substep - 1);//otherwise wait as long as possible
+	  rb.timing.substep = (substep_e)((int)rb.after.substep - 1);//otherwise wait as long as possible
 	}
-	ret[rbt].push_back(rb);
+	ret.push_back(rb);
 	afterIdx++;
 	beforeIdx = afterIdx-1;
       }
       return ret;
+    };
+
+    consteval std::vector<resourceBarrier> allBarriers() {
+      std::vector<resourceBarrier> allBarriers;
+      for(size_t layerIdx = 0;layerIdx < OD.LRS.len;layerIdx++) {
+	for(sourceLayout SL : OD.SLS)
+	  for(resourceMap RM : SL.sourceProvidedResources)
+	    concat(allBarriers, findBarriers(RM, SL.id));
+	for(targetLayout TL : OD.TLS)
+	  for(resourceMap RM : TL.targetProvidedResources)
+	    concat(allBarriers, findBarriers(RM, TL.id));
+      }
+      return allBarriers;
+    };
+
+    consteval std::vector<resourceBarrier> barriersForTime(resourceBarrierTiming BT) {
+      auto ret = allBarriers();
+      std::erase_if(ret, [BT](auto x){ return x.timeing != BT; });
+      return ret;
+    };
+
+    template<literalList<resourceBarrier> RBS> inline void doBarriers() {
+      if constexpr(RBS.len) {
+	constexpr size_t barrierBatchSize = 256;
+	constexpr resourceBarrier RB = RBS[0];
+	constexpr bool isImage = containsId(OD.IRS, RB.requirementId);
+	vk::DependencyInfo DI;
+	if constexpr(isImage) {
+	  constexpr copyableArray<vk::ImageMemoryBarrier2, barrierBatchSize> baseline(vk::ImageMemoryBarrier2 {
+	      RB.before.usage.readStages | RB.before.usage.writeStages,
+	      RB.before.usage.access,
+	      RB.after.usage.readStages | RB.after.usage.writeStages,
+	      RB.after.usage.access,
+	      imageLayoutFor(RB.before.usage.access),
+	      imageLayoutFor(RB.after.usage.access),
+	      {}, {}, {},
+	      getAllInclusiveSubresource(findById(OD.IRS, RB.requirementId))
+	    });
+	  copyableArray<vk::ImageMemoryBarrier2, barrierBatchSize> barriers = baseline;
+	  DI.pImageMemoryBarriers = barriers.ptr();
+	  DI.imageMemoryBarrierCount = barrierBatchSize;
+	  size_t mbIdx = 0;
+	  if constexpr(containsId(OD.SLS, RB.layoutId)) {
+	    for(auto& cluster : allSources.template ofLayout<RB.layoutId>()) {
+	      barriers[mbIdx % barrierBatchSize].image = cluster.template get<RB.resourceId>().frameImage(RB.frameLatency + frame);
+	      mbIdx++;
+	      if(mbIdx % barrierBatchSize == 0)
+		cmd.pipelineBarrier2(&DI);
+	    }
+	    if(mbIdx) {
+	      DI.imageMemoryBarrierCount = mbIdx;
+	      cmd.pipelineBarrier2(&DI);
+	    }
+	  } else {
+	    //allTargets.template ofLayout<RB.layoutId>();
+	  }
+	} else {
+	  //TODO
+	}
+	doBarriers<RBS.sub(1)>();
+      }
+    };
+
+    template<resourceBarrierTiming BT> inline void doBarriersForTime() {
+      constexpr copyableArray<resourceBarrier, barriersForTime(BT).size()> BTS = barriersForTime(BT);
+      doBarriers<BTS>();
     };
 
     template<literalList<copyStep> CS> inline void doCopies() {
@@ -253,6 +321,7 @@ namespace WITE {
     };
 
     void render() {
+      //TODO acquire mutx lock
       renderFrom<0>();
     }
 

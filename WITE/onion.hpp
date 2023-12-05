@@ -10,8 +10,29 @@ namespace WITE {
 
   template<onionDescriptor OD> struct onion {
 
+    static constexpr size_t cmdFrameswapCount = 2;//TODO LCM of all resources??
+
     uint64_t frame = 0;
     syncLock mutex;
+    vk::CommandPool cmdPool;
+    gpu* dev;
+    vk::CommandBuffer primaryCmds[cmdFrameswapCount];
+    vk::Fence fences[cmdFrameswapCount];
+    vk::Semaphore semaphore;
+
+    onion() {
+      dev = &gpu::get(OD.GPUID);//note: this has a modulo op so GPUID does not need be < num of gpus on the system
+      const vk::CommandPoolCreateInfo poolCI(vk::CommandPoolCreateFlagBits::eResetCommandBuffer, dev->getQueueFam());
+      VK_ASSERT(dev->getVkDevice().createCommandPool(&poolCI, ALLOCCB, &cmdPool), "failed to allocate command pool");
+      vk::CommandBufferAllocateInfo allocInfo(cmdPool, vk::CommandBufferLevel::ePrimary, cmdFrameswapCount);
+      VK_ASSERT(dev->getVkDevice().allocateCommandBuffers(&allocInfo, primaryCmds), "failed to allocate command buffer");
+      vk::FenceCreateInfo fenceCI;//default
+      for(size_t i = 0;i < cmdFrameswapCount;i++)
+	VK_ASSERT(dev->getVkDevice().createFence(&fenceCI, ALLOCCB, &fences[i]), "failed to create fence");
+      vk::SemaphoreTypeCreateInfo semTypeCI(vk::SemaphoreType::eTimeline);
+      vk::SemaphoreCreateInfo semCI({}, &semTypeCI);
+      VK_ASSERT(dev->getVkDevice().createSemaphore(&semCI, ALLOCCB, &semaphore), "failed to create semaphore");
+    };
 
     template<resourceMap> struct mappedResourceTraits : std::false_type {};
 
@@ -157,7 +178,7 @@ namespace WITE {
       allSources.template ofLayout<sourceId>().free(d);
     };
 
-    consteval std::vector<resourceUsage> findUsages(resourceMap RM, uint64_t layoutId) {
+    static consteval std::vector<resourceUsage> findUsages(resourceMap RM, uint64_t layoutId) {
       std::vector<resourceUsage> ret;
       for(size_t layerIdx = 0;layerIdx < OD.LRS.len;layerIdx++) {
 	const layerRequirements& layer = OD.LRS[layerIdx];
@@ -212,7 +233,7 @@ namespace WITE {
       return ret;
     };
 
-    consteval std::vector<resourceBarrier> findBarriers(resourceMap RM, uint64_t layoutId) {
+    static consteval std::vector<resourceBarrier> findBarriers(resourceMap RM, uint64_t layoutId) {
       auto usage = findUsages(RM, layoutId);
       size_t afterIdx = 0, beforeIdx = usage.size()-1;
       std::vector<resourceBarrier> ret;
@@ -240,7 +261,7 @@ namespace WITE {
       return ret;
     };
 
-    consteval std::vector<resourceBarrier> allBarriers() {
+    static consteval std::vector<resourceBarrier> allBarriers() {
       std::vector<resourceBarrier> allBarriers;
       for(size_t layerIdx = 0;layerIdx < OD.LRS.len;layerIdx++) {
 	for(sourceLayout SL : OD.SLS)
@@ -253,13 +274,25 @@ namespace WITE {
       return allBarriers;
     };
 
-    consteval std::vector<resourceBarrier> barriersForTime(resourceBarrierTiming BT) {
+    static consteval std::vector<resourceBarrier> barriersForTime_v(resourceBarrierTiming BT) {
       auto ret = allBarriers();
-      std::erase_if(ret, [BT](auto x){ return x.timeing != BT; });
+      std::erase_if(ret, [BT](auto x){ return x.timing != BT; });
       return ret;
     };
 
-    template<literalList<resourceBarrier> RBS> inline void doBarriers() {
+    static consteval size_t barriersForTime_cnt(resourceBarrierTiming BT) {
+      auto vector = barriersForTime_v(BT);
+      size_t ret = vector.size();
+      vector.clear();
+      return ret;
+    };
+
+    template<resourceBarrierTiming BT>
+    static consteval copyableArray<resourceBarrier, barriersForTime_cnt(BT)> barriersForTime() {
+      return barriersForTime_v(BT);
+    };
+
+    template<literalList<resourceBarrier> RBS> inline void recordBarriers(vk::CommandBuffer cmd) {
       if constexpr(RBS.len) {
 	constexpr size_t barrierBatchSize = 256;
 	constexpr resourceBarrier RB = RBS[0];
@@ -282,47 +315,104 @@ namespace WITE {
 	  size_t mbIdx = 0;
 	  if constexpr(containsId(OD.SLS, RB.layoutId)) {
 	    for(auto& cluster : allSources.template ofLayout<RB.layoutId>()) {
-	      barriers[mbIdx % barrierBatchSize].image = cluster.template get<RB.resourceId>().frameImage(RB.frameLatency + frame);
+	      barriers[mbIdx].image = cluster->get()->template get<RB.resourceId>().frameImage(RB.frameLatency + frame);
 	      mbIdx++;
-	      if(mbIdx % barrierBatchSize == 0)
+	      if(mbIdx == barrierBatchSize) {
 		cmd.pipelineBarrier2(&DI);
-	    }
-	    if(mbIdx) {
-	      DI.imageMemoryBarrierCount = mbIdx;
-	      cmd.pipelineBarrier2(&DI);
+		mbIdx = 0;
+	      }
 	    }
 	  } else {
-	    //allTargets.template ofLayout<RB.layoutId>();
+	    for(auto& cluster : allTargets.template ofLayout<RB.layoutId>()) {
+	      barriers[mbIdx].image = cluster->get()->template get<RB.resourceId>().frameImage(RB.frameLatency + frame);
+	      mbIdx++;
+	      if(mbIdx == barrierBatchSize) {
+		cmd.pipelineBarrier2(&DI);
+		mbIdx = 0;
+	      }
+	    }
+	  }
+	  if(mbIdx) {
+	    DI.imageMemoryBarrierCount = mbIdx;
+	    cmd.pipelineBarrier2(&DI);
 	  }
 	} else {
-	  //TODO
+	  constexpr copyableArray<vk::BufferMemoryBarrier2, barrierBatchSize> baseline(vk::BufferMemoryBarrier2 {
+	      RB.before.usage.readStages | RB.before.usage.writeStages,
+	      RB.before.usage.access,
+	      RB.after.usage.readStages | RB.after.usage.writeStages,
+	      RB.after.usage.access,
+	      {}, {}, {}, 0, VK_WHOLE_SIZE
+	    });
+	  copyableArray<vk::BufferMemoryBarrier2, barrierBatchSize> barriers = baseline;
+	  DI.pBufferMemoryBarriers = barriers.ptr();
+	  DI.bufferMemoryBarrierCount = barrierBatchSize;
+	  size_t mbIdx = 0;
+	  if constexpr(containsId(OD.SLS, RB.layoutId)) {
+	    for(auto cluster : allSources.template ofLayout<RB.layoutId>()) {
+	      barriers[mbIdx].buffer = cluster->get()->template get<RB.resourceId>().frameBuffer(RB.frameLatency + frame);
+	      mbIdx++;
+	      if(mbIdx == barrierBatchSize) {
+		cmd.pipelineBarrier2(&DI);
+		mbIdx = 0;
+	      }
+	    }
+	  } else {
+	    for(auto cluster : allTargets.template ofLayout<RB.layoutId>()) {
+	      barriers[mbIdx].buffer = cluster->get()->template get<RB.resourceId>().frameBuffer(RB.frameLatency + frame);
+	      mbIdx++;
+	      if(mbIdx == barrierBatchSize) {
+		cmd.pipelineBarrier2(&DI);
+		mbIdx = 0;
+	      }
+	    }
+	  }
+	  if(mbIdx) {
+	    DI.bufferMemoryBarrierCount = mbIdx;
+	    cmd.pipelineBarrier2(&DI);
+	  }
 	}
-	doBarriers<RBS.sub(1)>();
+	recordBarriers<RBS.sub(1)>(cmd);
       }
     };
 
-    template<resourceBarrierTiming BT> inline void doBarriersForTime() {
-      constexpr copyableArray<resourceBarrier, barriersForTime(BT).size()> BTS = barriersForTime(BT);
-      doBarriers<BTS>();
+    template<resourceBarrierTiming BT> inline void recordBarriersForTime(vk::CommandBuffer cmd) {
+      static constexpr auto BTS = barriersForTime<BT>();
+      recordBarriers<BTS>(cmd);
     };
 
-    template<literalList<copyStep> CS> inline void doCopies() {
-      if constexpr(CS.len) {
-	//TODO
-	doCopies<CS.sub(1)>();
+    template<literalList<uint64_t> CSIDS> inline void recordCopies(vk::CommandBuffer cmd) {
+      if constexpr(CSIDS.len) {
+	static constexpr copyStep CS = findById(OD.CSS, CSIDS[0]);
+	//
+	recordCopies<CSIDS.sub(1)>(cmd);
       }
     };
 
-    template<size_t layerIdx> inline void renderFrom() {
+    template<size_t layerIdx> inline void renderFrom(vk::CommandBuffer cmd) {
       if constexpr(layerIdx < OD.LRS.len) {
 	static constexpr layerRequirements LR = OD.LRS[layerIdx];
-	renderFrom<layerIdx+1>();
+	recordBarriersForTime<resourceBarrierTiming { .layerIdx = layerIdx, .substep = substep_e::barrier1 }>(cmd);
+	recordCopies<LR.copies>(cmd);
+	recordBarriersForTime<resourceBarrierTiming { .layerIdx = layerIdx, .substep = substep_e::barrier2 }>(cmd);
+	//TODO render
+	recordBarriersForTime<resourceBarrierTiming { .layerIdx = layerIdx, .substep = substep_e::barrier3 }>(cmd);
+	//TODO compute
+	recordBarriersForTime<resourceBarrierTiming { .layerIdx = layerIdx, .substep = substep_e::barrier4 }>(cmd);
+	renderFrom<layerIdx+1>(cmd);
       }
     };
 
     void render() {
-      //TODO acquire mutx lock
-      renderFrom<0>();
+      scopeLock lock(&mutex);
+      vk::CommandBuffer cmd = primaryCmds[frame % cmdFrameswapCount];
+      renderFrom<0>(cmd);
+      vk::Fence fence = fences[frame % cmdFrameswapCount];
+      vk::SemaphoreSubmitInfo waitSem(semaphore, frame-1, vk::PipelineStageFlagBits2::eTopOfPipe),
+	signalSem(semaphore, frame, vk::PipelineStageFlagBits2::eBottomOfPipe);
+      vk::CommandBufferSubmitInfo cmdSubmitInfo(cmd);
+      vk::SubmitInfo2 submit({}, frame ? 1 : 0, &waitSem, 1, &cmdSubmitInfo, 1, &signalSem);
+      VK_ASSERT(dev->getQueue().submit2(1, &submit, fence), "failed to submit command buffer");
     }
 
   };

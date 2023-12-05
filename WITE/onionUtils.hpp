@@ -112,7 +112,7 @@ namespace WITE {
     l.id = r.id;
     l.frameLatency = r.frameLatency;
     return l;
-  }
+  };
 
   consteval vk::ImageSubresourceRange getAllInclusiveSubresource(const imageRequirements R) {
     return {

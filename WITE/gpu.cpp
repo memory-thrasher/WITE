@@ -45,7 +45,7 @@ namespace WITE {
 	qfp[i].p = temp_qfp[i];
       //delete temp_qfp
     }
-    uint32_t queueIdx = ~0;
+    queueIdx = ~0;
     auto allTypes = vk::QueueFlagBits::eGraphics | vk::QueueFlagBits::eCompute | vk::QueueFlagBits::eTransfer;
     for(size_t i = 0;i < cnt;i++) {
       if((qfp[i].p.queueFamilyProperties.queueFlags & allTypes) == allTypes) {

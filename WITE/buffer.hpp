@@ -8,11 +8,7 @@
 
 namespace WITE {
 
-  struct bufferBase {
-    virtual ~bufferBase() = default;
-  };
-
-  template<bufferRequirements R> struct buffer : public bufferBase {
+  template<bufferRequirements R> struct buffer {
     static_assert_show(isValid(R), R);
     static constexpr vk::BufferCreateInfo ci = getDefaultCI(R);
 
@@ -42,9 +38,9 @@ namespace WITE {
       return frame % R.frameswapCount;
     };
 
-    // virtual vk::Buffer frameBuffer(int64_t frame) const override {
-    //   return vkBuffer[frameBufferIdx(frame)];
-    // };
+    vk::Buffer frameBuffer(int64_t frame) const {
+      return vkBuffer[frameBufferIdx(frame)];
+    };
 
     //frame is important to decide which buffer is to be used. Frame may be a lie, especially a negative number for setup
     template<class T> void set(int64_t frame, const T& t) {

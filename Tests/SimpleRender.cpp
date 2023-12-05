@@ -143,7 +143,7 @@ RR_depth = {
   RR_cubeTrans, RR_cubeMesh
 };
 
-uint64_t RR_IDL_cubeTrans[] = { RR_cubeTrans.id, C_updateCubeTransforms.dst.id },
+constexpr uint64_t RR_IDL_cubeTrans[] = { RR_cubeTrans.id, C_updateCubeTransforms.dst.id },
   RR_IDL_cubeTransStaging[] = { C_updateCubeTransforms.src.id },
   RR_IDL_cubeMesh[] = { RR_cubeMesh.id, C_updateCubeMesh.dst.id },
   RR_IDL_cubeMeshStaging[] = { C_updateCubeMesh.src.id },

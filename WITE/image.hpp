@@ -6,16 +6,7 @@
 
 namespace WITE {
 
-  struct imageBase {
-
-    virtual ~imageBase() = default;
-
-    virtual vk::Image frameImage(int64_t frame) const = 0;
-
-  };
-
-  template<imageRequirements R>
-  struct image : public imageBase {
+  template<imageRequirements R> struct image {
 
     static_assert_show(isValid(R), R);
 
@@ -49,7 +40,7 @@ namespace WITE {
 
     //TODO resize
 
-    virtual vk::Image frameImage(int64_t frame) const override {
+    vk::Image frameImage(int64_t frame) const {
       ASSERT_TRAP(frame >= -R.frameswapCount, "requested frame too far before frame 0");
       if(frame < 0) [[unlikely]] frame += R.frameswapCount;
       return vkImage[frame % R.frameswapCount];

@@ -37,6 +37,7 @@ namespace WITE {
     } qfp_t;
     std::unique_ptr<qfp_t[]> qfp;
     vk::Device dev;
+    uint32_t queueIdx = ~0;
     vk::Queue queue;
     vk::PipelineCache pipelineCache;
     vk::PhysicalDeviceMemoryProperties2 pdmp;
@@ -61,8 +62,9 @@ namespace WITE {
 
     gpu();//dummy
     inline size_t getIndex() { return idx; };
-    vk::Device getVkDevice() { return dev; };//vkHandle is an opaque handle
+    inline vk::Device getVkDevice() { return dev; };//vkHandle is an opaque handle
     inline vk::Queue getQueue() { return queue; };
+    inline uint32_t getQueueFam() { return queueIdx; };
     vk::PipelineCache getPipelineCache() { return pipelineCache; };
     inline auto getPhysical() { return pv; };
     void allocate(const vk::MemoryRequirements& mr, vk::MemoryPropertyFlags requiredFlags, vram* out);

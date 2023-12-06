@@ -71,7 +71,7 @@ namespace WITE {
 
     private:
       onion<OD>* o;
-      mappedResourceTuple<TL.targetProvidedResources> resources;
+      mappedResourceTuple<TL.resources> resources;
 
       target_t(const target_t&) = delete;
       target_t() = delete;
@@ -82,12 +82,12 @@ namespace WITE {
     public:
 
       template<uint64_t resourceMapId> auto& get() {
-	return resources.template at<findId(TL.targetProvidedResources, resourceMapId)>();
+	return resources.template at<findId(TL.resources, resourceMapId)>();
       };
 
       template<uint64_t resourceMapId> void write(auto t) {
 	scopeLock lock(&o->mutex);
-	get<resourceMapId>().set(o->frame + findById(TL.targetProvidedResources, resourceMapId).hostAccessOffset, t);
+	get<resourceMapId>().set(o->frame + findById(TL.resources, resourceMapId).hostAccessOffset, t);
       };
 
     };
@@ -128,7 +128,8 @@ namespace WITE {
 
     private:
       onion<OD>* o;
-      mappedResourceTuple<SOURCE_PARAMS.sourceProvidedResources> resources;
+      mappedResourceTuple<SOURCE_PARAMS.resources> resources;
+      //TODO render pass collection
 
       source_t(const source_t&) = delete;
       source_t() = delete;
@@ -139,12 +140,12 @@ namespace WITE {
     public:
 
       template<uint64_t resourceMapId> auto& get() {
-	return resources.template at<findId(SOURCE_PARAMS.sourceProvidedResources, resourceMapId)>();
+	return resources.template at<findId(SOURCE_PARAMS.resources, resourceMapId)>();
       };
 
       template<uint64_t resourceMapId> void write(auto t) {
 	scopeLock lock(&o->mutex);
-	get<resourceMapId>().set(o->frame + findById(SOURCE_PARAMS.sourceProvidedResources, resourceMapId).hostAccessOffset, t);
+	get<resourceMapId>().set(o->frame + findById(SOURCE_PARAMS.resources, resourceMapId).hostAccessOffset, t);
       };
 
     };
@@ -265,10 +266,10 @@ namespace WITE {
       std::vector<resourceBarrier> allBarriers;
       for(size_t layerIdx = 0;layerIdx < OD.LRS.len;layerIdx++) {
 	for(sourceLayout SL : OD.SLS)
-	  for(resourceMap RM : SL.sourceProvidedResources)
+	  for(resourceMap RM : SL.resources)
 	    concat(allBarriers, findBarriers(RM, SL.id));
 	for(targetLayout TL : OD.TLS)
-	  for(resourceMap RM : TL.targetProvidedResources)
+	  for(resourceMap RM : TL.resources)
 	    concat(allBarriers, findBarriers(RM, TL.id));
       }
       return allBarriers;
@@ -292,6 +293,20 @@ namespace WITE {
       return barriersForTime_v(BT);
     };
 
+    template<uint64_t layoutId> inline auto& getAllOfLayout() {
+      if constexpr(containsId(OD.SLS, layoutId))
+	return allSources.template ofLayout<layoutId>();
+      else
+	return allTargets.template ofLayout<layoutId>();
+    };
+
+    template<uint64_t layoutId> static consteval inline auto findLayoutById() {
+      if constexpr(containsId(OD.SLS, layoutId))
+	return findById(OD.SLS, layoutId);
+      else if constexpr(containsId(OD.TLS, layoutId))
+	return findById(OD.TLS, layoutId);
+    };
+
     template<literalList<resourceBarrier> RBS> inline void recordBarriers(vk::CommandBuffer cmd) {
       if constexpr(RBS.len) {
 	constexpr size_t barrierBatchSize = 256;
@@ -313,23 +328,12 @@ namespace WITE {
 	  DI.pImageMemoryBarriers = barriers.ptr();
 	  DI.imageMemoryBarrierCount = barrierBatchSize;
 	  size_t mbIdx = 0;
-	  if constexpr(containsId(OD.SLS, RB.layoutId)) {
-	    for(auto& cluster : allSources.template ofLayout<RB.layoutId>()) {
-	      barriers[mbIdx].image = cluster->get()->template get<RB.resourceId>().frameImage(RB.frameLatency + frame);
-	      mbIdx++;
-	      if(mbIdx == barrierBatchSize) {
-		cmd.pipelineBarrier2(&DI);
-		mbIdx = 0;
-	      }
-	    }
-	  } else {
-	    for(auto& cluster : allTargets.template ofLayout<RB.layoutId>()) {
-	      barriers[mbIdx].image = cluster->get()->template get<RB.resourceId>().frameImage(RB.frameLatency + frame);
-	      mbIdx++;
-	      if(mbIdx == barrierBatchSize) {
-		cmd.pipelineBarrier2(&DI);
-		mbIdx = 0;
-	      }
+	  for(auto& cluster : getAllOfLayout<RB.layoutId>()) {
+	    barriers[mbIdx].image = cluster->get()->template get<RB.resourceId>().frameImage(RB.frameLatency + frame);
+	    mbIdx++;
+	    if(mbIdx == barrierBatchSize) {
+	      cmd.pipelineBarrier2(&DI);
+	      mbIdx = 0;
 	    }
 	  }
 	  if(mbIdx) {
@@ -348,23 +352,12 @@ namespace WITE {
 	  DI.pBufferMemoryBarriers = barriers.ptr();
 	  DI.bufferMemoryBarrierCount = barrierBatchSize;
 	  size_t mbIdx = 0;
-	  if constexpr(containsId(OD.SLS, RB.layoutId)) {
-	    for(auto cluster : allSources.template ofLayout<RB.layoutId>()) {
-	      barriers[mbIdx].buffer = cluster->get()->template get<RB.resourceId>().frameBuffer(RB.frameLatency + frame);
-	      mbIdx++;
-	      if(mbIdx == barrierBatchSize) {
-		cmd.pipelineBarrier2(&DI);
-		mbIdx = 0;
-	      }
-	    }
-	  } else {
-	    for(auto cluster : allTargets.template ofLayout<RB.layoutId>()) {
-	      barriers[mbIdx].buffer = cluster->get()->template get<RB.resourceId>().frameBuffer(RB.frameLatency + frame);
-	      mbIdx++;
-	      if(mbIdx == barrierBatchSize) {
-		cmd.pipelineBarrier2(&DI);
-		mbIdx = 0;
-	      }
+	  for(auto& cluster : getAllOfLayout<RB.layoutId>()) {
+	    barriers[mbIdx].buffer = cluster->get()->template get<RB.resourceId>().frameBuffer(RB.frameLatency + frame);
+	    mbIdx++;
+	    if(mbIdx == barrierBatchSize) {
+	      cmd.pipelineBarrier2(&DI);
+	      mbIdx = 0;
 	    }
 	  }
 	  if(mbIdx) {
@@ -381,21 +374,70 @@ namespace WITE {
       recordBarriers<BTS>(cmd);
     };
 
-    template<literalList<uint64_t> CSIDS> inline void recordCopies(vk::CommandBuffer cmd) {
+    template<copyStep CS, literalList<uint64_t> XLS> inline void recordCopies(vk::CommandBuffer cmd) {
+      if constexpr(XLS.len) {
+	static constexpr auto XL = findLayoutById<XLS[0]>();
+	static constexpr const resourceMap * SRM = findResourceReferencing(XL.resources, CS.src.id),
+	  *DRM = findResourceReferencing(XL.resources, CS.dst.id);
+	if constexpr(SRM && DRM) {
+	  static constexpr bool srcIsImage = containsId(OD.IRS, SRM->requirementId),
+	    dstIsImage = containsId(OD.IRS, DRM->requirementId);
+	  static_assert(!(srcIsImage ^ dstIsImage));//NYI buffer to/from image (why would you do that?)
+	  if constexpr(srcIsImage && dstIsImage) {
+	    //always blit, no way to know at compile time if they're the same size
+	    std::array<vk::Offset3D, 2> srcBounds, dstBounds;
+	    vk::ImageBlit blitInfo(getAllInclusiveSubresourceLayers(findById(OD.IRS, SRM->requirementId)),
+				   srcBounds,
+				   getAllInclusiveSubresourceLayers(findById(OD.IRS, DRM->requirementId)),
+				   dstBounds);
+	    for(auto& cluster : getAllOfLayout<XL.id>()) {
+	      auto& src = cluster->get()->template get<SRM->id>();
+	      auto& dst = cluster->get()->template get<DRM->id>();
+	      blitInfo.srcOffsets = src.getSize();
+	      blitInfo.dstOffsets = dst.getSize();
+	      cmd.blitImage(src.frameImage(CS.src.frameLatency + frame),
+			    imageLayoutFor(vk::AccessFlagBits2::eTransferRead),
+			    dst.frameImage(CS.dst.frameLatency + frame),
+			    imageLayoutFor(vk::AccessFlagBits2::eTransferWrite),
+			    1, &blitInfo, CS.filter);
+	    }
+	  } else {//buffer to buffer
+	    static constexpr bufferRequirements SBR = findById(OD.BRS, SRM->requirementId),
+	      TBR = findById(OD.BRS, DRM->requirementId);
+	    static constexpr vk::BufferCopy copyInfo(0, 0, min(SBR.size, TBR.size));
+	    for(auto& cluster : getAllOfLayout<XL.id>()) {
+	      auto& src = cluster->get()->template get<SRM->id>();
+	      auto& dst = cluster->get()->template get<DRM->id>();
+	      cmd.copyBuffer(src.frameBuffer(CS.src.frameLatency + frame),
+			     dst.frameBuffer(CS.dst.frameLatency + frame),
+			     1, &copyInfo);
+	    }
+	  }
+	}
+	recordCopies<CS, XLS.sub(1)>(cmd);
+      }
+    };
+
+    template<literalList<uint64_t> CSIDS, layerRequirements LR> inline void recordCopies(vk::CommandBuffer cmd) {
       if constexpr(CSIDS.len) {
 	static constexpr copyStep CS = findById(OD.CSS, CSIDS[0]);
-	//
-	recordCopies<CSIDS.sub(1)>(cmd);
+	recordCopies<CS, LR.targetLayouts>(cmd);
+	recordCopies<CS, LR.sourceLayouts>(cmd);
+	recordCopies<CSIDS.sub(1), LR>(cmd);
       }
+    };
+
+    template<literalList<uint64_t> RIDS, layerRequirements LR> inline void recordRenders(vk::CommandBuffer cmd) {
+      //
     };
 
     template<size_t layerIdx> inline void renderFrom(vk::CommandBuffer cmd) {
       if constexpr(layerIdx < OD.LRS.len) {
 	static constexpr layerRequirements LR = OD.LRS[layerIdx];
 	recordBarriersForTime<resourceBarrierTiming { .layerIdx = layerIdx, .substep = substep_e::barrier1 }>(cmd);
-	recordCopies<LR.copies>(cmd);
+	recordCopies<LR.copies, LR>(cmd);
 	recordBarriersForTime<resourceBarrierTiming { .layerIdx = layerIdx, .substep = substep_e::barrier2 }>(cmd);
-	//TODO render
+	recordRenders(cmd);
 	recordBarriersForTime<resourceBarrierTiming { .layerIdx = layerIdx, .substep = substep_e::barrier3 }>(cmd);
 	//TODO compute
 	recordBarriersForTime<resourceBarrierTiming { .layerIdx = layerIdx, .substep = substep_e::barrier4 }>(cmd);
@@ -404,6 +446,8 @@ namespace WITE {
     };
 
     void render() {
+      //TODO make some secondary cmds
+      //TODO cache w/ dirty check the cmds
       scopeLock lock(&mutex);
       vk::CommandBuffer cmd = primaryCmds[frame % cmdFrameswapCount];
       renderFrom<0>(cmd);

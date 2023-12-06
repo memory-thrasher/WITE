@@ -47,12 +47,12 @@ namespace WITE {
 
   struct targetLayout {
     uint64_t id;//unique among source and target layouts
-    literalList<resourceMap> targetProvidedResources;
+    literalList<resourceMap> resources;
   };
 
   struct sourceLayout {
     uint64_t id;//unique among source and target layouts
-    literalList<resourceMap> sourceProvidedResources;
+    literalList<resourceMap> resources;
   };
 
   struct shaderModule {
@@ -86,6 +86,7 @@ namespace WITE {
   struct copyStep {
     uint64_t id;
     resourceReference src, dst;
+    vk::Filter filter = vk::Filter::eNearest;//only meaningful for image-to-image
   };
 
   //NOTE: barriers are NOT allowed between executions of individual copies or shaders of the same type. Barriers are allowed between types of executions. Barrier between copy and render is allowed, barrier between shader 1 and 2 of the same RP is not.

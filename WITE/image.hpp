@@ -40,6 +40,10 @@ namespace WITE {
 
     //TODO resize
 
+    inline vk::Offset3D getSize() {
+      return { ci.extent.width, ci.extent.height, ci.extent.depth };
+    };
+
     vk::Image frameImage(int64_t frame) const {
       ASSERT_TRAP(frame >= -R.frameswapCount, "requested frame too far before frame 0");
       if(frame < 0) [[unlikely]] frame += R.frameswapCount;

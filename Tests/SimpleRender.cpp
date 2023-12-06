@@ -194,7 +194,7 @@ constexpr resourceMap RMS_cubeTrans = {
 
 constexpr targetLayout TL_standardRender {
   .id = __LINE__,
-  .targetProvidedResources = RMT_target //pass by reference (with extra steps), so prior declaration is necessary
+  .resources = RMT_target //pass by reference (with extra steps), so prior declaration is necessary
 };
 
 defineShaderModules(simpleShaderModules,
@@ -216,7 +216,7 @@ constexpr renderPassRequirements RP_simple {
 
 constexpr sourceLayout SL_simple {
   .id = __LINE__,
-  .sourceProvidedResources = RMS_cube
+  .resources = RMS_cube
 };
 
 constexpr layerRequirements L_1 {

@@ -79,6 +79,15 @@ namespace WITE {
     return l[0];
   };
 
+  //NOTE: A source/target layout is not allowed to name two resources referencing the same usage
+  consteval const resourceMap* findResourceReferencing(literalList<resourceMap> RMS, uint64_t id) {
+    for(const resourceMap& RM : RMS)
+      for(uint64_t RR : RM.resourceReferences)
+	if(RR == id)
+	  return &RM;
+    return NULL;
+  };
+
   enum class substep_e : uint8_t { barrier1, copy, barrier2, render, barrier3, compute, barrier4 };
 
   struct resourceUsage {
@@ -119,6 +128,15 @@ namespace WITE {
       /* .aspectMask =*/ (R.usage & vk::ImageUsageFlagBits::eDepthStencilAttachment) ? vk::ImageAspectFlagBits::eDepth | vk::ImageAspectFlagBits::eStencil : vk::ImageAspectFlagBits::eColor, //MAYBE multiplanar someday?
       /* .baseMipLevel =*/ 0,
       /* .levelCount =*/ R.mipLevels,
+      /* .baseArrayLayer =*/ 0,
+      /* .layerCount =*/ R.arrayLayers
+    };
+  };
+
+  consteval vk::ImageSubresourceLayers getAllInclusiveSubresourceLayers(const imageRequirements R) {
+    return {
+      /* .aspectMask =*/ (R.usage & vk::ImageUsageFlagBits::eDepthStencilAttachment) ? vk::ImageAspectFlagBits::eDepth | vk::ImageAspectFlagBits::eStencil : vk::ImageAspectFlagBits::eColor, //MAYBE multiplanar someday?
+      /* .baseMipLevel =*/ 0,
       /* .baseArrayLayer =*/ 0,
       /* .layerCount =*/ R.arrayLayers
     };

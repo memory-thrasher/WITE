@@ -159,4 +159,50 @@ namespace WITE {
     return ret;
   };
 
+  consteval vk::DescriptorType descriptorTypeForAccess(vk::AccessFlags2 access, bool isImage) {
+    if(access & vk::AccessFlagBits2::eShaderSampledRead)
+      return vk::DescriptorType::eSampler;
+    if(access & (vk::AccessFlagBits2::eShaderStorageRead | vk::AccessFlagBits2::eShaderStorageWrite))
+      return isImage ? vk::DescriptorType::eStorageImage : vk::DescriptorType::eStorageBuffer;
+    // if(access & vk::AccessFlagBits2::eUniformRead)
+    return vk::DescriptorType::eUniformBuffer;
+  };
+
+  struct frameBufferBundle {
+    vk::Framebuffer fb;
+    vk::ImageView attachments[2];
+    vk::FramebufferCreateInfo fbci { {}, {}, 2, attachments };
+  };
+
+  struct perTargetLayoutPerSourceLayout {
+    //TODO graphics pipeline
+    //TODO compute pipeline
+    //TODO pipeline layout
+  };
+
+  struct perTargetLayoutPerShader {
+    vk::DescriptorSetLayout descriptorSetLayout;
+  };
+
+  struct perTargetLayout {
+    std::map<uint64_t, vk::RenderPass> rpByRequirementId;
+    std::map<sourceLayout, perTargetLayoutPerSourceLayout> perSL;
+    std::map<uint64_t, perTargetLayoutPerShader> perShader;
+  };
+
+  struct perSourceLayoutPerShader {
+    vk::DescriptorSetLayout descriptorSetLayout;
+  };
+
+  struct perSourceLayout {
+    std::map<uint64_t, perSourceLayoutPerShader> perShader;
+  };
+
+  struct onionStaticData {
+    static syncLock allDataMutex;
+    static std::map<onionDescriptor, onionStaticData> allOnionData;
+    std::map<targetLayout, perTargetLayout> perTL;
+    std::map<sourceLayout, perSourceLayout> perSL;
+  };
+
 }

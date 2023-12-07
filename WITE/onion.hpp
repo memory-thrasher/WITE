@@ -1,5 +1,7 @@
 #pragma once
 
+#include <numeric>
+
 #include "templateStructs.hpp"
 #include "onionUtils.hpp"
 #include "buffer.hpp"
@@ -64,14 +66,26 @@ namespace WITE {
 
     template<literalList<resourceMap> RM> requires(RM.len == 0) struct mappedResourceTuple<RM> : std::false_type {};
 
+    static consteval size_t frameswapLCM(literalList<resourceMap> rms) {
+      size_t ret = 1;
+      for(const resourceMap& rm : rms)
+	ret = std::lcm(ret, containsId(OD.IRS, rm.requirementId) ?
+		       findById(OD.IRS, rm.requirementId).frameswapCount :
+		       findById(OD.BRS, rm.requirementId).frameswapCount);
+      return ret;
+    };
+
     template<uint64_t TARGET_ID> class target_t {
     public:
       static constexpr size_t TARGET_IDX = findId(OD.TLS, TARGET_ID);
       static constexpr targetLayout TL = OD.TLS[TARGET_IDX];
+      static constexpr size_t maxFrameswap = frameswapLCM(TL.resources);
 
     private:
       onion<OD>* o;
       mappedResourceTuple<TL.resources> resources;
+      std::map<uint64_t, frameBufferBundle[maxFrameswap]> fbByRpIdByFrame;
+      std::map<uint64_t, vk::DescriptorSet[maxFrameswap]> dsByShaderIdByFrame;
 
       target_t(const target_t&) = delete;
       target_t() = delete;
@@ -129,7 +143,7 @@ namespace WITE {
     private:
       onion<OD>* o;
       mappedResourceTuple<SOURCE_PARAMS.resources> resources;
-      //TODO render pass collection
+      //TODO descriptor set
 
       source_t(const source_t&) = delete;
       source_t() = delete;
@@ -427,8 +441,95 @@ namespace WITE {
       }
     };
 
-    template<literalList<uint64_t> RIDS, layerRequirements LR> inline void recordRenders(vk::CommandBuffer cmd) {
-      //
+    template<renderPassRequirements RP, targetLayout TL> struct renderPassInfoBundle {
+      static constexpr const resourceMap *colorRM = findResourceReferencing(TL.resources, RP.color.id),
+	*depthRM = findResourceReferencing(TL.resources, RP.depthStencil.id);
+      static constexpr imageRequirements colorIR = findById(OD.IRS, colorRM->requirementId),
+	depthIR = findById(OD.IRS, depthRM->requirementId);
+      static constexpr vk::AttachmentReference colorRef { 0, imageLayoutFor(RP.color.access) },
+	depthRef { 1, imageLayoutFor(RP.depthStencil.access) };
+      static constexpr vk::SubpassDescription subpass { {}, vk::PipelineBindPoint::eGraphics, 0, NULL, 1, &colorRef, NULL, &depthRef };
+      static constexpr vk::AttachmentDescription attachments[2] = {//MAYBE variable attachments when inputs are allowed
+	{ {}, colorIR.format, vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eLoad, vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare, imageLayoutFor(RP.color.access), imageLayoutFor(RP.color.access) },
+	{ {}, depthIR.format, vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eLoad, vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eLoad, vk::AttachmentStoreOp::eStore, imageLayoutFor(RP.depthStencil.access), imageLayoutFor(RP.depthStencil.access) }
+      };
+      //TODO multiview
+      //static constexpr vk::RenderPassMultiviewCreateInfo multiview {
+      static constexpr vk::RenderPassCreateInfo rpci { {}, 2, attachments, 1, &subpass, 0 };
+    };
+
+    template<targetLayout TL, layerRequirements LR, renderPassRequirements RP, literalList<graphicsShaderRequirements> GSRS>
+    inline void recordRenders(auto& target, perTargetLayout& ptl, vk::CommandBuffer cmd) {
+      if constexpr(GSRS.len) {
+	static constexpr graphicsShaderRequirements GSR = GSRS[0];
+	vk::DescriptorSet& tds = target.dsByShaderIdByFrame[GSR.id][frame % target_t<TL.id>::maxFrameswap];
+	if(!tds) [[unlikely]] {
+	  perTargetLayoutPerShader& ptlps = ptl.perShader[GSR.id];
+	  if(!ptlps.descriptorSetLayout) [[unlikely]] {
+	    static constexpr copyableArray<vk::DescriptorSetLayoutBinding, GSR.targetProvidedResources.len> bindings =
+	      [](size_t i) {
+		return vk::DescriptorSetLayoutBinding { i, descriptorTypeForAccess(GSR.targetProvidedResources[i].access, containsId(OD.IRS, findResourceReferencing(TL.resources, GSR.targetProvidedResources[i].id)->requirementId)), 1, GSR.targetProvidedResources[i].readStages | GSR.targetProvidedResources[i].writeStages }; };
+	    static constexpr vk::DescriptorSetLayoutCreateInfo dslci({}, GSR.targetProvidedResources.len, bindings.ptr());
+	    VK_ASSERT(dev->getVkDevice().createDescriptorSetLayout(&dslci, ALLOCCB, &ptlps.descriptorSetLayout),
+		      "failed to create descriptor set layout");
+	    VK_ASSERT(dev->getVkDevice().createDescriptorSetPool(TODO), "failed to create descriptor set pool");
+	  }
+	  VK_ASSERT(dev->getVkDevice().createDescriptorSet(TODO), "failed to create descriptor set");
+	}
+	//TODO
+	recordRenders<TL, LR, RP, GSRS.sub(1)>(target, ptl, cmd);
+      }
+    };
+
+    template<targetLayout TL, layerRequirements LR, literalList<uint64_t> RPIDS>
+    inline void recordRenders(auto& target, perTargetLayout& ptl, vk::CommandBuffer cmd) {
+      if constexpr(RPIDS.len) {
+	static constexpr renderPassRequirements RP = findById(OD.RPRS, RPIDS[0]);
+	vk::RenderPass& rp = ptl.rpByRequirementId[RP.id];
+	if(!rp) {
+	  VK_ASSERT(dev->getVkDevice().createRenderPass(&renderPassInfoBundle<RP, TL>::rpci, ALLOCCB, &rp),
+		    "failed to create render pass ", TL.id, " ", RP.id);
+	}
+	static constexpr resourceMap* colorRM = findResourceReferencing(TL.resource, RP.color.id),
+	  *depthRM = findResourceReferencing(TL.resource, RP.depth.id);
+	auto& color = target.get<colorRM->id>(), depth = target.get<depthRM->id>();
+	vk::Rect2D size = color.getSizeRect();
+	static_assert(colorRM->frameswapCount <= maxFrameswap);
+	frameBufferBundle& fbb = target.fbByRpIdByFrame[RP.id][frame % target_t<TL>::maxFrameswap];
+	if(!fbb.fb) [[unlikely]] {
+	  fbb.fbci.renderPass = rp;
+	  fbb.fbci.width = size.extent.width;
+	  fbb.fbci.height = size.extent.height;
+	  fbb.fbci.layers = 1;
+	  fbb.attachments[0] = color.createView(frame + RP.color.frameLatency);
+	  fbb.attachments[1] = depth.createView(frame + RP.depth.frameLatency);
+	  VK_ASSERT(dev->getVkDevice().createFramebuffer(&fbb.fbci, ALLOCCB, &fbb.fb), "failed to create framebuffer");
+	}
+	vk::RenderPassBeginInfo rpBegin(rp, fbb.fb, size, 0);
+	cmd.beginRenderPass(&rpBegin, vk::SubpassContents::eInline);
+	recordRenders<TL, LR, RP, RP.shaders>(cmd);
+	cmd.endRenderPass();
+	recordRenders<TL, LR, RPIDS.sub(1)>(target, ptl, cmd);
+      }
+    };
+
+    template<targetLayout TL, layerRequirements LR> inline void recordRenders(perTargetLayout& ptl, vk::CommandBuffer cmd) {
+      //TODO spawn each of these in a parallel cmd; rework call stack signatures to hand semaphores around instead of cmd
+      //^^  ONLY if there is no writable source descriptor
+      for(auto& target : allTargets.template ofLayout<layoutId>()) {
+	recordRenders<TL, LR, LR.renders>(target, ptl, cmd);
+      }
+    };
+
+    template<literalList<uint64_t> TLS, layerRequirements LR> inline void recordRenders(vk::CommandBuffer cmd) {
+      if constexpr(TLS.len) {
+	static constexpr targetLayout TL = findById(OD.TLS, TLS[0]);
+	scoptLock lock(&onionStaticData::allDataMutex);
+	perTargetLayout& ptl = onionStaticData::allOnionData[OD].perTL[TL];
+	lock.release();
+	recordRenders<TL, LR>(cmd, ptl);
+	recordRenders<TLS.sub(1), LR>(cmd);
+      };
     };
 
     template<size_t layerIdx> inline void renderFrom(vk::CommandBuffer cmd) {
@@ -437,7 +538,8 @@ namespace WITE {
 	recordBarriersForTime<resourceBarrierTiming { .layerIdx = layerIdx, .substep = substep_e::barrier1 }>(cmd);
 	recordCopies<LR.copies, LR>(cmd);
 	recordBarriersForTime<resourceBarrierTiming { .layerIdx = layerIdx, .substep = substep_e::barrier2 }>(cmd);
-	recordRenders(cmd);
+	if constexpr(LR.renders)
+	  recordRenders<LR.targetLayouts, LR>(cmd);
 	recordBarriersForTime<resourceBarrierTiming { .layerIdx = layerIdx, .substep = substep_e::barrier3 }>(cmd);
 	//TODO compute
 	recordBarriersForTime<resourceBarrierTiming { .layerIdx = layerIdx, .substep = substep_e::barrier4 }>(cmd);
@@ -450,6 +552,7 @@ namespace WITE {
       //TODO cache w/ dirty check the cmds
       scopeLock lock(&mutex);
       vk::CommandBuffer cmd = primaryCmds[frame % cmdFrameswapCount];
+      VK_ASSERT(cmd.reset({}), "failed to reset command buffer");
       renderFrom<0>(cmd);
       vk::Fence fence = fences[frame % cmdFrameswapCount];
       vk::SemaphoreSubmitInfo waitSem(semaphore, frame-1, vk::PipelineStageFlagBits2::eTopOfPipe),

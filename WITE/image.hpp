@@ -40,14 +40,29 @@ namespace WITE {
 
     //TODO resize
 
-    inline vk::Offset3D getSize() {
+    inline vk::Extent3D getSizeExtent() {
+      return ci.extent;
+    };
+
+    inline vk::Offset3D getSizeOffset() {
       return { ci.extent.width, ci.extent.height, ci.extent.depth };
+    };
+
+    inline vk::Rect2D getSizeRect() {
+      return { {0, 0}, {ci.extent.width, ci.extent.height} };
     };
 
     vk::Image frameImage(int64_t frame) const {
       ASSERT_TRAP(frame >= -R.frameswapCount, "requested frame too far before frame 0");
       if(frame < 0) [[unlikely]] frame += R.frameswapCount;
       return vkImage[frame % R.frameswapCount];
+    };
+
+    vk::ImageView createView(int64_t frame) const {
+      vk::ImageViewCreateInfo ci { {}, frameImage(frame), R.isCube ? vk::ImageViewType::eCube : (vk::ImageViewType)R.dimensions, R.format, {}, getAllInclusiveSubresource(R) };
+      vk::ImageView ret;
+      VK_ASSERT(gpu::get(R.deviceId).getVkDevice().createImageView(&ci, ALLOCCB, &ret), "failed to create image view");
+      return ret;
     };
 
   };

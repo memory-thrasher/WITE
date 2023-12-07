@@ -16,6 +16,7 @@ namespace WITE {
     uint8_t dimensions = 2, frameswapCount = 1;
     bool isCube = false, hostVisible = false;
     uint32_t arrayLayers = 1, mipLevels = 1;
+    //MAYBE sample count
   };
 
   struct bufferRequirements {
@@ -79,7 +80,7 @@ namespace WITE {
 
   struct renderPassRequirements {
     uint64_t id;//unique among render passes
-    resourceReference depthStencil, color;
+    resourceReference depthStencil, color; //MAYBE input attachment
     literalList<graphicsShaderRequirements> shaders;
   };
 

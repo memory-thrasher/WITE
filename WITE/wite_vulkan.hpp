@@ -7,6 +7,14 @@
 
 #define ALLOCCB (static_cast<const VULKAN_HPP_NAMESPACE::AllocationCallbacks*>(NULL)) //might actually use this later, so pass it everywhere
 
+namespace WITE {
+
+  template<class TO, class FROM> consteval TO vkFlagCast(FROM f) {
+    return TO(TO::MaskType(FROM::MaskType(f))) & vk::FlagTraits<TO>::allFlags;
+  };
+
+}
+
 // template<class T> inline constexpr bool bitmaskContains(const vk::Flags<T> l, const vk::Flags<T> r) {
 //   return (l & r) != vk::Flags<T>(0);
 // }

@@ -115,8 +115,7 @@ namespace WITE {
   };
 
   consteval resourceReference& operator|=(resourceReference& l, const resourceReference& r) {
-    l.readStages |= r.readStages;
-    l.writeStages |= r.writeStages;
+    l.stages |= r.stages;
     l.access |= r.access;
     l.id = r.id;
     l.frameLatency = r.frameLatency;
@@ -159,13 +158,61 @@ namespace WITE {
     return ret;
   };
 
-  consteval vk::DescriptorType descriptorTypeForAccess(vk::AccessFlags2 access, bool isImage) {
-    if(access & vk::AccessFlagBits2::eShaderSampledRead)
-      return vk::DescriptorType::eSampler;
-    if(access & (vk::AccessFlagBits2::eShaderStorageRead | vk::AccessFlagBits2::eShaderStorageWrite))
-      return isImage ? vk::DescriptorType::eStorageImage : vk::DescriptorType::eStorageBuffer;
-    // if(access & vk::AccessFlagBits2::eUniformRead)
-    return vk::DescriptorType::eUniformBuffer;
+  consteval vk::PipelineStageFlags2 toPipelineStage2(vk::ShaderStageFlags f) {
+    if(f & vk::ShaderStageFlagBits::eAll)
+      return vk::PipelineStageFlagBits2::eAllCommands;
+    vk::PipelineStageFlags2 ret;
+    if(f & vk::ShaderStageFlagBits::eAllGraphics)
+      ret |= vk::PipelineStageFlagBits2::eAllGraphics;
+    else {
+      if(f & vk::ShaderStageFlagBits::eVertex)
+	ret |= vk::PipelineStageFlagBits2::eVertexShader | vk::PipelineStageFlagBits2::eVertexInput |
+	  vk::PipelineStageFlagBits2::eVertexAttributeInput | vk::PipelineStageFlagBits2::eIndexInput;
+      if(f & vk::ShaderStageFlagBits::eTessellationControl)
+	ret |= vk::PipelineStageFlagBits2::eTessellationControlShader;
+      if(f & vk::ShaderStageFlagBits::eTessellationEvaluation)
+	ret |= vk::PipelineStageFlagBits2::eTessellationEvaluationShader;
+      if(f & vk::ShaderStageFlagBits::eGeometry)
+	ret |= vk::PipelineStageFlagBits2::eGeometryShader;
+      if(f & vk::ShaderStageFlagBits::eFragment)
+	ret |= vk::PipelineStageFlagBits2::eFragmentShader | vk::PipelineStageFlagBits2::eLateFragmentTests |
+	  vk::PipelineStageFlagBits2::eEarlyFragmentTests;
+      if(f & vk::ShaderStageFlagBits::eTaskEXT)
+	ret |= vk::PipelineStageFlagBits2::eTaskShaderEXT;
+      if(f & vk::ShaderStageFlagBits::eMeshEXT)
+	ret |= vk::PipelineStageFlagBits2::eMeshShaderEXT;
+    }
+    if(f & vk::ShaderStageFlagBits::eCompute)
+      ret |= vk::PipelineStageFlagBits2::eComputeShader;
+    // if(f & vk::ShaderStageFlagBits::eRaygenKHR)
+    //   ret |= vk::PipelineStageFlagBits2::eRaygenKHR;
+    // if(f & vk::ShaderStageFlagBits::eAnyHitKHR)
+    //   ret |= vk::PipelineStageFlagBits2::eAnyHitKHR;
+    // if(f & vk::ShaderStageFlagBits::eClosestHitKHR)
+    //   ret |= vk::PipelineStageFlagBits2::eClosestHitKHR;
+    // if(f & vk::ShaderStageFlagBits::eMissKHR)
+    //   ret |= vk::PipelineStageFlagBits2::eMissKHR;
+    // if(f & vk::ShaderStageFlagBits::eIntersectionKHR)
+    //   ret |= vk::PipelineStageFlagBits2::eIntersectionKHR;
+    // if(f & vk::ShaderStageFlagBits::eCallableKHR)
+    //   ret |= vk::PipelineStageFlagBits2::eCallableKHR;
+    // if(f & vk::ShaderStageFlagBits::eRaygenNV)
+    //   ret |= vk::PipelineStageFlagBits2::eRaygenNV;
+    // if(f & vk::ShaderStageFlagBits::eAnyHitNV)
+    //   ret |= vk::PipelineStageFlagBits2::eAnyHitNV;
+    // if(f & vk::ShaderStageFlagBits::eClosestHitNV)
+    //   ret |= vk::PipelineStageFlagBits2::eClosestHitNV;
+    // if(f & vk::ShaderStageFlagBits::eMissNV)
+    //   ret |= vk::PipelineStageFlagBits2::eMissNV;
+    // if(f & vk::ShaderStageFlagBits::eIntersectionNV)
+    //   ret |= vk::PipelineStageFlagBits2::eIntersectionNV;
+    // if(f & vk::ShaderStageFlagBits::eCallableNV)
+    //   ret |= vk::PipelineStageFlagBits2::eCallableNV;
+    // if(f & vk::ShaderStageFlagBits::eSubpassShadingHUAWEI)
+    //   ret |= vk::PipelineStageFlagBits2::eSubpassShadingHUAWEI;
+    // if(f & vk::ShaderStageFlagBits::eClusterCullingHUAWEI)
+    //   ret |= vk::PipelineStageFlagBits2::eClusterCullingHUAWEI;
+    return ret;
   };
 
   struct frameBufferBundle {
@@ -181,7 +228,7 @@ namespace WITE {
   };
 
   struct perTargetLayoutPerShader {
-    vk::DescriptorSetLayout descriptorSetLayout;
+    std::unique_ptr<descriptorPoolPoolBase> descriptorPool;
   };
 
   struct perTargetLayout {

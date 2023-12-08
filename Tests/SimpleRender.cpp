@@ -130,15 +130,18 @@ RR_depth = {
 }, RR_cameraTrans = {
   .id = __LINE__,
   .readStages = vk::PipelineStageFlagBits2::eVertexShader,
-  .access = vk::AccessFlagBits2::eUniformRead
+  .access = vk::AccessFlagBits2::eUniformRead,
+  .descriptorType = vk::DescriptorType::eUniformBuffer
 }, RR_cubeTrans = {
   .id = __LINE__,
   .readStages = vk::PipelineStageFlagBits2::eVertexShader,
-  .access = vk::AccessFlagBits2::eUniformRead
+  .access = vk::AccessFlagBits2::eUniformRead,
+  .descriptorType = vk::DescriptorType::eUniformBuffer
 }, RR_cubeMesh = {
   .id = __LINE__,
   .readStages = vk::PipelineStageFlagBits2::eVertexShader,
-  .access = vk::AccessFlagBits2::eVertexAttributeRead
+  .access = vk::AccessFlagBits2::eVertexAttributeRead,
+  .descriptorType = vk::DescriptorType::eUniformBuffer
 }, RRL_simpleSource[] = {
   RR_cubeTrans, RR_cubeMesh
 };

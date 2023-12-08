@@ -34,9 +34,10 @@ namespace WITE {
   struct resourceReference {
     uint64_t id;//unique among resource references
     //stage and access are not required for all commands, in some cases it's contextually clear
-    vk::PipelineStageFlags2 readStages, writeStages;
+    vk::ShaderStageFlags stages;
     vk::AccessFlags2 access = {};
     uint8_t frameLatency = 0; //must be < requirement.frameswapCount. Generally 0 is the one being written this frame, 1 is the one that was written last frame.
+    vk::DescriptorType descriptorType;//only used for descriptors
   };
 
   struct resourceMap {

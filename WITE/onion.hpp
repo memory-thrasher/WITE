@@ -7,6 +7,7 @@
 #include "buffer.hpp"
 #include "image.hpp"
 #include "iterableRecyclingPool.hpp"
+#include "descriptorPool.hpp"
 
 namespace WITE {
 
@@ -203,9 +204,9 @@ namespace WITE {
 	for(size_t substepIdx : layer.copies) {
 	  const auto& substep = findById(OD.CSS, substepIdx);
 	  if(RM.resourceReferences.contains(substep.src.id))
-	    ret.push_back({ layerIdx, substep_e::copy, { substep.src.id, vk::PipelineStageFlagBits2::eAllTransfer, {}, vk::AccessFlagBits2::eTransferRead, substep.src.frameLatency }});
+	    ret.push_back({ layerIdx, substep_e::copy, { substep.src.id, {}, vk::AccessFlagBits2::eTransferRead, substep.src.frameLatency }});
 	  if(RM.resourceReferences.contains(substep.dst.id))
-	    ret.push_back({ layerIdx, substep_e::copy, { substep.dst.id, {}, vk::PipelineStageFlagBits2::eAllTransfer, vk::AccessFlagBits2::eTransferWrite, substep.src.frameLatency }});
+	    ret.push_back({ layerIdx, substep_e::copy, { substep.dst.id, {}, vk::AccessFlagBits2::eTransferWrite, substep.src.frameLatency }});
 	}
 	constexpr size_t urrLen = std::numeric_limits<decltype(resourceBarrier::frameLatency)>::max();
 	static_assert(std::numeric_limits<decltype(resourceBarrier::frameLatency)>::min() == 0);
@@ -329,9 +330,9 @@ namespace WITE {
 	vk::DependencyInfo DI;
 	if constexpr(isImage) {
 	  constexpr copyableArray<vk::ImageMemoryBarrier2, barrierBatchSize> baseline(vk::ImageMemoryBarrier2 {
-	      RB.before.usage.readStages | RB.before.usage.writeStages,
+	      toPipelineStage2(RB.before.usage.stages),
 	      RB.before.usage.access,
-	      RB.after.usage.readStages | RB.after.usage.writeStages,
+	      toPipelineStage2(RB.after.usage.stages),
 	      RB.after.usage.access,
 	      imageLayoutFor(RB.before.usage.access),
 	      imageLayoutFor(RB.after.usage.access),
@@ -356,9 +357,9 @@ namespace WITE {
 	  }
 	} else {
 	  constexpr copyableArray<vk::BufferMemoryBarrier2, barrierBatchSize> baseline(vk::BufferMemoryBarrier2 {
-	      RB.before.usage.readStages | RB.before.usage.writeStages,
+	      toPipelineStage2(RB.before.usage.stages),
 	      RB.before.usage.access,
-	      RB.after.usage.readStages | RB.after.usage.writeStages,
+	      toPipelineStage2(RB.after.usage.stages),
 	      RB.after.usage.access,
 	      {}, {}, {}, 0, VK_WHOLE_SIZE
 	    });
@@ -465,17 +466,12 @@ namespace WITE {
 	vk::DescriptorSet& tds = target.dsByShaderIdByFrame[GSR.id][frame % target_t<TL.id>::maxFrameswap];
 	if(!tds) [[unlikely]] {
 	  perTargetLayoutPerShader& ptlps = ptl.perShader[GSR.id];
-	  if(!ptlps.descriptorSetLayout) [[unlikely]] {
-	    static constexpr copyableArray<vk::DescriptorSetLayoutBinding, GSR.targetProvidedResources.len> bindings =
-	      [](size_t i) {
-		return vk::DescriptorSetLayoutBinding { i, descriptorTypeForAccess(GSR.targetProvidedResources[i].access, containsId(OD.IRS, findResourceReferencing(TL.resources, GSR.targetProvidedResources[i].id)->requirementId)), 1, GSR.targetProvidedResources[i].readStages | GSR.targetProvidedResources[i].writeStages }; };
-	    static constexpr vk::DescriptorSetLayoutCreateInfo dslci({}, GSR.targetProvidedResources.len, bindings.ptr());
-	    VK_ASSERT(dev->getVkDevice().createDescriptorSetLayout(&dslci, ALLOCCB, &ptlps.descriptorSetLayout),
-		      "failed to create descriptor set layout");
-	    VK_ASSERT(dev->getVkDevice().createDescriptorSetPool(TODO), "failed to create descriptor set pool");
+	  if(!ptlps.descriptorPool) [[unlikely]] {
+	    ptlps.descriptorPool.reset(new descriptorPoolPool<GSR.targetProvidedResources>());
 	  }
-	  VK_ASSERT(dev->getVkDevice().createDescriptorSet(TODO), "failed to create descriptor set");
+	  tds = ptlps.descriptorPool.allocate();
 	}
+	// VK_ASSERT(dev->getVkDevice().updateDescriptorSets(TODO
 	//TODO
 	recordRenders<TL, LR, RP, GSRS.sub(1)>(target, ptl, cmd);
       }
@@ -555,8 +551,8 @@ namespace WITE {
       VK_ASSERT(cmd.reset({}), "failed to reset command buffer");
       renderFrom<0>(cmd);
       vk::Fence fence = fences[frame % cmdFrameswapCount];
-      vk::SemaphoreSubmitInfo waitSem(semaphore, frame-1, vk::PipelineStageFlagBits2::eTopOfPipe),
-	signalSem(semaphore, frame, vk::PipelineStageFlagBits2::eBottomOfPipe);
+      vk::SemaphoreSubmitInfo waitSem(semaphore, frame-1, vk::PipelineStageFlagBits2::eAllCommands),
+	signalSem(semaphore, frame, vk::PipelineStageFlagBits2::eAllCommands);
       vk::CommandBufferSubmitInfo cmdSubmitInfo(cmd);
       vk::SubmitInfo2 submit({}, frame ? 1 : 0, &waitSem, 1, &cmdSubmitInfo, 1, &signalSem);
       VK_ASSERT(dev->getQueue().submit2(1, &submit, fence), "failed to submit command buffer");

@@ -221,7 +221,7 @@ namespace WITE {
     vk::FramebufferCreateInfo fbci { {}, {}, 2, attachments };
   };
 
-  struct perTargetLayoutPerSourceLayout {
+  struct perTargetLayoutPerSourceLayoutPerShader {
     //TODO graphics pipeline
     //TODO compute pipeline
     //TODO pipeline layout
@@ -229,16 +229,16 @@ namespace WITE {
 
   struct perTargetLayoutPerShader {
     std::unique_ptr<descriptorPoolPoolBase> descriptorPool;
+    std::map<sourceLayout, perTargetLayoutPerSourceLayoutPerShader> perSL;
   };
 
   struct perTargetLayout {
     std::map<uint64_t, vk::RenderPass> rpByRequirementId;
-    std::map<sourceLayout, perTargetLayoutPerSourceLayout> perSL;
     std::map<uint64_t, perTargetLayoutPerShader> perShader;
   };
 
   struct perSourceLayoutPerShader {
-    vk::DescriptorSetLayout descriptorSetLayout;
+    std::unique_ptr<descriptorPoolPoolBase> descriptorPool;
   };
 
   struct perSourceLayout {

@@ -59,7 +59,7 @@ namespace WITE {
     };
 
     vk::ImageView createView(int64_t frame) const {
-      vk::ImageViewCreateInfo ci { {}, frameImage(frame), R.isCube ? vk::ImageViewType::eCube : (vk::ImageViewType)R.dimensions, R.format, {}, getAllInclusiveSubresource(R) };
+      vk::ImageViewCreateInfo ci { {}, frameImage(frame), R.isCube ? vk::ImageViewType::eCube : vk::ImageViewType(R.dimensions - 1), R.format, {}, getAllInclusiveSubresource(R) };
       vk::ImageView ret;
       VK_ASSERT(gpu::get(R.deviceId).getVkDevice().createImageView(&ci, ALLOCCB, &ret), "failed to create image view");
       return ret;

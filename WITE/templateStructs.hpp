@@ -38,7 +38,10 @@ namespace WITE {
     vk::AccessFlags2 access = {};
     uint8_t frameLatency = 0; //must be < requirement.frameswapCount. Generally 0 is the one being written this frame, 1 is the one that was written last frame.
     vk::DescriptorType descriptorType;//only used for descriptors
+    vk::SamplerCreateInfo sampler;//only for when decriptorType is sampler or combinedSampler
   };
+
+  constexpr vk::AccessFLags2 accessFlagsDenotingDescriptorUsage = vk::AccessFlagBits2::eUniformRead | vk::AccessFlagBits2::eShaderSampledRead | vk::AccessFlagBits2::eShaderStorageRead | vk::AccessFlagBits2::eShaderStorageWrite;
 
   struct resourceMap {
     uint64_t id = NONE;//unique among resource maps
@@ -75,8 +78,8 @@ namespace WITE {
   struct graphicsShaderRequirements {
     uint64_t id;//unique among shaders
     literalList<shaderModule> modules;
-    literalList<resourceReference> targetProvidedResources;
-    literalList<resourceReference> sourceProvidedResources;
+    literalList<resourceReference> targetProvidedResources;//idx of this = descriptor binding id
+    literalList<resourceReference> sourceProvidedResources;//idx of this = descriptor binding id
   };
 
   struct renderPassRequirements {

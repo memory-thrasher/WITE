@@ -76,6 +76,51 @@ namespace WITE {
       return ret;
     };
 
+    template<<literalList<resourceMap> RMS> struct descriptorUpdateData_t {
+      vk::WriteDescriptorSet writes[RMS.len];
+      vk::DescriptorImageInfo images[RMS.countWhere([](resourceMap RM) { return containsId(OD.IRS, RM.requirementId); })];
+      vk::DescriptorBufferInfo buffers[RMS.countWhere([](resourceMap RM) { return containsId(OD.BRS, RM.requirementId); })];
+      uint32_t writeCount;//a shader may use a subset of target data
+      uint32_t imageCount, bufferCount;//util for filling this struct
+    };
+
+    template<<literalList<resourceMap> RMS, literalList<resourceReference> RRS>
+    inline void fillWrites(descriptorUpdateData_t<RMS>& data, mappedResourceTuple<RMS>& rm, vk::DescriptorSet ds,
+			   size_t frameMod) {
+      static_assert(RRS.len <= RMS.len);//because RMS.len is the size of data.writes.  MAYBE need more if multiple RR per RM
+      if constexpr(RRS.len) {
+	static constexpr resourceReference RR = RRS[0];
+	static constexpr resourceMap RM = findResourceReferencing(RMS, RR.id);
+	static constexpr size_t RMX = findId(RMS, RM.id);
+	if constexpr(RR.access & accessFlagsDenotingDescriptorUsage) {
+	  auto& w = data.writes[writeCount];
+	  w.descriptorSet = ds;
+	  w.dstBinding = writeCount;
+	  w.dstArrayElement = 0;
+	  w.descriptorCount = 1;
+	  w.descriptorType = RR.descriptorType;
+	  if constexpr(containsId(OD.IRS, rm.requirementId)) {
+	    auto& img = data.images[imageCount++];
+	    w.pImageInfo = &img;
+	    if constexpr(RR.descriptorType == vk::DescriptorType::eCombinedImageSampler ||
+			 RR.descriptorType == vk::DescriptorType::eSampler) {
+	      img.sampler = dev->getSampler<RR.sampler>();
+	    }
+	    img.imageView = rm.at<RMX>().createView(frameMod);
+	    img.imageLayout = imageLayoutFor(RR.access);
+	  } else {
+	    auto& buf = data.buffers[data.bufferCount++];
+	    w.pBufferInfo = &buf;
+	    buf.buffer = rm.at<RMX>().frameBuffer(frameMod);
+	    buf.offset = 0;
+	    buf.range = findById(OD.BRS, RM.requirementId).size;
+	  }
+	  writeCount++;
+	}
+	fillWrite<RMS, RRS.sub(1)>(data, rm, ds, frameMod);
+      }
+    };
+
     template<uint64_t TARGET_ID> class target_t {
     public:
       static constexpr size_t TARGET_IDX = findId(OD.TLS, TARGET_ID);
@@ -83,10 +128,15 @@ namespace WITE {
       static constexpr size_t maxFrameswap = frameswapLCM(TL.resources);
 
     private:
+      struct perShaderBundle {
+	descriptorUpdateData_t<TL.resources> descriptorUpdateData;
+	vk::DescriptorSet descriptorSet;
+      };
+
       onion<OD>* o;
       mappedResourceTuple<TL.resources> resources;
       std::map<uint64_t, frameBufferBundle[maxFrameswap]> fbByRpIdByFrame;
-      std::map<uint64_t, vk::DescriptorSet[maxFrameswap]> dsByShaderIdByFrame;
+      std::map<uint64_t, perShaderBundle[maxFrameswap]> perShaderByIdByFrame;
 
       target_t(const target_t&) = delete;
       target_t() = delete;
@@ -125,7 +175,7 @@ namespace WITE {
     template<uint64_t targetId> target_t<targetId>* createTarget() {
       scopeLock lock(&mutex);
       std::unique_ptr<target_t<targetId>>* ret = allTargets.template ofLayout<targetId>().allocate();
-      if(!*ret)
+      if(!*ret) [[unlikely]]
 	ret->reset(new target_t<targetId>(this));
       //TODO initialize: transition all images into their FINAL layout (so the first transition in the onion has the expected oldLayout)
       return ret->get();
@@ -183,7 +233,7 @@ namespace WITE {
     template<uint64_t sourceId> source_t<sourceId>* createSource() {
       scopeLock lock(&mutex);
       std::unique_ptr<source_t<sourceId>>* ret = allSources.template ofLayout<sourceId>().allocate();
-      if(!*ret)
+      if(!*ret) [[unlikely]]
 	ret->reset(new source_t<sourceId>(this));
       //TODO initialize: transition all images into their FINAL layout (so the first transition in the onion has the expected oldLayout)
       return ret->get();
@@ -346,12 +396,12 @@ namespace WITE {
 	  for(auto& cluster : getAllOfLayout<RB.layoutId>()) {
 	    barriers[mbIdx].image = cluster->get()->template get<RB.resourceId>().frameImage(RB.frameLatency + frame);
 	    mbIdx++;
-	    if(mbIdx == barrierBatchSize) {
+	    if(mbIdx == barrierBatchSize) [[unlikely]] {
 	      cmd.pipelineBarrier2(&DI);
 	      mbIdx = 0;
 	    }
 	  }
-	  if(mbIdx) {
+	  if(mbIdx) [[likely]] {
 	    DI.imageMemoryBarrierCount = mbIdx;
 	    cmd.pipelineBarrier2(&DI);
 	  }
@@ -370,12 +420,12 @@ namespace WITE {
 	  for(auto& cluster : getAllOfLayout<RB.layoutId>()) {
 	    barriers[mbIdx].buffer = cluster->get()->template get<RB.resourceId>().frameBuffer(RB.frameLatency + frame);
 	    mbIdx++;
-	    if(mbIdx == barrierBatchSize) {
+	    if(mbIdx == barrierBatchSize) [[unlikely]] {
 	      cmd.pipelineBarrier2(&DI);
 	      mbIdx = 0;
 	    }
 	  }
-	  if(mbIdx) {
+	  if(mbIdx) [[likely]] {
 	    DI.bufferMemoryBarrierCount = mbIdx;
 	    cmd.pipelineBarrier2(&DI);
 	  }
@@ -459,30 +509,55 @@ namespace WITE {
       static constexpr vk::RenderPassCreateInfo rpci { {}, 2, attachments, 1, &subpass, 0 };
     };
 
-    template<targetLayout TL, layerRequirements LR, renderPassRequirements RP, literalList<graphicsShaderRequirements> GSRS>
-    inline void recordRenders(auto& target, perTargetLayout& ptl, vk::CommandBuffer cmd) {
+    template<targetLayout TL, graphicsShaderRequirements GSR, literalList<uint64_t> SLIDS>
+    inline void recordRenders(auto& target, perTargetLayoutPerShader& ptlps, onionStaticData& od, perShaderBundle& perShader,
+			      vk::CommandBuffer cmd) {
+      if constexpr(SLIDS.len) {
+	static constexpr sourceLayout SL = findById(OD.SLS, SLIDS[0]);
+	perTargetLayoutPerSourceLayoutPerShader& instance = ptlps.perSL[SL];
+	perSourceLayout& psl = od.perSL[SL];
+	if(!psl.descriptorPool) [[unlikely]]
+	  psl.descriptorPool.reset(new descriptorPoolPool<GSR.sourceProvidedResources>());
+	if(!instance.pipeline) [[unlikely]] {
+	  //could a pipeline not exist when a pipeline layout does? //MAYBE gpu cache the layout
+	  // instance.pipelineLayout
+	}
+    	//TODO get/create pipeline layout
+	//TODO bind pipeline
+	  //TODO bind descriptor sets
+	recordRenders<TL, GSR, SLIDS.sub(1)>(target, ptlps, od, perShader, cmd);
+      }
+    };
+
+    template<targetLayout TL, layerRequirements LR, literalList<graphicsShaderRequirements> GSRS>
+    inline void recordRenders(auto& target, perTargetLayout& ptl, onionStaticData& od, vk::CommandBuffer cmd) {
       if constexpr(GSRS.len) {
 	static constexpr graphicsShaderRequirements GSR = GSRS[0];
-	vk::DescriptorSet& tds = target.dsByShaderIdByFrame[GSR.id][frame % target_t<TL.id>::maxFrameswap];
-	if(!tds) [[unlikely]] {
+	size_t frameMod = frame % target_t<TL.id>::maxFrameswap;
+	auto& perShaderPerFrame = target.perShaderByIdByFrame[GSR.id][frameMod];
+	if(!perShaderPerFrame.descriptorSet) [[unlikely]] {
 	  perTargetLayoutPerShader& ptlps = ptl.perShader[GSR.id];
-	  if(!ptlps.descriptorPool) [[unlikely]] {
+	  if(!ptlps.descriptorPool) [[unlikely]]
 	    ptlps.descriptorPool.reset(new descriptorPoolPool<GSR.targetProvidedResources>());
-	  }
-	  tds = ptlps.descriptorPool.allocate();
+	  perShaderPerFrame.descriptorSet = ptlps.descriptorPool.allocate();
+	  fillWrites<TL.resources, GSR.targetProvidedResources>
+	    (perShaderPerFrame.descriptorUpdateData, target.resources, perShaderPerFrame.descriptorSet, frameMod);
+	  VK_ASSERT(dev->getVkDevice().updateDescriptorSets(perShaderPerFrame.descriptorUpdateData.writeCount,
+							    perShaderPerFrame.descriptorUpdateData.writes),
+		    "Failed to udpate descriptor set");
 	}
-	// VK_ASSERT(dev->getVkDevice().updateDescriptorSets(TODO
-	//TODO
-	recordRenders<TL, LR, RP, GSRS.sub(1)>(target, ptl, cmd);
+	//TODO dirty check descriptors and update if needed (changing which resources a DS points to is very rare)
+	recordRenders<TL, GSR, LR.sourceLayouts>(target, ptlps, od, perShaderPerFrame, cmd);
+	recordRenders<TL, LR, GSRS.sub(1)>(target, ptl, od, cmd);
       }
     };
 
     template<targetLayout TL, layerRequirements LR, literalList<uint64_t> RPIDS>
-    inline void recordRenders(auto& target, perTargetLayout& ptl, vk::CommandBuffer cmd) {
+    inline void recordRenders(auto& target, perTargetLayout& ptl, onionStaticData& od, vk::CommandBuffer cmd) {
       if constexpr(RPIDS.len) {
 	static constexpr renderPassRequirements RP = findById(OD.RPRS, RPIDS[0]);
 	vk::RenderPass& rp = ptl.rpByRequirementId[RP.id];
-	if(!rp) {
+	if(!rp) [[unlikely]] {
 	  VK_ASSERT(dev->getVkDevice().createRenderPass(&renderPassInfoBundle<RP, TL>::rpci, ALLOCCB, &rp),
 		    "failed to create render pass ", TL.id, " ", RP.id);
 	}
@@ -503,17 +578,18 @@ namespace WITE {
 	}
 	vk::RenderPassBeginInfo rpBegin(rp, fbb.fb, size, 0);
 	cmd.beginRenderPass(&rpBegin, vk::SubpassContents::eInline);
-	recordRenders<TL, LR, RP, RP.shaders>(cmd);
+	recordRenders<TL, LR, RP.shaders>(target, ptl, od, cmd);
 	cmd.endRenderPass();
-	recordRenders<TL, LR, RPIDS.sub(1)>(target, ptl, cmd);
+	recordRenders<TL, LR, RPIDS.sub(1)>(target, ptl, od, cmd);
       }
     };
 
-    template<targetLayout TL, layerRequirements LR> inline void recordRenders(perTargetLayout& ptl, vk::CommandBuffer cmd) {
+    template<targetLayout TL, layerRequirements LR>
+    inline void recordRenders(perTargetLayout& ptl, onionStaticData& od, vk::CommandBuffer cmd) {
       //TODO spawn each of these in a parallel cmd; rework call stack signatures to hand semaphores around instead of cmd
       //^^  ONLY if there is no writable source descriptor
       for(auto& target : allTargets.template ofLayout<layoutId>()) {
-	recordRenders<TL, LR, LR.renders>(target, ptl, cmd);
+	recordRenders<TL, LR, LR.renders>(target, ptl, od, cmd);
       }
     };
 
@@ -521,9 +597,10 @@ namespace WITE {
       if constexpr(TLS.len) {
 	static constexpr targetLayout TL = findById(OD.TLS, TLS[0]);
 	scoptLock lock(&onionStaticData::allDataMutex);
-	perTargetLayout& ptl = onionStaticData::allOnionData[OD].perTL[TL];
+	onionStaticData& od = onionStaticData::allOnionData[OD];
+	perTargetLayout& ptl = od.perTL[TL];
 	lock.release();
-	recordRenders<TL, LR>(cmd, ptl);
+	recordRenders<TL, LR>(ptl, od, cmd);
 	recordRenders<TLS.sub(1), LR>(cmd);
       };
     };

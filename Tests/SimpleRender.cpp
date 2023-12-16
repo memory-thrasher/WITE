@@ -131,17 +131,18 @@ RR_depth = {
   .id = __LINE__,
   .readStages = vk::PipelineStageFlagBits2::eVertexShader,
   .access = vk::AccessFlagBits2::eUniformRead,
-  .descriptorType = vk::DescriptorType::eUniformBuffer
+  .usage = { vk::DescriptorType::eUniformBuffer }
 }, RR_cubeTrans = {
   .id = __LINE__,
   .readStages = vk::PipelineStageFlagBits2::eVertexShader,
   .access = vk::AccessFlagBits2::eUniformRead,
   .descriptorType = vk::DescriptorType::eUniformBuffer
+  .usage = { vk::DescriptorType::eUniformBuffer }
 }, RR_cubeMesh = {
   .id = __LINE__,
   .readStages = vk::PipelineStageFlagBits2::eVertexShader,
   .access = vk::AccessFlagBits2::eVertexAttributeRead,
-  .descriptorType = vk::DescriptorType::eUniformBuffer
+  .usage = { Format::RGB32sfloat, vk::VertexInputRate::eVertex }
 }, RRL_simpleSource[] = {
   RR_cubeTrans, RR_cubeMesh
 };
@@ -200,9 +201,9 @@ constexpr targetLayout TL_standardRender {
   .resources = RMT_target //pass by reference (with extra steps), so prior declaration is necessary
 };
 
-defineShaderModules(simpleShaderModules,
-		    { basicShader_vert, vk::ShaderStageFlagBits::eVertex },
-		    { basicShader_frag, vk::ShaderStageFlagBits::eFragment });
+defineShaderModules(simpleShaderModules, //yes, size is in bytes even though code is an array of 32-bit ints. If shader code is stored in a file (as opposed to a header in this example), it will have to be TRAILING-zero-padded to 4-byte units.
+		    { basicShader_vert, sizeof(basicShader_vert), vk::ShaderStageFlagBits::eVertex },
+		    { basicShader_frag, sizeof(basicShader_frag), vk::ShaderStageFlagBits::eFragment });
 
 constexpr graphicsShaderRequirements S_simple {
   .id = __LINE__,

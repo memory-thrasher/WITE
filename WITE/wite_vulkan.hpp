@@ -13,28 +13,28 @@ namespace WITE {
     return TO(TO::MaskType(FROM::MaskType(f))) & vk::FlagTraits<TO>::allFlags;
   };
 
+  //add overrides as needed. Note that vulka_handles.hpp:*.reflect is not constexpr but is otherwise identical to this
+  constexpr auto vkToTuple(vk::SamplerCreateInfo ci) {
+    return std::tie(ci.sType,
+		    ci.pNext,
+		    ci.flags,
+		    ci.magFilter,
+		    ci.minFilter,
+		    ci.mipmapMode,
+		    ci.addressModeU,
+		    ci.addressModeV,
+		    ci.addressModeW,
+		    ci.mipLodBias,
+		    ci.anisotropyEnable,
+		    ci.maxAnisotropy,
+		    ci.compareEnable,
+		    ci.compareOp,
+		    ci.minLod,
+		    ci.maxLod,
+		    ci.borderColor,
+		    ci.unnormalizedCoordinates);
+  };
+
 }
 
-// template<class T> inline constexpr bool bitmaskContains(const vk::Flags<T> l, const vk::Flags<T> r) {
-//   return (l & r) != vk::Flags<T>(0);
-// }
 
-// template<class T> inline constexpr bool nonzero(const T l) {
-//   return l != T(0);
-// };
-
-// namespace WITE::GPU {
-//   class cmd_t {//pool free requires the original reference, so encapsulate it to avoid getting a ptr to a copy of the handle
-//   private:
-//     vk::CommandBuffer* cmd;
-//     cmd_t(vk::CommandBuffer* cmd) : cmd(cmd) {};
-//     friend class Queue;
-//   public:
-//     cmd_t(const cmd_t& o) : cmd_t(o.cmd) {};
-//     explicit cmd_t() : cmd(NULL) {};
-//     inline operator bool() { return cmd; };
-//     ~cmd_t() = default;
-//     inline vk::CommandBuffer* operator->() { return cmd; };
-//     inline vk::CommandBuffer operator*() { return *cmd; };
-//   };
-// };

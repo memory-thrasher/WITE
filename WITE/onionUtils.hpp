@@ -1,9 +1,11 @@
 #pragma once
 
 #include <vector>
+#include <memory>
 
 #include "templateStructs.hpp"
 #include "math.hpp"
+#include "descriptorPoolPool.hpp"
 #include "DEBUG.hpp"
 
 namespace WITE {
@@ -90,11 +92,11 @@ namespace WITE {
 
   enum class substep_e : uint8_t { barrier1, copy, barrier2, render, barrier3, compute, barrier4 };
 
-  struct resourceUsage {
+  struct resourceAccessTime {
     size_t layerIdx;
     substep_e substep;
     resourceReference usage;
-    constexpr bool operator<(const resourceUsage& r) const {
+    constexpr bool operator<(const resourceAccessTime& r) const {
       return usage.frameLatency < r.usage.frameLatency || (usage.frameLatency == r.usage.frameLatency &&
 							   (layerIdx < r.layerIdx || (layerIdx == r.layerIdx &&
 										      substep < r.substep)));
@@ -110,7 +112,7 @@ namespace WITE {
   struct resourceBarrier {
     resourceBarrierTiming timing;
     uint8_t frameLatency = 0;
-    resourceUsage before, after;
+    resourceAccessTime before, after;
     uint64_t layoutId, resourceId, requirementId;
   };
 
@@ -215,6 +217,33 @@ namespace WITE {
     return ret;
   };
 
+  template<resourceReference* rrp, uint32_t binding> constexpr vk::VertexInputBindingDescription getBindingDescription() {
+    if constexpr (!rrp) return {};
+    else {
+      constexpr resourceReference rr = *rrp;
+      return { binding, sizeofUdm<rr.usage.asVertex.format>(), rr.usage.asVertex.rate };
+    }
+  };
+
+  template<literalList<resourceReference> RRS, uint32_t binding = 0, uint32_t locationOffset = 0>
+  constexpr auto getAttributeDescriptions() {
+    if constexpr(RRS.len) {
+      constexpr resourceReference RR = RRS[0];
+      copyableArray<vk::VertexInputAttributeDescription, RR.usage.asVertex.format.len> ret;
+      getAttributeDescriptions<RR.usage.asVertex.format, binding, 0, locationOffset>(ret.ptr());
+      return concatArray(ret, getAttributeDescriptions<RRS.sub(1), binding+1, locationOffset+RR.usage.asVertex.format.len>());
+    } else {
+      return copyableArray<vk::VertexInputAttributeDescription, 0>();
+    }
+  };
+
+  template<udm u, uint32_t binding, uint32_t idx, uint32_t locationOffset> void getAttributeDescriptions(vk::VertexInputAttributeDescription* out) {
+    if constexpr(idx < u.len) {
+      out[idx] = { idx + locationOffset, binding, u[idx], idx ? 0 : sizeofUdm<u.sub(0, idx)>() };
+      getAttributeDescriptions<u, binding, idx+1, locationOffset>();
+    }
+  };
+
   struct frameBufferBundle {
     vk::Framebuffer fb;
     vk::ImageView attachments[2];
@@ -222,9 +251,8 @@ namespace WITE {
   };
 
   struct perTargetLayoutPerSourceLayoutPerShader {
-    //TODO graphics pipeline
-    //TODO compute pipeline
-    //TODO pipeline layout
+    vk::PipelineLayout pipelineLayout;
+    vk::Pipeline pipeline;
   };
 
   struct perTargetLayoutPerShader {
@@ -232,9 +260,13 @@ namespace WITE {
     std::map<sourceLayout, perTargetLayoutPerSourceLayoutPerShader> perSL;
   };
 
+  struct perTargetLayoutPerSourceLayout {
+  };
+
   struct perTargetLayout {
     std::map<uint64_t, vk::RenderPass> rpByRequirementId;
     std::map<uint64_t, perTargetLayoutPerShader> perShader;
+    std::map<uint64_t, perTargetLayoutPerSourceLayout> perSource;
   };
 
   struct perSourceLayoutPerShader {
@@ -248,8 +280,8 @@ namespace WITE {
   struct onionStaticData {
     static syncLock allDataMutex;
     static std::map<onionDescriptor, onionStaticData> allOnionData;
-    std::map<targetLayout, perTargetLayout> perTL;
-    std::map<sourceLayout, perSourceLayout> perSL;
+    std::map<uint64_t, perTargetLayout> perTL;
+    std::map<uint64_t, perSourceLayout> perSL;
   };
 
 }

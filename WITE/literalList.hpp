@@ -36,9 +36,20 @@ namespace WITE {
     consteval inline const literalList sub(size_t start) const { return { data+start, len-start }; };
     constexpr operator bool() const { return len; };
 
-    // template<typename P> constexpr inline auto where(P p) {
-    //   return std::ranges::views::filter(data, p);
-    // };
+    template<typename P> constexpr inline std::vector<T> where(P p) const {
+      std::vector<T> ret;
+      for(size_t i = 0;i < len;i++)
+	if(p(data[i]))
+	  ret.push_back(data[i]);
+      return ret;
+    };
+
+    template<typename P> constexpr inline const T* firstWhere(P p) const {
+      for(size_t i = 0;i < len;i++)
+	if(p(data[i]))
+	  return &data[i];
+      return NULL;
+    };
 
     template<typename P> constexpr inline size_t countWhere(P p) const {
       size_t ret = 0;
@@ -57,8 +68,8 @@ namespace WITE {
 
   };
 
-  template<class T, literalList<T> LL, class P, P p, size_t cnt = LL.countWhere(p)> copyableArray<T, cnt> where() {
-    return { std::ranges::views::filter(std::ranges::views::counted(LL.data, LL.len)) };
+  template<class T, literalList<T> LL, class P> copyableArray<T, LL.countWhere(P())> where() {
+    return { LL.where(P()) };
   };
 
   template<class T, literalList<T> L, size_t... I> consteval std::array<T, L.len> toStdArray() {

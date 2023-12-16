@@ -49,12 +49,14 @@
 #define ERROR(...) { WARN(__VA_ARGS__); asm("INT3"); }//TODO set global failure flag that db should read to graceful stop
 #define ASSERT_TRAP(cond, ...) { if(!(cond)) { ERROR(__VA_ARGS__); } }
 #define LOG(...) { ::WITE::scopeLock lock(LOG_MUTEX()); MAP(LOG1, __VA_ARGS__, " (", std::dec, __FILE__, ": ", __LINE__, ")", std::endl, std::flush); }
+#define DEBUG_TERNARY(debug, release) debug
 
 #else //release
 
 #define ERROR(str) TODO gui error box
 #define WARN(str) TODO log file
 #define ASSERT_TRAP() {}
+#define DEBUG_TERNARY(debug, release) release
 
 #endif
 

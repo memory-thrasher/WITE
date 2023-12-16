@@ -4,9 +4,9 @@
 
 #include "Concepts.hpp"
 
-namespace WITE::Collections {
+namespace WITE {
 
-  template<class T, size_t MAX_LEN> requires std::is_default_constructible_v<T> struct OversizedCopyableArray {
+  template<class T, size_t MAX_LEN> requires std::is_default_constructible_v<T> struct oversizedCopyableArray {
 
     std::array<T, MAX_LEN> data;
     size_t len = 0;

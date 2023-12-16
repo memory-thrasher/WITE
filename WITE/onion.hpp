@@ -7,7 +7,7 @@
 #include "buffer.hpp"
 #include "image.hpp"
 #include "iterableRecyclingPool.hpp"
-#include "descriptorPool.hpp"
+#include "descriptorPoolPool.hpp"
 
 namespace WITE {
 
@@ -76,7 +76,7 @@ namespace WITE {
       return ret;
     };
 
-    template<<literalList<resourceMap> RMS> struct descriptorUpdateData_t {
+    template<literalList<resourceMap> RMS> struct descriptorUpdateData_t {
       vk::WriteDescriptorSet writes[RMS.len];
       vk::DescriptorImageInfo images[RMS.countWhere([](resourceMap RM) { return containsId(OD.IRS, RM.requirementId); })];
       vk::DescriptorBufferInfo buffers[RMS.countWhere([](resourceMap RM) { return containsId(OD.BRS, RM.requirementId); })];
@@ -84,38 +84,39 @@ namespace WITE {
       uint32_t imageCount, bufferCount;//util for filling this struct
     };
 
-    template<<literalList<resourceMap> RMS, literalList<resourceReference> RRS>
+    template<literalList<resourceMap> RMS, literalList<resourceReference> RRS>
     inline void fillWrites(descriptorUpdateData_t<RMS>& data, mappedResourceTuple<RMS>& rm, vk::DescriptorSet ds,
 			   size_t frameMod) {
       static_assert(RRS.len <= RMS.len);//because RMS.len is the size of data.writes.  MAYBE need more if multiple RR per RM
       if constexpr(RRS.len) {
 	static constexpr resourceReference RR = RRS[0];
-	static constexpr resourceMap RM = findResourceReferencing(RMS, RR.id);
+	static constexpr resourceMap RM = *findResourceReferencing(RMS, RR.id);
 	static constexpr size_t RMX = findId(RMS, RM.id);
+	static_assert(RR.usage.type == resourceUsageType::eDescriptor);
 	if constexpr(RR.access & accessFlagsDenotingDescriptorUsage) {
-	  auto& w = data.writes[writeCount];
+	  auto& w = data.writes[data.writeCount];
 	  w.descriptorSet = ds;
-	  w.dstBinding = writeCount;
+	  w.dstBinding = data.writeCount;
 	  w.dstArrayElement = 0;
 	  w.descriptorCount = 1;
-	  w.descriptorType = RR.descriptorType;
+	  w.descriptorType = RR.usage.asDescriptor.descriptorType;
 	  if constexpr(containsId(OD.IRS, rm.requirementId)) {
-	    auto& img = data.images[imageCount++];
+	    auto& img = data.images[data.imageCount++];
 	    w.pImageInfo = &img;
-	    if constexpr(RR.descriptorType == vk::DescriptorType::eCombinedImageSampler ||
-			 RR.descriptorType == vk::DescriptorType::eSampler) {
-	      img.sampler = dev->getSampler<RR.sampler>();
+	    if constexpr(RR.usage.asDescriptor.descriptorType == vk::DescriptorType::eCombinedImageSampler ||
+			 RR.usage.asDescriptor.descriptorType == vk::DescriptorType::eSampler) {
+	      img.sampler = dev->getSampler<RR.usage.asDescriptor.sampler>();
 	    }
-	    img.imageView = rm.at<RMX>().createView(frameMod);
+	    img.imageView = rm.template at<RMX>().createView(frameMod);
 	    img.imageLayout = imageLayoutFor(RR.access);
 	  } else {
 	    auto& buf = data.buffers[data.bufferCount++];
 	    w.pBufferInfo = &buf;
-	    buf.buffer = rm.at<RMX>().frameBuffer(frameMod);
+	    buf.buffer = rm.template at<RMX>().frameBuffer(frameMod);
 	    buf.offset = 0;
 	    buf.range = findById(OD.BRS, RM.requirementId).size;
 	  }
-	  writeCount++;
+	  data.writeCount++;
 	}
 	fillWrite<RMS, RRS.sub(1)>(data, rm, ds, frameMod);
       }
@@ -177,7 +178,7 @@ namespace WITE {
       std::unique_ptr<target_t<targetId>>* ret = allTargets.template ofLayout<targetId>().allocate();
       if(!*ret) [[unlikely]]
 	ret->reset(new target_t<targetId>(this));
-      //TODO initialize: transition all images into their FINAL layout (so the first transition in the onion has the expected oldLayout)
+#error TODO initialize: transition all images into their FINAL layout (so the first transition in the onion has the expected oldLayout)
       return ret->get();
     };
 
@@ -190,11 +191,17 @@ namespace WITE {
     public:
       static constexpr size_t SOURCE_IDX = findId(OD.SLS, SOURCE_ID);
       static constexpr sourceLayout SOURCE_PARAMS = OD.SLS[SOURCE_IDX];
+      static constexpr size_t maxFrameswap = frameswapLCM(SOURCE_PARAMS.resources);
 
     private:
+      struct perShaderBundle {
+	descriptorUpdateData_t<SOURCE_PARAMS.resources> descriptorUpdateData;
+	vk::DescriptorSet descriptorSet;
+      };
+
       onion<OD>* o;
       mappedResourceTuple<SOURCE_PARAMS.resources> resources;
-      //TODO descriptor set
+      std::map<uint64_t, perShaderBundle[maxFrameswap]> perShaderByIdByFrame;
 
       source_t(const source_t&) = delete;
       source_t() = delete;
@@ -235,7 +242,7 @@ namespace WITE {
       std::unique_ptr<source_t<sourceId>>* ret = allSources.template ofLayout<sourceId>().allocate();
       if(!*ret) [[unlikely]]
 	ret->reset(new source_t<sourceId>(this));
-      //TODO initialize: transition all images into their FINAL layout (so the first transition in the onion has the expected oldLayout)
+#error TODO initialize: transition all images into their FINAL layout (so the first transition in the onion has the expected oldLayout)
       return ret->get();
     };
 
@@ -244,8 +251,8 @@ namespace WITE {
       allSources.template ofLayout<sourceId>().free(d);
     };
 
-    static consteval std::vector<resourceUsage> findUsages(resourceMap RM, uint64_t layoutId) {
-      std::vector<resourceUsage> ret;
+    static consteval std::vector<resourceAccessTime> findUsages(resourceMap RM, uint64_t layoutId) {
+      std::vector<resourceAccessTime> ret;
       for(size_t layerIdx = 0;layerIdx < OD.LRS.len;layerIdx++) {
 	const layerRequirements& layer = OD.LRS[layerIdx];
 	if(!layer.sourceLayouts.contains(layoutId) && !layer.targetLayouts.contains(layoutId))
@@ -509,37 +516,109 @@ namespace WITE {
       static constexpr vk::RenderPassCreateInfo rpci { {}, 2, attachments, 1, &subpass, 0 };
     };
 
+    //TODO make an init function, copy the recursive structure, and premake all the pipes and stuff (after successful render)
+    //MAYBE match like clusters of shaders, sources, and targets so they can share layouts and descriptor pools?
+
     template<targetLayout TL, graphicsShaderRequirements GSR, literalList<uint64_t> SLIDS>
-    inline void recordRenders(auto& target, perTargetLayoutPerShader& ptlps, onionStaticData& od, perShaderBundle& perShader,
-			      vk::CommandBuffer cmd) {
+    inline void recordRenders(auto& target, perTargetLayout& ptl, perTargetLayoutPerShader& ptlps, onionStaticData& od, target_t<TL.id>::perShaderBundle& perShader, vk::RenderPass rp, vk::CommandBuffer cmd) {
       if constexpr(SLIDS.len) {
 	static constexpr sourceLayout SL = findById(OD.SLS, SLIDS[0]);
-	perTargetLayoutPerSourceLayoutPerShader& instance = ptlps.perSL[SL];
-	perSourceLayout& psl = od.perSL[SL];
-	if(!psl.descriptorPool) [[unlikely]]
-	  psl.descriptorPool.reset(new descriptorPoolPool<GSR.sourceProvidedResources>());
-	if(!instance.pipeline) [[unlikely]] {
-	  //could a pipeline not exist when a pipeline layout does? //MAYBE gpu cache the layout
-	  // instance.pipelineLayout
+	//for now (at least) only one vertex binding of each input rate type. No instance without vertex. Source only.
+	static constexpr auto findVB = [](resourceReference& rr) {
+	  return rr.usage.type == resourceUsageType::eVertex &&
+	    rr.usage.asVertex.rate == vk::VertexInputRate::eVertex &&
+	    findResourceReferencing(SL.resources, rr.id);
+	};
+	static constexpr auto findIB = [](resourceReference& rr) {
+	  return rr.usage.type == resourceUsageType::eVertex &&
+	    rr.usage.asVertex.rate == vk::VertexInputRate::eInstance &&
+	    findResourceReferencing(SL.resources, rr.id);
+	};
+	static_assert(GSR.sourceProvidedResources.countWhere(findVB) == 1);
+	static_assert(GSR.sourceProvidedResources.countWhere(findIB) <= 1);
+	static constexpr resourceReference* vb = GSR.sourceProvidedResources.firstWhere(findVB);
+	static constexpr resourceReference* ib = GSR.sourceProvidedResources.firstWhere(findIB);
+	perTargetLayoutPerSourceLayoutPerShader& shaderInstance = ptlps.perSL[SL];
+	perSourceLayoutPerShader& pslps = od.perSL[SL.id].perShader[GSR.id];
+	if(!pslps.descriptorPool) [[unlikely]]
+	  pslps.descriptorPool.reset(new descriptorPoolPool<GSR.sourceProvidedResources, OD.GPUID>());
+	if(!shaderInstance.pipeline) [[unlikely]] {
+	  auto vkDev = dev->getVkDevice();
+	  vk::DescriptorSetLayout dsls[2] { pslps.descriptorPool->getDSL(), ptlps.descriptorPool->getDSL() };
+	  vk::PipelineLayoutCreateInfo plci { {}, 2, dsls };//NOTE: push constants NYI, supply here if needed
+	  VK_ASSERT(vkDev.createPipelineLayout(&plci, ALLOCCB, &shaderInstance.pipelineLayout),
+		    "Failed to create pipeline layout; source: ", SL.id, " target: ", TL.id);
+	  vk::ShaderModuleCreateInfo moduleCI;
+	  vk::ShaderModule module;
+	  vk::PipelineShaderStageCreateInfo stages[GSR.modules.len];
+	  for(size_t i;i < GSR.modules.len;i++) {
+	    moduleCI.setPCode(GSR.modules[i].data)
+	      .setCodeSize(GSR.modules[i].size);
+	    VK_ASSERT(vkDev.createShaderModule(&moduleCI, ALLOCCB, &module), "Failed to create shader module");
+	    stages[i].setStage(GSR.modules[i].stage)
+	      .setModule(module);
+	  }
+	  static constexpr size_t vibCount = ib ? 2 : vb ? 1 : 0;
+	  static constexpr vk::VertexInputBindingDescription vibs[2] = {
+	    getBindingDescription<vb, 0>(),
+	    getBindingDescription<ib, 1>()
+	  };
+	  static constexpr copyableArray<resourceReference, vibCount> vib = [](size_t i){ return i ? *ib : *vb; };
+	  static constexpr auto viad = getAttributeDescriptions<vib>();
+	  static constexpr vk::PipelineVertexInputStateCreateInfo verts { {}, vibCount, vibs, viad.LEN, viad.ptr() };
+	  static constexpr vk::PipelineInputAssemblyStateCreateInfo assembly { {}, GSR.topology, false };
+	  //TODO tessellation
+	  //viewport and scissors are dynamic so we don't need to rebuild the pipe when the target size changes
+	  static constexpr vk::PipelineViewportStateCreateInfo vp = { {}, 1, NULL, 1, NULL };
+	  static constexpr vk::PipelineRasterizationStateCreateInfo raster = { {}, false, false, vk::PolygonMode::eFill, GSR.cullMode, GSR.windCounterClockwise ? vk::FrontFace::eCounterClockwise : vk::FrontFace::eClockwise };//not set: depth bias stuff, line width
+	  static constexpr vk::PipelineMultisampleStateCreateInfo multisample = { {}, vk::SampleCountFlagBits::e1, 0, 0, NULL, 0, 0 };
+	  static constexpr vk::PipelineDepthStencilStateCreateInfo depth = { {}, true, true, vk::CompareOp::eLess, false, false };//not set: depth bounds and stencil test stuff
+	  static constexpr vk::PipelineColorBlendAttachmentState blendAttachment = { false };
+	  static constexpr vk::PipelineColorBlendStateCreateInfo blend = { {}, false, {}, 1, &blendAttachment, { 1, 1, 1, 1 } };
+	  static constexpr vk::DynamicState dynamics[] = { vk::DynamicState::eScissor, vk::DynamicState::eViewport };
+	  static constexpr vk::PipelineDynamicStateCreateInfo dynamic = { {}, 2, dynamics };
+	  vk::GraphicsPipelineCreateInfo gpci { {}, GSR.modules.len, stages, &verts, /*tesselation*/ NULL, &vp, &raster, &multisample, &depth, &blend, &dynamic, shaderInstance.pipelineLayout, rp, /*subpass idx*/ 0 };//not set: derivitive pipeline stuff
+	  VK_ASSERT(vkDev.createGraphicsPipelines(dev->getPipelineCache(), 1, &gpci, ALLOCCB, &shaderInstance.pipeline),
+		    "Failed to create graphics pipeline ", GSR.id);
 	}
-    	//TODO get/create pipeline layout
-	//TODO bind pipeline
-	  //TODO bind descriptor sets
-	recordRenders<TL, GSR, SLIDS.sub(1)>(target, ptlps, od, perShader, cmd);
+	cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, shaderInstance.pipeline);
+	cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, shaderInstance.pipelineLayout, 1, 1, &perShader.descriptorSet, 0, NULL);
+	for(auto& source : allSources.template ofLayout<SL.id>()) {
+	  size_t frameMod = frame % source_t<SL.id>::maxFrameswap;
+	  auto& sourcePerShaderPerFrame = source.perShaderByIdByFrame[GSR.id][frameMod];
+	  if(!sourcePerShaderPerFrame.descriptorSet) [[unlikely]] {
+	    sourcePerShaderPerFrame.descriptorSet = od.perSL[SL.id].perShader[GSR.id].descriptorPool->allocate();
+	    fillWrites<SL.resources, GSR.sourceProvidedResources>
+	      (sourcePerShaderPerFrame.descriptorUpdateData, source.resources, sourcePerShaderPerFrame.descriptorSet, frameMod);
+	    VK_ASSERT(dev->getVkDevice().updateDescriptorSets(sourcePerShaderPerFrame.descriptorUpdateData.writeCount,
+							      sourcePerShaderPerFrame.descriptorUpdateData.writes),
+		      "Failed to udpate source descriptor set");
+	  }
+	  cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, shaderInstance.pipelineLayout, 0, 1, &sourcePerShaderPerFrame.descriptorSet, 0, NULL);
+	  static constexpr vk::DeviceSize zero = 0;//offsets below
+	  static constexpr resourceMap vbm = *findResourceReferencing(SL.resources, vb->id);
+	  static constexpr const resourceMap* ibm = findResourceReferencing(SL.resources, ib->id);
+	  cmd.bindVertexBuffers(0, 1, source.template get<vbm.id>().frameBuffer(frame + vb->frameLatency), &zero);
+	  if constexpr(ibm)
+	    cmd.bindVertexBuffers(1, 1, source.template get<ibm->id>().frameBuffer(frame + ib->frameLatency), &zero);
+	  cmd.draw(findById(OD.BRS, vbm.requirementId).size / sizeofUdm<vb->usage.asVertex.format>(), ibm ? (findById(OD.BRS, ibm->requirementId).size / sizeofUdm<ib->usage.asVertex.format>()) : 1, 0, 0);
+	  //TODO more flexibility with draw. Allow source layout to ask for multi-draw, indexed, indirect etc. Allow allow (dynamic) less than the whole buffer.
+	}
+	recordRenders<TL, GSR, SLIDS.sub(1)>(target, ptl, ptlps, od, perShader, cmd);
       }
     };
 
     template<targetLayout TL, layerRequirements LR, literalList<graphicsShaderRequirements> GSRS>
-    inline void recordRenders(auto& target, perTargetLayout& ptl, onionStaticData& od, vk::CommandBuffer cmd) {
+    inline void recordRenders(auto& target, perTargetLayout& ptl, onionStaticData& od, vk::RenderPass rp, vk::CommandBuffer cmd) {
       if constexpr(GSRS.len) {
 	static constexpr graphicsShaderRequirements GSR = GSRS[0];
 	size_t frameMod = frame % target_t<TL.id>::maxFrameswap;
 	auto& perShaderPerFrame = target.perShaderByIdByFrame[GSR.id][frameMod];
+	perTargetLayoutPerShader& ptlps = ptl.perShader[GSR.id];
 	if(!perShaderPerFrame.descriptorSet) [[unlikely]] {
-	  perTargetLayoutPerShader& ptlps = ptl.perShader[GSR.id];
 	  if(!ptlps.descriptorPool) [[unlikely]]
-	    ptlps.descriptorPool.reset(new descriptorPoolPool<GSR.targetProvidedResources>());
-	  perShaderPerFrame.descriptorSet = ptlps.descriptorPool.allocate();
+	    ptlps.descriptorPool.reset(new descriptorPoolPool<GSR.targetProvidedResources, OD.GPUID>());
+	  perShaderPerFrame.descriptorSet = ptlps.descriptorPool->allocate();
 	  fillWrites<TL.resources, GSR.targetProvidedResources>
 	    (perShaderPerFrame.descriptorUpdateData, target.resources, perShaderPerFrame.descriptorSet, frameMod);
 	  VK_ASSERT(dev->getVkDevice().updateDescriptorSets(perShaderPerFrame.descriptorUpdateData.writeCount,
@@ -547,8 +626,8 @@ namespace WITE {
 		    "Failed to udpate descriptor set");
 	}
 	//TODO dirty check descriptors and update if needed (changing which resources a DS points to is very rare)
-	recordRenders<TL, GSR, LR.sourceLayouts>(target, ptlps, od, perShaderPerFrame, cmd);
-	recordRenders<TL, LR, GSRS.sub(1)>(target, ptl, od, cmd);
+	recordRenders<TL, GSR, LR.sourceLayouts>(target, ptl, ptlps, od, perShaderPerFrame, rp, cmd);
+	recordRenders<TL, LR, GSRS.sub(1)>(target, ptl, od, rp, cmd);
       }
     };
 
@@ -561,24 +640,23 @@ namespace WITE {
 	  VK_ASSERT(dev->getVkDevice().createRenderPass(&renderPassInfoBundle<RP, TL>::rpci, ALLOCCB, &rp),
 		    "failed to create render pass ", TL.id, " ", RP.id);
 	}
-	static constexpr resourceMap* colorRM = findResourceReferencing(TL.resource, RP.color.id),
-	  *depthRM = findResourceReferencing(TL.resource, RP.depth.id);
-	auto& color = target.get<colorRM->id>(), depth = target.get<depthRM->id>();
+	static constexpr const resourceMap* colorRM = findResourceReferencing(TL.resources, RP.color.id),
+	  *depthRM = findResourceReferencing(TL.resources, RP.depthStencil.id);
+	auto& color = target.template get<colorRM->id>(), depth = target.template get<depthRM->id>();
 	vk::Rect2D size = color.getSizeRect();
-	static_assert(colorRM->frameswapCount <= maxFrameswap);
-	frameBufferBundle& fbb = target.fbByRpIdByFrame[RP.id][frame % target_t<TL>::maxFrameswap];
+	frameBufferBundle& fbb = target.fbByRpIdByFrame[RP.id][frame % target_t<TL.id>::maxFrameswap];
 	if(!fbb.fb) [[unlikely]] {
 	  fbb.fbci.renderPass = rp;
 	  fbb.fbci.width = size.extent.width;
 	  fbb.fbci.height = size.extent.height;
 	  fbb.fbci.layers = 1;
 	  fbb.attachments[0] = color.createView(frame + RP.color.frameLatency);
-	  fbb.attachments[1] = depth.createView(frame + RP.depth.frameLatency);
+	  fbb.attachments[1] = depth.createView(frame + RP.depthStencil.frameLatency);
 	  VK_ASSERT(dev->getVkDevice().createFramebuffer(&fbb.fbci, ALLOCCB, &fbb.fb), "failed to create framebuffer");
 	}
 	vk::RenderPassBeginInfo rpBegin(rp, fbb.fb, size, 0);
 	cmd.beginRenderPass(&rpBegin, vk::SubpassContents::eInline);
-	recordRenders<TL, LR, RP.shaders>(target, ptl, od, cmd);
+	recordRenders<TL, LR, RP.shaders>(target, ptl, od, rp, cmd);
 	cmd.endRenderPass();
 	recordRenders<TL, LR, RPIDS.sub(1)>(target, ptl, od, cmd);
       }
@@ -589,6 +667,7 @@ namespace WITE {
       //TODO spawn each of these in a parallel cmd; rework call stack signatures to hand semaphores around instead of cmd
       //^^  ONLY if there is no writable source descriptor
       for(auto& target : allTargets.template ofLayout<layoutId>()) {
+	#error TODO set scissors and viewport here
 	recordRenders<TL, LR, LR.renders>(target, ptl, od, cmd);
       }
     };

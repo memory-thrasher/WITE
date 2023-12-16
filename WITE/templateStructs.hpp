@@ -22,7 +22,6 @@ namespace WITE {
   struct bufferRequirements {
     uint64_t deviceId = NONE;
     uint64_t id = NONE;//unique among image and buffer requirements
-    udm format;//for vertex buffers only (for now, maybe texel later)
     vk::BufferUsageFlags usage;
     uint32_t size = 0;
     uint8_t frameswapCount = 0;
@@ -30,6 +29,27 @@ namespace WITE {
     //MAYBE isTexel
   };
   //TODO better way to make constant buffers (so staging buffer doesn't sit around forever)
+  //make a function in buffer that allocates a new staging buffer, does thetransfer, then frees the staging buffer. Not to be called concurrently.
+
+  enum class resourceUsageType { eNone, eDescriptor, eVertex };//none for copy and maybe others
+
+  struct resourceUsage {
+    resourceUsageType type;
+    union {
+      struct {
+	vk::DescriptorType descriptorType;//only used for descriptors
+	vk::SamplerCreateInfo sampler;//only for when decriptorType is sampler or combinedSampler
+      } asDescriptor;
+      struct {
+	udm format;
+	vk::VertexInputRate rate;
+      } asVertex;
+    };
+    constexpr resourceUsage(vk::DescriptorType dt, vk::SamplerCreateInfo sci = {}) : type(resourceUsageType::eDescriptor), asDescriptor({ dt, sci }) {};
+    constexpr resourceUsage(udm format, vk::VertexInputRate vir) : type(resourceUsageType::eVertex), asVertex({ format, vir }) {};
+    constexpr resourceUsage() : type(resourceUsageType::eNone) {};
+    constexpr resourceUsage(const resourceUsage&) = default;
+  };
 
   struct resourceReference {
     uint64_t id;//unique among resource references
@@ -37,11 +57,10 @@ namespace WITE {
     vk::ShaderStageFlags stages;
     vk::AccessFlags2 access = {};
     uint8_t frameLatency = 0; //must be < requirement.frameswapCount. Generally 0 is the one being written this frame, 1 is the one that was written last frame.
-    vk::DescriptorType descriptorType;//only used for descriptors
-    vk::SamplerCreateInfo sampler;//only for when decriptorType is sampler or combinedSampler
+    resourceUsage usage;
   };
 
-  constexpr vk::AccessFLags2 accessFlagsDenotingDescriptorUsage = vk::AccessFlagBits2::eUniformRead | vk::AccessFlagBits2::eShaderSampledRead | vk::AccessFlagBits2::eShaderStorageRead | vk::AccessFlagBits2::eShaderStorageWrite;
+  constexpr vk::AccessFlags2 accessFlagsDenotingDescriptorUsage = vk::AccessFlagBits2::eUniformRead | vk::AccessFlagBits2::eShaderSampledRead | vk::AccessFlagBits2::eShaderStorageRead | vk::AccessFlagBits2::eShaderStorageWrite;
 
   struct resourceMap {
     uint64_t id = NONE;//unique among resource maps
@@ -62,7 +81,8 @@ namespace WITE {
 
   struct shaderModule {
     const uint32_t* data;
-    vk::ShaderStageFlags stages;
+    uint32_t size;
+    vk::ShaderStageFlagBits stage;
   };
 
 #define defineShaderModules(NOM, ...) defineLiteralList(shaderModule, NOM, __VA_ARGS__)
@@ -78,8 +98,11 @@ namespace WITE {
   struct graphicsShaderRequirements {
     uint64_t id;//unique among shaders
     literalList<shaderModule> modules;
-    literalList<resourceReference> targetProvidedResources;//idx of this = descriptor binding id
-    literalList<resourceReference> sourceProvidedResources;//idx of this = descriptor binding id
+    literalList<resourceReference> targetProvidedResources;//idx of this within usage.type = binding id
+    literalList<resourceReference> sourceProvidedResources;
+    vk::PrimitiveTopology topology = vk::PrimitiveTopology::eTriangleList;
+    vk::CullModeFlags cullMode = vk::CullModeFlagBits::eNone;
+    bool windCounterClockwise = false;
   };
 
   struct renderPassRequirements {

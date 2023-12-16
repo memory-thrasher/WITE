@@ -45,7 +45,7 @@ namespace WITE {
     std::array<int64_t, VK_MAX_MEMORY_TYPES> memoryScoreByType;
     std::array<vk::MemoryPropertyFlags, VK_MAX_MEMORY_TYPES> memoryFlagsByType;
     std::array<std::atomic_uint64_t, VK_MAX_MEMORY_HEAPS> freeMemoryByHeap;
-    std::map<vk::SamplerCreateInfo, vk::Sampler> samplers;
+    std::map<hash_t, vk::Sampler> samplers;
     syncLock samplersMutex;
 
     gpu(size_t idx, vk::PhysicalDevice);
@@ -73,7 +73,7 @@ namespace WITE {
 
     template<vk::SamplerCreateInfo CI> vk::Sampler getSampler() {
       scopeLock lock(&samplersMutex);
-      vk::Sampler& ret = samplers[CI];
+      vk::Sampler& ret = samplers[hash(vkToTuple(CI))];
       if(!ret) {
 	VK_ASSERT(getVkDevice().createSampler(&CI, ALLOCCB, &ret), "failed to create sampler");
       }

@@ -184,4 +184,46 @@ namespace WITE {
   // inline T auto_cast(U i) { return reinterpret_cast<T>(i); };
   //TODO more as needed (non-ptr with caution)
 
+  template<ssize_t start, ssize_t stride, size_t... S> inline constexpr auto mkSequence(std::index_sequence<S...>) {
+    return std::index_sequence<(S * stride + start)...>();
+  }
+
+  template<ssize_t start, size_t count, ssize_t stride = 1> inline constexpr auto mkSequence() {
+    return mkSequence<start, stride>(std::make_index_sequence<count>());
+  }
+
+  template<class... T, size_t... S> constexpr auto subtuple(std::index_sequence<S...>, std::tuple<T...> tuple) {
+    return std::make_tuple(std::get<S>(tuple)...);
+  };
+
+  template<class T, class... U> constexpr auto popTupleFront(std::tuple<T, U...> tuple) {
+    return subtuple(mkSequence<1, sizeof...(U)>(), tuple);
+  };
+
+  constexpr uint64_t hashingPrime = 6700417;//non-mersenne to avoid collissions with ~0 in any size int
+  typedef uint64_t hash_t;
+
+  //for keying runtime maps using constexpr objects, such as vulkan *CreateInfo structs. Does not follow pointers.
+  template<class T> constexpr hash_t hash(const T& t) {
+    return static_cast<hash_t>(t);//enums, smaller range ints etc
+  };
+
+  template<class T> constexpr hash_t hash(const T* t) {
+    return reinterpret_cast<hash_t>(t);//pointers
+  };
+
+#ifdef VULKAN_ENUMS_HPP
+  template<class T> constexpr hash_t hash(const vk::Flags<T> t) {
+    return static_cast<hash_t>(typename vk::Flags<T>::MaskType(t));//pointers
+  };
+#endif
+
+  template<class T> constexpr hash_t hash(const std::tuple<T> tuple) {
+    return hash(std::get<0>(tuple));
+  };
+
+  template<class T, class U, class... V> constexpr hash_t hash(const std::tuple<T, U, V...> tuple) {
+    return hash(std::get<0>(tuple)) * hashingPrime + hash(popTupleFront(tuple));
+  };
+
 }

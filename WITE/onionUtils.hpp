@@ -66,7 +66,7 @@ namespace WITE {
     return l.len;
   };
 
-  template<class T> consteval bool containsId(literalList<T> l, uint64_t id) {
+  template<class T> constexpr bool containsId(literalList<T> l, uint64_t id) {
     for(size_t i = 0;i < l.len;i++)
       if(l[i].id == id)
 	return true;
@@ -82,7 +82,7 @@ namespace WITE {
   };
 
   //NOTE: A source/target layout is not allowed to name two resources referencing the same usage
-  consteval const resourceMap* findResourceReferencing(literalList<resourceMap> RMS, uint64_t id) {
+  constexpr const resourceMap* findResourceReferencing(literalList<resourceMap> RMS, uint64_t id) {
     for(const resourceMap& RM : RMS)
       for(uint64_t RR : RM.resourceReferences)
 	if(RR == id)
@@ -178,7 +178,7 @@ namespace WITE {
 	ret |= vk::PipelineStageFlagBits2::eGeometryShader;
       if(f & vk::ShaderStageFlagBits::eFragment)
 	ret |= vk::PipelineStageFlagBits2::eFragmentShader | vk::PipelineStageFlagBits2::eLateFragmentTests |
-	  vk::PipelineStageFlagBits2::eEarlyFragmentTests;
+	  vk::PipelineStageFlagBits2::eEarlyFragmentTests | vk::PipelineStageFlagBits2::eColorAttachmentOutput;
       if(f & vk::ShaderStageFlagBits::eTaskEXT)
 	ret |= vk::PipelineStageFlagBits2::eTaskShaderEXT;
       if(f & vk::ShaderStageFlagBits::eMeshEXT)
@@ -217,11 +217,21 @@ namespace WITE {
     return ret;
   };
 
-  template<resourceReference* rrp, uint32_t binding> constexpr vk::VertexInputBindingDescription getBindingDescription() {
-    if constexpr (!rrp) return {};
-    else {
-      constexpr resourceReference rr = *rrp;
-      return { binding, sizeofUdm<rr.usage.asVertex.format>(), rr.usage.asVertex.rate };
+  template<literalList<resourceReference> RRS, uint32_t binding = 0> constexpr auto getBindingDescriptions() {
+    if constexpr(RRS.len) {
+      constexpr auto RR = RRS[0];
+      constexpr copyableArray<vk::VertexInputBindingDescription, 1> ret = {{ binding, sizeofUdm<RR.usage.asVertex.format>(), RR.usage.asVertex.rate }};
+      return concatArray(ret, getBindingDescriptions<RRS.sub(1), binding + 1>());
+    } else {
+      return copyableArray<vk::VertexInputBindingDescription, 0>();
+    };
+  };
+
+  template<udm u, uint32_t binding, uint32_t idx, uint32_t locationOffset>
+  constexpr void getAttributeDescriptions(vk::VertexInputAttributeDescription* out) {
+    if constexpr(idx < u.len) {
+      out[idx] = { idx + locationOffset, binding, u[idx], idx ? 0 : sizeofUdm<u.sub(0, idx)>() };
+      getAttributeDescriptions<u, binding, idx+1, locationOffset>(out);
     }
   };
 
@@ -234,13 +244,6 @@ namespace WITE {
       return concatArray(ret, getAttributeDescriptions<RRS.sub(1), binding+1, locationOffset+RR.usage.asVertex.format.len>());
     } else {
       return copyableArray<vk::VertexInputAttributeDescription, 0>();
-    }
-  };
-
-  template<udm u, uint32_t binding, uint32_t idx, uint32_t locationOffset> void getAttributeDescriptions(vk::VertexInputAttributeDescription* out) {
-    if constexpr(idx < u.len) {
-      out[idx] = { idx + locationOffset, binding, u[idx], idx ? 0 : sizeofUdm<u.sub(0, idx)>() };
-      getAttributeDescriptions<u, binding, idx+1, locationOffset>();
     }
   };
 
@@ -257,7 +260,7 @@ namespace WITE {
 
   struct perTargetLayoutPerShader {
     std::unique_ptr<descriptorPoolPoolBase> descriptorPool;
-    std::map<sourceLayout, perTargetLayoutPerSourceLayoutPerShader> perSL;
+    std::map<uint64_t, perTargetLayoutPerSourceLayoutPerShader> perSL;
   };
 
   struct perTargetLayoutPerSourceLayout {
@@ -277,9 +280,14 @@ namespace WITE {
     std::map<uint64_t, perSourceLayoutPerShader> perShader;
   };
 
+  //if it's the same onion then it'll have the same pointers, no need to traverse into the lists
+  constexpr hash_t hash(const onionDescriptor& od) {
+    return hash(std::tie(od.IRS.len, od.IRS.data, od.BRS.len, od.BRS.data, od.CSRS.len, od.CSRS.data, od.RPRS.len, od.RPRS.data, od.CSS.len, od.CSS.data, od.LRS.len, od.LRS.data, od.TLS.len, od.TLS.data, od.SLS.len, od.SLS.data));
+  };
+
   struct onionStaticData {
     static syncLock allDataMutex;
-    static std::map<onionDescriptor, onionStaticData> allOnionData;
+    static std::map<hash_t, onionStaticData> allOnionData;
     std::map<uint64_t, perTargetLayout> perTL;
     std::map<uint64_t, perSourceLayout> perSL;
   };

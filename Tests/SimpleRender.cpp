@@ -120,29 +120,27 @@ constexpr copyStep C_updateCubeTransforms = {
 constexpr resourceReference
 RR_depth = {
   .id = __LINE__,
-  .readStages = vk::PipelineStageFlagBits2::eEarlyFragmentTests,
-  .writeStages = vk::PipelineStageFlagBits2::eLateFragmentTests,
+  .stages = vk::ShaderStageFlagBits::eFragment,
   .access = vk::AccessFlagBits2::eDepthStencilAttachmentWrite | vk::AccessFlagBits2::eDepthStencilAttachmentRead
 }, RR_color = {
   .id = __LINE__,
-  .writeStages = vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+  .stages = vk::ShaderStageFlagBits::eFragment,
   .access = vk::AccessFlagBits2::eColorAttachmentWrite
 }, RR_cameraTrans = {
   .id = __LINE__,
-  .readStages = vk::PipelineStageFlagBits2::eVertexShader,
+  .stages = vk::ShaderStageFlagBits::eVertex,
   .access = vk::AccessFlagBits2::eUniformRead,
   .usage = { vk::DescriptorType::eUniformBuffer }
 }, RR_cubeTrans = {
   .id = __LINE__,
-  .readStages = vk::PipelineStageFlagBits2::eVertexShader,
+  .stages = vk::ShaderStageFlagBits::eVertex,
   .access = vk::AccessFlagBits2::eUniformRead,
-  .descriptorType = vk::DescriptorType::eUniformBuffer
   .usage = { vk::DescriptorType::eUniformBuffer }
 }, RR_cubeMesh = {
   .id = __LINE__,
-  .readStages = vk::PipelineStageFlagBits2::eVertexShader,
+  .stages = vk::ShaderStageFlagBits::eVertex,
   .access = vk::AccessFlagBits2::eVertexAttributeRead,
-  .usage = { Format::RGB32sfloat, vk::VertexInputRate::eVertex }
+  .usage = { Format::RGB32float, vk::VertexInputRate::eVertex }
 }, RRL_simpleSource[] = {
   RR_cubeTrans, RR_cubeMesh
 };

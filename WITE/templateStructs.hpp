@@ -60,8 +60,6 @@ namespace WITE {
     resourceUsage usage;
   };
 
-  constexpr vk::AccessFlags2 accessFlagsDenotingDescriptorUsage = vk::AccessFlagBits2::eUniformRead | vk::AccessFlagBits2::eShaderSampledRead | vk::AccessFlagBits2::eShaderStorageRead | vk::AccessFlagBits2::eShaderStorageWrite;
-
   struct resourceMap {
     uint64_t id = NONE;//unique among resource maps
     uint64_t requirementId;//FK to imageRequirement or bufferRequirement (never both!)

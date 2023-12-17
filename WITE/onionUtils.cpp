@@ -2,6 +2,6 @@
 
 namespace WITE {
 
-  std::map<onionDescriptor, onionStaticData> onionStaticData::allOnionData;//static
+  std::map<hash_t, onionStaticData> onionStaticData::allOnionData;//static
 
 };

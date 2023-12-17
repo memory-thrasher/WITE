@@ -82,6 +82,16 @@ namespace WITE {
   template<typename T> struct copyableArray<T, 0> {
     template<typename... A> constexpr copyableArray(A... args) {};//accept literally anything to initialize an empty array
     constexpr inline explicit operator const T*() const { return NULL; };
+    constexpr T* begin() const { return NULL; };
+    constexpr T* end() const { return NULL; };
+  };
+
+  template<class V, size_t N, size_t M>
+  constexpr copyableArray<V, N+M> concatArray(const copyableArray<V, N>& a, const copyableArray<V, M>& b) {
+    copyableArray<V, N+M> ret;
+    std::copy(a.begin(), a.end(), ret.begin());
+    std::copy(b.begin(), b.end(), ret.begin() + N);
+    return ret;
   };
 
 };

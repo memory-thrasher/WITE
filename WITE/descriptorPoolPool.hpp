@@ -30,14 +30,14 @@ namespace WITE {
     };
     static constexpr auto RRS = where<resourceReference, allRRS, isDescriptor>();
     static constexpr uint32_t batchSize = 256;
-    static constexpr copyableArray<vk::DescriptorSetLayoutBinding, RRS.len> bindings = [](size_t i) {
-      return vk::DescriptorSetLayoutBinding { uint32_t(i), RRS[i].descriptorType, 1, RRS[i].stages };
+    static constexpr copyableArray<vk::DescriptorSetLayoutBinding, RRS.LENGTH> bindings = [](size_t i) {
+      return vk::DescriptorSetLayoutBinding { uint32_t(i), RRS[i].usage.asDescriptor.descriptorType, 1, RRS[i].stages };
     };
-    static constexpr vk::DescriptorSetLayoutCreateInfo dslci { {}, RRS.len, bindings.ptr() };
-    static constexpr copyableArray<vk::DescriptorPoolSize, RRS.len> poolSizes = [](size_t i) {
-      return vk::DescriptorPoolSize { RRS[i].descriptorType, 1 };
+    static constexpr vk::DescriptorSetLayoutCreateInfo dslci { {}, RRS.LENGTH, bindings.ptr() };
+    static constexpr copyableArray<vk::DescriptorPoolSize, RRS.LENGTH> poolSizes = [](size_t i) {
+      return vk::DescriptorPoolSize { RRS[i].usage.asDescriptor.descriptorType, 1 };
     };
-    static constexpr vk::DescriptorPoolCreateInfo dpci { {}, batchSize, RRS.len, poolSizes.ptr() };
+    static constexpr vk::DescriptorPoolCreateInfo dpci { {}, batchSize, RRS.LENGTH, poolSizes.ptr() };
     gpu& dev;
     vk::DescriptorSetLayout layoutStaging[batchSize];//N copies of the same layout
     vk::DescriptorSet setsStaging[batchSize];

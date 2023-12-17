@@ -68,7 +68,7 @@ namespace WITE {
 
   };
 
-  template<class T, literalList<T> LL, class P> copyableArray<T, LL.countWhere(P())> where() {
+  template<class T, literalList<T> LL, class P> constexpr copyableArray<T, LL.countWhere(P())> where() {
     return { LL.where(P()) };
   };
 
@@ -143,14 +143,6 @@ namespace WITE {
       running += src[i];
     }
     ret[N] = running;
-    return ret;
-  };
-
-  template<class V, size_t N, size_t M>
-  consteval copyableArray<V, N+M> concatArray(const copyableArray<V, N>& a, const copyableArray<V, M>& b) {
-    copyableArray<V, N+M> ret;
-    std::copy(a.begin(), a.end(), ret.begin());
-    std::copy(b.begin(), b.end(), ret.begin() + N);
     return ret;
   };
 

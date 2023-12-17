@@ -6,6 +6,9 @@
 
 #include "wite_vulkan.hpp"
 #include "constants.hpp"
+#include "stdExtensions.hpp"
+#include "syncLock.hpp"
+#include "DEBUG.hpp"
 
 namespace WITE {
 

@@ -117,8 +117,7 @@ namespace WITE {
 
   //NOTE: barriers are NOT allowed between executions of individual copies or shaders of the same type. Barriers are allowed between types of executions. Barrier between copy and render is allowed, barrier between shader 1 and 2 of the same RP is not.
   struct layerRequirements {
-    literalList<uint64_t> sourceLayouts, targetLayouts;
-    literalList<uint64_t> copies, renders, computeShaders;
+    literalList<uint64_t> sourceLayouts, targetLayouts, copies, renders, computeShaders;
   };
 
   struct onionDescriptor {

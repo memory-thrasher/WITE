@@ -8,6 +8,7 @@
 #include "constants.hpp"
 #include "stdExtensions.hpp"
 #include "syncLock.hpp"
+#include "hash.hpp"
 #include "DEBUG.hpp"
 
 namespace WITE {

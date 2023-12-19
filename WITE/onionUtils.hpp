@@ -6,6 +6,7 @@
 #include "templateStructs.hpp"
 #include "math.hpp"
 #include "descriptorPoolPool.hpp"
+#include "hash.hpp"
 #include "DEBUG.hpp"
 
 namespace WITE {
@@ -66,7 +67,7 @@ namespace WITE {
     return l.len;
   };
 
-  template<class T> constexpr bool containsId(literalList<T> l, uint64_t id) {
+  template<class T> consteval bool containsId(literalList<T> l, uint64_t id) {
     for(size_t i = 0;i < l.len;i++)
       if(l[i].id == id)
 	return true;
@@ -82,7 +83,7 @@ namespace WITE {
   };
 
   //NOTE: A source/target layout is not allowed to name two resources referencing the same usage
-  constexpr const resourceMap* findResourceReferencing(literalList<resourceMap> RMS, uint64_t id) {
+  consteval const resourceMap* findResourceReferencing(literalList<resourceMap> RMS, uint64_t id) {
     for(const resourceMap& RM : RMS)
       for(uint64_t RR : RM.resourceReferences)
 	if(RR == id)
@@ -93,7 +94,7 @@ namespace WITE {
   enum class substep_e : uint8_t { barrier1, copy, barrier2, render, barrier3, compute, barrier4 };
 
   struct resourceAccessTime {
-    size_t layerIdx;
+    size_t layerIdx = NONE;
     substep_e substep;
     resourceReference usage;
     constexpr bool operator<(const resourceAccessTime& r) const {
@@ -113,7 +114,7 @@ namespace WITE {
     resourceBarrierTiming timing;
     uint8_t frameLatency = 0;
     resourceAccessTime before, after;
-    uint64_t layoutId, resourceId, requirementId;
+    uint64_t layoutId, resourceId, requirementId = NONE;
   };
 
   consteval resourceReference& operator|=(resourceReference& l, const resourceReference& r) {
@@ -217,7 +218,7 @@ namespace WITE {
     return ret;
   };
 
-  template<literalList<resourceReference> RRS, uint32_t binding = 0> constexpr auto getBindingDescriptions() {
+  template<literalList<resourceReference> RRS, uint32_t binding = 0> consteval auto getBindingDescriptions() {
     if constexpr(RRS.len) {
       constexpr auto RR = RRS[0];
       constexpr copyableArray<vk::VertexInputBindingDescription, 1> ret = {{ binding, sizeofUdm<RR.usage.asVertex.format>(), RR.usage.asVertex.rate }};
@@ -228,7 +229,7 @@ namespace WITE {
   };
 
   template<udm u, uint32_t binding, uint32_t idx, uint32_t locationOffset>
-  constexpr void getAttributeDescriptions(vk::VertexInputAttributeDescription* out) {
+  consteval void getAttributeDescriptions(vk::VertexInputAttributeDescription* out) {
     if constexpr(idx < u.len) {
       out[idx] = { idx + locationOffset, binding, u[idx], idx ? 0 : sizeofUdm<u.sub(0, idx)>() };
       getAttributeDescriptions<u, binding, idx+1, locationOffset>(out);
@@ -236,7 +237,7 @@ namespace WITE {
   };
 
   template<literalList<resourceReference> RRS, uint32_t binding = 0, uint32_t locationOffset = 0>
-  constexpr auto getAttributeDescriptions() {
+  consteval auto getAttributeDescriptions() {
     if constexpr(RRS.len) {
       constexpr resourceReference RR = RRS[0];
       copyableArray<vk::VertexInputAttributeDescription, RR.usage.asVertex.format.len> ret;
@@ -278,11 +279,6 @@ namespace WITE {
 
   struct perSourceLayout {
     std::map<uint64_t, perSourceLayoutPerShader> perShader;
-  };
-
-  //if it's the same onion then it'll have the same pointers, no need to traverse into the lists
-  constexpr hash_t hash(const onionDescriptor& od) {
-    return hash(std::tie(od.IRS.len, od.IRS.data, od.BRS.len, od.BRS.data, od.CSRS.len, od.CSRS.data, od.RPRS.len, od.RPRS.data, od.CSS.len, od.CSS.data, od.LRS.len, od.LRS.data, od.TLS.len, od.TLS.data, od.SLS.len, od.SLS.data));
   };
 
   struct onionStaticData {

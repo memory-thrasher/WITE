@@ -44,11 +44,19 @@ namespace WITE {
       return ret;
     };
 
-    template<typename P> constexpr inline const T* firstWhere(P p) const {
+    template<typename P> consteval inline const T* firstWhere(P p) const {
       for(size_t i = 0;i < len;i++)
 	if(p(data[i]))
 	  return &data[i];
       return NULL;
+    };
+
+    template<typename P> consteval inline size_t countWhereCE(P p) const {
+      size_t ret = 0;
+      for(size_t i = 0;i < len;i++)
+	if(p(data[i]))
+	  ret++;
+      return ret;
     };
 
     template<typename P> constexpr inline size_t countWhere(P p) const {

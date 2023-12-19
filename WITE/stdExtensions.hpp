@@ -200,30 +200,9 @@ namespace WITE {
     return subtuple(mkSequence<1, sizeof...(U)>(), tuple);
   };
 
-  constexpr uint64_t hashingPrime = 6700417;//non-mersenne to avoid collissions with ~0 in any size int
-  typedef uint64_t hash_t;
-
-  //for keying runtime maps using constexpr objects, such as vulkan *CreateInfo structs. Does not follow pointers.
-  template<class T> constexpr hash_t hash(const T& t) {
-    return static_cast<hash_t>(t);//enums, smaller range ints etc
-  };
-
-  template<class T> constexpr hash_t hash(const T* t) {
-    return reinterpret_cast<hash_t>(t);//pointers
-  };
-
-#ifdef VULKAN_ENUMS_HPP
-  template<class T> constexpr hash_t hash(const vk::Flags<T> t) {
-    return static_cast<hash_t>(typename vk::Flags<T>::MaskType(t));//pointers
-  };
-#endif
-
-  template<class T> constexpr hash_t hash(const std::tuple<T> tuple) {
-    return hash(std::get<0>(tuple));
-  };
-
-  template<class T, class U, class... V> constexpr hash_t hash(const std::tuple<T, U, V...> tuple) {
-    return hash(std::get<0>(tuple)) * hashingPrime + hash(popTupleFront(tuple));
+  template<class T> consteval inline size_t sizeofCollection(T t) {
+    //std::vector et al can be used constexpr but when used as a temporary, the compiler complains of not deallocating the temporary. Redirecting it by value into another CE function makes it ok.
+    return t.size();
   };
 
 }

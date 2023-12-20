@@ -94,7 +94,7 @@ namespace WITE {
   enum class substep_e : uint8_t { barrier1, copy, barrier2, render, barrier3, compute, barrier4 };
 
   struct resourceAccessTime {
-    size_t layerIdx = NONE;
+    size_t layerIdx = NONE_size;
     substep_e substep;
     resourceReference usage;
     constexpr bool operator<(const resourceAccessTime& r) const {

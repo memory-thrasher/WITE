@@ -6,7 +6,8 @@
 
 namespace WITE {
 
-  constexpr uint64_t NONE = ~0ULL;
+  constexpr uint64_t NONE = std::numeric_limits<uint64_t>::max();
+  constexpr size_t NONE_size = std::numeric_limits<size_t>::max();
 
   struct imageRequirements {
     uint64_t deviceId = NONE;
@@ -70,6 +71,7 @@ namespace WITE {
   struct targetLayout {
     uint64_t id;//unique among source and target layouts
     literalList<resourceMap> resources;
+    uint64_t presentImageResourceMapId = NONE;
   };
 
   struct sourceLayout {

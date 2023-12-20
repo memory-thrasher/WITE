@@ -1,4 +1,5 @@
 #include "../WITE/WITE.hpp"
+#include "../WITE/Thread.hpp"
 
 //include the compiled shader code which was outputted as a header in the build dir before c++ code gets compiled.
 #include "basicShader.frag.spv.h"
@@ -157,16 +158,17 @@ constexpr resourceMap RMT_cameraTrans = {
   .id = __LINE__,
   .requirementId = BRS_singleTransform.id,
   .resourceReferences = RR_IDL_cubeTransStaging
+}, RMT_color = {
+  .id = __LINE__,
+  .requirementId = IR_standardColor.id,
+  .resourceReferences = RR_color.id
 }, RMT_target[] = {
   RMT_cameraTrans,
+  RMT_color,
   {
     .id = __LINE__,
     .requirementId = IR_standardDepth.id,
     .resourceReferences = RR_depth.id
-  }, {
-    .id = __LINE__,
-    .requirementId = IR_standardColor.id,
-    .resourceReferences = RR_color.id
   }, {
     .id = __LINE__,
     .requirementId = BR_singleTransform.id,
@@ -196,7 +198,8 @@ constexpr resourceMap RMS_cubeTrans = {
 
 constexpr targetLayout TL_standardRender {
   .id = __LINE__,
-  .resources = RMT_target //pass by reference (with extra steps), so prior declaration is necessary
+  .resources = RMT_target, //pass by reference (with extra steps), so prior declaration is necessary
+  .presentImageResourceMapId = RMT_color.id
 };
 
 defineShaderModules(simpleShaderModules, //yes, size is in bytes even though code is an array of 32-bit ints. If shader code is stored in a file (as opposed to a header in this example), it will have to be TRAILING-zero-padded to 4-byte units.
@@ -256,7 +259,6 @@ typedef WITE::onion<od> onion_t;
 onion_t primaryOnion;
 
 int main(int argc, char** argv) {
-  window w;//default window size is a centered rectangle meant for splash screens and tests
   auto camera = primaryOnion.createTarget<TL_standardRender.id>();
   auto cube = primaryOnion.createSource<SL_simple.id>();
   cube->write<RMS_cubeTrans.id>(glm::dmat4(1));//model: diagonal identity
@@ -266,8 +268,7 @@ int main(int argc, char** argv) {
 				   glm::lookAt(glm::dvec3(-5, 3, -10), glm::dvec3(0, 0, 0), glm::dvec3(0, -1, 0))); //view
   cube->write<RMS_cubeMesh.id>(cubeMesh);
   primaryOnion.render();
-  //TODO present
-  // Thread::sleep(5000);
+  Platform::Thread::sleep(5000);
 }
 
 #error WIP

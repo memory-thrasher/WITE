@@ -1,7 +1,9 @@
 #pragma once
 
 #include <numeric>
+#include <type_traits>
 
+#include "window.hpp"
 #include "templateStructs.hpp"
 #include "onionUtils.hpp"
 #include "buffer.hpp"
@@ -13,7 +15,7 @@ namespace WITE {
 
   template<onionDescriptor OD> struct onion {
 
-    static constexpr size_t cmdFrameswapCount = 2;//TODO LCM of all resources??
+    static constexpr size_t cmdFrameswapCount = 2;//TODO LCM of all resources
 
     uint64_t frame = 0;
     syncLock mutex;
@@ -128,10 +130,10 @@ namespace WITE {
 	ret[b.usage.frameLatency] = b;
       for(size_t i = 0;i < ret.LENGTH;i++) {
 	auto& b = ret[i];
-	if(b.layerIdx == NONE) //empty frame slot when default initialized
-	  for(size_t j = ret.LENGTH;j && b.layerIdx == NONE;j--)
+	if(b.layerIdx == NONE_size) //empty frame slot when default initialized
+	  for(size_t j = ret.LENGTH;j && b.layerIdx == NONE_size;j--)
 	    b = usages[(i + j - 1) % ret.LENGTH];
-	constexpr_assert(b.layerIdx != NONE);//image never used, so can't pick which layout to init to
+	constexpr_assert(b.layerIdx != NONE_size);//image never used, so can't pick which layout to init to
 	//MAYBE add flag to not init? But why would it be in the onion if not used
       }
       return ret;
@@ -272,6 +274,9 @@ namespace WITE {
       static constexpr size_t TARGET_IDX = findId(OD.TLS, TARGET_ID);
       static constexpr targetLayout TL = OD.TLS[TARGET_IDX];
       static constexpr size_t maxFrameswap = frameswapLCM(TL.resources);
+      static constexpr bool hasWindow = TL.presentImageResourceMapId != NONE;
+      static constexpr bool needsPrerender = hasWindow;
+      static constexpr bool needsPostrender = hasWindow;
 
     private:
       struct perShaderBundle {
@@ -283,10 +288,11 @@ namespace WITE {
       mappedResourceTuple<TL.resources> resources;
       std::map<uint64_t, frameBufferBundle[maxFrameswap]> fbByRpIdByFrame;
       std::map<uint64_t, perShaderBundle[maxFrameswap]> perShaderByIdByFrame;
+      std::conditional_t<hasWindow, window, size_t> presentWindow;//size_t so the gpu idx has somewhere to go. Aren't I clever.
 
       target_t(const target_t&) = delete;
       target_t() = delete;
-      target_t(onion<OD>* o): o(o) {};
+      target_t(onion<OD>* o): o(o), presentWindow(OD.GPUID) {};//NOTE window can be resized later
 
       friend onion;
 
@@ -303,6 +309,16 @@ namespace WITE {
 
       void reinit(uint64_t frame, vk::CommandBuffer cmd) {
 	resources.template init<TARGET_ID>(frame, cmd);
+      };
+
+      //TODO resize function (window and window-sized images (needs flag somewhere in template struct))
+
+      void preRender(vk::CommandBuffer cmd) {
+	//TODO
+      };
+
+      void postRender(vk::CommandBuffer cmd) {
+	//TODO
       };
 
     };
@@ -375,6 +391,10 @@ namespace WITE {
 	get<resourceMapId>().set(o->frame + findById(SOURCE_PARAMS.resources, resourceMapId).hostAccessOffset, t);
       };
 
+      void reinit(uint64_t frame, vk::CommandBuffer cmd) {
+	resources.template init<SOURCE_ID>(frame, cmd);
+      };
+
     };
 
     template<size_t IDX = 0> struct sourceCollectionTuple {
@@ -397,7 +417,13 @@ namespace WITE {
       std::unique_ptr<source_t<sourceId>>* ret = allSources.template ofLayout<sourceId>().allocate();
       if(!*ret) [[unlikely]]
 	ret->reset(new source_t<sourceId>(this));
-#error TODO initialize: transition all images into their FINAL layout (so the first transition in the onion has the expected oldLayout)
+      vk::CommandBuffer cmd;
+      vk::CommandBufferAllocateInfo allocInfo(cmdPool, vk::CommandBufferLevel::ePrimary, 1);
+      VK_ASSERT(dev->getVkDevice().allocateCommandBuffers(&allocInfo, &cmd), "failed to allocate command buffer");
+      ret->get()->reinit(frame, cmd);
+      vk::CommandBufferSubmitInfo cmdSubmitInfo(cmd);
+      vk::SubmitInfo2 submit({}, 0, NULL, 1, &cmdSubmitInfo, 0, NULL);
+      VK_ASSERT(dev->getQueue().submit2(1, &submit, VK_NULL_HANDLE), "failed to submit command buffer");
       return ret->get();
     };
 
@@ -408,15 +434,12 @@ namespace WITE {
 
     static consteval std::vector<resourceBarrier> allBarriers() {
       std::vector<resourceBarrier> allBarriers;
-      for(size_t layerIdx = 0;layerIdx < OD.LRS.len;layerIdx++) {
-	#error unused variable layerIdx
-	for(sourceLayout SL : OD.SLS)
-	  for(resourceMap RM : SL.resources)
-	    concat(allBarriers, findBarriers(RM, SL.id));
-	for(targetLayout TL : OD.TLS)
-	  for(resourceMap RM : TL.resources)
-	    concat(allBarriers, findBarriers(RM, TL.id));
-      }
+      for(sourceLayout SL : OD.SLS)
+	for(resourceMap RM : SL.resources)
+	  concat(allBarriers, findBarriers(RM, SL.id));
+      for(targetLayout TL : OD.TLS)
+	for(resourceMap RM : TL.resources)
+	  concat(allBarriers, findBarriers(RM, TL.id));
       return allBarriers;
     };
 
@@ -735,6 +758,10 @@ namespace WITE {
 	  fbb.attachments[1] = depth.createView(frame + RP.depthStencil.frameLatency);
 	  VK_ASSERT(dev->getVkDevice().createFramebuffer(&fbb.fbci, ALLOCCB, &fbb.fb), "failed to create framebuffer");
 	}
+	//TODO multiview for cubes... how?
+	vk::Viewport viewport = { 0, 0, (float)size.extent.width, (float)size.extent.height, 0.0f, 1.0f };
+	cmd.setViewport(0, 1, &viewport);
+	cmd.setScissor(0, 1, &size);
 	vk::RenderPassBeginInfo rpBegin(rp, fbb.fb, size, 0);
 	cmd.beginRenderPass(&rpBegin, vk::SubpassContents::eInline);
 	recordRenders<TL, LR, RP.shaders>(target, ptl, od, rp, cmd);
@@ -748,7 +775,6 @@ namespace WITE {
       //TODO spawn each of these in a parallel cmd; rework call stack signatures to hand semaphores around instead of cmd
       //^^  ONLY if there is no writable source descriptor
       for(auto& target : allTargets.template ofLayout<TL.id>()) {
-	#error TODO set scissors and viewport here
 	recordRenders<TL, LR, LR.renders>(*target->get(), ptl, od, cmd);
       }
     };
@@ -780,20 +806,55 @@ namespace WITE {
       }
     };
 
-    void render() {
+    template<literalList<targetLayout> TLS> inline void doPrerender(vk::CommandBuffer cmd) {
+      if constexpr(TLS.len) {
+	constexpr targetLayout TL = TLS[0];
+	if constexpr(target_t<TL.id>::needsPrerender) {
+	  for(auto& target : allTargets.template ofLayout<TL.id>()) {
+	    target->get()->preRender(cmd);
+	  }
+	}
+	doPrerender<TLS.sub(1)>(cmd);
+      }
+    };
+
+    template<literalList<targetLayout> TLS> inline void doPostrender(vk::CommandBuffer cmd) {
+      if constexpr(TLS.len) {
+	constexpr targetLayout TL = TLS[0];
+	if constexpr(target_t<TL.id>::needsPostrender) {
+	  for(auto& target : allTargets.template ofLayout<TL.id>()) {
+	    target->get()->postRender(cmd);
+	  }
+	}
+	doPostrender<TLS.sub(1)>(cmd);
+      }
+    };
+
+    void waitForFrame(uint64_t frame, uint64_t timeoutNS = 10000000000) {//default = 10 seconds
+      #error TODO check if frame is within the current modulus
+      VK_ASSERT(dev->getVkDevice().waitForFences(1, &fences[frame % cmdFrameswapCount], false, timeoutNS), "Frame timeout");
+    };
+
+    uint64_t render() {//returns frame number
       //TODO make some secondary cmds
       //TODO cache w/ dirty check the cmds
       scopeLock lock(&mutex);
+      if(frame >= cmdFrameswapCount)
+	waitForFrame(frame - cmdFrameswapCount);
       vk::CommandBuffer cmd = primaryCmds[frame % cmdFrameswapCount];
-      cmd.reset({});
+      vk::CommandBufferBeginInfo begin { vk::CommandBufferUsageFlagBits::eOneTimeSubmit };//TODO remove thsi flag when caching is implemented
+      cmd.begin(&begin);
+      doPrerender<OD.TLS>(cmd);
       renderFrom<0>(cmd);
+      doPostrender<OD.TLS>(cmd);
       vk::Fence fence = fences[frame % cmdFrameswapCount];
       vk::SemaphoreSubmitInfo waitSem(semaphore, frame-1, vk::PipelineStageFlagBits2::eAllCommands),
 	signalSem(semaphore, frame, vk::PipelineStageFlagBits2::eAllCommands);
       vk::CommandBufferSubmitInfo cmdSubmitInfo(cmd);
       vk::SubmitInfo2 submit({}, frame ? 1 : 0, &waitSem, 1, &cmdSubmitInfo, 1, &signalSem);
       VK_ASSERT(dev->getQueue().submit2(1, &submit, fence), "failed to submit command buffer");
-    }
+      return frame++;
+    };
 
   };
 

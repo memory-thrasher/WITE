@@ -37,9 +37,9 @@ namespace WITE {
   };
   intBox3D(uint64_t minx = 0, uint64_t maxx = 0, uint64_t miny = 0, uint64_t maxy = 0, uint64_t minz = 0, uint64_t maxz = 0) :
   minx(minx), miny(miny), minz(minz), maxx(maxx), maxy(maxy), maxz(maxz) {};
-  inline int width()  { return (int)(maxx - minx); };
-  inline int height() { return (int)(maxy - miny); };
-  inline int depth()  { return (int)(maxz - minz); };
+  inline uint64_t width()  { return (int)(maxx - minx); };
+  inline uint64_t height() { return (int)(maxy - miny); };
+  inline uint64_t depth()  { return (int)(maxz - minz); };
   constexpr inline glm::ivec3 min() const { return glm::ivec3(minx, miny, minz); };
   constexpr inline glm::ivec3 max() const { return glm::ivec3(maxx, maxy, maxz); };
   constexpr inline glm::ivec3 center() const { return (min() + max())/2; };

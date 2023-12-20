@@ -24,11 +24,12 @@ namespace WITE {
 	dev.getVkDevice().getBufferMemoryRequirements(vkBuffer[i], &mrs[i]);
 	vk::MemoryPropertyFlags flags;
 	if constexpr(R.hostVisible) {
-	  flags = vk::MemoryPropertyFlagBits::eDeviceLocal;
+	  flags = vk::MemoryPropertyFlagBits::eHostVisible;
 	} else {
-	  flags = vk::MemoryPropertyFlagBits::eHostCoherent;
+	  flags = vk::MemoryPropertyFlagBits::eDeviceLocal;
 	}
 	dev.allocate(mrs[i], flags, &rams[i]);
+	dev.getVkDevice().bindBufferMemory(vkBuffer[i], rams[i].handle, 0);
       }
     };
 

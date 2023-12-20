@@ -15,7 +15,7 @@ namespace WITE {
 
   class window {
   private:
-    const uint32_t x, y, w, h;
+    uint32_t x, y, w, h;
     vk::SwapchainCreateInfoKHR swapCI;
     SDL_Window* sdlWindow;
     vk::SurfaceCapabilitiesKHR surfCaps;
@@ -25,7 +25,7 @@ namespace WITE {
     uint32_t swapImageCount;
     size_t gpuIdx;
     std::unique_ptr<vk::Image[]> swapImages;
-    std::unique_ptr<vk::Semphore[]> acquisitionSems, blitSems;//NOT timeline (acquire and present don't support timeline sems)
+    std::unique_ptr<vk::Semaphore[]> acquisitionSems, blitSems;//NOT timeline (acquire and present don't support timeline sems)
     std::unique_ptr<vk::CommandBuffer[]> cmds;
     size_t activeSwapSem = 0, swapSemCount;
     uint32_t presentImageIndex;

@@ -9,9 +9,13 @@ namespace WITE {
 
   namespace Format {
     constexpr vk::Format R8int = vk::Format::eR8Sint;
+    constexpr vk::Format R8norm = vk::Format::eR8Snorm;
     constexpr vk::Format R8uint = vk::Format::eR8Uint;
+    constexpr vk::Format R8unorm = vk::Format::eR8Unorm;
     constexpr vk::Format R16int = vk::Format::eR16Sint;
+    constexpr vk::Format R16norm = vk::Format::eR16Snorm;
     constexpr vk::Format R16uint = vk::Format::eR16Uint;
+    constexpr vk::Format R16unorm = vk::Format::eR16Unorm;
     constexpr vk::Format R32int = vk::Format::eR32Sint;
     constexpr vk::Format R32uint = vk::Format::eR32Uint;
     constexpr vk::Format R32float = vk::Format::eR32Sfloat;
@@ -20,9 +24,13 @@ namespace WITE {
     constexpr vk::Format R64float = vk::Format::eR64Sfloat;
 
     constexpr vk::Format RG8int = vk::Format::eR8G8Sint;
+    constexpr vk::Format RG8norm = vk::Format::eR8G8Snorm;
     constexpr vk::Format RG8uint = vk::Format::eR8G8Uint;
+    constexpr vk::Format RG8unorm = vk::Format::eR8G8Unorm;
     constexpr vk::Format RG16int = vk::Format::eR16G16Sint;
+    constexpr vk::Format RG16norm = vk::Format::eR16G16Snorm;
     constexpr vk::Format RG16uint = vk::Format::eR16G16Uint;
+    constexpr vk::Format RG16unorm = vk::Format::eR16G16Unorm;
     constexpr vk::Format RG32int = vk::Format::eR32G32Sint;
     constexpr vk::Format RG32uint = vk::Format::eR32G32Uint;
     constexpr vk::Format RG32float = vk::Format::eR32G32Sfloat;
@@ -31,9 +39,13 @@ namespace WITE {
     constexpr vk::Format RG64float = vk::Format::eR64G64Sfloat;
 
     constexpr vk::Format RGB8int = vk::Format::eR8G8B8Sint;
+    constexpr vk::Format RGB8norm = vk::Format::eR8G8B8Snorm;
     constexpr vk::Format RGB8uint = vk::Format::eR8G8B8Uint;
+    constexpr vk::Format RGB8unorm = vk::Format::eR8G8B8Unorm;
     constexpr vk::Format RGB16int = vk::Format::eR16G16B16Sint;
+    constexpr vk::Format RGB16norm = vk::Format::eR16G16B16Snorm;
     constexpr vk::Format RGB16uint = vk::Format::eR16G16B16Uint;
+    constexpr vk::Format RGB16unorm = vk::Format::eR16G16B16Unorm;
     constexpr vk::Format RGB32int = vk::Format::eR32G32B32Sint;
     constexpr vk::Format RGB32uint = vk::Format::eR32G32B32Uint;
     constexpr vk::Format RGB32float = vk::Format::eR32G32B32Sfloat;
@@ -42,9 +54,13 @@ namespace WITE {
     constexpr vk::Format RGB64float = vk::Format::eR64G64B64Sfloat;
 
     constexpr vk::Format RGBA8int = vk::Format::eR8G8B8A8Sint;
+    constexpr vk::Format RGBA8norm = vk::Format::eR8G8B8A8Snorm;
     constexpr vk::Format RGBA8uint = vk::Format::eR8G8B8A8Uint;
+    constexpr vk::Format RGBA8unorm = vk::Format::eR8G8B8A8Unorm;
     constexpr vk::Format RGBA16int = vk::Format::eR16G16B16A16Sint;
+    constexpr vk::Format RGBA16norm = vk::Format::eR16G16B16A16Snorm;
     constexpr vk::Format RGBA16uint = vk::Format::eR16G16B16A16Uint;
+    constexpr vk::Format RGBA16unorm = vk::Format::eR16G16B16A16Unorm;
     constexpr vk::Format RGBA32int = vk::Format::eR32G32B32A32Sint;
     constexpr vk::Format RGBA32uint = vk::Format::eR32G32B32A32Uint;
     constexpr vk::Format RGBA32float = vk::Format::eR32G32B32A32Sfloat;
@@ -59,7 +75,7 @@ namespace WITE {
     constexpr vk::Format D24unormS8uint = vk::Format::eD24UnormS8Uint;
     constexpr vk::Format D32sfloatS8uint = vk::Format::eD32SfloatS8Uint;
 
-    constexpr vk::Format standardFormats[] = { R8int, R8uint, R16int, R16uint, R32int, R32uint, R32float, R64int, R64uint, R64float, RG8int, RG8uint, RG16int, RG16uint, RG32int, RG32uint, RG32float, RG64int, RG64uint, RG64float, RGB8int, RGB8uint, RGB16int, RGB16uint, RGB32int, RGB32uint, RGB32float, RGB64int, RGB64uint, RGB64float, RGBA8int, RGBA8uint, RGBA16int, RGBA16uint, RGBA32int, RGBA32uint, RGBA32float, RGBA64int, RGBA64uint, RGBA64float, D16unorm, D32sfloat, D16unormS8uint, D24unormS8uint, D32sfloatS8uint };
+    constexpr vk::Format standardFormats[] = { R8int, R8norm, R8uint, R8unorm, R16int, R16norm, R16uint, R16unorm, R32int, R32uint, R32float, R64int, R64uint, R64float, RG8int, RG8norm, RG8uint, RG8unorm, RG16int, RG16norm, RG16uint, RG16unorm, RG32int, RG32uint, RG32float, RG64int, RG64uint, RG64float, RGB8int, RGB8norm, RGB8uint, RGB8unorm, RGB16int, RGB16norm, RGB16uint, RGB16unorm, RGB32int, RGB32uint, RGB32float, RGB64int, RGB64uint, RGB64float, RGBA8int, RGBA8norm, RGBA8uint, RGBA8unorm, RGBA16int, RGBA16norm, RGBA16uint, RGBA16unorm, RGBA32int, RGBA32uint, RGBA32float, RGBA64int, RGBA64uint, RGBA64float, D16unorm, D32sfloat, D16unormS8uint, D24unormS8uint, D32sfloatS8uint };
 
   };
 

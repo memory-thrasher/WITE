@@ -50,6 +50,8 @@ namespace WITE {
       auto formats = std::make_unique<vk::SurfaceFormatKHR[]>(formatCount);
       VK_ASSERT(phys.getSurfaceFormatsKHR(surface, &formatCount, formats.get()), "Could not enumerate surface formats");
       swapCI.imageFormat = formats[0].format;
+      //TODO match integer-ness with presentable image because blit can't cross int/uint/float
+      //file:///home/sid/Downloads/Vulkan%201.3.html#VUID-vkCmdBlitImage-srcImage-00230
       if(swapCI.imageFormat == vk::Format::eUndefined)//vk standard meaning "any is fine"
 	swapCI.imageFormat = vk::Format::eB8G8R8Unorm;
     }
@@ -69,8 +71,8 @@ namespace WITE {
     blitSems = std::make_unique<vk::Semaphore[]>(swapSemCount);
     vk::SemaphoreCreateInfo semCI;//intentionally default constructed.
     for(size_t i = 0;i < swapSemCount;i++) {
-      VK_ASSERT(dev->getVkDevice().createSemaphore(&semCI, ALLOCCB, &acquisitionSems[i]), "failed to create semaphore");
-      VK_ASSERT(dev->getVkDevice().createSemaphore(&semCI, ALLOCCB, &blitSems[i]), "failed to create semaphore");
+      VK_ASSERT(dev.createSemaphore(&semCI, ALLOCCB, &acquisitionSems[i]), "failed to create semaphore");
+      VK_ASSERT(dev.createSemaphore(&semCI, ALLOCCB, &blitSems[i]), "failed to create semaphore");
     }
     const vk::CommandPoolCreateInfo poolCI(vk::CommandPoolCreateFlagBits::eResetCommandBuffer, g.getQueueFam());
     VK_ASSERT(dev.createCommandPool(&poolCI, ALLOCCB, &cmdPool), "failed to allocate command pool");
@@ -98,44 +100,48 @@ namespace WITE {
     return { (uint32_t)w, (uint32_t)h };
   };
 
-  void acquire() {
-    vk::AcquireNextImageInfoKHR acquireInfo { swap, 10000000000 /*10 seconds*/, acquisitionSems[activeSwapSem], NULL };
-    gpt::get(gpuIdx).getVkDevice().acquireNextImage2KHR(&acquireInfo, &presentImageIndex);
+  void window::acquire() {
+    VK_ASSERT(gpu::get(gpuIdx).getVkDevice().acquireNextImageKHR(swap, 10000000000 /*10 seconds*/, acquisitionSems[activeSwapSem], VK_NULL_HANDLE, &presentImageIndex), "failed to acquire");
   };
 
-  void present(vk::Image src, vk::ImageLayout srcLayout, vk::Offset3D size, vk::SemaphoreSubmitInfo& renderWaitSem) {
-    ASSERT_TRAP(size.z == 1);
+  void window::present(vk::Image src, vk::ImageLayout srcLayout, vk::Offset3D srcSize, vk::SemaphoreSubmitInfo& renderWaitSem) {
+    ASSERT_TRAP(srcSize.z == 1, "attempted to present 3d image");
     auto dst = swapImages[presentImageIndex];
     vk::ImageMemoryBarrier2 barrier1 {
-      vk::PipelineStageFlags2::eNone, vk::AccessFlags2::eNone,
-      vk::PipelineStageFlags2::eTransfer, vk::AccessFlags2::eTransferWrite,
+      vk::PipelineStageFlagBits2::eNone, vk::AccessFlagBits2::eNone,
+      vk::PipelineStageFlagBits2::eTransfer, vk::AccessFlagBits2::eTransferWrite,
       vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal,
-      {}, {}, dst, { vk::ImageAspectFlags::eColor, 0, 1, 0, 1 }
+      {}, {}, dst, { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 }
     }, barrier2 {
-      vk::PipelineStageFlags2::eTransfer, vk::AccessFlags2::eTransferWrite,
-      vk::PipelineStageFlags2::eNone, vk::AccessFlags2::eNone,
+      vk::PipelineStageFlagBits2::eTransfer, vk::AccessFlagBits2::eTransferWrite,
+      vk::PipelineStageFlagBits2::eNone, vk::AccessFlagBits2::eNone,
       vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::ePresentSrcKHR,
-      {}, {}, dst, { vk::ImageAspectFlags::eColor, 0, 1, 0, 1 }
+      {}, {}, dst, { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 }
     };
     vk::DependencyInfo di { {}, 0, NULL, 0, NULL, 1, &barrier1 };
     vk::CommandBuffer cmd = cmds[activeSwapSem];
     vk::CommandBufferBeginInfo begin { vk::CommandBufferUsageFlagBits::eOneTimeSubmit };
-    cmd.begin(&begin);
+    VK_ASSERT(cmd.begin(&begin), "failed to begin a command buffer");
     cmd.pipelineBarrier2(&di);
-    vk::ImageBlit2 region { { vk::ImageAspectFlags::eColor, 0, 0, 1 }, {{0, 0, 0}, srcSize},
-			    { vk::ImageAspectFlags::eColor, 0, 0, 1 }, {{0, 0, 0}, { x, y, 1 }} };
-    vk::BlitImageInfo2 blit { src, srcLayout, dst, vk::ImageLayout::eTransferDstOptimal, 1, &region, vk::Filter::Nearest };
+    vk::ImageBlit2 region {
+      { vk::ImageAspectFlagBits::eColor, 0, 0, 1 }, {{{0, 0, 0}, srcSize}},
+      { vk::ImageAspectFlagBits::eColor, 0, 0, 1 }, {{{0, 0, 0}, { (int32_t)w, (int32_t)h, 1 }}}
+    };
+    //must blit if only for format conversion, even if they are the same size (we can't know the surface format at compile time)
+    vk::BlitImageInfo2 blit { src, srcLayout, dst, vk::ImageLayout::eTransferDstOptimal, 1, &region, vk::Filter::eNearest };
     cmd.blitImage2(&blit);
     di.pImageMemoryBarriers = &barrier2;
     cmd.pipelineBarrier2(&di);
-    vk::SemaphoreSubmitInfo waits[2] { renderWaitSem
-	{ acquisitionSems[activeSwapSem], 0, vk::PipelineStageFlagBits::eNone }
-    }, signal { blitSems[activeSwapSem], 0, vk::PipelineStageFlagBits::eNone };
+    cmd.end();
+    vk::SemaphoreSubmitInfo waits[2] = {
+      renderWaitSem,
+      { acquisitionSems[activeSwapSem], 0, vk::PipelineStageFlagBits2::eNone }
+    }, signal { blitSems[activeSwapSem], 0, vk::PipelineStageFlagBits2::eNone };
     vk::CommandBufferSubmitInfo cmdSubmitInfo(cmd);
     vk::SubmitInfo2 submit({}, 2, waits, 1, &cmdSubmitInfo, 1, &signal);
-    VK_ASSERT(gpt::get(gpuIdx).getQueue().submit2(1, &submit, NULL), "failed to submit command buffer");
+    VK_ASSERT(gpu::get(gpuIdx).getQueue().submit2(1, &submit, VK_NULL_HANDLE), "failed to submit command buffer");
     vk::PresentInfoKHR presentInfo { 1, &blitSems[activeSwapSem], 1, &swap, &presentImageIndex, NULL };
-    VK_ASSERT(gpt::get(gpuIdx).getVkDevice().presentKHR(&presentInfo), "Present failed");
+    VK_ASSERT(gpu::get(gpuIdx).getQueue().presentKHR(&presentInfo), "Present failed");
     //TODO handle suboptimal return. Send resize request to target_t?
   };
 

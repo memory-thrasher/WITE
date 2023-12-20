@@ -77,7 +77,7 @@ constexpr bufferRequirements BRS_cubeMesh {
 constexpr imageRequirements IR_standardDepth {
   .deviceId = gpuId,
   .id = __LINE__,
-  .format = Format::D16unorm,
+  .format = Format::D16unorm,//drivers are REQUIRED by vulkan to support this format for depth/stencil operations
   .usage = vk::ImageUsageFlagBits::eDepthStencilAttachment,
   .frameswapCount = 1
 };
@@ -85,7 +85,7 @@ constexpr imageRequirements IR_standardDepth {
 constexpr imageRequirements IR_standardColor {
   .deviceId = gpuId,
   .id = __LINE__,
-  .format = Format::RGB8uint,
+  .format = Format::RGBA8unorm,//drivers are REQUIRED by vulkan to support this format for most operations
   .usage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferSrc,
   .frameswapCount = 1
 };
@@ -154,10 +154,10 @@ constexpr uint64_t RR_IDL_cubeTrans[] = { RR_cubeTrans.id, C_updateCubeTransform
   RR_IDL_cameraTransStaging[] = { C_updateCameraTransforms.src.id },
   C_IDL_L1[] = { C_updateCameraTransforms.id, C_updateCubeMesh.id, C_updateCubeTransforms.id };
 
-constexpr resourceMap RMT_cameraTrans = {
+constexpr resourceMap RMT_cameraTrans = {//this is actually the staging. The real buffer is below
   .id = __LINE__,
   .requirementId = BRS_singleTransform.id,
-  .resourceReferences = RR_IDL_cubeTransStaging
+  .resourceReferences = RR_IDL_cameraTransStaging
 }, RMT_color = {
   .id = __LINE__,
   .requirementId = IR_standardColor.id,
@@ -165,7 +165,7 @@ constexpr resourceMap RMT_cameraTrans = {
 }, RMT_target[] = {
   RMT_cameraTrans,
   RMT_color,
-  {
+  {//real transform buffer, does not need it's own name because it's not used externally.
     .id = __LINE__,
     .requirementId = IR_standardDepth.id,
     .resourceReferences = RR_depth.id
@@ -209,8 +209,8 @@ defineShaderModules(simpleShaderModules, //yes, size is in bytes even though cod
 constexpr graphicsShaderRequirements S_simple {
   .id = __LINE__,
   .modules = simpleShaderModules,
-  .targetProvidedResources = RR_cameraTrans,
-  .sourceProvidedResources = RRL_simpleSource
+  .targetProvidedResources = RR_cameraTrans,//target is always layout set 1
+  .sourceProvidedResources = RRL_simpleSource//source is always layout set 0
 };
 
 constexpr renderPassRequirements RP_simple {
@@ -256,19 +256,20 @@ constexpr onionDescriptor od = {
 };
 
 typedef WITE::onion<od> onion_t;
-onion_t primaryOnion;
+std::unique_ptr<onion_t> primaryOnion;
 
 int main(int argc, char** argv) {
-  auto camera = primaryOnion.createTarget<TL_standardRender.id>();
-  auto cube = primaryOnion.createSource<SL_simple.id>();
+  gpu::init("Simple render test");
+  primaryOnion = std::make_unique<onion_t>();
+  auto camera = primaryOnion->createTarget<TL_standardRender.id>();
+  auto cube = primaryOnion->createSource<SL_simple.id>();
   cube->write<RMS_cubeTrans.id>(glm::dmat4(1));//model: diagonal identity
   //TODO abstract out the below math to a camera object or helper function
   camera->write<RMT_cameraTrans.id>(glm::dmat4(1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 1) * //clip
 				   glm::perspectiveFov<double>(glm::radians(45.0f), 16.0, 9.0, 0.1, 100.0) * //projection
 				   glm::lookAt(glm::dvec3(-5, 3, -10), glm::dvec3(0, 0, 0), glm::dvec3(0, -1, 0))); //view
   cube->write<RMS_cubeMesh.id>(cubeMesh);
-  primaryOnion.render();
+  primaryOnion->render();
   Platform::Thread::sleep(5000);
 }
 
-#error WIP

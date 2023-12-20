@@ -17,7 +17,7 @@ namespace WITE {
 
     static constexpr size_t cmdFrameswapCount = 2;//TODO LCM of all resources
 
-    uint64_t frame = 0;
+    uint64_t frame = 1;//can't signal a timeline semaphore with 0
     syncLock mutex;
     vk::CommandPool cmdPool;
     gpu* dev;
@@ -88,8 +88,11 @@ namespace WITE {
 	}
 	for(size_t fl = 0;fl < urrLen;fl++)
 	  if(urr[fl].access)
-	    ret.push_back({ layerIdx, substep_e::render, urr[fl] });
+	    ret.push_back({ layerIdx, substep_e::compute, urr[fl] });
       }
+      for(auto& tl : OD.TLS)
+	if(tl.presentImageResourceMapId == RM.id)
+	  ret.push_back({ OD.LRS.len-1, substep_e::barrier4, { NONE, {}, vk::AccessFlagBits2::eTransferRead, tl.presentFrameLatency, {} } });
       std::sort(ret.begin(), ret.end());
       return ret;
     };
@@ -174,7 +177,7 @@ namespace WITE {
 	    return vk::ImageMemoryBarrier2 {
 	      vk::PipelineStageFlagBits2::eNone,
 	      vk::AccessFlagBits2::eNone,
-	      toPipelineStage2(finalUsagePerFrame[i].usage.stages),
+	      toPipelineStage2(finalUsagePerFrame[i]),
 	      finalUsagePerFrame[i].usage.access,
 	      vk::ImageLayout::eUndefined,
 	      imageLayoutFor(finalUsagePerFrame[i].usage.access),
@@ -313,12 +316,19 @@ namespace WITE {
 
       //TODO resize function (window and window-sized images (needs flag somewhere in template struct))
 
-      void preRender(vk::CommandBuffer cmd) {
-	//TODO
+      inline void preRender() {
+	if constexpr(hasWindow)
+	  presentWindow.acquire();
       };
 
-      void postRender(vk::CommandBuffer cmd) {
-	//TODO
+      inline void postRender(vk::SemaphoreSubmitInfo& renderWaitSem) {
+	if constexpr(hasWindow) {
+	  auto& img = get<TL.presentImageResourceMapId>();
+	  static constexpr resourceMap RM = findById(TL.resources, TL.presentImageResourceMapId);
+	  static constexpr vk::ImageLayout layout = imageLayoutFor(findFinalUsagePerFrame<RM, findById(OD.IRS, RM.requirementId), TARGET_ID>()[TL.presentFrameLatency].usage.access);
+	  static_assert(layout == vk::ImageLayout::eGeneral || layout == vk::ImageLayout::eTransferSrcOptimal);
+	  presentWindow.present(img.frameImage(o->frame + TL.presentFrameLatency), layout, img.getSizeOffset(), renderWaitSem);
+	}
       };
 
     };
@@ -346,10 +356,14 @@ namespace WITE {
       vk::CommandBuffer cmd;
       vk::CommandBufferAllocateInfo allocInfo(cmdPool, vk::CommandBufferLevel::ePrimary, 1);
       VK_ASSERT(dev->getVkDevice().allocateCommandBuffers(&allocInfo, &cmd), "failed to allocate command buffer");
+      vk::CommandBufferBeginInfo begin { vk::CommandBufferUsageFlagBits::eOneTimeSubmit };
+      VK_ASSERT(cmd.begin(&begin), "failed to begin a command buffer");
       ret->get()->reinit(frame, cmd);
+      cmd.end();
       vk::CommandBufferSubmitInfo cmdSubmitInfo(cmd);
       vk::SubmitInfo2 submit({}, 0, NULL, 1, &cmdSubmitInfo, 0, NULL);
       VK_ASSERT(dev->getQueue().submit2(1, &submit, VK_NULL_HANDLE), "failed to submit command buffer");
+      //FIXME leaked cmd here, cannot free here because it hasn't finished yet. Maybe save for later and free with the target?
       return ret->get();
     };
 
@@ -420,10 +434,14 @@ namespace WITE {
       vk::CommandBuffer cmd;
       vk::CommandBufferAllocateInfo allocInfo(cmdPool, vk::CommandBufferLevel::ePrimary, 1);
       VK_ASSERT(dev->getVkDevice().allocateCommandBuffers(&allocInfo, &cmd), "failed to allocate command buffer");
+      vk::CommandBufferBeginInfo begin { vk::CommandBufferUsageFlagBits::eOneTimeSubmit };
+      VK_ASSERT(cmd.begin(&begin), "failed to begin a command buffer");
       ret->get()->reinit(frame, cmd);
+      cmd.end();
       vk::CommandBufferSubmitInfo cmdSubmitInfo(cmd);
       vk::SubmitInfo2 submit({}, 0, NULL, 1, &cmdSubmitInfo, 0, NULL);
       VK_ASSERT(dev->getQueue().submit2(1, &submit, VK_NULL_HANDLE), "failed to submit command buffer");
+      //FIXME leaked cmd here, cannot free here because it hasn't finished yet. Maybe save for later and free with the target?
       return ret->get();
     };
 
@@ -483,9 +501,9 @@ namespace WITE {
 	vk::DependencyInfo DI;
 	if constexpr(isImage) {
 	  constexpr copyableArray<vk::ImageMemoryBarrier2, barrierBatchSize> baseline(vk::ImageMemoryBarrier2 {
-	      toPipelineStage2(RB.before.usage.stages),
+	      toPipelineStage2(RB.before),
 	      RB.before.usage.access,
-	      toPipelineStage2(RB.after.usage.stages),
+	      toPipelineStage2(RB.after),
 	      RB.after.usage.access,
 	      imageLayoutFor(RB.before.usage.access),
 	      imageLayoutFor(RB.after.usage.access),
@@ -510,9 +528,9 @@ namespace WITE {
 	  }
 	} else {
 	  constexpr copyableArray<vk::BufferMemoryBarrier2, barrierBatchSize> baseline(vk::BufferMemoryBarrier2 {
-	      toPipelineStage2(RB.before.usage.stages),
+	      toPipelineStage2(RB.before),
 	      RB.before.usage.access,
-	      toPipelineStage2(RB.after.usage.stages),
+	      toPipelineStage2(RB.after),
 	      RB.after.usage.access,
 	      {}, {}, {}, 0, VK_WHOLE_SIZE
 	    });
@@ -653,12 +671,13 @@ namespace WITE {
 	  vk::ShaderModuleCreateInfo moduleCI;
 	  vk::ShaderModule module;
 	  vk::PipelineShaderStageCreateInfo stages[GSR.modules.len];
-	  for(size_t i;i < GSR.modules.len;i++) {
+	  for(size_t i = 0;i < GSR.modules.len;i++) {
 	    moduleCI.setPCode(GSR.modules[i].data)
 	      .setCodeSize(GSR.modules[i].size);
 	    VK_ASSERT(vkDev.createShaderModule(&moduleCI, ALLOCCB, &module), "Failed to create shader module");
 	    stages[i].setStage(GSR.modules[i].stage)
-	      .setModule(module);
+	      .setModule(module)
+	      .setPName(GSR.modules[i].entryPoint);
 	  }
 	  static constexpr copyableArray<resourceReference, vibCount> vib = [](size_t i){ return i ? *ib : *vb; };
 	  static constexpr auto vibs = getBindingDescriptions<vib>();
@@ -668,7 +687,7 @@ namespace WITE {
 	  //TODO tessellation
 	  //viewport and scissors are dynamic so we don't need to rebuild the pipe when the target size changes
 	  static constexpr vk::PipelineViewportStateCreateInfo vp = { {}, 1, NULL, 1, NULL };
-	  static constexpr vk::PipelineRasterizationStateCreateInfo raster = { {}, false, false, vk::PolygonMode::eFill, GSR.cullMode, GSR.windCounterClockwise ? vk::FrontFace::eCounterClockwise : vk::FrontFace::eClockwise };//not set: depth bias stuff, line width
+	  static constexpr vk::PipelineRasterizationStateCreateInfo raster = { {}, false, false, vk::PolygonMode::eFill, GSR.cullMode, GSR.windCounterClockwise ? vk::FrontFace::eCounterClockwise : vk::FrontFace::eClockwise, false, 0, 0, 0, 1.0f };
 	  static constexpr vk::PipelineMultisampleStateCreateInfo multisample = { {}, vk::SampleCountFlagBits::e1, 0, 0, NULL, 0, 0 };
 	  static constexpr vk::PipelineDepthStencilStateCreateInfo depth = { {}, true, true, vk::CompareOp::eLess, false, false };//not set: depth bounds and stencil test stuff
 	  static constexpr vk::PipelineColorBlendAttachmentState blendAttachment = { false };
@@ -806,32 +825,33 @@ namespace WITE {
       }
     };
 
-    template<literalList<targetLayout> TLS> inline void doPrerender(vk::CommandBuffer cmd) {
+    template<literalList<targetLayout> TLS> inline void doPrerender() {
       if constexpr(TLS.len) {
 	constexpr targetLayout TL = TLS[0];
 	if constexpr(target_t<TL.id>::needsPrerender) {
 	  for(auto& target : allTargets.template ofLayout<TL.id>()) {
-	    target->get()->preRender(cmd);
+	    target->get()->preRender();
 	  }
 	}
-	doPrerender<TLS.sub(1)>(cmd);
+	doPrerender<TLS.sub(1)>();
       }
     };
 
-    template<literalList<targetLayout> TLS> inline void doPostrender(vk::CommandBuffer cmd) {
+    template<literalList<targetLayout> TLS> inline void doPostrender(vk::SemaphoreSubmitInfo& renderWaitSem) {
       if constexpr(TLS.len) {
 	constexpr targetLayout TL = TLS[0];
 	if constexpr(target_t<TL.id>::needsPostrender) {
 	  for(auto& target : allTargets.template ofLayout<TL.id>()) {
-	    target->get()->postRender(cmd);
+	    target->get()->postRender(renderWaitSem);
 	  }
 	}
-	doPostrender<TLS.sub(1)>(cmd);
+	doPostrender<TLS.sub(1)>(renderWaitSem);
       }
     };
 
     void waitForFrame(uint64_t frame, uint64_t timeoutNS = 10000000000) {//default = 10 seconds
-      #error TODO check if frame is within the current modulus
+      if(frame <= this->frame - cmdFrameswapCount) return;
+      ASSERT_TRAP(frame <= this->frame, "attempted to wait a future frame");
       VK_ASSERT(dev->getVkDevice().waitForFences(1, &fences[frame % cmdFrameswapCount], false, timeoutNS), "Frame timeout");
     };
 
@@ -843,16 +863,17 @@ namespace WITE {
 	waitForFrame(frame - cmdFrameswapCount);
       vk::CommandBuffer cmd = primaryCmds[frame % cmdFrameswapCount];
       vk::CommandBufferBeginInfo begin { vk::CommandBufferUsageFlagBits::eOneTimeSubmit };//TODO remove thsi flag when caching is implemented
-      cmd.begin(&begin);
-      doPrerender<OD.TLS>(cmd);
+      VK_ASSERT(cmd.begin(&begin), "failed to begin a command buffer");
+      doPrerender<OD.TLS>();
       renderFrom<0>(cmd);
-      doPostrender<OD.TLS>(cmd);
+      cmd.end();
       vk::Fence fence = fences[frame % cmdFrameswapCount];
       vk::SemaphoreSubmitInfo waitSem(semaphore, frame-1, vk::PipelineStageFlagBits2::eAllCommands),
 	signalSem(semaphore, frame, vk::PipelineStageFlagBits2::eAllCommands);
       vk::CommandBufferSubmitInfo cmdSubmitInfo(cmd);
       vk::SubmitInfo2 submit({}, frame ? 1 : 0, &waitSem, 1, &cmdSubmitInfo, 1, &signalSem);
       VK_ASSERT(dev->getQueue().submit2(1, &submit, fence), "failed to submit command buffer");
+      doPostrender<OD.TLS>(signalSem);//signaled by the render, waited by the presentation
       return frame++;
     };
 

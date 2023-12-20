@@ -1,6 +1,6 @@
 #pragma once
 
-#define VULKAN_HPP_FLAGS_MASK_TYPE_AS_PUBLIC //makes vk::Floags<T> qualify as "structural" so it can be used in templates
+#define VULKAN_HPP_FLAGS_MASK_TYPE_AS_PUBLIC //makes vk::Flags<T> qualify as "structural" so it can be used in templates
 #include <vulkan/vulkan.hpp>
 #include <glm/glm.hpp>
 #include <glm/ext.hpp>

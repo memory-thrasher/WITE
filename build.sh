@@ -44,7 +44,7 @@ find $BUILDAPP $BUILDTESTS -iname '*.glsl' -type f -print0 |
 	(
 	    if ! [ -f "${DSTFILE}" ] || [ "${SRCFILE}" -nt "${DSTFILE}" ] || [ "$0" -nt "${DSTFILE}" ]; then
 		#echo building
-		$WORKNICE $GLCOMPILER -V --target-env vulkan1.3 -gVS "${SRCFILE}" -o "${DSTFILE}" --vn "${VARNAME}" >/dev/null ||
+		$WORKNICE $GLCOMPILER -V --target-env vulkan1.3 -gVS "${SRCFILE}" -o "${DSTFILE}" --vn "${VARNAME}" 1>&2 ||
 		    rm "${DSTFILE}" 2>/dev/null
 	    fi
 	) 2>"${THISERRLOG}" &

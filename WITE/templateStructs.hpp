@@ -72,6 +72,7 @@ namespace WITE {
     uint64_t id;//unique among source and target layouts
     literalList<resourceMap> resources;
     uint64_t presentImageResourceMapId = NONE;
+    uint8_t presentFrameLatency = 0;
   };
 
   struct sourceLayout {
@@ -83,6 +84,7 @@ namespace WITE {
     const uint32_t* data;
     uint32_t size;
     vk::ShaderStageFlagBits stage;
+    const char* entryPoint = "main";
   };
 
 #define defineShaderModules(NOM, ...) defineLiteralList(shaderModule, NOM, __VA_ARGS__)

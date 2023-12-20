@@ -43,17 +43,11 @@ namespace WITE {
     return ret;
   };
 
-  consteval auto getDefaultCI(imageRequirements r) {
+  consteval vk::ImageCreateInfo getDefaultCI(imageRequirements r) {
     ASSERT_CONSTEXPR(isValid(r));
-    vk::ImageCreateInfo ret;
-    ret.setImageType((vk::ImageType)(r.dimensions-1))//yes, I'm that lazy
-      .setFormat(r.format)
-      .setMipLevels(r.mipLevels)
-      .setArrayLayers(r.arrayLayers)
-      .setSamples(vk::SampleCountFlagBits::e1)
-      .setTiling(r.hostVisible ? vk::ImageTiling::eLinear : vk::ImageTiling::eOptimal)
-      .setUsage(r.usage)
-      .setSharingMode(vk::SharingMode::eExclusive);
+    vk::ImageCreateInfo ret { {}, (vk::ImageType)(r.dimensions-1), r.format, {}, r.mipLevels, r.arrayLayers,
+      vk::SampleCountFlagBits::e1, r.hostVisible ? vk::ImageTiling::eLinear : vk::ImageTiling::eOptimal, r.usage,
+      vk::SharingMode::eExclusive };
     if(r.isCube) ret.flags |= vk::ImageCreateFlagBits::eCubeCompatible;
     if(r.dimensions == 3) ret.flags |= vk::ImageCreateFlagBits::e2DArrayCompatible;
     return ret;
@@ -126,8 +120,9 @@ namespace WITE {
   };
 
   consteval vk::ImageSubresourceRange getAllInclusiveSubresource(const imageRequirements R) {
+    // | vk::ImageAspectFlagBits::eStencil no stencil format has required support so stencil would need format cap detection
     return {
-      /* .aspectMask =*/ (R.usage & vk::ImageUsageFlagBits::eDepthStencilAttachment) ? vk::ImageAspectFlagBits::eDepth | vk::ImageAspectFlagBits::eStencil : vk::ImageAspectFlagBits::eColor, //MAYBE multiplanar someday?
+      /* .aspectMask =*/ (R.usage & vk::ImageUsageFlagBits::eDepthStencilAttachment) ? vk::ImageAspectFlagBits::eDepth : vk::ImageAspectFlagBits::eColor, //MAYBE multiplanar someday?
       /* .baseMipLevel =*/ 0,
       /* .levelCount =*/ R.mipLevels,
       /* .baseArrayLayer =*/ 0,
@@ -137,7 +132,7 @@ namespace WITE {
 
   consteval vk::ImageSubresourceLayers getAllInclusiveSubresourceLayers(const imageRequirements R) {
     return {
-      /* .aspectMask =*/ (R.usage & vk::ImageUsageFlagBits::eDepthStencilAttachment) ? vk::ImageAspectFlagBits::eDepth | vk::ImageAspectFlagBits::eStencil : vk::ImageAspectFlagBits::eColor, //MAYBE multiplanar someday?
+      /* .aspectMask =*/ (R.usage & vk::ImageUsageFlagBits::eDepthStencilAttachment) ? vk::ImageAspectFlagBits::eDepth : vk::ImageAspectFlagBits::eColor, //MAYBE multiplanar someday?
       /* .baseMipLevel =*/ 0,
       /* .baseArrayLayer =*/ 0,
       /* .layerCount =*/ R.arrayLayers
@@ -161,7 +156,9 @@ namespace WITE {
     return ret;
   };
 
-  consteval vk::PipelineStageFlags2 toPipelineStage2(vk::ShaderStageFlags f) {
+  consteval vk::PipelineStageFlags2 toPipelineStage2(resourceAccessTime rat) {
+    const auto f = rat.usage.stages;
+    const auto a = rat.usage.access;
     if(f & vk::ShaderStageFlagBits::eAll)
       return vk::PipelineStageFlagBits2::eAllCommands;
     vk::PipelineStageFlags2 ret;
@@ -187,34 +184,8 @@ namespace WITE {
     }
     if(f & vk::ShaderStageFlagBits::eCompute)
       ret |= vk::PipelineStageFlagBits2::eComputeShader;
-    // if(f & vk::ShaderStageFlagBits::eRaygenKHR)
-    //   ret |= vk::PipelineStageFlagBits2::eRaygenKHR;
-    // if(f & vk::ShaderStageFlagBits::eAnyHitKHR)
-    //   ret |= vk::PipelineStageFlagBits2::eAnyHitKHR;
-    // if(f & vk::ShaderStageFlagBits::eClosestHitKHR)
-    //   ret |= vk::PipelineStageFlagBits2::eClosestHitKHR;
-    // if(f & vk::ShaderStageFlagBits::eMissKHR)
-    //   ret |= vk::PipelineStageFlagBits2::eMissKHR;
-    // if(f & vk::ShaderStageFlagBits::eIntersectionKHR)
-    //   ret |= vk::PipelineStageFlagBits2::eIntersectionKHR;
-    // if(f & vk::ShaderStageFlagBits::eCallableKHR)
-    //   ret |= vk::PipelineStageFlagBits2::eCallableKHR;
-    // if(f & vk::ShaderStageFlagBits::eRaygenNV)
-    //   ret |= vk::PipelineStageFlagBits2::eRaygenNV;
-    // if(f & vk::ShaderStageFlagBits::eAnyHitNV)
-    //   ret |= vk::PipelineStageFlagBits2::eAnyHitNV;
-    // if(f & vk::ShaderStageFlagBits::eClosestHitNV)
-    //   ret |= vk::PipelineStageFlagBits2::eClosestHitNV;
-    // if(f & vk::ShaderStageFlagBits::eMissNV)
-    //   ret |= vk::PipelineStageFlagBits2::eMissNV;
-    // if(f & vk::ShaderStageFlagBits::eIntersectionNV)
-    //   ret |= vk::PipelineStageFlagBits2::eIntersectionNV;
-    // if(f & vk::ShaderStageFlagBits::eCallableNV)
-    //   ret |= vk::PipelineStageFlagBits2::eCallableNV;
-    // if(f & vk::ShaderStageFlagBits::eSubpassShadingHUAWEI)
-    //   ret |= vk::PipelineStageFlagBits2::eSubpassShadingHUAWEI;
-    // if(f & vk::ShaderStageFlagBits::eClusterCullingHUAWEI)
-    //   ret |= vk::PipelineStageFlagBits2::eClusterCullingHUAWEI;
+    if(a & (vk::AccessFlagBits2::eTransferWrite | vk::AccessFlagBits2::eTransferRead))
+      ret |= vk::PipelineStageFlagBits2::eTransfer;
     return ret;
   };
 

@@ -54,11 +54,7 @@ namespace WITE {
       }
     }
     float priorities = 0.5;
-    vk::DeviceQueueCreateInfo dqci {{
-	.queueFamilyIndex = queueIdx,
-	.queueCount = 1,
-	.pQueuePriorities = &priorities
-      }};
+    vk::DeviceQueueCreateInfo dqci { {}, queueIdx, 1, &priorities };
 
     vk::PhysicalDeviceFeatures pdf;
     pdf.geometryShader = true;
@@ -99,8 +95,11 @@ namespace WITE {
     // deviceExtensions.push_back("VK_KHR_synchronization2");
     dci.enabledExtensionCount = deviceExtensions.size();
     dci.ppEnabledExtensionNames = deviceExtensions.data();
+    dci.queueCreateInfoCount = 1;
+    dci.pQueueCreateInfos = &dqci;
     VK_ASSERT(pv.createDevice(&dci, ALLOCCB, &dev), "Failed to create device");
     queue = dev.getQueue(queueIdx, 0);
+    ASSERT_TRAP(queue, "Device created but no queue seems to exist.");
 
     for(auto format : Format::standardFormats)
       pv.getFormatProperties(format, &formatProperties[format]);

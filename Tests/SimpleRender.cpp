@@ -38,8 +38,29 @@ IDL id list
 //   {{1, 0, 0}}, {{1, 1, 1}}, {{1, 1, 0}}, {{1, 0, 0}}, {{1, 0, 1}}, {{1, 1, 1}}
 // };
 
-constexpr copyableArray<udmObject<UDM::RGB32float>, 3> cubeMesh = {
-  {{0, 0, 0.5}}, {{100, 100, 0.5}}, {{100, 0, 0.5}}
+// constexpr copyableArray<udmObject<UDM::RGB32float>, 3> cubeMesh = {
+//   {{0, 0, 0.5}}, {{100, 100, 0.5}}, {{100, 0, 0.5}}
+// };
+
+constexpr copyableArray<udmObject<UDM::RGB32float>, 6*6> cubeMesh = {
+    // left face
+    {{-1, -1, -1}}, {{-1, 1, 1}}, {{-1, -1, 1}},
+    {{-1, 1, 1}}, {{-1, -1, -1}}, {{-1, 1, -1}},
+    // front face
+    {{-1, -1, -1}}, {{1, -1, -1}}, {{1, 1, -1}},
+    {{-1, -1, -1}}, {{1, 1, -1}}, {{-1, 1, -1}},
+    // top face
+    {{-1, -1, -1}}, {{1, -1, 1}}, {{1, -1, -1}},
+    {{-1, -1, -1}}, {{-1, -1, 1}}, {{1, -1, 1}},
+    // bottom face
+    {{-1, 1, -1}}, {{1, 1, 1}}, {{-1, 1, 1}},
+    {{-1, 1, -1}}, {{1, 1, -1}}, {{1, 1, 1}},
+    // right face
+    {{1, 1, -1}}, {{1, -1, 1}}, {{1, 1, 1}},
+    {{1, -1, 1}}, {{1, 1, -1}}, {{1, -1, -1}},
+    // back face
+    {{-1, 1, 1}}, {{1, 1, 1}}, {{-1, -1, 1}},
+    {{-1, -1, 1}}, {{1, 1, 1}}, {{1, -1, 1}},
 };
 
 constexpr bufferRequirements BR_singleTransform {
@@ -277,12 +298,6 @@ int main(int argc, char** argv) {
 				      glm::lookAt(glm::dvec3(-15, 13, -10), glm::dvec3(0, 0, 0), glm::dvec3(0, -1, 0))); //view
     primaryOnion->render();
   }
-  auto camMat = glm::dmat4(1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 1) * //clip
-    glm::perspectiveFov<double>(glm::radians(45.0f), 16.0, 9.0, 0.1, 100.0) * //projection
-    glm::lookAt(glm::dvec3(-15, 13, -10), glm::dvec3(0, 0, 0), glm::dvec3(0, -1, 0));
-  auto cubeMat = glm::dmat4(1);
-  for(auto& vert : cubeMesh)
-    WARN(camMat * (cubeMat * glm::vec4(vert.data[0], vert.data[1], vert.data[2], 1)));
   WARN("NOTE: sleep here (any validation whining after here is in cleanup)");
   Platform::Thread::sleep(500);
 }

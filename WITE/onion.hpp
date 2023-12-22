@@ -626,8 +626,8 @@ namespace WITE {
 	depthRef { 1, imageLayoutFor(RP.depthStencil.access) };
       static constexpr vk::SubpassDescription subpass { {}, vk::PipelineBindPoint::eGraphics, 0, NULL, 1, &colorRef, NULL, &depthRef };
       static constexpr vk::AttachmentDescription attachments[2] = {//MAYBE variable attachments when inputs are allowed
-	{ {}, colorIR.format, vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eLoad, vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare, imageLayoutFor(RP.color.access), imageLayoutFor(RP.color.access) },
-	{ {}, depthIR.format, vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eLoad, vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eLoad, vk::AttachmentStoreOp::eStore, imageLayoutFor(RP.depthStencil.access), imageLayoutFor(RP.depthStencil.access) }
+	{ {}, colorIR.format, vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eClear, vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare, imageLayoutFor(RP.color.access), imageLayoutFor(RP.color.access) },
+	{ {}, depthIR.format, vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eClear, vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eLoad, vk::AttachmentStoreOp::eStore, imageLayoutFor(RP.depthStencil.access), imageLayoutFor(RP.depthStencil.access) }
       };
       //TODO multiview
       //static constexpr vk::RenderPassMultiviewCreateInfo multiview {
@@ -787,17 +787,19 @@ namespace WITE {
 	vk::Viewport viewport = { 0, 0, (float)size.extent.width, (float)size.extent.height, 0.0f, 1.0f };
 	cmd.setViewport(0, 1, &viewport);
 	cmd.setScissor(0, 1, &size);
-	vk::RenderPassBeginInfo rpBegin(rp, fbb.fb, size, 0);
+
+	vk::ClearValue clears[2];
+	clears[0].color.float32[0] = 0.2f;
+	clears[0].color.float32[1] = 0.2f;
+	clears[0].color.float32[2] = 0.2f;
+	clears[0].color.float32[3] = 0.2f;
+	clears[1].depthStencil.depth = 1.0f;
+	clears[1].depthStencil.stencil = 0;
+	vk::RenderPassBeginInfo rpBegin(rp, fbb.fb, size, 2, clears);
+	//TODO control clear with template struct. Probably only desited on first RP
+	// AttachmentDescription also needs to choose load or clear from same flag
+
 	cmd.beginRenderPass(&rpBegin, vk::SubpassContents::eInline);
-
-	vk::ClearAttachment clearAtt[2] {
-	  { vk::ImageAspectFlagBits::eColor, 0, {{ 1.0f, 0.5f, 0.0f, 1.0f }} },
-	  { vk::ImageAspectFlagBits::eDepth, 1, {{ 1.0f, 0 }} }
-	};
-	vk::ClearRect clearRect { size, 0, 1 };
-	cmd.clearAttachments(2, clearAtt, 1, &clearRect);
-	// WARN("cleared");
-
 	recordRenders<TL, LR, RP.shaders>(target, ptl, od, rp, cmd);
 	cmd.endRenderPass();
 	recordRenders<TL, LR, RPIDS.sub(1)>(target, ptl, od, cmd);

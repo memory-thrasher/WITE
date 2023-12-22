@@ -10,57 +10,58 @@
 #include <memory>
 #include <unistd.h>
 
-struct VertexUV {
-    float posX, posY, posZ, posW;  // Position data
-    float u, v;                    // texture u,v
+#include "../build/Tests/basicShader.frag.spv.h"
+#include "../build/Tests/basicShader.vert.spv.h"
+
+struct Vertex {
+    float posX, posY, posZ;  // Position data
 };
 
-#define XYZ1(_x_, _y_, _z_) (_x_), (_y_), (_z_), 1.f
-#define UV(_u_, _v_) (_u_), (_v_)
+#define XYZ(_x_, _y_, _z_) (_x_), (_y_), (_z_)
 
-static const VertexUV g_vb_texture_Data[] = {
+static const Vertex g_vb_texture_Data[] = {
     // left face
-    {XYZ1(-1, -1, -1), UV(1.f, 0.f)},  // lft-top-front
-    {XYZ1(-1, 1, 1), UV(0.f, 1.f)},    // lft-btm-back
-    {XYZ1(-1, -1, 1), UV(0.f, 0.f)},   // lft-top-back
-    {XYZ1(-1, 1, 1), UV(0.f, 1.f)},    // lft-btm-back
-    {XYZ1(-1, -1, -1), UV(1.f, 0.f)},  // lft-top-front
-    {XYZ1(-1, 1, -1), UV(1.f, 1.f)},   // lft-btm-front
+    {XYZ(-1, -1, -1)},
+    {XYZ(-1, 1, 1)},
+    {XYZ(-1, -1, 1)},
+    {XYZ(-1, 1, 1)},
+    {XYZ(-1, -1, -1)},
+    {XYZ(-1, 1, -1)},
     // front face
-    {XYZ1(-1, -1, -1), UV(0.f, 0.f)},  // lft-top-front
-    {XYZ1(1, -1, -1), UV(1.f, 0.f)},   // rgt-top-front
-    {XYZ1(1, 1, -1), UV(1.f, 1.f)},    // rgt-btm-front
-    {XYZ1(-1, -1, -1), UV(0.f, 0.f)},  // lft-top-front
-    {XYZ1(1, 1, -1), UV(1.f, 1.f)},    // rgt-btm-front
-    {XYZ1(-1, 1, -1), UV(0.f, 1.f)},   // lft-btm-front
+    {XYZ(-1, -1, -1)},
+    {XYZ(1, -1, -1)},
+    {XYZ(1, 1, -1)},
+    {XYZ(-1, -1, -1)},
+    {XYZ(1, 1, -1)},
+    {XYZ(-1, 1, -1)},
     // top face
-    {XYZ1(-1, -1, -1), UV(0.f, 1.f)},  // lft-top-front
-    {XYZ1(1, -1, 1), UV(1.f, 0.f)},    // rgt-top-back
-    {XYZ1(1, -1, -1), UV(1.f, 1.f)},   // rgt-top-front
-    {XYZ1(-1, -1, -1), UV(0.f, 1.f)},  // lft-top-front
-    {XYZ1(-1, -1, 1), UV(0.f, 0.f)},   // lft-top-back
-    {XYZ1(1, -1, 1), UV(1.f, 0.f)},    // rgt-top-back
+    {XYZ(-1, -1, -1)},
+    {XYZ(1, -1, 1)},
+    {XYZ(1, -1, -1)},
+    {XYZ(-1, -1, -1)},
+    {XYZ(-1, -1, 1)},
+    {XYZ(1, -1, 1)},
     // bottom face
-    {XYZ1(-1, 1, -1), UV(0.f, 0.f)},  // lft-btm-front
-    {XYZ1(1, 1, 1), UV(1.f, 1.f)},    // rgt-btm-back
-    {XYZ1(-1, 1, 1), UV(0.f, 1.f)},   // lft-btm-back
-    {XYZ1(-1, 1, -1), UV(0.f, 0.f)},  // lft-btm-front
-    {XYZ1(1, 1, -1), UV(1.f, 0.f)},   // rgt-btm-front
-    {XYZ1(1, 1, 1), UV(1.f, 1.f)},    // rgt-btm-back
+    {XYZ(-1, 1, -1)},
+    {XYZ(1, 1, 1)},
+    {XYZ(-1, 1, 1)},
+    {XYZ(-1, 1, -1)},
+    {XYZ(1, 1, -1)},
+    {XYZ(1, 1, 1)},
     // right face
-    {XYZ1(1, 1, -1), UV(0.f, 1.f)},   // rgt-btm-front
-    {XYZ1(1, -1, 1), UV(1.f, 0.f)},   // rgt-top-back
-    {XYZ1(1, 1, 1), UV(1.f, 1.f)},    // rgt-btm-back
-    {XYZ1(1, -1, 1), UV(1.f, 0.f)},   // rgt-top-back
-    {XYZ1(1, 1, -1), UV(0.f, 1.f)},   // rgt-btm-front
-    {XYZ1(1, -1, -1), UV(0.f, 0.f)},  // rgt-top-front
+    {XYZ(1, 1, -1)},
+    {XYZ(1, -1, 1)},
+    {XYZ(1, 1, 1)},
+    {XYZ(1, -1, 1)},
+    {XYZ(1, 1, -1)},
+    {XYZ(1, -1, -1)},
     // back face
-    {XYZ1(-1, 1, 1), UV(1.f, 1.f)},   // lft-btm-back
-    {XYZ1(1, 1, 1), UV(0.f, 1.f)},    // rgt-btm-back
-    {XYZ1(-1, -1, 1), UV(1.f, 0.f)},  // lft-top-back
-    {XYZ1(-1, -1, 1), UV(1.f, 0.f)},  // lft-top-back
-    {XYZ1(1, 1, 1), UV(0.f, 1.f)},    // rgt-btm-back
-    {XYZ1(1, -1, 1), UV(0.f, 0.f)},   // rgt-top-back
+    {XYZ(-1, 1, 1)},
+    {XYZ(1, 1, 1)},
+    {XYZ(-1, -1, 1)},
+    {XYZ(-1, -1, 1)},
+    {XYZ(1, 1, 1)},
+    {XYZ(1, -1, 1)},
 };
 
 typedef struct GPU {
@@ -134,50 +135,23 @@ VkQueue graphics, present, compute;
 VkSwapchainKHR swapchain;
 uint32_t bufferCount, currentBuffer;
 BackedImageView* buffers, depth;
-BackedBuffer uniformData;
-VkDescriptorSetLayout descLayout;
+BackedBuffer uniformDataT;
+BackedBuffer uniformDataS;
+VkDescriptorSetLayout descLayouts[2];
 VkPipelineLayout pipelineLayout;
 VkRenderPass renderPass;
 VkPipelineShaderStageCreateInfo shaderStages[2];
 VkFramebuffer *framebuffers;
 BackedBuffer vertexBuffer;
 VkVertexInputBindingDescription viBinding;
-VkVertexInputAttributeDescription viAttribs[2];
-VkDescriptorSet descSet;
+VkVertexInputAttributeDescription viAttrib;
+VkDescriptorSet descSets[2];
 VkDescriptorPool descPool;
 VkPipelineCache pipelineCache;
 VkPipeline pipeline;
 VkViewport viewport;
 VkRect2D scissors;
 FILE* logfile;
-
-unsigned int * loadSprv(const char* filename, size_t* codelen) {
-	struct stat fstat;
-	size_t len, offset = 0, read;
-	if (stat(filename, &fstat))
-		return NULL;
-	*codelen = len = fstat.st_size;
-	union {
-		unsigned int * ret;
-		unsigned char * bytes;
-	};
-	bytes = (unsigned char *)malloc((1 + len / 4) * 4 + 1);//padded to 32 bit barrier to accomodate unsigned int type
-	if (!ret) return NULL;
-	FILE* src = fopen(filename, "rb");
-	if (!src) {
-		free(ret);
-		return NULL;
-	}
-	read = fread(bytes, 1, len, src);
-	while (read > 0 && len >= 0) {
-		len -= read;
-		offset += read;
-		read = fread(bytes + offset, 1, len, src);
-	}
-	bytes[offset] = 0;//null term, probably unneeded
-	fclose(src);
-	return ret;
-}
 
 //from util.cpp in vulkan sample. Debug only.
 bool read_ppm(char const *const filename, uint32_t &width, uint32_t &height, uint64_t rowPitch, unsigned char *dataPtr) {
@@ -274,7 +248,7 @@ int main(int argc, char** argv) {
   void* tempP;
   VkBool32 tempBool;
   logfile = fopen("runtime.log", "w");
-  SampledImage tex = {};
+  //SampledImage tex = {};
   //process_command_line_args(info, argc, argv);
   //init_global_layer_properties(info);
   //TODO sync lock?
@@ -357,8 +331,8 @@ int main(int argc, char** argv) {
     free(phys);
   }
   //init_window_size(info, 500, 500);
-  width = 500;
-  height = 500;
+  width = 960;
+  height = 540;
   //init_connection(info);
   //init_window(info);
   sprintf(title, "Vulkan window");
@@ -528,80 +502,80 @@ int main(int argc, char** argv) {
     depth.height = swapchainExtent.height;
   }
   //init_texture(info);
-  {
-    //|->init_image(info, texObj)
-    uint32_t usages = VK_IMAGE_USAGE_SAMPLED_BIT;
-    memset(&tex, 0, sizeof(SampledImage));
-    if (!read_ppm("../../StupidCube/data/lunarg.ppm", tex.image.width, tex.image.height, 0, NULL)) FAIL;
-    VkFormatProperties props;
-    vkGetPhysicalDeviceFormatProperties(gpus->physDevice, VK_FORMAT_R8G8B8A8_UNORM, &props);
-    bool staged = !(props.linearTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT);
-    if (staged) {
-      //init_buffer(info, tex)
-      tex.image.buffer.bufferInfo = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, NULL, 0,
-	tex.image.width * tex.image.height * 4, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-	VK_SHARING_MODE_EXCLUSIVE, 0, NULL };
-      res = vkCreateBuffer(gpu->device, &tex.image.buffer.bufferInfo, NULL, &tex.image.buffer.buffer);
-      if (res) FAIL;
-      vkGetBufferMemoryRequirements(gpu->device, tex.image.buffer.buffer, &tex.image.buffer.memReqs);
-      tex.image.buffer.memAlloc = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, NULL,
-	tex.image.buffer.memReqs.size, pickMemType(tex.image.buffer.memReqs, gpu, 0,
-						   VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) };
-      res = vkAllocateMemory(gpu->device, &tex.image.buffer.memAlloc, NULL, &tex.image.buffer.mem);
-      if (res) FAIL;
-      res = vkBindBufferMemory(gpu->device, tex.image.buffer.buffer, tex.image.buffer.mem, 0);
-      if (res) FAIL;
-      //end init_buffer
-      usages |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-    } else
-      memset(&tex.image.buffer, 0, sizeof(BackedBuffer));
-    tex.image.imageInfo = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO, NULL, 0, VK_IMAGE_TYPE_2D,
-      VK_FORMAT_R8G8B8A8_UNORM, {tex.image.width, tex.image.height, 1}, 1, 1, VK_SAMPLE_COUNT_1_BIT,
-      staged ? VK_IMAGE_TILING_OPTIMAL : VK_IMAGE_TILING_LINEAR, usages, VK_SHARING_MODE_EXCLUSIVE,
-      0, NULL, staged ? VK_IMAGE_LAYOUT_UNDEFINED : VK_IMAGE_LAYOUT_PREINITIALIZED };
-    res = vkCreateImage(gpu->device, &tex.image.imageInfo, NULL, &tex.image.image);
-    if (res) FAIL;
-    vkGetImageMemoryRequirements(gpu->device, tex.image.image, &tex.image.memReqs);
-    tex.image.memAlloc = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, NULL,
-      tex.image.memReqs.size, pickMemType(tex.image.memReqs, gpu, 0,
-					  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) };
-    res = vkAllocateMemory(gpu->device, &tex.image.memAlloc, NULL, &tex.image.mem);
-    if (res) FAIL;
-    res = vkBindImageMemory(gpu->device, tex.image.image, tex.image.mem, 0);
-    if (res) FAIL;
-    //***queue/fence break apparently unnecessary
-    //res = vkEndCommandBuffer(cmd);//util_init:1839; but seems wrong
-    //if (res) FAIL;
-    //VkFenceCreateInfo fenceInfo = { VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, NULL, 0 };
-    //VkFence cmdFence;
-    //vkCreateFence(gpu->device, &fenceInfo, NULL, &cmdFence);
-    //VkSubmitInfo submitInfo = { VK_STRUCTURE_TYPE_SUBMIT_INFO, NULL, 0, NULL, NULL, 1, &cmd, 0, NULL };
-    //res = vkQueueSubmit(graphics, 1, &submitInfo, cmdFence);
-    //if (res) FAIL;
-    VkImageSubresource subres = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0 };
-    VkSubresourceLayout layout = {};
-    void* data;
-    if (!staged)
-      vkGetImageSubresourceLayout(gpu->device, tex.image.image, &subres, &layout);
-    /*do {
-      res = vkWaitForFences(gpu->device, 1, &cmdFence, VK_TRUE, 1000000000);
-      } while (res == VK_TIMEOUT);
-      if (res) FAIL;
-      vkDestroyFence(gpu->device, cmdFence, NULL);*/
-    if (staged)
-      res = vkMapMemory(gpu->device, tex.image.buffer.mem, 0, tex.image.buffer.bufferInfo.size,
-			0, &data);
-    else
-      res = vkMapMemory(gpu->device, tex.image.mem, 0, tex.image.memReqs.size, 0, &data);
-    if (res) FAIL;
-    if (!read_ppm("../../StupidCube/data/lunarg.ppm", tex.image.width, tex.image.height, staged ? (tex.image.width * 4) :
-		  layout.rowPitch, (unsigned char *)data))
-      FAIL;
-    vkUnmapMemory(gpu->device, staged ? tex.image.buffer.mem : tex.image.mem);
-    //VkCommandBufferBeginInfo cmdBufInfo = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, NULL, 0, NULL};
-    //res = vkBeginCommandBuffer(cmd, &cmdBufInfo);
-    //***end queue/fence changes
-    //if (res) FAIL;
+  // {
+  //   //|->init_image(info, texObj)
+  //   uint32_t usages = VK_IMAGE_USAGE_SAMPLED_BIT;
+  //   memset(&tex, 0, sizeof(SampledImage));
+  //   if (!read_ppm("../../StupidCube/data/lunarg.ppm", tex.image.width, tex.image.height, 0, NULL)) FAIL;
+  //   VkFormatProperties props;
+  //   vkGetPhysicalDeviceFormatProperties(gpus->physDevice, VK_FORMAT_R8G8B8A8_UNORM, &props);
+  //   bool staged = !(props.linearTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT);
+  //   if (staged) {
+  //     //init_buffer(info, tex)
+  //     tex.image.buffer.bufferInfo = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, NULL, 0,
+  // 	tex.image.width * tex.image.height * 4, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+  // 	VK_SHARING_MODE_EXCLUSIVE, 0, NULL };
+  //     res = vkCreateBuffer(gpu->device, &tex.image.buffer.bufferInfo, NULL, &tex.image.buffer.buffer);
+  //     if (res) FAIL;
+  //     vkGetBufferMemoryRequirements(gpu->device, tex.image.buffer.buffer, &tex.image.buffer.memReqs);
+  //     tex.image.buffer.memAlloc = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, NULL,
+  // 	tex.image.buffer.memReqs.size, pickMemType(tex.image.buffer.memReqs, gpu, 0,
+  // 						   VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) };
+  //     res = vkAllocateMemory(gpu->device, &tex.image.buffer.memAlloc, NULL, &tex.image.buffer.mem);
+  //     if (res) FAIL;
+  //     res = vkBindBufferMemory(gpu->device, tex.image.buffer.buffer, tex.image.buffer.mem, 0);
+  //     if (res) FAIL;
+  //     //end init_buffer
+  //     usages |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+  //   } else
+  //     memset(&tex.image.buffer, 0, sizeof(BackedBuffer));
+  //   tex.image.imageInfo = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO, NULL, 0, VK_IMAGE_TYPE_2D,
+  //     VK_FORMAT_R8G8B8A8_UNORM, {tex.image.width, tex.image.height, 1}, 1, 1, VK_SAMPLE_COUNT_1_BIT,
+  //     staged ? VK_IMAGE_TILING_OPTIMAL : VK_IMAGE_TILING_LINEAR, usages, VK_SHARING_MODE_EXCLUSIVE,
+  //     0, NULL, staged ? VK_IMAGE_LAYOUT_UNDEFINED : VK_IMAGE_LAYOUT_PREINITIALIZED };
+  //   res = vkCreateImage(gpu->device, &tex.image.imageInfo, NULL, &tex.image.image);
+  //   if (res) FAIL;
+  //   vkGetImageMemoryRequirements(gpu->device, tex.image.image, &tex.image.memReqs);
+  //   tex.image.memAlloc = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, NULL,
+  //     tex.image.memReqs.size, pickMemType(tex.image.memReqs, gpu, 0,
+  // 					  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) };
+  //   res = vkAllocateMemory(gpu->device, &tex.image.memAlloc, NULL, &tex.image.mem);
+  //   if (res) FAIL;
+  //   res = vkBindImageMemory(gpu->device, tex.image.image, tex.image.mem, 0);
+  //   if (res) FAIL;
+  //   //***queue/fence break apparently unnecessary
+  //   //res = vkEndCommandBuffer(cmd);//util_init:1839; but seems wrong
+  //   //if (res) FAIL;
+  //   //VkFenceCreateInfo fenceInfo = { VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, NULL, 0 };
+  //   //VkFence cmdFence;
+  //   //vkCreateFence(gpu->device, &fenceInfo, NULL, &cmdFence);
+  //   //VkSubmitInfo submitInfo = { VK_STRUCTURE_TYPE_SUBMIT_INFO, NULL, 0, NULL, NULL, 1, &cmd, 0, NULL };
+  //   //res = vkQueueSubmit(graphics, 1, &submitInfo, cmdFence);
+  //   //if (res) FAIL;
+  //   VkImageSubresource subres = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0 };
+  //   VkSubresourceLayout layout = {};
+  //   void* data;
+  //   if (!staged)
+  //     vkGetImageSubresourceLayout(gpu->device, tex.image.image, &subres, &layout);
+  //   /*do {
+  //     res = vkWaitForFences(gpu->device, 1, &cmdFence, VK_TRUE, 1000000000);
+  //     } while (res == VK_TIMEOUT);
+  //     if (res) FAIL;
+  //     vkDestroyFence(gpu->device, cmdFence, NULL);*/
+  //   if (staged)
+  //     res = vkMapMemory(gpu->device, tex.image.buffer.mem, 0, tex.image.buffer.bufferInfo.size,
+  // 			0, &data);
+  //   else
+  //     res = vkMapMemory(gpu->device, tex.image.mem, 0, tex.image.memReqs.size, 0, &data);
+  //   if (res) FAIL;
+  //   if (!read_ppm("../../StupidCube/data/lunarg.ppm", tex.image.width, tex.image.height, staged ? (tex.image.width * 4) :
+  // 		  layout.rowPitch, (unsigned char *)data))
+  //     FAIL;
+  //   vkUnmapMemory(gpu->device, staged ? tex.image.buffer.mem : tex.image.mem);
+  //   //VkCommandBufferBeginInfo cmdBufInfo = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, NULL, 0, NULL};
+  //   //res = vkBeginCommandBuffer(cmd, &cmdBufInfo);
+  //   //***end queue/fence changes
+  //   //if (res) FAIL;
     //init_command_pool(info); was earlier
     {
       VkCommandPoolCreateInfo cmdPoolInfo = { VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO, NULL,
@@ -622,97 +596,115 @@ int main(int argc, char** argv) {
       res = vkBeginCommandBuffer(cmd, &info);
       if (res) FAIL;
     }
-    if (!staged) {
-      tex.desc.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-      /*set_image_layout(info, texObj.image, VK_IMAGE_ASPECT_COLOR_BIT,
-	VK_IMAGE_LAYOUT_PREINITIALIZED, texObj.imageLayout, VK_PIPELINE_STAGE_HOST_BIT,
-	VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);*/
-      //VkAccessFlags src = VK_ACCESS_HOST_WRITE_BIT, dst = VK_ACCESS_SHADER_READ_BIT;
-      VkImageMemoryBarrier imageMemoryBarrier = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER, NULL,
-	VK_ACCESS_HOST_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT, VK_IMAGE_LAYOUT_PREINITIALIZED,
-	tex.desc.imageLayout, VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED, tex.image.image,
-	{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 } };
-      vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-			   0, 0, NULL, 0, NULL, 1, &imageMemoryBarrier);
-    } else {
-      /*set_image_layout(info, texObj.image, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_UNDEFINED,
-	VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-	VK_PIPELINE_STAGE_TRANSFER_BIT);*/
-      VkImageMemoryBarrier imageMemoryBarrier = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER, NULL,
-	0, VK_ACCESS_TRANSFER_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED,
-	VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED,
-	tex.image.image, { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 } };
-      vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-			   VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 0, NULL, 1, &imageMemoryBarrier);
-      VkBufferImageCopy copyRegion = { 0, tex.image.width, tex.image.height,
-				       { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },{ 0, 0, 0 },{ tex.image.width, tex.image.height, 0 } };
-      vkCmdCopyBufferToImage(cmd, tex.image.buffer.buffer, tex.image.image,
-			     VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
-      tex.desc.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-      /*set_image_layout(info, texObj.image, VK_IMAGE_ASPECT_COLOR_BIT,
-	VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, texObj.imageLayout, VK_PIPELINE_STAGE_TRANSFER_BIT,
-	VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);*/
-      imageMemoryBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-      imageMemoryBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-      vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
-			   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, NULL, 0, NULL, 1, &imageMemoryBarrier);
-    }
-    tex.image.viewInfo = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO, NULL, 0,
-      tex.image.image, VK_IMAGE_VIEW_TYPE_2D, VK_FORMAT_R8G8B8A8_UNORM, { VK_COMPONENT_SWIZZLE_R,
-			     VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A },
-      { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 } };
-    res = vkCreateImageView(gpu->device, &tex.image.viewInfo, NULL, &tex.image.imageView);
-    if (res) FAIL;
-    //|<end init_image
-    //|->init_sampler(info, tex.sampler)
-    tex.samplerInfo = {VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO, NULL, 0, VK_FILTER_NEAREST,
-      VK_FILTER_NEAREST, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-      VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-      0.0, VK_FALSE, 1, VK_FALSE, VK_COMPARE_OP_NEVER, 0, 0, VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE,
-      VK_FALSE };
-    res = vkCreateSampler(gpu->device, &tex.samplerInfo, NULL, &tex.desc.sampler);
-    if (res) FAIL;
-    //|<end init_sampler
-    tex.desc.imageView = tex.image.imageView;
-    tex.desc.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-  }
+  //   if (!staged) {
+  //     tex.desc.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+  //     /*set_image_layout(info, texObj.image, VK_IMAGE_ASPECT_COLOR_BIT,
+  // 	VK_IMAGE_LAYOUT_PREINITIALIZED, texObj.imageLayout, VK_PIPELINE_STAGE_HOST_BIT,
+  // 	VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);*/
+  //     //VkAccessFlags src = VK_ACCESS_HOST_WRITE_BIT, dst = VK_ACCESS_SHADER_READ_BIT;
+  //     VkImageMemoryBarrier imageMemoryBarrier = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER, NULL,
+  // 	VK_ACCESS_HOST_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT, VK_IMAGE_LAYOUT_PREINITIALIZED,
+  // 	tex.desc.imageLayout, VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED, tex.image.image,
+  // 	{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 } };
+  //     vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+  // 			   0, 0, NULL, 0, NULL, 1, &imageMemoryBarrier);
+  //   } else {
+  //     /*set_image_layout(info, texObj.image, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_UNDEFINED,
+  // 	VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+  // 	VK_PIPELINE_STAGE_TRANSFER_BIT);*/
+  //     VkImageMemoryBarrier imageMemoryBarrier = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER, NULL,
+  // 	0, VK_ACCESS_TRANSFER_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED,
+  // 	VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED,
+  // 	tex.image.image, { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 } };
+  //     vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+  // 			   VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 0, NULL, 1, &imageMemoryBarrier);
+  //     VkBufferImageCopy copyRegion = { 0, tex.image.width, tex.image.height,
+  // 				       { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },{ 0, 0, 0 },{ tex.image.width, tex.image.height, 0 } };
+  //     vkCmdCopyBufferToImage(cmd, tex.image.buffer.buffer, tex.image.image,
+  // 			     VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
+  //     tex.desc.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+  //     /*set_image_layout(info, texObj.image, VK_IMAGE_ASPECT_COLOR_BIT,
+  // 	VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, texObj.imageLayout, VK_PIPELINE_STAGE_TRANSFER_BIT,
+  // 	VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);*/
+  //     imageMemoryBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+  //     imageMemoryBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+  //     vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+  // 			   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, NULL, 0, NULL, 1, &imageMemoryBarrier);
+  //   }
+  //   tex.image.viewInfo = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO, NULL, 0,
+  //     tex.image.image, VK_IMAGE_VIEW_TYPE_2D, VK_FORMAT_R8G8B8A8_UNORM, { VK_COMPONENT_SWIZZLE_R,
+  // 			     VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A },
+  //     { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 } };
+  //   res = vkCreateImageView(gpu->device, &tex.image.viewInfo, NULL, &tex.image.imageView);
+  //   if (res) FAIL;
+  //   //|<end init_image
+  //   //|->init_sampler(info, tex.sampler)
+  //   tex.samplerInfo = {VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO, NULL, 0, VK_FILTER_NEAREST,
+  //     VK_FILTER_NEAREST, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+  //     VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+  //     0.0, VK_FALSE, 1, VK_FALSE, VK_COMPARE_OP_NEVER, 0, 0, VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE,
+  //     VK_FALSE };
+  //   res = vkCreateSampler(gpu->device, &tex.samplerInfo, NULL, &tex.desc.sampler);
+  //   if (res) FAIL;
+  //   //|<end init_sampler
+  //   tex.desc.imageView = tex.image.imageView;
+  //   tex.desc.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+  // }
   //init_uniform_buffer(info);
   {
     float fov = glm::radians(45.0f) * swapchainExtent.height / swapchainExtent.width;
-    glm::mat4 projection = glm::perspective(fov, (float)swapchainExtent.width / swapchainExtent.height, 0.1f, 100.0f),
-      view = glm::lookAt(glm::vec3(-5, 3, -10), glm::vec3(0, 0, 0), glm::vec3(0, -1, 0)),
-      model = glm::mat4(1), clip = glm::mat4(1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 1),
-      MVP = clip * projection * view * model;
-    uniformData.bufferInfo = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, NULL, 0, sizeof(MVP),
+    glm::dmat4 VP = glm::dmat4(1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 1) * //clip
+      glm::perspectiveFov<double>(glm::radians(45.0f), 16.0, 9.0, 0.1, 100.0) * //projection
+      glm::lookAt(glm::dvec3(-15, 13, -10), glm::dvec3(0, 0, 0), glm::dvec3(0, -1, 0)); //view
+    uniformDataT.bufferInfo = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, NULL, 0, sizeof(VP),
       VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_SHARING_MODE_EXCLUSIVE, 0, NULL };
-    res = vkCreateBuffer(gpu->device, &uniformData.bufferInfo, NULL, &uniformData.buffer);
+    res = vkCreateBuffer(gpu->device, &uniformDataT.bufferInfo, NULL, &uniformDataT.buffer);
     if (res) FAIL;
-    vkGetBufferMemoryRequirements(gpu->device, uniformData.buffer, &uniformData.memReqs);
-    uniformData.memAlloc = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, NULL, uniformData.memReqs.size,
-      pickMemType(uniformData.memReqs, gpu, 0, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+    vkGetBufferMemoryRequirements(gpu->device, uniformDataT.buffer, &uniformDataT.memReqs);
+    uniformDataT.memAlloc = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, NULL, uniformDataT.memReqs.size,
+      pickMemType(uniformDataT.memReqs, gpu, 0, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
 		  VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) };
-    res = vkAllocateMemory(gpu->device, &uniformData.memAlloc, NULL, &uniformData.mem);
+    res = vkAllocateMemory(gpu->device, &uniformDataT.memAlloc, NULL, &uniformDataT.mem);
     if (res) FAIL;
-    res = vkMapMemory(gpu->device, uniformData.mem, 0, uniformData.memReqs.size, 0, &tempP);
+    res = vkMapMemory(gpu->device, uniformDataT.mem, 0, uniformDataT.memReqs.size, 0, &tempP);
     if (res) FAIL;
-    memcpy(tempP, &MVP, sizeof(MVP));
-    vkUnmapMemory(gpu->device, uniformData.mem);
-    res = vkBindBufferMemory(gpu->device, uniformData.buffer, uniformData.mem, 0);
+    memcpy(tempP, &VP, sizeof(VP));
+    vkUnmapMemory(gpu->device, uniformDataT.mem);
+    res = vkBindBufferMemory(gpu->device, uniformDataT.buffer, uniformDataT.mem, 0);
     if (res) FAIL;
-    uniformData.bufferDescriptorInfo = { uniformData.buffer, 0, sizeof(MVP) };
+    uniformDataT.bufferDescriptorInfo = { uniformDataT.buffer, 0, sizeof(VP) };
+  }
+  {
+    glm::dmat4 model = glm::mat4(1);
+    uniformDataS.bufferInfo = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, NULL, 0, sizeof(model),
+      VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_SHARING_MODE_EXCLUSIVE, 0, NULL };
+    res = vkCreateBuffer(gpu->device, &uniformDataS.bufferInfo, NULL, &uniformDataS.buffer);
+    if (res) FAIL;
+    vkGetBufferMemoryRequirements(gpu->device, uniformDataS.buffer, &uniformDataS.memReqs);
+    uniformDataS.memAlloc = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, NULL, uniformDataS.memReqs.size,
+      pickMemType(uniformDataS.memReqs, gpu, 0, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+		  VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) };
+    res = vkAllocateMemory(gpu->device, &uniformDataS.memAlloc, NULL, &uniformDataS.mem);
+    if (res) FAIL;
+    res = vkMapMemory(gpu->device, uniformDataS.mem, 0, uniformDataS.memReqs.size, 0, &tempP);
+    if (res) FAIL;
+    memcpy(tempP, &model, sizeof(model));
+    vkUnmapMemory(gpu->device, uniformDataS.mem);
+    res = vkBindBufferMemory(gpu->device, uniformDataS.buffer, uniformDataS.mem, 0);
+    if (res) FAIL;
+    uniformDataS.bufferDescriptorInfo = { uniformDataS.buffer, 0, sizeof(model) };
   }
   //init_descriptor_and_pipeline_layouts(info, true);
   {
-    VkDescriptorSetLayoutBinding layoutBindings[2] = {//per mesh?
-      {0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT, NULL},
-      {1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, NULL}//per texture?
-    };
+    VkDescriptorSetLayoutBinding layoutBinding = {0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT, NULL};
     VkDescriptorSetLayoutCreateInfo descriptorLayout = {
-      VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, NULL, 0, 2, layoutBindings };
-    res = vkCreateDescriptorSetLayout(gpu->device, &descriptorLayout, NULL, &descLayout);
+      VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, NULL, 0, 1, &layoutBinding };
+    res = vkCreateDescriptorSetLayout(gpu->device, &descriptorLayout, NULL, &descLayouts[0]);
+    if (res) FAIL;
+    res = vkCreateDescriptorSetLayout(gpu->device, &descriptorLayout, NULL, &descLayouts[1]);
     if (res) FAIL;
     VkPipelineLayoutCreateInfo pPipelineCreateInfo = {VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-      NULL, 0, 1, &descLayout, 0, NULL};
+      NULL, 0, 2, descLayouts, 0, NULL};
     res = vkCreatePipelineLayout(gpu->device, &pPipelineCreateInfo, NULL, &pipelineLayout);
     if (res) FAIL;
   }
@@ -742,17 +734,19 @@ int main(int argc, char** argv) {
       VK_SHADER_STAGE_VERTEX_BIT, VK_NULL_HANDLE, "main", NULL};
     VkShaderModuleCreateInfo moduleCreateInfo = {VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO, NULL, 0,
       0, NULL};
-    moduleCreateInfo.pCode = loadSprv("../../StupidCube/shaders/sample.vert.spv", &moduleCreateInfo.codeSize);
+    moduleCreateInfo.pCode = basicShader_vert;
+    moduleCreateInfo.codeSize = sizeof(basicShader_vert);
     if(!moduleCreateInfo.pCode) FAIL;
     res = vkCreateShaderModule(gpu->device, &moduleCreateInfo, NULL, &shaderStages[0].module);
-    free((void*)moduleCreateInfo.pCode);
+    // free((void*)moduleCreateInfo.pCode);
     if (res) FAIL;
     shaderStages[1] = { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, NULL, 0,
       VK_SHADER_STAGE_FRAGMENT_BIT, VK_NULL_HANDLE, "main", NULL };
-    moduleCreateInfo.pCode = loadSprv("../../StupidCube/shaders/sample.frag.spv", &moduleCreateInfo.codeSize);
+    moduleCreateInfo.pCode = basicShader_frag;
+    moduleCreateInfo.codeSize = sizeof(basicShader_frag);
     if(!moduleCreateInfo.pCode) FAIL;
     res = vkCreateShaderModule(gpu->device, &moduleCreateInfo, NULL, &shaderStages[1].module);
-    free((void*)moduleCreateInfo.pCode);
+    // free((void*)moduleCreateInfo.pCode);
     if (res) FAIL;
   }
   //init_framebuffers(info, depthPresent);
@@ -789,31 +783,36 @@ int main(int argc, char** argv) {
     res = vkBindBufferMemory(gpu->device, vertexBuffer.buffer, vertexBuffer.mem, 0);
     if (res) FAIL;
     viBinding = { 0, sizeof(g_vb_texture_Data[0]), VK_VERTEX_INPUT_RATE_VERTEX };
-    viAttribs[0] = { 0, 0, VK_FORMAT_R32G32B32A32_SFLOAT, 0 };
-    viAttribs[1] = { 1, 0, VK_FORMAT_R32G32_SFLOAT, 16 };
+    viAttrib = { 0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0 };
   }
   //init_descriptor_pool(info, true);
   {
-    VkDescriptorPoolSize typeCount[2] = { {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1},
-					  {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1} };
+    VkDescriptorPoolSize typeCount = { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1 };
     VkDescriptorPoolCreateInfo descriptorPoolInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-      NULL, 0, 1, 2, typeCount };
+      NULL, 0, 2, 1, &typeCount };
     res = vkCreateDescriptorPool(gpu->device, &descriptorPoolInfo, NULL, &descPool);
     if (res) FAIL;
   }
   //init_descriptor_set(info, true);
   {//NUM_DESCRIPTOR_SETS=1
     VkDescriptorSetAllocateInfo allocInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO, NULL,
-      descPool, 1, &descLayout };
-    res = vkAllocateDescriptorSets(gpu->device, &allocInfo, &descSet);
+      descPool, 2, descLayouts };
+    res = vkAllocateDescriptorSets(gpu->device, &allocInfo, descSets);
     if (res) FAIL;
-    VkWriteDescriptorSet writes[2] = {
-      {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, NULL, descSet, 0, 0, 1,
-       VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, NULL, &uniformData.bufferDescriptorInfo, NULL},
-      {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, NULL, descSet, 1, 0, 1,
-       VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &tex.desc, NULL}
-    };
-    vkUpdateDescriptorSets(gpu->device, 2, writes, 0, NULL);
+    // VkWriteDescriptorSet writes[2] = {
+    //   {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, NULL, descSets[0], 0, 0, 1,
+    //    VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, NULL, &uniformDataS.bufferDescriptorInfo, NULL},
+    //   {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, NULL, descSets[1], 0, 0, 1,
+    //    VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, NULL, &uniformDataT.bufferDescriptorInfo, NULL}
+    // };
+    // vkUpdateDescriptorSets(gpu->device, 2, writes, 0, NULL);
+    VkWriteDescriptorSet write
+      {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, NULL, descSets[0], 0, 0, 1,
+       VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, NULL, &uniformDataS.bufferDescriptorInfo, NULL};
+    vkUpdateDescriptorSets(gpu->device, 1, &write, 0, NULL);
+    write = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, NULL, descSets[1], 0, 0, 1,
+      VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, NULL, &uniformDataT.bufferDescriptorInfo, NULL};
+    vkUpdateDescriptorSets(gpu->device, 1, &write, 0, NULL);
   }
   //init_pipeline_cache(info);
   {
@@ -840,7 +839,7 @@ int main(int argc, char** argv) {
     VkPipelineDynamicStateCreateInfo dynamicState = {
       VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO, NULL, 0, 2, dynamicStateEnables };
     VkPipelineVertexInputStateCreateInfo vi = {
-      VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO, NULL, 0, 1, &viBinding, 2, viAttribs };
+      VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO, NULL, 0, 1, &viBinding, 1, &viAttrib };
     VkPipelineInputAssemblyStateCreateInfo ia = {
       VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO, NULL, 0,
       VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, VK_FALSE };
@@ -917,7 +916,7 @@ int main(int argc, char** argv) {
   vkCmdBeginRenderPass(cmd, &rp_begin, VK_SUBPASS_CONTENTS_INLINE);
 
   vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
-  vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descSet, 0, NULL);
+  vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 2, descSets, 0, NULL);
 
   const VkDeviceSize offsets[1] = {0};
   vkCmdBindVertexBuffers(cmd, 0, 1, &vertexBuffer.buffer, offsets);

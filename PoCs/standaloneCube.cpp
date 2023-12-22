@@ -2,11 +2,66 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <iostream> //for debug only
+#include <SDL2/SDL.h>
+#include <SDL2/SDL_syswm.h>
+#include <SDL2/SDL_vulkan.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <memory>
+#include <unistd.h>
 
-#define INSTANCE_EXTENSIONS_LEN 2
-#define DEVICE_EXTENSIONS_LEN 1
-extern const char* INSTANCE_EXTENSIONS[];
-extern const char* DEVICE_EXTENSIONS[];
+struct VertexUV {
+    float posX, posY, posZ, posW;  // Position data
+    float u, v;                    // texture u,v
+};
+
+#define XYZ1(_x_, _y_, _z_) (_x_), (_y_), (_z_), 1.f
+#define UV(_u_, _v_) (_u_), (_v_)
+
+static const VertexUV g_vb_texture_Data[] = {
+    // left face
+    {XYZ1(-1, -1, -1), UV(1.f, 0.f)},  // lft-top-front
+    {XYZ1(-1, 1, 1), UV(0.f, 1.f)},    // lft-btm-back
+    {XYZ1(-1, -1, 1), UV(0.f, 0.f)},   // lft-top-back
+    {XYZ1(-1, 1, 1), UV(0.f, 1.f)},    // lft-btm-back
+    {XYZ1(-1, -1, -1), UV(1.f, 0.f)},  // lft-top-front
+    {XYZ1(-1, 1, -1), UV(1.f, 1.f)},   // lft-btm-front
+    // front face
+    {XYZ1(-1, -1, -1), UV(0.f, 0.f)},  // lft-top-front
+    {XYZ1(1, -1, -1), UV(1.f, 0.f)},   // rgt-top-front
+    {XYZ1(1, 1, -1), UV(1.f, 1.f)},    // rgt-btm-front
+    {XYZ1(-1, -1, -1), UV(0.f, 0.f)},  // lft-top-front
+    {XYZ1(1, 1, -1), UV(1.f, 1.f)},    // rgt-btm-front
+    {XYZ1(-1, 1, -1), UV(0.f, 1.f)},   // lft-btm-front
+    // top face
+    {XYZ1(-1, -1, -1), UV(0.f, 1.f)},  // lft-top-front
+    {XYZ1(1, -1, 1), UV(1.f, 0.f)},    // rgt-top-back
+    {XYZ1(1, -1, -1), UV(1.f, 1.f)},   // rgt-top-front
+    {XYZ1(-1, -1, -1), UV(0.f, 1.f)},  // lft-top-front
+    {XYZ1(-1, -1, 1), UV(0.f, 0.f)},   // lft-top-back
+    {XYZ1(1, -1, 1), UV(1.f, 0.f)},    // rgt-top-back
+    // bottom face
+    {XYZ1(-1, 1, -1), UV(0.f, 0.f)},  // lft-btm-front
+    {XYZ1(1, 1, 1), UV(1.f, 1.f)},    // rgt-btm-back
+    {XYZ1(-1, 1, 1), UV(0.f, 1.f)},   // lft-btm-back
+    {XYZ1(-1, 1, -1), UV(0.f, 0.f)},  // lft-btm-front
+    {XYZ1(1, 1, -1), UV(1.f, 0.f)},   // rgt-btm-front
+    {XYZ1(1, 1, 1), UV(1.f, 1.f)},    // rgt-btm-back
+    // right face
+    {XYZ1(1, 1, -1), UV(0.f, 1.f)},   // rgt-btm-front
+    {XYZ1(1, -1, 1), UV(1.f, 0.f)},   // rgt-top-back
+    {XYZ1(1, 1, 1), UV(1.f, 1.f)},    // rgt-btm-back
+    {XYZ1(1, -1, 1), UV(1.f, 0.f)},   // rgt-top-back
+    {XYZ1(1, 1, -1), UV(0.f, 1.f)},   // rgt-btm-front
+    {XYZ1(1, -1, -1), UV(0.f, 0.f)},  // rgt-top-front
+    // back face
+    {XYZ1(-1, 1, 1), UV(1.f, 1.f)},   // lft-btm-back
+    {XYZ1(1, 1, 1), UV(0.f, 1.f)},    // rgt-btm-back
+    {XYZ1(-1, -1, 1), UV(1.f, 0.f)},  // lft-top-back
+    {XYZ1(-1, -1, 1), UV(1.f, 0.f)},  // lft-top-back
+    {XYZ1(1, 1, 1), UV(0.f, 1.f)},    // rgt-btm-back
+    {XYZ1(1, -1, 1), UV(0.f, 0.f)},   // rgt-top-back
+};
 
 typedef struct GPU {
 	VkDevice device;
@@ -22,19 +77,19 @@ typedef struct Layer {
 	VkExtensionProperties* instanceExtensions;
 } Layer;
 
-typedef struct PlatformHandle {
-#ifdef _WIN32
-	HINSTANCE connection;
-	HWND window;
-#elif defined(VK_USE_PLATFORM_MACOS_MVK)
-	void* window;
-#else //linux
-    xcb_connection_t *connection;
-    xcb_screen_t *screen;
-    xcb_window_t window;
-    xcb_intern_atom_reply_t *atom_wm_delete_window;
-#endif
-} PlatformHandle;
+// typedef struct PlatformHandle {
+// #ifdef _WIN32
+// 	HINSTANCE connection;
+// 	HWND window;
+// #elif defined(VK_USE_PLATFORM_MACOS_MVK)
+// 	void* window;
+// #else //linux
+//     xcb_connection_t *connection;
+//     xcb_screen_t *screen;
+//     xcb_window_t window;
+//     xcb_intern_atom_reply_t *atom_wm_delete_window;
+// #endif
+// } PlatformHandle;
 
 typedef struct BackedBuffer {
 	VkBuffer buffer;
@@ -66,7 +121,7 @@ typedef struct SampledImage {
 uint32_t width, height;
 VkExtent2D swapchainExtent;
 char title[80];
-PlatformHandle platHandle;
+// PlatformHandle platHandle;
 GPU* gpu;
 uint32_t graphicsQueueFamily, computeQueueFamily, presentQueueFamily;
 VkSurfaceKHR surface;
@@ -96,14 +151,6 @@ VkViewport viewport;
 VkRect2D scissors;
 FILE* logfile;
 
-//init_instance_extension_names(info);
-
-const char* INSTANCE_EXTENSIONS[2] = {
-	VK_KHR_SURFACE_EXTENSION_NAME,
-	VK_KHR_WIN32_SURFACE_EXTENSION_NAME//TODO platform dependent
-};
-const char* DEVICE_EXTENSIONS[1] = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
-
 unsigned int * loadSprv(const char* filename, size_t* codelen) {
 	struct stat fstat;
 	size_t len, offset = 0, read;
@@ -132,7 +179,6 @@ unsigned int * loadSprv(const char* filename, size_t* codelen) {
 	return ret;
 }
 
-#include "cube_data.h"
 //from util.cpp in vulkan sample. Debug only.
 bool read_ppm(char const *const filename, uint32_t &width, uint32_t &height, uint64_t rowPitch, unsigned char *dataPtr) {
     // PPM format expected from http://netpbm.sourceforge.net/doc/ppm.html
@@ -145,14 +191,11 @@ bool read_ppm(char const *const filename, uint32_t &width, uint32_t &height, uin
     //  7. max color value
     //  8. whitespace
     //  7. data
-
     // Comments are not supported, but are detected and we kick out
     // Only 8 bits per channel is supported
     // If dataPtr is nullptr, only width and height are returned
-
     // Read in values from the PPM file as characters to check for comments
     char magicStr[3] = {}, heightStr[6] = {}, widthStr[6] = {}, formatStr[6] = {};
-
 #ifndef __ANDROID__
     FILE *fPtr = fopen(filename, "rb");
 #else
@@ -162,25 +205,20 @@ bool read_ppm(char const *const filename, uint32_t &width, uint32_t &height, uin
         printf("Bad filename in read_ppm: %s\n", filename);
         return false;
     }
-
     // Read the four values from file, accounting with any and all whitepace
     fscanf(fPtr, "%s %s %s %s ", magicStr, widthStr, heightStr, formatStr);
-
     // Kick out if comments present
     if (magicStr[0] == '#' || widthStr[0] == '#' || heightStr[0] == '#' || formatStr[0] == '#') {
         printf("Unhandled comment in PPM file\n");
         return false;
     }
-
     // Only one magic value is valid
     if (strncmp(magicStr, "P6", sizeof(magicStr))) {
         printf("Unhandled PPM magic number: %s\n", magicStr);
         return false;
     }
-
     width = atoi(widthStr);
     height = atoi(heightStr);
-
     // Ensure we got something sane for width/height
     static const int saneDimension = 32768;  //??
     if (width <= 0 || width > saneDimension) {
@@ -191,12 +229,10 @@ bool read_ppm(char const *const filename, uint32_t &width, uint32_t &height, uin
         printf("Height seems wrong.  Update read_ppm if not: %u\n", height);
         return false;
     }
-
     if (dataPtr == nullptr) {
         // If no destination pointer, caller only wanted dimensions
         return true;
     }
-
     // Now read the data
     for (uint32_t y = 0; y < height; y++) {
         unsigned char *rowPtr = dataPtr;
@@ -208,7 +244,6 @@ bool read_ppm(char const *const filename, uint32_t &width, uint32_t &height, uin
         dataPtr += rowPitch;
     }
     fclose(fPtr);
-
     return true;
 }
 
@@ -224,31 +259,15 @@ uint32_t pickMemType(VkMemoryRequirements memReqs, GPU* gpu, VkFlags heapFlags, 
 	return ret;
 }
 
-//win32 dependent input callback; TODO platform dependent handling
-LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
-	//struct sample_info *info = reinterpret_cast<struct sample_info *>(GetWindowLongPtr(hWnd, GWLP_USERDATA));
-
-	switch (uMsg) {
-	case WM_CLOSE:
-		PostQuitMessage(0);
-		break;
-	case WM_PAINT:
-		//run(info);//null function in win32
-		return 0;
-	default:
-		break;
-	}
-	return (DefWindowProc(hWnd, uMsg, wParam, lParam));
-}//end win callback
-
 GPU *gpus;
 uint32_t gpuCount;
 Layer* instanceLayers;
 VkInstance inst;
+SDL_Window* sdlWindow;
 
-#define FAIL {line = __LINE__; goto fail;}
+#define FAIL { fprintf(logfile, "Fail. Res: %d. Line: %lu\n", res, (unsigned long)__LINE__); return 1;}
 
-main(int argc, char** argv) {
+int main(int argc, char** argv) {
   VkResult res;
   uint32_t count, i, j, priority, k;
   uint64_t line = 0;
@@ -295,10 +314,24 @@ main(int argc, char** argv) {
     //init_instance_extension_names(info);//static only
     //init_device_extension_names(info);//static only
     //init_instance(info, sample_title);
-    VkApplicationInfo appInfo = { VK_STRUCTURE_TYPE_APPLICATION_INFO, NULL, "Spatial Progression",
-      0, "TBD", 0, VK_API_VERSION_1_0 };
+    std::unique_ptr<const char*[]> instanceExtensions;
+    uint32_t instanceExtensionsCnt;
+    {
+      auto tempWin = SDL_CreateWindow("surface probe", 0, 0, 100, 100, SDL_WINDOW_VULKAN | SDL_WINDOW_HIDDEN);
+      if(!SDL_Vulkan_GetInstanceExtensions(tempWin, &instanceExtensionsCnt, NULL))
+	FAIL;
+      instanceExtensions = std::make_unique<const char*[]>(instanceExtensionsCnt);
+      if(!SDL_Vulkan_GetInstanceExtensions(tempWin, &instanceExtensionsCnt, instanceExtensions.get()))
+	FAIL;
+      SDL_DestroyWindow(tempWin);
+    }
+    const char* instanceLayers[] {
+      "VK_LAYER_KHRONOS_validation"
+    };
+    VkApplicationInfo appInfo = { VK_STRUCTURE_TYPE_APPLICATION_INFO, NULL, "Standalone Cube",
+      0, "Example", 0, VK_API_VERSION_1_3 };
     VkInstanceCreateInfo instanceInfo = { VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO, NULL,
-      0, &appInfo, 0, NULL, INSTANCE_EXTENSIONS_LEN, INSTANCE_EXTENSIONS };
+      0, &appInfo, 1, instanceLayers, instanceExtensionsCnt, instanceExtensions.get() };
     res = vkCreateInstance(&instanceInfo, NULL, &inst);
     if (res) FAIL;
     //init_enumerate_device(info);
@@ -327,69 +360,16 @@ main(int argc, char** argv) {
   width = 500;
   height = 500;
   //init_connection(info);
-  //TODO platform specific stuff (linux)
   //init_window(info);
   sprintf(title, "Vulkan window");
-#ifdef _WIN32
-  WNDCLASSEX win_class;
-  platHandle.connection = GetModuleHandle(NULL);
-  win_class.cbSize = sizeof(WNDCLASSEX);
-  win_class.style = CS_HREDRAW | CS_VREDRAW;
-  win_class.lpfnWndProc = WndProc;
-  win_class.cbClsExtra = 0;
-  win_class.cbWndExtra = 0;
-  win_class.hInstance = platHandle.connection;  // hInstance
-  win_class.hIcon = LoadIcon(NULL, IDI_APPLICATION);
-  win_class.hCursor = LoadCursor(NULL, IDC_ARROW);
-  win_class.hbrBackground = (HBRUSH)GetStockObject(WHITE_BRUSH);
-  //wchar_t wtitle[80];
-  win_class.lpszMenuName = NULL;
-  //mbstowcs(wtitle, title, strlen(title) + 1);
-  win_class.lpszClassName = title;
-  win_class.hIconSm = LoadIcon(NULL, IDI_WINLOGO);
-  // Register window class:
-  if (!RegisterClassEx(&win_class)) {
-    // It didn't work, so try to give a useful error:
-    printf("Unexpected error trying to start the application!\n");
+  sdlWindow = SDL_CreateWindow("WITE", 0, 0, width, height, SDL_WINDOW_VULKAN | SDL_WINDOW_SHOWN | SDL_WINDOW_BORDERLESS);
+  if(!sdlWindow || !SDL_Vulkan_CreateSurface(sdlWindow, inst, &surface))
     FAIL;
-  }
-  // Create window with the registered class:
-  RECT wr = { 0, 0, (LONG)width, (LONG)height };
-  AdjustWindowRect(&wr, WS_OVERLAPPEDWINDOW, FALSE);
-  platHandle.window = CreateWindowEx(0,
-				     title,             // class name
-				     title,             // app name
-				     WS_OVERLAPPEDWINDOW |  // window style
-				     WS_VISIBLE | WS_SYSMENU,
-				     100, 100,            // x/y coords
-				     wr.right - wr.left,  // width
-				     wr.bottom - wr.top,  // height
-				     NULL,                // handle to parent
-				     NULL,                // handle to menu
-				     platHandle.connection,     // hInstance
-				     NULL);               // no extra parameters
-  if (!platHandle.window) {
-    // It didn't work, so try to give a useful error:
-    printf("Cannot create a window in which to draw!\n");
-    fflush(stdout);
-    exit(1);
-  }
-  //SetWindowLongPtr(window, GWLP_USERDATA, (LONG_PTR)&info);
-  //init_swapchain_extension(info);
-  VkWin32SurfaceCreateInfoKHR createInfo = {};
-  createInfo.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
-  createInfo.pNext = NULL;
-  createInfo.hinstance = platHandle.connection;
-  createInfo.hwnd = platHandle.window;
-  res = vkCreateWin32SurfaceKHR(inst, &createInfo, NULL, &surface);
-  if (res) FAIL;
-#endif//win32
-  //theoretically end of windows specific window code
   priority = 0;
-  printf("GPUS:\n");
+  // printf("GPUS:\n");
   gpu = NULL;
   for (i = 0;i < gpuCount;i++) {
-    printf("GPU[%I32u]:\n", i);
+    // std::cout << "GPU[" << i << "]:\n";
     if(!gpu) graphicsQueueFamily = computeQueueFamily = -1;
     for (j = 0;j < gpus[i].queues;j++) {
       vkGetPhysicalDeviceSurfaceSupportKHR(gpus[i].physDevice, j, surface, &tempBool);
@@ -404,7 +384,7 @@ main(int argc, char** argv) {
 	k |= 1;
 	if (computeQueueFamily == -1) computeQueueFamily = j;
       }
-      printf("\t%I32u: %I32u :: priority: %I32u\n", j, gpus[i].queueProps[j].queueFlags, k);
+      // printf("\t%I32u: %I32u :: priority: %I32u\n", j, gpus[i].queueProps[j].queueFlags, k);
       if (k > priority) {
 	priority = k;
 	if (k & 4) {
@@ -432,11 +412,14 @@ main(int argc, char** argv) {
     VK_FORMAT_B8G8R8A8_UNORM : surfaceFormats[0].format;//TODO be more picky?
   //init_device(info);
   if (!gpu->device) {
+    const char* deviceExtensions[] = {
+      "VK_KHR_swapchain"
+    };
     float priorities = 0.0f;
     VkDeviceQueueCreateInfo queueInfo = {VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
       NULL, 0, graphicsQueueFamily, 1, &priorities};
     VkDeviceCreateInfo deviceInfo = {VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO, NULL, 0, 1, &queueInfo,
-      0, NULL, DEVICE_EXTENSIONS_LEN, DEVICE_EXTENSIONS, NULL};
+      0, NULL, 1, deviceExtensions, NULL};
     res = vkCreateDevice(gpu->physDevice, &deviceInfo, NULL, &gpu->device);
     if (res) FAIL;
   }
@@ -452,7 +435,7 @@ main(int argc, char** argv) {
     VkSurfaceCapabilitiesKHR surfCaps;
     res = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(gpu->physDevice, surface, &surfCaps);
     if (res) FAIL;
-    fprintf(logfile, "surface supported usage flags: %I32X\n", surfCaps.supportedUsageFlags);
+    // fprintf(logfile, "surface supported usage flags: %I32X\n", surfCaps.supportedUsageFlags);
     //res = vkGetPhysicalDeviceSurfacePresentModesKHR(gpu->physDevice, surface, &count, NULL);
     //if (res) FAIL;
     //VkPresentModeKHR* modes = (VkPresentModeKHR*)malloc(count * sizeof(VkPresentModeKHR));
@@ -483,12 +466,12 @@ main(int argc, char** argv) {
     VkSwapchainCreateInfoKHR info;
     if (graphicsQueueFamily == presentQueueFamily) {
       info = { VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR, NULL, 0, surface, count, surfaceFormat,
-	VK_COLORSPACE_SRGB_NONLINEAR_KHR, swapchainExtent, 1, 0, VK_SHARING_MODE_EXCLUSIVE, 0,
+	VK_COLORSPACE_SRGB_NONLINEAR_KHR, swapchainExtent, 1, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, VK_SHARING_MODE_EXCLUSIVE, 0,
 	NULL, preTransform, target, VK_PRESENT_MODE_FIFO_KHR, false, NULL };
     } else {
       uint32_t qfs[2] = { graphicsQueueFamily, presentQueueFamily };
       info = { VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR, NULL, 0, surface, count, surfaceFormat,
-	VK_COLORSPACE_SRGB_NONLINEAR_KHR, swapchainExtent, 1, 0, VK_SHARING_MODE_CONCURRENT, 2,
+	VK_COLORSPACE_SRGB_NONLINEAR_KHR, swapchainExtent, 1, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, VK_SHARING_MODE_CONCURRENT, 2,
 	qfs, preTransform, target, VK_PRESENT_MODE_FIFO_KHR, false, NULL };//fifo = queued vsync
     }
     res = vkCreateSwapchainKHR(gpu->device, &info, NULL, &swapchain);
@@ -524,7 +507,7 @@ main(int argc, char** argv) {
       (props.linearTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) ?
       VK_IMAGE_TILING_LINEAR :
       (props.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) ?
-      VK_IMAGE_TILING_OPTIMAL : VK_IMAGE_TILING_BEGIN_RANGE,
+      VK_IMAGE_TILING_OPTIMAL : VK_IMAGE_TILING_LINEAR,
       VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_SHARING_MODE_EXCLUSIVE, 0, NULL,
       VK_IMAGE_LAYOUT_UNDEFINED };
     res = vkCreateImage(gpu->device, &depth.imageInfo, NULL, &depth.image);
@@ -549,7 +532,7 @@ main(int argc, char** argv) {
     //|->init_image(info, texObj)
     uint32_t usages = VK_IMAGE_USAGE_SAMPLED_BIT;
     memset(&tex, 0, sizeof(SampledImage));
-    if (!read_ppm("data/lunarg.ppm", tex.image.width, tex.image.height, 0, NULL)) FAIL;
+    if (!read_ppm("../../StupidCube/data/lunarg.ppm", tex.image.width, tex.image.height, 0, NULL)) FAIL;
     VkFormatProperties props;
     vkGetPhysicalDeviceFormatProperties(gpus->physDevice, VK_FORMAT_R8G8B8A8_UNORM, &props);
     bool staged = !(props.linearTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT);
@@ -611,7 +594,7 @@ main(int argc, char** argv) {
     else
       res = vkMapMemory(gpu->device, tex.image.mem, 0, tex.image.memReqs.size, 0, &data);
     if (res) FAIL;
-    if (!read_ppm("data/lunarg.ppm", tex.image.width, tex.image.height, staged ? (tex.image.width * 4) :
+    if (!read_ppm("../../StupidCube/data/lunarg.ppm", tex.image.width, tex.image.height, staged ? (tex.image.width * 4) :
 		  layout.rowPitch, (unsigned char *)data))
       FAIL;
     vkUnmapMemory(gpu->device, staged ? tex.image.buffer.mem : tex.image.mem);
@@ -759,14 +742,14 @@ main(int argc, char** argv) {
       VK_SHADER_STAGE_VERTEX_BIT, VK_NULL_HANDLE, "main", NULL};
     VkShaderModuleCreateInfo moduleCreateInfo = {VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO, NULL, 0,
       0, NULL};
-    moduleCreateInfo.pCode = loadSprv("shaders\\sample.vert.spv", &moduleCreateInfo.codeSize);
+    moduleCreateInfo.pCode = loadSprv("../../StupidCube/shaders/sample.vert.spv", &moduleCreateInfo.codeSize);
     if(!moduleCreateInfo.pCode) FAIL;
     res = vkCreateShaderModule(gpu->device, &moduleCreateInfo, NULL, &shaderStages[0].module);
     free((void*)moduleCreateInfo.pCode);
     if (res) FAIL;
     shaderStages[1] = { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, NULL, 0,
       VK_SHADER_STAGE_FRAGMENT_BIT, VK_NULL_HANDLE, "main", NULL };
-    moduleCreateInfo.pCode = loadSprv("shaders\\sample.frag.spv", &moduleCreateInfo.codeSize);
+    moduleCreateInfo.pCode = loadSprv("../../StupidCube/shaders/sample.frag.spv", &moduleCreateInfo.codeSize);
     if(!moduleCreateInfo.pCode) FAIL;
     res = vkCreateShaderModule(gpu->device, &moduleCreateInfo, NULL, &shaderStages[1].module);
     free((void*)moduleCreateInfo.pCode);
@@ -839,18 +822,18 @@ main(int argc, char** argv) {
     res = vkCreatePipelineCache(gpu->device, &pipelineCacheInfo, NULL, &pipelineCache);
     if (res) FAIL;
   }
-  {//debug dump of shaderStages
-    for(size_t i = 0;i < sizeof(VkPipelineShaderStageCreateInfo)*2;i++)
-      fprintf(logfile, "%02X ", ((unsigned char*)&shaderStages)[i]);
-    for(size_t i = 0;i < 2;i++) {
-      fprintf(logfile, "\n\n%d:\nsType=%I32d\npNext=%I64X\nflags=%I32X\nstage=%I32X\nmoduleHandle=%I64X\npName=%s\n", i,
-	      shaderStages[i].sType, shaderStages[i].pNext, shaderStages[i].flags, shaderStages[i].stage, shaderStages[i].module, shaderStages[i].pName);
-    }
-    fflush(logfile);
-  }
+  // {//debug dump of shaderStages
+  //   for(size_t i = 0;i < sizeof(VkPipelineShaderStageCreateInfo)*2;i++)
+  //     fprintf(logfile, "%02X ", ((unsigned char*)&shaderStages)[i]);
+  //   for(size_t i = 0;i < 2;i++) {
+  //     fprintf(logfile, "\n\n%d:\nsType=%I32d\npNext=%I64X\nflags=%I32X\nstage=%I32X\nmoduleHandle=%I64X\npName=%s\n", i,
+  // 	      shaderStages[i].sType, shaderStages[i].pNext, shaderStages[i].flags, shaderStages[i].stage, shaderStages[i].module, shaderStages[i].pName);
+  //   }
+  //   fflush(logfile);
+  // }
   //init_pipeline(info, depthPresent);
   {
-    VkDynamicState dynamicStateEnables[VK_DYNAMIC_STATE_RANGE_SIZE];
+    VkDynamicState dynamicStateEnables[2];
     memset(dynamicStateEnables, 0, sizeof(dynamicStateEnables));
     dynamicStateEnables[0] = VK_DYNAMIC_STATE_VIEWPORT;
     dynamicStateEnables[1] = VK_DYNAMIC_STATE_SCISSOR;
@@ -923,23 +906,23 @@ main(int argc, char** argv) {
   rp_begin.pClearValues = clear_values;
   //init_viewports(info);
   {
-    viewport = {0.5f * width, 0.5f * height, (float)width * 0.5f, (float)height * 0.5f, 0.0f, 1.0f};
+    viewport = {0, 0, (float)width, (float)height, 0.0f, 1.0f};
     vkCmdSetViewport(cmd, 0, 1, &viewport);
   }
   //init_scissors(info);
   {
-    scissors = {{(int)width/2,0},{width/2,height}};
+    scissors = {{},{width,height}};
     vkCmdSetScissor(cmd, 0, 1, &scissors);
   }
   vkCmdBeginRenderPass(cmd, &rp_begin, VK_SUBPASS_CONTENTS_INLINE);
 
-  //vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
-  //vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descSet, 0, NULL);
+  vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+  vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descSet, 0, NULL);
 
-  //const VkDeviceSize offsets[1] = {0};
-  //vkCmdBindVertexBuffers(cmd, 0, 1, &vertexBuffer.buffer, offsets);
-  //viewport and scissors were here
-  //vkCmdDraw(cmd, 12 * 3, 1, 0, 0);
+  const VkDeviceSize offsets[1] = {0};
+  vkCmdBindVertexBuffers(cmd, 0, 1, &vertexBuffer.buffer, offsets);
+  // viewport and scissors were here
+  vkCmdDraw(cmd, 12 * 3, 1, 0, 0);
   vkCmdEndRenderPass(cmd);
   res = vkEndCommandBuffer(cmd);
   assert(res == VK_SUCCESS);
@@ -988,7 +971,7 @@ main(int argc, char** argv) {
   res = vkQueuePresentKHR(present, &presentInfo);
   assert(res == VK_SUCCESS);
 
-  //wait_seconds(1);
+  sleep(3);
   /* VULKAN_KEY_END */
   //if (info.save_images) write_ppm(info, "draw_textured_cube");
   /*
@@ -1011,10 +994,7 @@ main(int argc, char** argv) {
     destroy_device(info);
     destroy_window(info);
     destroy_instance(info);*/
-  return;
- fail:
-  fprintf(logfile, "Fail. Res: %d. Line: %I64u\n", res, line);
-
+  return 0;
 }
 
 

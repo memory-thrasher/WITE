@@ -60,6 +60,12 @@
 
 #endif
 
+#ifdef WITE_DEBUG_IMAGE_BARRIERS
+#define WITE_DEBUG_IB(B, C) { WARN("barrier: command buffer: ", std::hex, C, ", image: ", B.image, ", layout: ", (int)B.oldLayout, "->", (int)B.newLayout, std::dec) }
+#else
+#define WITE_DEBUG_IB(B, C) {}
+#endif
+
 #define CRASH_PREINIT(...) { ERROR(__VA_ARGS__); exit(EXIT_FAILURE); }
 #define CRASH(...) { ERROR(__VA_ARGS__); } //TODO set a global flag for dbs to graceul down
 #define CRASHRET(ret, ...) { CRASH(__VA_ARGS__); return ret; } //return will never happen but it satisfies the compiler

@@ -31,7 +31,7 @@ namespace WITE {
       VK_ASSERT(dev->getVkDevice().createCommandPool(&poolCI, ALLOCCB, &cmdPool), "failed to allocate command pool");
       vk::CommandBufferAllocateInfo allocInfo(cmdPool, vk::CommandBufferLevel::ePrimary, cmdFrameswapCount);
       VK_ASSERT(dev->getVkDevice().allocateCommandBuffers(&allocInfo, primaryCmds), "failed to allocate command buffer");
-      vk::FenceCreateInfo fenceCI;//default
+      vk::FenceCreateInfo fenceCI(vk::FenceCreateFlagBits::eSignaled);//default
       for(size_t i = 0;i < cmdFrameswapCount;i++)
 	VK_ASSERT(dev->getVkDevice().createFence(&fenceCI, ALLOCCB, &fences[i]), "failed to create fence");
       vk::SemaphoreTypeCreateInfo semTypeCI(vk::SemaphoreType::eTimeline);
@@ -92,7 +92,7 @@ namespace WITE {
       }
       for(auto& tl : OD.TLS)
 	if(tl.presentImageResourceMapId == RM.id)
-	  ret.push_back({ OD.LRS.len-1, substep_e::barrier4, { NONE, {}, vk::AccessFlagBits2::eTransferRead, tl.presentFrameLatency, {} } });
+	  ret.push_back({ OD.LRS.len-1, substep_e::post, { NONE, {}, vk::AccessFlagBits2::eTransferRead, tl.presentFrameLatency, {} } });
       std::sort(ret.begin(), ret.end());
       return ret;
     };
@@ -135,7 +135,7 @@ namespace WITE {
 	auto& b = ret[i];
 	if(b.layerIdx == NONE_size) //empty frame slot when default initialized
 	  for(size_t j = ret.LENGTH;j && b.layerIdx == NONE_size;j--)
-	    b = usages[(i + j - 1) % ret.LENGTH];
+	    b = ret[(i + j - 1) % ret.LENGTH];
 	constexpr_assert(b.layerIdx != NONE_size);//image never used, so can't pick which layout to init to
 	//MAYBE add flag to not init? But why would it be in the onion if not used
       }
@@ -197,8 +197,10 @@ namespace WITE {
 	  static constexpr size_t FC = MRT::IR.frameswapCount;
 	  static constexpr auto baseline = initBaselineBarriers<LAYOUT_ID>();
 	  copyableArray<vk::ImageMemoryBarrier2, FC> barriers = baseline;
-	  for(int64_t i = 0;i < FC;i++)
+	  for(int64_t i = 0;i < FC;i++) {
 	    barriers[i].image = data.frameImage(i + currentFrame);
+	    WITE_DEBUG_IB(barriers[i], cmd);
+	  }
 	  vk::DependencyInfo di { {}, 0, NULL, 0, NULL, FC, barriers.ptr() };
 	  cmd.pipelineBarrier2(&di);
 	}
@@ -516,6 +518,7 @@ namespace WITE {
 	  size_t mbIdx = 0;
 	  for(auto& cluster : getAllOfLayout<RB.layoutId>()) {
 	    barriers[mbIdx].image = cluster->get()->template get<RB.resourceId>().frameImage(RB.frameLatency + frame);
+	    WITE_DEBUG_IB(barriers[mbIdx], cmd);
 	    mbIdx++;
 	    if(mbIdx == barrierBatchSize) [[unlikely]] {
 	      cmd.pipelineBarrier2(&DI);
@@ -597,6 +600,7 @@ namespace WITE {
 	      cmd.copyBuffer(src.frameBuffer(CS.src.frameLatency + frame),
 			     dst.frameBuffer(CS.dst.frameLatency + frame),
 			     1, &copyInfo);
+	      // WARN("buffer copied ", dst.frameBuffer(CS.dst.frameLatency + frame));
 	    }
 	  }
 	}
@@ -689,9 +693,11 @@ namespace WITE {
 	  static constexpr vk::PipelineViewportStateCreateInfo vp = { {}, 1, NULL, 1, NULL };
 	  static constexpr vk::PipelineRasterizationStateCreateInfo raster = { {}, false, false, vk::PolygonMode::eFill, GSR.cullMode, GSR.windCounterClockwise ? vk::FrontFace::eCounterClockwise : vk::FrontFace::eClockwise, false, 0, 0, 0, 1.0f };
 	  static constexpr vk::PipelineMultisampleStateCreateInfo multisample = { {}, vk::SampleCountFlagBits::e1, 0, 0, NULL, 0, 0 };
-	  static constexpr vk::PipelineDepthStencilStateCreateInfo depth = { {}, true, true, vk::CompareOp::eLess, false, false };//not set: depth bounds and stencil test stuff
+	  static constexpr vk::StencilOpState stencilOp = {vk::StencilOp::eKeep, vk::StencilOp::eKeep, vk::StencilOp::eKeep,
+	    vk::CompareOp::eAlways, 0, 0, 0 };
+	  static constexpr vk::PipelineDepthStencilStateCreateInfo depth = { {}, true, true, vk::CompareOp::eLessOrEqual, false, false, stencilOp, stencilOp, false, false };//not set: depth bounds and stencil test stuff
 	  static constexpr vk::PipelineColorBlendAttachmentState blendAttachment = { false };
-	  static constexpr vk::PipelineColorBlendStateCreateInfo blend = { {}, false, {}, 1, &blendAttachment, { 1, 1, 1, 1 } };
+	  static constexpr vk::PipelineColorBlendStateCreateInfo blend = { {}, false, vk::LogicOp::eNoOp, 1, &blendAttachment, { 1, 1, 1, 1 } };
 	  static constexpr vk::DynamicState dynamics[] = { vk::DynamicState::eScissor, vk::DynamicState::eViewport };
 	  static constexpr vk::PipelineDynamicStateCreateInfo dynamic = { {}, 2, dynamics };
 	  vk::GraphicsPipelineCreateInfo gpci { {}, GSR.modules.len, stages, &verts, &assembly, /*tesselation*/ NULL, &vp, &raster, &multisample, &depth, &blend, &dynamic, shaderInstance.pipelineLayout, rp, /*subpass idx*/ 0 };//not set: derivitive pipeline stuff
@@ -715,7 +721,6 @@ namespace WITE {
 	  static constexpr resourceMap vbm = *findResourceReferencing(SL.resources, vb->id);
 	  vk::Buffer verts[2];
 	  verts[0] = source->template get<vbm.id>().frameBuffer(frame + vb->frameLatency);
-	  cmd.bindVertexBuffers(0, vibCount, verts, &zero);
 	  if constexpr(ib) {
 	    static constexpr const resourceMap* ibm = findResourceReferencing(SL.resources, ib->id);
 	    verts[1] = source->template get<ibm->id>().frameBuffer(frame + ib->frameLatency);
@@ -725,6 +730,7 @@ namespace WITE {
 	    cmd.bindVertexBuffers(0, vibCount, verts, &zero);
 	    cmd.draw(findById(OD.BRS, vbm.requirementId).size / sizeofUdm<vb->usage.asVertex.format>(), 1, 0, 0);
 	  }
+	  // WARN("Drew ", findById(OD.BRS, vbm.requirementId).size / sizeofUdm<vb->usage.asVertex.format>(), " from ", verts[0]);
 	  //TODO more flexibility with draw. Allow source layout to ask for multi-draw, indexed, indirect etc. Allow allow (dynamic) less than the whole buffer.
 	}
 	recordRenders<TL, GSR, SLIDS.sub(1)>(target, ptl, ptlps, od, perShader, rp, cmd);
@@ -783,6 +789,15 @@ namespace WITE {
 	cmd.setScissor(0, 1, &size);
 	vk::RenderPassBeginInfo rpBegin(rp, fbb.fb, size, 0);
 	cmd.beginRenderPass(&rpBegin, vk::SubpassContents::eInline);
+
+	vk::ClearAttachment clearAtt[2] {
+	  { vk::ImageAspectFlagBits::eColor, 0, {{ 1.0f, 0.5f, 0.0f, 1.0f }} },
+	  { vk::ImageAspectFlagBits::eDepth, 1, {{ 1.0f, 0 }} }
+	};
+	vk::ClearRect clearRect { size, 0, 1 };
+	cmd.clearAttachments(2, clearAtt, 1, &clearRect);
+	// WARN("cleared");
+
 	recordRenders<TL, LR, RP.shaders>(target, ptl, od, rp, cmd);
 	cmd.endRenderPass();
 	recordRenders<TL, LR, RPIDS.sub(1)>(target, ptl, od, cmd);
@@ -850,16 +865,28 @@ namespace WITE {
     };
 
     void waitForFrame(uint64_t frame, uint64_t timeoutNS = 10000000000) {//default = 10 seconds
-      if(frame <= this->frame - cmdFrameswapCount) return;
-      ASSERT_TRAP(frame <= this->frame, "attempted to wait a future frame");
-      VK_ASSERT(dev->getVkDevice().waitForFences(1, &fences[frame % cmdFrameswapCount], false, timeoutNS), "Frame timeout");
+      if(frame < this->frame - cmdFrameswapCount) {
+#ifdef WITE_DEBUG_FENCES
+	WARN("(not) waiting on ancient frame ", frame, " current frame is ", this->frame);
+#endif
+	return;
+      }
+      size_t fenceIdx = frame % cmdFrameswapCount;
+#ifdef WITE_DEBUG_FENCES
+      WARN("waiting on fence ", fenceIdx, " for frame ", frame, " current frame is ", this->frame);
+#endif
+      ASSERT_TRAP(frame < this->frame, "attempted to wait a current or future frame: ", frame, "; current is ", this->frame);
+#ifdef WITE_DEBUG_FENCES
+      WARN("received signal on fence ", fenceIdx, " for frame ", frame, " current frame is ", this->frame);
+#endif
+      VK_ASSERT(dev->getVkDevice().waitForFences(1, &fences[fenceIdx], false, timeoutNS), "Frame timeout");
     };
 
     uint64_t render() {//returns frame number
       //TODO make some secondary cmds
       //TODO cache w/ dirty check the cmds
       scopeLock lock(&mutex);
-      if(frame >= cmdFrameswapCount)
+      if(frame > cmdFrameswapCount)
 	waitForFrame(frame - cmdFrameswapCount);
       vk::CommandBuffer cmd = primaryCmds[frame % cmdFrameswapCount];
       vk::CommandBufferBeginInfo begin { vk::CommandBufferUsageFlagBits::eOneTimeSubmit };//TODO remove thsi flag when caching is implemented
@@ -867,7 +894,12 @@ namespace WITE {
       doPrerender<OD.TLS>();
       renderFrom<0>(cmd);
       cmd.end();
-      vk::Fence fence = fences[frame % cmdFrameswapCount];
+      size_t fenceIdx = frame % cmdFrameswapCount;
+      vk::Fence fence = fences[fenceIdx];
+#ifdef WITE_DEBUG_FENCES
+      WARN("queuing signal of fence ", fenceIdx, " to protect cmd ", cmd);
+#endif
+      VK_ASSERT(dev->getVkDevice().resetFences(1, &fence), "Failed to reset fence (?how?)");
       vk::SemaphoreSubmitInfo waitSem(semaphore, frame-1, vk::PipelineStageFlagBits2::eAllCommands),
 	signalSem(semaphore, frame, vk::PipelineStageFlagBits2::eAllCommands);
       vk::CommandBufferSubmitInfo cmdSubmitInfo(cmd);

@@ -70,9 +70,12 @@ namespace WITE {
     acquisitionSems = std::make_unique<vk::Semaphore[]>(swapSemCount);
     blitSems = std::make_unique<vk::Semaphore[]>(swapSemCount);
     vk::SemaphoreCreateInfo semCI;//intentionally default constructed.
+    cmdFences = std::make_unique<vk::Fence[]>(swapSemCount);
+    vk::FenceCreateInfo fenceCI(vk::FenceCreateFlagBits::eSignaled);//default
     for(size_t i = 0;i < swapSemCount;i++) {
       VK_ASSERT(dev.createSemaphore(&semCI, ALLOCCB, &acquisitionSems[i]), "failed to create semaphore");
       VK_ASSERT(dev.createSemaphore(&semCI, ALLOCCB, &blitSems[i]), "failed to create semaphore");
+      VK_ASSERT(dev.createFence(&fenceCI, ALLOCCB, &cmdFences[i]), "failed to create fence");
     }
     const vk::CommandPoolCreateInfo poolCI(vk::CommandPoolCreateFlagBits::eResetCommandBuffer, g.getQueueFam());
     VK_ASSERT(dev.createCommandPool(&poolCI, ALLOCCB, &cmdPool), "failed to allocate command pool");
@@ -120,9 +123,22 @@ namespace WITE {
     };
     vk::DependencyInfo di { {}, 0, NULL, 0, NULL, 1, &barrier1 };
     vk::CommandBuffer cmd = cmds[activeSwapSem];
+#ifdef WITE_DEBUG_FENCES
+    WARN("window using cmd ", cmd, " and window fence ", activeSwapSem);
+#endif
+    VK_ASSERT(gpu::get(gpuIdx).getVkDevice().waitForFences(1, &cmdFences[activeSwapSem], false, 10000000000 /* 10 seconds */),
+	      "Present fence timeout");
+#ifdef WITE_DEBUG_FENCES
+    WARN("window wait complete for ", activeSwapSem);
+#endif
+    VK_ASSERT(gpu::get(gpuIdx).getVkDevice().resetFences(1, &cmdFences[activeSwapSem]), "Failed to reset fence (?how?)");
     vk::CommandBufferBeginInfo begin { vk::CommandBufferUsageFlagBits::eOneTimeSubmit };
     VK_ASSERT(cmd.begin(&begin), "failed to begin a command buffer");
+    WITE_DEBUG_IB(barrier1, cmd);
     cmd.pipelineBarrier2(&di);
+    // vk::ClearColorValue color { 1.0f, 1.0f, 1.0f, 1.0f };
+    // vk::ImageSubresourceRange range { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 };
+    // cmd.clearColorImage(dst, srcLayout, &color, 1, &range);
     vk::ImageBlit2 region {
       { vk::ImageAspectFlagBits::eColor, 0, 0, 1 }, {{{0, 0, 0}, srcSize}},
       { vk::ImageAspectFlagBits::eColor, 0, 0, 1 }, {{{0, 0, 0}, { (int32_t)w, (int32_t)h, 1 }}}
@@ -132,6 +148,7 @@ namespace WITE {
     cmd.blitImage2(&blit);
     di.pImageMemoryBarriers = &barrier2;
     cmd.pipelineBarrier2(&di);
+    WITE_DEBUG_IB(barrier2, cmd);
     cmd.end();
     vk::SemaphoreSubmitInfo waits[2] = {
       renderWaitSem,
@@ -139,7 +156,7 @@ namespace WITE {
     }, signal { blitSems[activeSwapSem], 0, vk::PipelineStageFlagBits2::eNone };
     vk::CommandBufferSubmitInfo cmdSubmitInfo(cmd);
     vk::SubmitInfo2 submit({}, 2, waits, 1, &cmdSubmitInfo, 1, &signal);
-    VK_ASSERT(gpu::get(gpuIdx).getQueue().submit2(1, &submit, VK_NULL_HANDLE), "failed to submit command buffer");
+    VK_ASSERT(gpu::get(gpuIdx).getQueue().submit2(1, &submit, cmdFences[activeSwapSem]), "failed to submit command buffer");
     vk::PresentInfoKHR presentInfo { 1, &blitSems[activeSwapSem], 1, &swap, &presentImageIndex, NULL };
     VK_ASSERT(gpu::get(gpuIdx).getQueue().presentKHR(&presentInfo), "Present failed");
     //TODO handle suboptimal return. Send resize request to target_t?

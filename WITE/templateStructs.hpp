@@ -103,7 +103,7 @@ namespace WITE {
     literalList<resourceReference> targetProvidedResources;//idx of this within usage.type = binding id
     literalList<resourceReference> sourceProvidedResources;
     vk::PrimitiveTopology topology = vk::PrimitiveTopology::eTriangleList;
-    vk::CullModeFlags cullMode = vk::CullModeFlagBits::eNone;
+    vk::CullModeFlags cullMode = vk::CullModeFlagBits::eBack;
     bool windCounterClockwise = false;
   };
 

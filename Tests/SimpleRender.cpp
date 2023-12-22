@@ -29,13 +29,17 @@ L layer
 IDL id list
  */
 
-constexpr copyableArray<udmObject<UDM::RGB32float>, 6*6> cubeMesh = {
-  {{0, 0, 0}}, {{1, 1, 0}}, {{1, 0, 0}}, {{0, 0, 0}}, {{0, 1, 0}}, {{1, 1, 0}},
-  {{0, 0, 1}}, {{1, 1, 1}}, {{1, 0, 1}}, {{0, 0, 1}}, {{0, 1, 1}}, {{1, 1, 1}},
-  {{0, 0, 0}}, {{1, 0, 1}}, {{1, 0, 0}}, {{0, 0, 0}}, {{0, 0, 1}}, {{1, 0, 1}},
-  {{0, 1, 0}}, {{1, 1, 1}}, {{1, 1, 0}}, {{0, 1, 0}}, {{0, 1, 1}}, {{1, 1, 1}},
-  {{0, 0, 0}}, {{0, 1, 1}}, {{0, 1, 0}}, {{0, 0, 0}}, {{0, 0, 1}}, {{0, 1, 1}},
-  {{1, 0, 0}}, {{1, 1, 1}}, {{1, 1, 0}}, {{1, 0, 0}}, {{1, 0, 1}}, {{1, 1, 1}}
+// constexpr copyableArray<udmObject<UDM::RGB32float>, 6*6> cubeMesh = {
+//   {{0, 0, 0}}, {{1, 1, 0}}, {{1, 0, 0}}, {{0, 0, 0}}, {{0, 1, 0}}, {{1, 1, 0}},
+//   {{0, 0, 1}}, {{1, 1, 1}}, {{1, 0, 1}}, {{0, 0, 1}}, {{0, 1, 1}}, {{1, 1, 1}},
+//   {{0, 0, 0}}, {{1, 0, 1}}, {{1, 0, 0}}, {{0, 0, 0}}, {{0, 0, 1}}, {{1, 0, 1}},
+//   {{0, 1, 0}}, {{1, 1, 1}}, {{1, 1, 0}}, {{0, 1, 0}}, {{0, 1, 1}}, {{1, 1, 1}},
+//   {{0, 0, 0}}, {{0, 1, 1}}, {{0, 1, 0}}, {{0, 0, 0}}, {{0, 0, 1}}, {{0, 1, 1}},
+//   {{1, 0, 0}}, {{1, 1, 1}}, {{1, 1, 0}}, {{1, 0, 0}}, {{1, 0, 1}}, {{1, 1, 1}}
+// };
+
+constexpr copyableArray<udmObject<UDM::RGB32float>, 3> cubeMesh = {
+  {{0, 0, 0.5}}, {{100, 100, 0.5}}, {{100, 0, 0.5}}
 };
 
 constexpr bufferRequirements BR_singleTransform {
@@ -69,7 +73,7 @@ constexpr bufferRequirements BRS_cubeMesh {
   .deviceId = gpuId,
   .id = __LINE__,
   .usage = vk::BufferUsageFlagBits::eTransferSrc | vk::BufferUsageFlagBits::eTransferDst,
-  .size = sizeofUdm<UDM::RGB32float>() * 36,
+  .size = sizeof(cubeMesh),
   .frameswapCount = 1,
   .hostVisible = true
 };
@@ -79,7 +83,7 @@ constexpr imageRequirements IR_standardDepth {
   .id = __LINE__,
   .format = Format::D16unorm,//drivers are REQUIRED by vulkan to support this format for depth/stencil operations
   .usage = vk::ImageUsageFlagBits::eDepthStencilAttachment,
-  .frameswapCount = 1
+  .frameswapCount = 2//TODO put this back to 1
 };
 
 constexpr imageRequirements IR_standardColor {
@@ -87,7 +91,7 @@ constexpr imageRequirements IR_standardColor {
   .id = __LINE__,
   .format = Format::RGBA8unorm,//drivers are REQUIRED by vulkan to support this format for most operations
   .usage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferSrc,
-  .frameswapCount = 1
+  .frameswapCount = 3//TODO put this back to 1
 };
 
 constexpr copyStep C_updateCubeTransforms = {
@@ -210,7 +214,8 @@ constexpr graphicsShaderRequirements S_simple {
   .id = __LINE__,
   .modules = simpleShaderModules,
   .targetProvidedResources = RR_cameraTrans,//target is always layout set 1
-  .sourceProvidedResources = RRL_simpleSource//source is always layout set 0
+  .sourceProvidedResources = RRL_simpleSource,//source is always layout set 0
+  .cullMode = vk::CullModeFlagBits::eNone
 };
 
 constexpr renderPassRequirements RP_simple {
@@ -263,13 +268,22 @@ int main(int argc, char** argv) {
   primaryOnion = std::make_unique<onion_t>();
   auto camera = primaryOnion->createTarget<TL_standardRender.id>();
   auto cube = primaryOnion->createSource<SL_simple.id>();
-  cube->write<RMS_cubeTrans.id>(glm::dmat4(1));//model: diagonal identity
-  //TODO abstract out the below math to a camera object or helper function
-  camera->write<RMT_cameraTrans.id>(glm::dmat4(1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 1) * //clip
-				   glm::perspectiveFov<double>(glm::radians(45.0f), 16.0, 9.0, 0.1, 100.0) * //projection
-				   glm::lookAt(glm::dvec3(-5, 3, -10), glm::dvec3(0, 0, 0), glm::dvec3(0, -1, 0))); //view
   cube->write<RMS_cubeMesh.id>(cubeMesh);
-  primaryOnion->render();
-  Platform::Thread::sleep(5000);
+  for(size_t i = 0;i < 500;i++) {
+    cube->write<RMS_cubeTrans.id>(glm::dmat4(1));//model: diagonal identity
+    //TODO abstract out the below math to a camera object or helper function
+    camera->write<RMT_cameraTrans.id>(glm::dmat4(1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 1) * //clip
+				      glm::perspectiveFov<double>(glm::radians(45.0f), 16.0, 9.0, 0.1, 100.0) * //projection
+				      glm::lookAt(glm::dvec3(-15, 13, -10), glm::dvec3(0, 0, 0), glm::dvec3(0, -1, 0))); //view
+    primaryOnion->render();
+  }
+  auto camMat = glm::dmat4(1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 1) * //clip
+    glm::perspectiveFov<double>(glm::radians(45.0f), 16.0, 9.0, 0.1, 100.0) * //projection
+    glm::lookAt(glm::dvec3(-15, 13, -10), glm::dvec3(0, 0, 0), glm::dvec3(0, -1, 0));
+  auto cubeMat = glm::dmat4(1);
+  for(auto& vert : cubeMesh)
+    WARN(camMat * (cubeMat * glm::vec4(vert.data[0], vert.data[1], vert.data[2], 1)));
+  WARN("NOTE: sleep here (any validation whining after here is in cleanup)");
+  Platform::Thread::sleep(500);
 }
 

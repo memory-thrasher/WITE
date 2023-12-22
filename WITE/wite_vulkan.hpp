@@ -35,6 +35,12 @@ namespace WITE {
 		    ci.unnormalizedCoordinates);
   };
 
+  template<typename T, int C> auto& operator<<(std::ostream& s, glm::vec<C, T> v) {
+    for(size_t i = 0;i < C;i++)
+      s << v[i] << " ";
+    return s;
+  };
+
 }
 
 

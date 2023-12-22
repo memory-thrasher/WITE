@@ -7,6 +7,7 @@ if [ -n "$vk_lib_path" ]; then
 fi;
 LINKOPTS="-L${vk_lib_path} -lrt -latomic -lvulkan -lSDL2"
 BOTHOPTS="-pthread -DDEBUG -DDO_PROFILE -g"
+# -DWITE_DEBUG_IMAGE_BARRIERS
 BASEDIR="$(cd "$(dirname "$0")"; pwd -L)"
 OUTDIR="${BASEDIR}/build" #TODO not just WITE but all subdirs
 LOGFILE="${OUTDIR}/buildlog.txt"
@@ -101,7 +102,7 @@ if ! [ -f "${ERRLOG}" ] || [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
 	LIBNAME="$OUTDIR/$(basename "${DIRNAME}").so"
 	if [ -f "$LIBNAME" ] && [ $(find "$OUTDIR/$DIRNAME" -iname '*.o' -newer "$LIBNAME" | wc -l) -eq 0 ]; then continue; fi;
 	#TODO VK_LIB ?
-	test -f "$OUTDIR/${DIRNAME}.so" && cp "$OUTDIR/${DIRNAME}.so" "$OUTDIR/${DIRNAME}.so.bak.$(date '+%y%m%d%H%M')"
+	#test -f "$OUTDIR/${DIRNAME}.so" && cp "$OUTDIR/${DIRNAME}.so" "$OUTDIR/${DIRNAME}.so.bak.$(date '+%y%m%d%H%M')"
 	#echo "Linking $LIBNAME"
 	$WORKNICE $COMPILER -shared $BOTHOPTS $LINKOPTS $(find "$OUTDIR/$DIRNAME" -name '*.o') -o $LIBNAME >>"${LOGFILE}" 2>>"${ERRLOG}"
     done
@@ -115,14 +116,14 @@ if ! [ -f "${ERRLOG}" ] || [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
 		#TODO VK_LIB ?
 		TESTNAME="${OFILE%.*}"
 		#echo running test $TESTNAME
-		test -f "${TESTNAME}" && cp "${TESTNAME}" "${TESTNAME}.bak.$(date '+%y%m%d%H%M')"
+		#test -f "${TESTNAME}" && cp "${TESTNAME}" "${TESTNAME}.bak.$(date '+%y%m%d%H%M')"
 		$WORKNICE $COMPILER "$OFILE" -o "$TESTNAME" -L "${OUTDIR}" "-Wl,-rpath,$OUTDIR" $BUILTLIBS $LINKOPTS $BOTHOPTS 2>>"${ERRLOG}" >>"${LOGFILE}"
 		echo running test "${TESTNAME}" >>"${LOGFILE}"
 		#VK_LOADER_DEBUG=all
 		$WORKNICE time timeout 30s timeout -s9 35s $TESTNAME 2>>"${ERRLOG}" >>"${LOGFILE}"
 		code=$?
 		if [ $code -ne 0 ]; then echo "Exit code: " $code >>"${ERRLOG}"; fi;
-		test -f "${TESTNAME}.bak" && ! test -f "${TESTNAME}" && cp "${TESTNAME}.bak" "${TESTNAME}"
+		#test -f "${TESTNAME}.bak" && ! test -f "${TESTNAME}" && cp "${TESTNAME}.bak" "${TESTNAME}"
 	    done
     done
 fi

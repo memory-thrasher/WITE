@@ -27,6 +27,7 @@ namespace WITE {
     std::unique_ptr<vk::Image[]> swapImages;
     std::unique_ptr<vk::Semaphore[]> acquisitionSems, blitSems;//NOT timeline (acquire and present don't support timeline sems)
     std::unique_ptr<vk::CommandBuffer[]> cmds;
+    std::unique_ptr<vk::Fence[]> cmdFences;
     size_t activeSwapSem = 0, swapSemCount;
     uint32_t presentImageIndex;
 

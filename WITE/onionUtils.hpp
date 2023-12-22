@@ -85,7 +85,7 @@ namespace WITE {
     return NULL;
   };
 
-  enum class substep_e : uint8_t { barrier1, copy, barrier2, render, barrier3, compute, barrier4 };
+  enum class substep_e : uint8_t { barrier1, copy, barrier2, render, barrier3, compute, barrier4, post };
 
   struct resourceAccessTime {
     size_t layerIdx = NONE_size;

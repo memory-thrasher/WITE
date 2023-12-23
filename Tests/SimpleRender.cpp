@@ -290,7 +290,7 @@ int main(int argc, char** argv) {
   auto camera = primaryOnion->createTarget<TL_standardRender.id>();
   auto cube = primaryOnion->createSource<SL_simple.id>();
   cube->write<RMS_cubeMesh.id>(cubeMesh);
-  for(size_t i = 0;i < 500;i++) {
+  for(size_t i = 0;i < 60*60;i++) {
     cube->write<RMS_cubeTrans.id>(glm::dmat4(1));//model: diagonal identity
     //TODO abstract out the below math to a camera object or helper function
     camera->write<RMT_cameraTrans.id>(glm::dmat4(1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 1) * //clip
@@ -299,6 +299,6 @@ int main(int argc, char** argv) {
     primaryOnion->render();
   }
   WARN("NOTE: sleep here (any validation whining after here is in cleanup)");
-  Platform::Thread::sleep(500);
+  // Platform::Thread::sleep(500);
 }
 

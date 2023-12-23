@@ -144,16 +144,28 @@ namespace WITE {
 
     template<resourceMap> struct mappedResourceTraits : std::false_type {};
 
-    template<resourceMap RM> requires(containsId(OD.IRS, RM.requirementId)) struct mappedResourceTraits<RM> {
+    template<resourceMap RM> requires(!RM.external && containsId(OD.IRS, RM.requirementId)) struct mappedResourceTraits<RM> {
       static constexpr imageRequirements IR = findById(OD.IRS, RM.requirementId);
       static constexpr bool isImage = true;
       typedef image<IR> type;
     };
 
-    template<resourceMap RM> requires(containsId(OD.BRS, RM.requirementId)) struct mappedResourceTraits<RM> {
+    template<resourceMap RM> requires(!RM.external && containsId(OD.BRS, RM.requirementId)) struct mappedResourceTraits<RM> {
       static constexpr bufferRequirements BR = findById(OD.BRS, RM.requirementId);
       static constexpr bool isImage = false;
       typedef buffer<BR> type;
+    };
+
+    template<resourceMap RM> requires(RM.external && containsId(OD.IRS, RM.requirementId)) struct mappedResourceTraits<RM> {
+      static constexpr imageRequirements IR = findById(OD.IRS, RM.requirementId);
+      static constexpr bool isImage = true;
+      typedef image<IR>* type;
+    };
+
+    template<resourceMap RM> requires(RM.external && containsId(OD.BRS, RM.requirementId)) struct mappedResourceTraits<RM> {
+      static constexpr bufferRequirements BR = findById(OD.BRS, RM.requirementId);
+      static constexpr bool isImage = false;
+      typedef buffer<BR>* type;
     };
 
     template<literalList<resourceMap> RM> struct mappedResourceTuple {
@@ -512,7 +524,7 @@ namespace WITE {
 	      {}, {}, {},
 	      getAllInclusiveSubresource(findById(OD.IRS, RB.requirementId))
 	    });
-	  copyableArray<vk::ImageMemoryBarrier2, barrierBatchSize> barriers = baseline;
+	  copyableArray<vk::ImageMemoryBarrier2, barrierBatchSize> barriers = baseline;//TODO limit initial copy if fewer batchSize barriers will actually be used. Then also increase batch size
 	  DI.pImageMemoryBarriers = barriers.ptr();
 	  DI.imageMemoryBarrierCount = barrierBatchSize;
 	  size_t mbIdx = 0;
@@ -696,7 +708,7 @@ namespace WITE {
 	  static constexpr vk::StencilOpState stencilOp = {vk::StencilOp::eKeep, vk::StencilOp::eKeep, vk::StencilOp::eKeep,
 	    vk::CompareOp::eAlways, 0, 0, 0 };
 	  static constexpr vk::PipelineDepthStencilStateCreateInfo depth = { {}, true, true, vk::CompareOp::eLessOrEqual, false, false, stencilOp, stencilOp, false, false };//not set: depth bounds and stencil test stuff
-	  static constexpr vk::PipelineColorBlendAttachmentState blendAttachment = { false };
+	  static constexpr vk::PipelineColorBlendAttachmentState blendAttachment = { 0, vk::BlendFactor::eZero, vk::BlendFactor::eZero, vk::BlendOp::eAdd, vk::BlendFactor::eZero, vk::BlendFactor::eZero, vk::BlendOp::eAdd, vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB };
 	  static constexpr vk::PipelineColorBlendStateCreateInfo blend = { {}, false, vk::LogicOp::eNoOp, 1, &blendAttachment, { 1, 1, 1, 1 } };
 	  static constexpr vk::DynamicState dynamics[] = { vk::DynamicState::eScissor, vk::DynamicState::eViewport };
 	  static constexpr vk::PipelineDynamicStateCreateInfo dynamic = { {}, 2, dynamics };
@@ -796,6 +808,7 @@ namespace WITE {
 	clears[1].depthStencil.depth = 1.0f;
 	clears[1].depthStencil.stencil = 0;
 	vk::RenderPassBeginInfo rpBegin(rp, fbb.fb, size, 2, clears);
+	// WARN("Clear");
 	//TODO control clear with template struct. Probably only desited on first RP
 	// AttachmentDescription also needs to choose load or clear from same flag
 
@@ -906,6 +919,7 @@ namespace WITE {
 	signalSem(semaphore, frame, vk::PipelineStageFlagBits2::eAllCommands);
       vk::CommandBufferSubmitInfo cmdSubmitInfo(cmd);
       vk::SubmitInfo2 submit({}, frame ? 1 : 0, &waitSem, 1, &cmdSubmitInfo, 1, &signalSem);
+      // WARN("submit");
       VK_ASSERT(dev->getQueue().submit2(1, &submit, fence), "failed to submit command buffer");
       doPostrender<OD.TLS>(signalSem);//signaled by the render, waited by the presentation
       return frame++;

@@ -77,7 +77,8 @@ namespace WITE {
 
     template<vk::SamplerCreateInfo CI> vk::Sampler getSampler() {
       scopeLock lock(&samplersMutex);
-      vk::Sampler& ret = samplers[hash(vkToTuple(CI))];
+      static constexpr hash_t CIHASH = hash(vkToTuple(CI));
+      vk::Sampler& ret = samplers[CIHASH];
       if(!ret) {
 	VK_ASSERT(getVkDevice().createSampler(&CI, ALLOCCB, &ret), "failed to create sampler");
       }

@@ -133,6 +133,7 @@ namespace WITE {
 	type = t;
       }
     }
+    //TODO care about (free) space. Multiply score by free memory in mb? Track free memory in an atomic per type
     new(out)vram(mr, type, this);
     freeMemoryByHeap[pdmp.memoryProperties.memoryTypes[type].heapIndex] -= mr.size;
   };
@@ -169,6 +170,7 @@ namespace WITE {
     std::vector<const char*> layers(appRequestedLayers);
 #ifdef DEBUG
     layers.push_back("VK_LAYER_KHRONOS_validation");
+    //layers.push_back("VK_LAYER_LUNARG_api_dump");//better to enable selectively with VK_INSTANCE_LAYERS env var
 #endif
     window::addInstanceExtensionsTo(extensions);
     // extensions.push_back("VK_KHR_get_physical_device_properties2");

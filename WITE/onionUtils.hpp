@@ -53,6 +53,14 @@ namespace WITE {
     return ret;
   };
 
+  consteval bufferRequirements stagingRequirementsFor(bufferRequirements r, uint8_t fc = 1) {
+    bufferRequirements ret = r;
+    ret.hostVisible = true;
+    ret.usage = vk::BufferUsageFlagBits::eTransferSrc | vk::BufferUsageFlagBits::eTransferDst;
+    ret.frameswapCount = fc;
+    return ret;
+  };
+
   template<class T> consteval size_t findId(literalList<T> l, uint64_t id) {
     for(size_t i = 0;i < l.len;i++)
       if(l[i].id == id)

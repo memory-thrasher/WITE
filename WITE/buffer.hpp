@@ -57,6 +57,36 @@ namespace WITE {
       lastUpdated = frame;
     };
 
+    template<class T> void slowOutOfBandSet(const T& t, uint64_t frameMask = 0xFFFFFFFFFFFFFFFF) {
+      constexpr struct { size_t t = sizeof(T), r = R.size; } debugdata;
+      static_assert_show(sizeof(T) == R.size, debugdata);
+      auto dev = gpu::get(R.deviceId).getVkDevice();
+      void* data;
+      //for static buffers. Do not use while a render is in progress unless you know that the buffers in use are not in the mask
+      if constexpr(R.hostVisible) {//TODO || runtime memory type happens to be host visible anyway
+	for(uint8_t i = 0;i < R.frameswapCount;i++) {
+	  if((1 << i) & frameMask) {
+	    VK_ASSERT(dev.mapMemory(rams[i].handle, 0, R.size, {}, &data), "Failed to map memory.");
+	    memcpy(data, t);
+	    dev.unmapMemory(rams[i].handle);
+	  }
+	}
+      } else {
+	static constexpr bufferRequirements tempBufferRequirements = stagingRequirementsFor(R);
+	static_assert(tempBufferRequirements.size == R.size);
+	static constexpr vk::BufferCopy copy(0, 0, R.size);
+	buffer<tempBufferRequirements> temp;
+	vk::Buffer src = temp.frameBuffer(0);
+	temp.set(0, t);
+	auto cmd = gpu::get(R.deviceId).getTempCmd();
+	for(uint8_t i = 0;i < R.frameswapCount;i++)
+	  if((1 << i) & frameMask)
+	    cmd->copyBuffer(src, frameBuffer(i), 1, &copy);
+	cmd.submit();
+	cmd.waitFor();
+      }
+    };
+
     // template<class T> void setAll(const T& t) {
     //   static_assert(R.hostVisible);
     //   constexpr struct { size_t t = sizeof(T), r = R.size; } debugdata;

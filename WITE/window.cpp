@@ -156,9 +156,12 @@ namespace WITE {
     }, signal { blitSems[activeSwapSem], 0, vk::PipelineStageFlagBits2::eNone };
     vk::CommandBufferSubmitInfo cmdSubmitInfo(cmd);
     vk::SubmitInfo2 submit({}, 2, waits, 1, &cmdSubmitInfo, 1, &signal);
-    VK_ASSERT(gpu::get(gpuIdx).getQueue().submit2(1, &submit, cmdFences[activeSwapSem]), "failed to submit command buffer");
     vk::PresentInfoKHR presentInfo { 1, &blitSems[activeSwapSem], 1, &swap, &presentImageIndex, NULL };
-    VK_ASSERT(gpu::get(gpuIdx).getQueue().presentKHR(&presentInfo), "Present failed");
+    {
+      scopeLock lock(gpu::get(gpuIdx).getQueueMutex());
+      VK_ASSERT(gpu::get(gpuIdx).getQueue().submit2(1, &submit, cmdFences[activeSwapSem]), "failed to submit command buffer");
+      VK_ASSERT(gpu::get(gpuIdx).getQueue().presentKHR(&presentInfo), "Present failed");
+    }
     //TODO handle suboptimal return. Send resize request to target_t?
   };
 

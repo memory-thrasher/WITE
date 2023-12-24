@@ -31,7 +31,7 @@ namespace WITE {
       VK_ASSERT(dev->getVkDevice().createCommandPool(&poolCI, ALLOCCB, &cmdPool), "failed to allocate command pool");
       vk::CommandBufferAllocateInfo allocInfo(cmdPool, vk::CommandBufferLevel::ePrimary, cmdFrameswapCount);
       VK_ASSERT(dev->getVkDevice().allocateCommandBuffers(&allocInfo, primaryCmds), "failed to allocate command buffer");
-      vk::FenceCreateInfo fenceCI(vk::FenceCreateFlagBits::eSignaled);//default
+      static constexpr vk::FenceCreateInfo fenceCI(vk::FenceCreateFlagBits::eSignaled);
       for(size_t i = 0;i < cmdFrameswapCount;i++)
 	VK_ASSERT(dev->getVkDevice().createFence(&fenceCI, ALLOCCB, &fences[i]), "failed to create fence");
       vk::SemaphoreTypeCreateInfo semTypeCI(vk::SemaphoreType::eTimeline);
@@ -168,23 +168,37 @@ namespace WITE {
       typedef buffer<BR>* type;
     };
 
-    template<literalList<resourceMap> RM> struct mappedResourceTuple {
-      typedef mappedResourceTraits<RM[0]> MRT;
+    template<literalList<resourceMap> RMS> struct mappedResourceTuple {
+      static constexpr resourceMap RM = RMS[0];
+      typedef mappedResourceTraits<RM> MRT;
       MRT::type data;
-      mappedResourceTuple<RM.sub(1)> rest;
+      mappedResourceTuple<RMS.sub(1)> rest;
 
       template<size_t IDX> inline auto& at() {
 	if constexpr(IDX == 0) {
-	  return data;
+	  if constexpr(RM.external) {
+	    return *data;
+	  } else {
+	    return data;
+	  }
 	} else {
 	  return rest.template at<IDX-1>();
+	}
+      };
+
+      template<size_t IDX> inline void set(auto* t) {
+	if constexpr(IDX == 0) {
+	  static_assert(RM.external);
+	  data = t;
+	} else {
+	  rest.template set<IDX-1>(t);
 	}
       };
 
       template<uint64_t LAYOUT_ID> inline static consteval auto initBaselineBarriers() {
 	//consteval lambdas are finicky, need to be wrapped in a consteval function
 	if constexpr(MRT::isImage) {
-	  constexpr auto finalUsagePerFrame = findFinalUsagePerFrame<RM[0], MRT::IR, LAYOUT_ID>();
+	  constexpr auto finalUsagePerFrame = findFinalUsagePerFrame<RM, MRT::IR, LAYOUT_ID>();
 	  return copyableArray<vk::ImageMemoryBarrier2, MRT::IR.frameswapCount>([&](size_t i) consteval {
 	    return vk::ImageMemoryBarrier2 {
 	      vk::PipelineStageFlagBits2::eNone,
@@ -205,7 +219,7 @@ namespace WITE {
       template<uint64_t LAYOUT_ID> inline void init(uint64_t currentFrame, vk::CommandBuffer cmd) {
 	if constexpr(MRT::isImage) {
 	  //only images need a layout initialization, each into the layouts they will be assumed to be when first used.
-	  static_assert_show((sizeofCollection(findUsages(RM[0], LAYOUT_ID)) > 0), RM[0].id);
+	  static_assert_show((sizeofCollection(findUsages(RM, LAYOUT_ID)) > 0), RM.id);
 	  static constexpr size_t FC = MRT::IR.frameswapCount;
 	  static constexpr auto baseline = initBaselineBarriers<LAYOUT_ID>();
 	  copyableArray<vk::ImageMemoryBarrier2, FC> barriers = baseline;
@@ -216,7 +230,7 @@ namespace WITE {
 	  vk::DependencyInfo di { {}, 0, NULL, 0, NULL, FC, barriers.ptr() };
 	  cmd.pipelineBarrier2(&di);
 	}
-	if constexpr(RM.len > 1)
+	if constexpr(RMS.len > 1)
 	  rest.template init<LAYOUT_ID>(currentFrame, cmd);
       };
 
@@ -324,6 +338,11 @@ namespace WITE {
 	get<resourceMapId>().set(o->frame + findById(TL.resources, resourceMapId).hostAccessOffset, t);
       };
 
+      template<uint64_t resourceMapId> void set(auto* t) {
+	scopeLock lock(&o->mutex);
+	resources.template set<findId(TL.resources, resourceMapId)>(t);
+      };
+
       void reinit(uint64_t frame, vk::CommandBuffer cmd) {
 	resources.template init<TARGET_ID>(frame, cmd);
       };
@@ -367,17 +386,10 @@ namespace WITE {
       std::unique_ptr<target_t<targetId>>* ret = allTargets.template ofLayout<targetId>().allocate();
       if(!*ret) [[unlikely]]
 	ret->reset(new target_t<targetId>(this));
-      vk::CommandBuffer cmd;
-      vk::CommandBufferAllocateInfo allocInfo(cmdPool, vk::CommandBufferLevel::ePrimary, 1);
-      VK_ASSERT(dev->getVkDevice().allocateCommandBuffers(&allocInfo, &cmd), "failed to allocate command buffer");
-      vk::CommandBufferBeginInfo begin { vk::CommandBufferUsageFlagBits::eOneTimeSubmit };
-      VK_ASSERT(cmd.begin(&begin), "failed to begin a command buffer");
-      ret->get()->reinit(frame, cmd);
-      cmd.end();
-      vk::CommandBufferSubmitInfo cmdSubmitInfo(cmd);
-      vk::SubmitInfo2 submit({}, 0, NULL, 1, &cmdSubmitInfo, 0, NULL);
-      VK_ASSERT(dev->getQueue().submit2(1, &submit, VK_NULL_HANDLE), "failed to submit command buffer");
-      //FIXME leaked cmd here, cannot free here because it hasn't finished yet. Maybe save for later and free with the target?
+      auto cmd = dev->getTempCmd();
+      ret->get()->reinit(frame, cmd.cmd);
+      cmd.submit();
+      cmd.waitFor();
       return ret->get();
     };
 
@@ -419,6 +431,11 @@ namespace WITE {
 	get<resourceMapId>().set(o->frame + findById(SOURCE_PARAMS.resources, resourceMapId).hostAccessOffset, t);
       };
 
+      template<uint64_t resourceMapId> void set(auto* t) {
+	scopeLock lock(&o->mutex);
+	resources.template set<findId(SOURCE_PARAMS.resources, resourceMapId)>(t);
+      };
+
       void reinit(uint64_t frame, vk::CommandBuffer cmd) {
 	resources.template init<SOURCE_ID>(frame, cmd);
       };
@@ -445,17 +462,10 @@ namespace WITE {
       std::unique_ptr<source_t<sourceId>>* ret = allSources.template ofLayout<sourceId>().allocate();
       if(!*ret) [[unlikely]]
 	ret->reset(new source_t<sourceId>(this));
-      vk::CommandBuffer cmd;
-      vk::CommandBufferAllocateInfo allocInfo(cmdPool, vk::CommandBufferLevel::ePrimary, 1);
-      VK_ASSERT(dev->getVkDevice().allocateCommandBuffers(&allocInfo, &cmd), "failed to allocate command buffer");
-      vk::CommandBufferBeginInfo begin { vk::CommandBufferUsageFlagBits::eOneTimeSubmit };
-      VK_ASSERT(cmd.begin(&begin), "failed to begin a command buffer");
-      ret->get()->reinit(frame, cmd);
-      cmd.end();
-      vk::CommandBufferSubmitInfo cmdSubmitInfo(cmd);
-      vk::SubmitInfo2 submit({}, 0, NULL, 1, &cmdSubmitInfo, 0, NULL);
-      VK_ASSERT(dev->getQueue().submit2(1, &submit, VK_NULL_HANDLE), "failed to submit command buffer");
-      //FIXME leaked cmd here, cannot free here because it hasn't finished yet. Maybe save for later and free with the target?
+      auto cmd = dev->getTempCmd();
+      ret->get()->reinit(frame, cmd.cmd);
+      cmd.submit();
+      cmd.waitFor();
       return ret->get();
     };
 
@@ -708,7 +718,7 @@ namespace WITE {
 	  static constexpr vk::StencilOpState stencilOp = {vk::StencilOp::eKeep, vk::StencilOp::eKeep, vk::StencilOp::eKeep,
 	    vk::CompareOp::eAlways, 0, 0, 0 };
 	  static constexpr vk::PipelineDepthStencilStateCreateInfo depth = { {}, true, true, vk::CompareOp::eLessOrEqual, false, false, stencilOp, stencilOp, false, false };//not set: depth bounds and stencil test stuff
-	  static constexpr vk::PipelineColorBlendAttachmentState blendAttachment = { 0, vk::BlendFactor::eZero, vk::BlendFactor::eZero, vk::BlendOp::eAdd, vk::BlendFactor::eZero, vk::BlendFactor::eZero, vk::BlendOp::eAdd, vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB };
+	  static constexpr vk::PipelineColorBlendAttachmentState blendAttachment = { 0, vk::BlendFactor::eZero, vk::BlendFactor::eZero, vk::BlendOp::eAdd, vk::BlendFactor::eZero, vk::BlendFactor::eZero, vk::BlendOp::eAdd, vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA };
 	  static constexpr vk::PipelineColorBlendStateCreateInfo blend = { {}, false, vk::LogicOp::eNoOp, 1, &blendAttachment, { 1, 1, 1, 1 } };
 	  static constexpr vk::DynamicState dynamics[] = { vk::DynamicState::eScissor, vk::DynamicState::eViewport };
 	  static constexpr vk::PipelineDynamicStateCreateInfo dynamic = { {}, 2, dynamics };
@@ -920,7 +930,10 @@ namespace WITE {
       vk::CommandBufferSubmitInfo cmdSubmitInfo(cmd);
       vk::SubmitInfo2 submit({}, frame ? 1 : 0, &waitSem, 1, &cmdSubmitInfo, 1, &signalSem);
       // WARN("submit");
-      VK_ASSERT(dev->getQueue().submit2(1, &submit, fence), "failed to submit command buffer");
+      {
+	scopeLock lock(dev->getQueueMutex());
+	VK_ASSERT(dev->getQueue().submit2(1, &submit, fence), "failed to submit command buffer");
+      }
       doPostrender<OD.TLS>(signalSem);//signaled by the render, waited by the presentation
       return frame++;
     };

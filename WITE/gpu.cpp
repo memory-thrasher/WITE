@@ -29,9 +29,13 @@ namespace WITE {
   char gpu::appName[1024];
   bool gpu::running;
 
-  gpu::gpu() {};//init dummy
+  gpu::gpu() : tempCmds(NULL) {};//init dummy
 
-  gpu::gpu(size_t idx, vk::PhysicalDevice pv) : idx(idx), pv(pv) {
+  gpu::gpu(size_t idx, vk::PhysicalDevice pv) :
+    idx(idx),
+    pv(pv),
+    tempCmds(decltype(tempCmds)::Initer_F::make<size_t>(idx, &cmdPool::lowPrioForDevice))
+  {
     pv.getProperties2(&pvp);
     uint32_t cnt = 0;
     pv.getQueueFamilyProperties2(&cnt, NULL);
@@ -53,8 +57,9 @@ namespace WITE {
 	break;
       }
     }
-    float priorities = 0.5;
-    vk::DeviceQueueCreateInfo dqci { {}, queueIdx, 1, &priorities };
+    float priorities[2] = { 0, 1 };
+    uint8_t qCount = min(qfp[queueIdx].p.queueFamilyProperties.queueCount, 2);
+    vk::DeviceQueueCreateInfo dqci { {}, queueIdx, qCount, priorities };
 
     vk::PhysicalDeviceFeatures pdf;
     pdf.geometryShader = true;
@@ -98,7 +103,9 @@ namespace WITE {
     dci.queueCreateInfoCount = 1;
     dci.pQueueCreateInfos = &dqci;
     VK_ASSERT(pv.createDevice(&dci, ALLOCCB, &dev), "Failed to create device");
-    queue = dev.getQueue(queueIdx, 0);
+    queue = dev.getQueue(queueIdx, qCount-1);
+    lowPrioQueue = dev.getQueue(queueIdx, 0);
+    ASSERT_TRAP(lowPrioQueue, "Device created but no lp queue seems to exist.");
     ASSERT_TRAP(queue, "Device created but no queue seems to exist.");
 
     for(auto format : Format::standardFormats)

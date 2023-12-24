@@ -10,6 +10,8 @@
 #include "syncLock.hpp"
 #include "hash.hpp"
 #include "DEBUG.hpp"
+#include "Thread.hpp"
+#include "cmdPool.hpp"
 
 namespace WITE {
 
@@ -42,7 +44,7 @@ namespace WITE {
     std::unique_ptr<qfp_t[]> qfp;
     vk::Device dev;
     uint32_t queueIdx = ~0;
-    vk::Queue queue;
+    vk::Queue queue, lowPrioQueue;
     vk::PipelineCache pipelineCache;
     vk::PhysicalDeviceMemoryProperties2 pdmp;
     vk::PhysicalDeviceMemoryBudgetPropertiesEXT pdmbp;
@@ -50,7 +52,8 @@ namespace WITE {
     std::array<vk::MemoryPropertyFlags, VK_MAX_MEMORY_TYPES> memoryFlagsByType;
     std::array<std::atomic_uint64_t, VK_MAX_MEMORY_HEAPS> freeMemoryByHeap;
     std::map<hash_t, vk::Sampler> samplers;
-    syncLock samplersMutex;
+    syncLock samplersMutex, queueMutex, lowPrioQueueMutex;
+    Platform::ThreadResource<cmdPool> tempCmds;
 
     gpu(size_t idx, vk::PhysicalDevice);
     gpu(gpu&&) = delete;
@@ -71,7 +74,11 @@ namespace WITE {
     inline vk::Device getVkDevice() { return dev; };//vkHandle is an opaque handle
     inline vk::Queue getQueue() { return queue; };
     inline uint32_t getQueueFam() { return queueIdx; };
+    inline syncLock* getQueueMutex() { return &queueMutex; };
+    inline vk::Queue getLowPrioQueue() { return lowPrioQueue; };
+    inline syncLock* getLowPrioQueueMutex() { return &lowPrioQueueMutex; };
     vk::PipelineCache getPipelineCache() { return pipelineCache; };
+    inline tempCmd getTempCmd() { return tempCmds.get()->allocate(); };
     inline auto getPhysical() { return pv; };
     void allocate(const vk::MemoryRequirements& mr, vk::MemoryPropertyFlags requiredFlags, vram* out);
 

@@ -88,17 +88,6 @@ constexpr bufferRequirements BRS_singleTransform {
   .hostVisible = true
 };
 
-//TODO packed function to push constants or otherwise rarely updated without a persisting staging buffer
-// ¿cares about whether the target buffer is mappable by the local driver features?
-constexpr bufferRequirements BRS_cubeMesh {
-  .deviceId = gpuId,
-  .id = __LINE__,
-  .usage = vk::BufferUsageFlagBits::eTransferSrc | vk::BufferUsageFlagBits::eTransferDst,
-  .size = sizeof(cubeMesh),
-  .frameswapCount = 1,
-  .hostVisible = true
-};
-
 constexpr imageRequirements IR_standardDepth {
   .deviceId = gpuId,
   .id = __LINE__,
@@ -123,14 +112,6 @@ constexpr copyStep C_updateCubeTransforms = {
   .dst = {
     .id = __LINE__
   },
-}, C_updateCubeMesh = {
-  .id = __LINE__,
-  .src = {
-    .id = __LINE__
-  },
-  .dst = {
-    .id = __LINE__
-  },
 }, C_updateCameraTransforms = {
   .id = __LINE__,
   .src = {
@@ -140,7 +121,7 @@ constexpr copyStep C_updateCubeTransforms = {
     .id = __LINE__
   },
 }, C_all[] = {
-  C_updateCubeTransforms, C_updateCubeMesh, C_updateCameraTransforms
+  C_updateCubeTransforms, C_updateCameraTransforms
 };
 
 constexpr resourceReference
@@ -173,11 +154,10 @@ RR_depth = {
 
 constexpr uint64_t RR_IDL_cubeTrans[] = { RR_cubeTrans.id, C_updateCubeTransforms.dst.id },
   RR_IDL_cubeTransStaging[] = { C_updateCubeTransforms.src.id },
-  RR_IDL_cubeMesh[] = { RR_cubeMesh.id, C_updateCubeMesh.dst.id },
-  RR_IDL_cubeMeshStaging[] = { C_updateCubeMesh.src.id },
+  RR_IDL_cubeMesh[] = { RR_cubeMesh.id },
   RR_IDL_cameraTrans[] = { RR_cameraTrans.id, C_updateCameraTransforms.dst.id },
   RR_IDL_cameraTransStaging[] = { C_updateCameraTransforms.src.id },
-  C_IDL_L1[] = { C_updateCameraTransforms.id, C_updateCubeMesh.id, C_updateCubeTransforms.id };
+  C_IDL_L1[] = { C_updateCameraTransforms.id, C_updateCubeTransforms.id };
 
 constexpr resourceMap RMT_cameraTrans = {//this is actually the staging. The real buffer is below
   .id = __LINE__,
@@ -205,17 +185,15 @@ constexpr resourceMap RMS_cubeTrans = {
   .requirementId = BRS_singleTransform.id,
   .resourceReferences = RR_IDL_cubeTransStaging
 }, RMS_cubeMesh = {
-  .id = __LINE__,
-  .requirementId = BRS_cubeMesh.id,
-  .resourceReferences = RR_IDL_cubeMeshStaging
-}, RMS_cube[] = {{
+    .id = __LINE__,
+    .requirementId = BR_cubeMesh.id,
+    .resourceReferences = RR_IDL_cubeMesh,
+    .external = true
+}, RMS_cube[] = {
+  {
     .id = __LINE__,
     .requirementId = BR_singleTransform.id,
     .resourceReferences = RR_IDL_cubeTrans
-  }, {
-    .id = __LINE__,
-    .requirementId = BR_cubeMesh.id,
-    .resourceReferences = RR_IDL_cubeMesh
   },
   RMS_cubeTrans,
   RMS_cubeMesh
@@ -266,8 +244,7 @@ constexpr imageRequirements allImageRequirements[] = {
 constexpr bufferRequirements allBufferRequirements[] = {
   BR_singleTransform,
   BR_cubeMesh,
-  BRS_singleTransform,
-  BRS_cubeMesh
+  BRS_singleTransform
 };
 
 constexpr onionDescriptor od = {
@@ -287,9 +264,11 @@ std::unique_ptr<onion_t> primaryOnion;
 int main(int argc, char** argv) {
   gpu::init("Simple render test");
   primaryOnion = std::make_unique<onion_t>();
+  buffer<BR_cubeMesh> cubeMeshBuf;
+  cubeMeshBuf.slowOutOfBandSet(cubeMesh);
   auto camera = primaryOnion->createTarget<TL_standardRender.id>();
   auto cube = primaryOnion->createSource<SL_simple.id>();
-  cube->write<RMS_cubeMesh.id>(cubeMesh);
+  cube->set<RMS_cubeMesh.id>(&cubeMeshBuf);
   for(size_t i = 0;i < 60*60;i++) {
     cube->write<RMS_cubeTrans.id>(glm::dmat4(1));//model: diagonal identity
     //TODO abstract out the below math to a camera object or helper function

@@ -153,8 +153,16 @@ namespace WITE {
     VK_ASSERT(dev->getVkDevice().allocateMemory(&mai, ALLOCCB, &handle), "failed to allocate vram");
   };
 
+  gpu::vram::vram(gpu::vram&& o) : handle(o.handle), mai(o.mai), dev(o.dev) {
+    o.handle = VK_NULL_HANDLE;
+  };
+
   gpu::vram::~vram() {
-    if(!dev) return;
+    if(!dev || !handle) return;
+    free();
+  };
+
+  void gpu::vram::free() {
     dev->recordDeallocate(this);
     dev->getVkDevice().freeMemory(handle, ALLOCCB);
     dev = NULL;

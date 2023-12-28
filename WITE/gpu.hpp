@@ -23,7 +23,9 @@ namespace WITE {
       gpu* dev;
       vram() = default;//dummy for cpu-ram allocation
       vram(const vk::MemoryRequirements& mr, uint8_t type, gpu* dev);
+      vram(vram&& o);
       ~vram();
+      void free();
     };
 
   private:

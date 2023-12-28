@@ -75,7 +75,7 @@ constexpr bufferRequirements BR_cubeMesh {
   .deviceId = gpuId,
   .id = __LINE__,
   .usage = vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer,
-  .size = sizeof(cubeMesh),//TODO allow dynamic size for meshes
+  .size = sizeof(cubeMesh),
   .frameswapCount = 1,
 };
 
@@ -93,7 +93,7 @@ constexpr imageRequirements IR_standardDepth {
   .id = __LINE__,
   .format = Format::D16unorm,//drivers are REQUIRED by vulkan to support this format for depth/stencil operations
   .usage = vk::ImageUsageFlagBits::eDepthStencilAttachment,
-  .frameswapCount = 2//TODO put this back to 1
+  .frameswapCount = 2
 };
 
 constexpr imageRequirements IR_standardColor {
@@ -101,7 +101,7 @@ constexpr imageRequirements IR_standardColor {
   .id = __LINE__,
   .format = Format::RGBA8unorm,//drivers are REQUIRED by vulkan to support this format for most operations
   .usage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferSrc,
-  .frameswapCount = 3//TODO put this back to 1
+  .frameswapCount = 2
 };
 
 constexpr copyStep C_updateCubeTransforms = {
@@ -166,14 +166,16 @@ constexpr resourceMap RMT_cameraTrans = {//this is actually the staging. The rea
 }, RMT_color = {
   .id = __LINE__,
   .requirementId = IR_standardColor.id,
-  .resourceReferences = RR_color.id
+  .resourceReferences = RR_color.id,
+  .resizeBehavior = { imageResizeType::eDiscard, {}, true }
 }, RMT_target[] = {
   RMT_cameraTrans,
   RMT_color,
-  {//real transform buffer, does not need it's own name because it's not used externally.
+  {//depth map, does not need it's own name because it's not used externally.
     .id = __LINE__,
     .requirementId = IR_standardDepth.id,
-    .resourceReferences = RR_depth.id
+    .resourceReferences = RR_depth.id,
+    .resizeBehavior = { imageResizeType::eDiscard, {}, true }
   }, {
     .id = __LINE__,
     .requirementId = BR_singleTransform.id,

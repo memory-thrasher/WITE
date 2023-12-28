@@ -15,7 +15,7 @@ namespace WITE {
 
   template<onionDescriptor OD> struct onion {
 
-    static constexpr size_t cmdFrameswapCount = 2;//TODO LCM of all resources
+    static constexpr size_t cmdFrameswapCount = 2;//TODO number logic
 
     uint64_t frame = 1;//can't signal a timeline semaphore with 0
     syncLock mutex;
@@ -24,6 +24,7 @@ namespace WITE {
     vk::CommandBuffer primaryCmds[cmdFrameswapCount];
     vk::Fence fences[cmdFrameswapCount];
     vk::Semaphore semaphore;
+    copyableArray<garbageCollector, cmdFrameswapCount> collectors { OD.GPUID };
 
     onion() {
       dev = &gpu::get(OD.GPUID);//note: this has a modulo op so GPUID does not need be < num of gpus on the system
@@ -168,11 +169,11 @@ namespace WITE {
       typedef buffer<BR>* type;
     };
 
-    template<literalList<resourceMap> RMS> struct mappedResourceTuple {
+    template<uint64_t LAYOUT_ID, literalList<resourceMap> RMS> struct mappedResourceTuple {
       static constexpr resourceMap RM = RMS[0];
       typedef mappedResourceTraits<RM> MRT;
       MRT::type data;
-      mappedResourceTuple<RMS.sub(1)> rest;
+      mappedResourceTuple<LAYOUT_ID, RMS.sub(1)> rest;
 
       template<size_t IDX> inline auto& at() {
 	if constexpr(IDX == 0) {
@@ -195,7 +196,42 @@ namespace WITE {
 	}
       };
 
-      template<uint64_t LAYOUT_ID> inline static consteval auto initBaselineBarriers() {
+      inline uint64_t frameLastUpdated(uint64_t currentFrame) {
+	uint64_t ret = at<0>().frameUpdated(currentFrame);
+	if constexpr(RMS.len > 1) {
+	  ret = max(ret, rest.frameLastUpdated(currentFrame));
+	}
+	return ret;
+      };
+
+      template<uint64_t FS> inline void preRender(uint64_t frame, vk::CommandBuffer cmd, garbageCollector& gc) {
+	if constexpr(MRT::isImage) {
+	  static constexpr resourceReference RR = findFinalUsagePerFrame<RM, MRT::IR, LAYOUT_ID>()[FS].usage;
+	  at<0>().template applyPendingResize<RM.resizeBehavior, RR>(frame + RR.frameLatency, cmd, gc);
+	  if constexpr(FS < MRT::IR.frameswapCount-1)
+	    preRender<FS+1>(frame, cmd, gc);
+	}
+      }
+
+      inline void preRender(uint64_t frame, vk::CommandBuffer cmd, garbageCollector& gc) {
+	if constexpr(MRT::isImage)
+	  preRender<0>(frame, cmd, gc);
+	if constexpr(RMS.len > 1)
+	  rest.preRender(frame, cmd, gc);
+      };
+
+      inline void trackWindowSize(uint64_t frame, vk::Extent3D& wSize) {
+	if constexpr(MRT::isImage && RM.resizeBehavior.image.trackWindow) {
+	  auto& img = at<0>();
+	  auto imgSize = img.getSizeExtent(frame);
+	  if(wSize != imgSize)
+	    img.resize(frame, wSize);
+	}
+	if constexpr(RMS.len > 1)
+	  rest.trackWindowSize(frame, wSize);
+      };
+
+      inline static consteval auto initBaselineBarriers() {
 	//consteval lambdas are finicky, need to be wrapped in a consteval function
 	if constexpr(MRT::isImage) {
 	  constexpr auto finalUsagePerFrame = findFinalUsagePerFrame<RM, MRT::IR, LAYOUT_ID>();
@@ -216,12 +252,12 @@ namespace WITE {
 	}
       };
 
-      template<uint64_t LAYOUT_ID> inline void init(uint64_t currentFrame, vk::CommandBuffer cmd) {
+      inline void init(uint64_t currentFrame, vk::CommandBuffer cmd) {
 	if constexpr(MRT::isImage) {
 	  //only images need a layout initialization, each into the layouts they will be assumed to be when first used.
 	  static_assert_show((sizeofCollection(findUsages(RM, LAYOUT_ID)) > 0), RM.id);
 	  static constexpr size_t FC = MRT::IR.frameswapCount;
-	  static constexpr auto baseline = initBaselineBarriers<LAYOUT_ID>();
+	  static constexpr auto baseline = initBaselineBarriers();
 	  copyableArray<vk::ImageMemoryBarrier2, FC> barriers = baseline;
 	  for(int64_t i = 0;i < FC;i++) {
 	    barriers[i].image = data.frameImage(i + currentFrame);
@@ -231,12 +267,12 @@ namespace WITE {
 	  cmd.pipelineBarrier2(&di);
 	}
 	if constexpr(RMS.len > 1)
-	  rest.template init<LAYOUT_ID>(currentFrame, cmd);
+	  rest.init(currentFrame, cmd);
       };
 
     };
 
-    template<literalList<resourceMap> RM> requires(RM.len == 0) struct mappedResourceTuple<RM> : std::false_type {};
+    template<uint64_t LAYOUT_ID, literalList<resourceMap> RM> requires(RM.len == 0) struct mappedResourceTuple<LAYOUT_ID, RM> : std::false_type {};
 
     static consteval size_t frameswapLCM(literalList<resourceMap> rms) {
       size_t ret = 1;
@@ -261,42 +297,52 @@ namespace WITE {
       vk::DescriptorBufferInfo buffers[buffersIn<RMS>()];
       uint32_t writeCount;//a shader may use a subset of target data
       uint32_t imageCount, bufferCount;//util for filling this struct
+      void reset() {
+	writeCount = imageCount = bufferCount = 0;
+      };
     };
 
-    template<literalList<resourceMap> RMS, literalList<resourceReference> RRS>
-    inline void fillWrites(descriptorUpdateData_t<RMS>& data, mappedResourceTuple<RMS>& rm, vk::DescriptorSet ds,
-			   size_t frameMod) {
+    template<literalList<resourceMap> RMS, literalList<resourceReference> RRS, uint64_t LAYOUT_ID>
+    inline void fillWrites(descriptorUpdateData_t<RMS>& data, mappedResourceTuple<LAYOUT_ID, RMS>& rm, vk::DescriptorSet ds,
+			   uint64_t frameMod, uint64_t frameLastUpdated) {
       static_assert(RRS.len <= RMS.len);//because RMS.len is the size of data.writes.  MAYBE need more if multiple RR per RM
       if constexpr(RRS.len) {
 	static constexpr resourceReference RR = RRS[0];
 	static constexpr resourceMap RM = *findResourceReferencing(RMS, RR.id);
 	static constexpr size_t RMX = findId(RMS, RM.id);
 	if constexpr(RR.usage.type == resourceUsageType::eDescriptor) {
-	  auto& w = data.writes[data.writeCount];
-	  w.dstSet = ds;
-	  w.dstBinding = data.writeCount;
-	  w.dstArrayElement = 0;
-	  w.descriptorCount = 1;
-	  w.descriptorType = RR.usage.asDescriptor.descriptorType;
-	  if constexpr(containsId(OD.IRS, RM.requirementId)) {
-	    auto& img = data.images[data.imageCount++];
-	    w.pImageInfo = &img;
-	    if constexpr(RR.usage.asDescriptor.descriptorType == vk::DescriptorType::eCombinedImageSampler ||
-			 RR.usage.asDescriptor.descriptorType == vk::DescriptorType::eSampler) {
-	      img.sampler = dev->getSampler<RR.usage.asDescriptor.sampler>();
+	  auto& res = rm.template at<RMX>();
+	  if(frameLastUpdated == NONE || frameLastUpdated < res.frameUpdated(frameMod)) {
+	    auto& w = data.writes[data.writeCount];
+	    w.dstSet = ds;
+	    w.dstBinding = data.writeCount;
+	    w.dstArrayElement = 0;
+	    w.descriptorCount = 1;
+	    w.descriptorType = RR.usage.asDescriptor.descriptorType;
+	    if constexpr(containsId(OD.IRS, RM.requirementId)) {
+	      w.pBufferInfo = NULL;
+	      auto& img = data.images[data.imageCount++];
+	      w.pImageInfo = &img;
+	      if constexpr(RR.usage.asDescriptor.descriptorType == vk::DescriptorType::eCombinedImageSampler ||
+			   RR.usage.asDescriptor.descriptorType == vk::DescriptorType::eSampler) {
+		img.sampler = dev->getSampler<RR.usage.asDescriptor.sampler>();
+	      }
+	      if(img.imageView)
+		collectors[frameMod].push(img.imageView);
+	      img.imageView = res.createView(frameMod);
+	      img.imageLayout = imageLayoutFor(RR.access);
+	    } else {
+	      w.pImageInfo = NULL;
+	      auto& buf = data.buffers[data.bufferCount++];
+	      w.pBufferInfo = &buf;
+	      buf.buffer = res.frameBuffer(frameMod);
+	      buf.offset = 0;
+	      buf.range = findById(OD.BRS, RM.requirementId).size;
 	    }
-	    img.imageView = rm.template at<RMX>().createView(frameMod);
-	    img.imageLayout = imageLayoutFor(RR.access);
-	  } else {
-	    auto& buf = data.buffers[data.bufferCount++];
-	    w.pBufferInfo = &buf;
-	    buf.buffer = rm.template at<RMX>().frameBuffer(frameMod);
-	    buf.offset = 0;
-	    buf.range = findById(OD.BRS, RM.requirementId).size;
+	    data.writeCount++;
 	  }
-	  data.writeCount++;
 	}
-	fillWrites<RMS, RRS.sub(1)>(data, rm, ds, frameMod);
+	fillWrites<RMS, RRS.sub(1)>(data, rm, ds, frameMod, frameLastUpdated);
       }
     };
 
@@ -306,17 +352,17 @@ namespace WITE {
       static constexpr targetLayout TL = OD.TLS[TARGET_IDX];
       static constexpr size_t maxFrameswap = frameswapLCM(TL.resources);
       static constexpr bool hasWindow = TL.presentImageResourceMapId != NONE;
-      static constexpr bool needsPrerender = hasWindow;
       static constexpr bool needsPostrender = hasWindow;
 
     private:
       struct perShaderBundle {
 	descriptorUpdateData_t<TL.resources> descriptorUpdateData;
 	vk::DescriptorSet descriptorSet;
+	uint64_t frameLastUpdated;
       };
 
       onion<OD>* o;
-      mappedResourceTuple<TL.resources> resources;
+      mappedResourceTuple<TARGET_ID, TL.resources> resources;
       std::map<uint64_t, frameBufferBundle[maxFrameswap]> fbByRpIdByFrame;
       std::map<uint64_t, perShaderBundle[maxFrameswap]> perShaderByIdByFrame;
       std::conditional_t<hasWindow, window, size_t> presentWindow;//size_t so the gpu idx has somewhere to go. Aren't I clever.
@@ -344,14 +390,16 @@ namespace WITE {
       };
 
       void reinit(uint64_t frame, vk::CommandBuffer cmd) {
-	resources.template init<TARGET_ID>(frame, cmd);
+	resources.init(frame, cmd);
       };
 
-      //TODO resize function (window and window-sized images (needs flag somewhere in template struct))
-
-      inline void preRender() {
-	if constexpr(hasWindow)
+      inline void preRender(vk::CommandBuffer cmd) {
+	if constexpr(hasWindow) {
+	  auto windowExt = presentWindow.getSize3D();
+	  resources.trackWindowSize(o->frame, windowExt);
 	  presentWindow.acquire();
+	}
+	resources.preRender(o->frame, cmd, o->collectors[o->frame % cmdFrameswapCount]);
       };
 
       inline void postRender(vk::SemaphoreSubmitInfo& renderWaitSem) {
@@ -360,7 +408,8 @@ namespace WITE {
 	  static constexpr resourceMap RM = findById(TL.resources, TL.presentImageResourceMapId);
 	  static constexpr vk::ImageLayout layout = imageLayoutFor(findFinalUsagePerFrame<RM, findById(OD.IRS, RM.requirementId), TARGET_ID>()[TL.presentFrameLatency].usage.access);
 	  static_assert(layout == vk::ImageLayout::eGeneral || layout == vk::ImageLayout::eTransferSrcOptimal);
-	  presentWindow.present(img.frameImage(o->frame + TL.presentFrameLatency), layout, img.getSizeOffset(), renderWaitSem);
+	  auto f = o->frame + TL.presentFrameLatency;
+	  presentWindow.present(img.frameImage(f), layout, img.getSizeOffset(f), renderWaitSem);
 	}
       };
 
@@ -408,10 +457,11 @@ namespace WITE {
       struct perShaderBundle {
 	descriptorUpdateData_t<SOURCE_PARAMS.resources> descriptorUpdateData;
 	vk::DescriptorSet descriptorSet;
+	uint64_t frameLastUpdated;
       };
 
       onion<OD>* o;
-      mappedResourceTuple<SOURCE_PARAMS.resources> resources;
+      mappedResourceTuple<SOURCE_ID, SOURCE_PARAMS.resources> resources;
       std::map<uint64_t, perShaderBundle[maxFrameswap]> perShaderByIdByFrame;
 
       source_t(const source_t&) = delete;
@@ -437,7 +487,7 @@ namespace WITE {
       };
 
       void reinit(uint64_t frame, vk::CommandBuffer cmd) {
-	resources.template init<SOURCE_ID>(frame, cmd);
+	resources.init(frame, cmd);
       };
 
     };
@@ -522,6 +572,8 @@ namespace WITE {
 	constexpr size_t barrierBatchSize = 16;
 	constexpr resourceBarrier RB = RBS[0];
 	constexpr bool isImage = containsId(OD.IRS, RB.requirementId);
+	// constexpr auto L = findLayoutById<RB.layoutId>();
+	// constexpr auto RM = findById(L.resources, RB.resourceId);
 	vk::DependencyInfo DI;
 	if constexpr(isImage) {
 	  constexpr copyableArray<vk::ImageMemoryBarrier2, barrierBatchSize> baseline(vk::ImageMemoryBarrier2 {
@@ -539,7 +591,8 @@ namespace WITE {
 	  DI.imageMemoryBarrierCount = barrierBatchSize;
 	  size_t mbIdx = 0;
 	  for(auto& cluster : getAllOfLayout<RB.layoutId>()) {
-	    barriers[mbIdx].image = cluster->get()->template get<RB.resourceId>().frameImage(RB.frameLatency + frame);
+	    auto& img = cluster->get()->template get<RB.resourceId>();
+	    barriers[mbIdx].image = img.frameImage(RB.frameLatency + frame);
 	    WITE_DEBUG_IB(barriers[mbIdx], cmd);
 	    mbIdx++;
 	    if(mbIdx == barrierBatchSize) [[unlikely]] {
@@ -604,8 +657,8 @@ namespace WITE {
 	    for(auto& cluster : getAllOfLayout<XL.id>()) {
 	      auto& src = cluster->get()->template get<SRM->id>();
 	      auto& dst = cluster->get()->template get<DRM->id>();
-	      blitInfo.srcOffsets = src.getSize();
-	      blitInfo.dstOffsets = dst.getSize();
+	      blitInfo.srcOffsets = src.getSize(CS.src.frameLatency + frame);
+	      blitInfo.dstOffsets = dst.getSize(CS.dst.frameLatency + frame);
 	      cmd.blitImage(src.frameImage(CS.src.frameLatency + frame),
 			    imageLayoutFor(vk::AccessFlagBits2::eTransferRead),
 			    dst.frameImage(CS.dst.frameLatency + frame),
@@ -734,9 +787,15 @@ namespace WITE {
 	  auto& sourcePerShaderPerFrame = source->perShaderByIdByFrame[GSR.id][frameMod];
 	  if(!sourcePerShaderPerFrame.descriptorSet) [[unlikely]] {
 	    sourcePerShaderPerFrame.descriptorSet = od.perSL[SL.id].perShader[GSR.id].descriptorPool->allocate();
-	    fillWrites<SL.resources, GSR.sourceProvidedResources>
-	      (sourcePerShaderPerFrame.descriptorUpdateData, source->resources, sourcePerShaderPerFrame.descriptorSet, frameMod);
+	    sourcePerShaderPerFrame.descriptorUpdateData.reset();
+	    fillWrites<SL.resources, GSR.sourceProvidedResources>(sourcePerShaderPerFrame.descriptorUpdateData, source->resources, sourcePerShaderPerFrame.descriptorSet, frameMod, NONE);
 	    dev->getVkDevice().updateDescriptorSets(sourcePerShaderPerFrame.descriptorUpdateData.writeCount, sourcePerShaderPerFrame.descriptorUpdateData.writes, 0, NULL);
+	    sourcePerShaderPerFrame.frameLastUpdated = frame;
+	  } else if(sourcePerShaderPerFrame.frameLastUpdated < source->resources.frameLastUpdated(frame)) [[unlikely]] {
+	    sourcePerShaderPerFrame.descriptorUpdateData.reset();
+	    fillWrites<SL.resources, GSR.sourceProvidedResources>(sourcePerShaderPerFrame.descriptorUpdateData, source->resources, sourcePerShaderPerFrame.descriptorSet, frameMod, sourcePerShaderPerFrame.frameLastUpdated);
+	    dev->getVkDevice().updateDescriptorSets(sourcePerShaderPerFrame.descriptorUpdateData.writeCount, sourcePerShaderPerFrame.descriptorUpdateData.writes, 0, NULL);
+	    sourcePerShaderPerFrame.frameLastUpdated = frame;
 	  }
 	  cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, shaderInstance.pipelineLayout, 0, 1, &sourcePerShaderPerFrame.descriptorSet, 0, NULL);
 	  static constexpr vk::DeviceSize zero = 0;//offsets below
@@ -770,10 +829,17 @@ namespace WITE {
 	  if(!ptlps.descriptorPool) [[unlikely]]
 	    ptlps.descriptorPool.reset(new descriptorPoolPool<GSR.targetProvidedResources, OD.GPUID>());
 	  perShaderPerFrame.descriptorSet = ptlps.descriptorPool->allocate();
-	  fillWrites<TL.resources, GSR.targetProvidedResources>
-	    (perShaderPerFrame.descriptorUpdateData, target.resources, perShaderPerFrame.descriptorSet, frameMod);
+	  perShaderPerFrame.descriptorUpdateData.reset();
+	  fillWrites<TL.resources, GSR.targetProvidedResources>(perShaderPerFrame.descriptorUpdateData, target.resources, perShaderPerFrame.descriptorSet, frameMod, NONE);
 	  dev->getVkDevice().updateDescriptorSets(perShaderPerFrame.descriptorUpdateData.writeCount,
 						  perShaderPerFrame.descriptorUpdateData.writes, 0, NULL);
+	  perShaderPerFrame.frameLastUpdated = frame;
+	} else if(perShaderPerFrame.frameLastUpdated < target.resources.frameLastUpdated(frame)) [[unlikely]] {
+	  perShaderPerFrame.descriptorUpdateData.reset();
+	  fillWrites<TL.resources, GSR.targetProvidedResources>(perShaderPerFrame.descriptorUpdateData, target.resources, perShaderPerFrame.descriptorSet, frameMod, perShaderPerFrame.frameLastUpdated);
+	  dev->getVkDevice().updateDescriptorSets(perShaderPerFrame.descriptorUpdateData.writeCount,
+						  perShaderPerFrame.descriptorUpdateData.writes, 0, NULL);
+	  perShaderPerFrame.frameLastUpdated = frame;
 	}
 	//TODO dirty check descriptors and update if needed (changing which resources a DS points to is very rare)
 	recordRenders<TL, GSR, LR.sourceLayouts>(target, ptl, ptlps, od, perShaderPerFrame, rp, cmd);
@@ -794,16 +860,28 @@ namespace WITE {
 	  *depthRM = findResourceReferencing(TL.resources, RP.depthStencil.id);
 	auto& color = target.template get<colorRM->id>();
 	auto& depth = target.template get<depthRM->id>();
-	vk::Rect2D size = color.getSizeRect();
 	frameBufferBundle& fbb = target.fbByRpIdByFrame[RP.id][frame % target_t<TL.id>::maxFrameswap];
-	if(!fbb.fb) [[unlikely]] {
+	bool depthOutdated = fbb.fb && fbb.lastUpdatedFrame < depth.frameUpdated(frame + RP.depthStencil.frameLatency);
+	bool colorOutdated = fbb.fb && fbb.lastUpdatedFrame < color.frameUpdated(frame + RP.color.frameLatency);
+	vk::Rect2D size = color.getSizeRect(frame + RP.color.frameLatency);
+	if(!fbb.fb || colorOutdated || depthOutdated) [[unlikely]] {
+	  if(fbb.fb)
+	    collectors[frame % cmdFrameswapCount].push(fbb.fb);
+	  ASSERT_TRAP(size == depth.getSizeRect(frame + RP.depthStencil.frameLatency), "framebuffer depth color size mismatch");
 	  fbb.fbci.renderPass = rp;
 	  fbb.fbci.width = size.extent.width;
 	  fbb.fbci.height = size.extent.height;
 	  fbb.fbci.layers = 1;
-	  fbb.attachments[0] = color.createView(frame + RP.color.frameLatency);
-	  fbb.attachments[1] = depth.createView(frame + RP.depthStencil.frameLatency);
+	  if(colorOutdated)
+	    collectors[frame % cmdFrameswapCount].push(fbb.attachments[0]);
+	  if(depthOutdated)
+	    collectors[frame % cmdFrameswapCount].push(fbb.attachments[1]);
+	  if(!fbb.fb || colorOutdated)
+	    fbb.attachments[0] = color.createView(frame + RP.color.frameLatency);
+	  if(!fbb.fb || depthOutdated)
+	    fbb.attachments[1] = depth.createView(frame + RP.depthStencil.frameLatency);
 	  VK_ASSERT(dev->getVkDevice().createFramebuffer(&fbb.fbci, ALLOCCB, &fbb.fb), "failed to create framebuffer");
+	  fbb.lastUpdatedFrame = frame;
 	}
 	//TODO multiview for cubes... how?
 	vk::Viewport viewport = { 0, 0, (float)size.extent.width, (float)size.extent.height, 0.0f, 1.0f };
@@ -865,15 +943,13 @@ namespace WITE {
       }
     };
 
-    template<literalList<targetLayout> TLS> inline void doPrerender() {
+    template<literalList<targetLayout> TLS> inline void doPrerender(vk::CommandBuffer cmd) {
       if constexpr(TLS.len) {
 	constexpr targetLayout TL = TLS[0];
-	if constexpr(target_t<TL.id>::needsPrerender) {
-	  for(auto& target : allTargets.template ofLayout<TL.id>()) {
-	    target->get()->preRender();
-	  }
+	for(auto& target : allTargets.template ofLayout<TL.id>()) {
+	  target->get()->preRender(cmd);
 	}
-	doPrerender<TLS.sub(1)>();
+	doPrerender<TLS.sub(1)>(cmd);
       }
     };
 
@@ -913,10 +989,11 @@ namespace WITE {
       scopeLock lock(&mutex);
       if(frame > cmdFrameswapCount)
 	waitForFrame(frame - cmdFrameswapCount);
+      collectors[frame % cmdFrameswapCount].collect();
       vk::CommandBuffer cmd = primaryCmds[frame % cmdFrameswapCount];
       vk::CommandBufferBeginInfo begin { vk::CommandBufferUsageFlagBits::eOneTimeSubmit };//TODO remove thsi flag when caching is implemented
       VK_ASSERT(cmd.begin(&begin), "failed to begin a command buffer");
-      doPrerender<OD.TLS>();
+      doPrerender<OD.TLS>(cmd);
       renderFrom<0>(cmd);
       cmd.end();
       size_t fenceIdx = frame % cmdFrameswapCount;

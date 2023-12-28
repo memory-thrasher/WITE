@@ -32,13 +32,14 @@ namespace WITE {
     alignas(T) std::array<T, LEN> data;
 
     constexpr copyableArray() = default;
-    template<indexable_to<T> S, size_t... I> constexpr copyableArray(const S s, std::index_sequence<I...>) : data({ s[I]... }) {};
+    template<indexable_to<T> S, size_t... I> requires(std::is_copy_constructible<T>::value) constexpr copyableArray(const S s, std::index_sequence<I...>) : data({ s[I]... }) {};
+    template<indexable_to<T> S, size_t... I> constexpr copyableArray(const S s, std::index_sequence<I...>) : data({ std::move(s[I])... }) {};
     template<indexable_to<T> S> constexpr copyableArray(const S s) : copyableArray(s, std::make_index_sequence<LEN>()) {};
     template<lambda_indexer_to<T> L> consteval copyableArray(const L l) : copyableArray(Generator<L>(l)) {};
     template<iterator_not_ptr<T> I> constexpr copyableArray(const I begin) : copyableArray(Uniterator(begin)) {};//end ignored
     template<iterable_unindexable<T> C> constexpr copyableArray(const C c) : copyableArray(c.begin(), c.end()) {};
     template<iterable_unindexable<T> C> constexpr copyableArray(const C& c) : copyableArray(c.begin(), c.end()) {};//vector
-    constexpr copyableArray(const std::initializer_list<T> il) : copyableArray(il.begin()) {};
+    constexpr copyableArray(const std::initializer_list<T> il) requires(std::is_copy_constructible<T>::value) : copyableArray(il.begin()) {};//this fails if not copy constructible, but probably shouldn't
 
     //often enough we want to create each element in-position with the same arguments
     template<class... Args> requires requires(Args... args) { T(std::forward<Args>(args)...); }

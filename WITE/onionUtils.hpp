@@ -147,6 +147,10 @@ namespace WITE {
     };
   };
 
+  template<imageRequirements R> consteval vk::ImageMemoryBarrier2 getBarrierSimple(vk::ImageLayout oldLayout, vk::ImageLayout newLayout) {
+    return { vk::PipelineStageFlagBits2::eAllCommands, vk::AccessFlagBits2::eNone, vk::PipelineStageFlagBits2::eAllCommands, vk::AccessFlagBits2::eNone, oldLayout, newLayout, 0, 0, {}, getAllInclusiveSubresource(R) };
+  };
+
   consteval vk::ImageLayout imageLayoutFor(vk::AccessFlags2 access) {
     vk::ImageLayout ret = vk::ImageLayout::eUndefined;
     if(access & (vk::AccessFlagBits2::eIndirectCommandRead | vk::AccessFlagBits2::eIndexRead | vk::AccessFlagBits2::eVertexAttributeRead | vk::AccessFlagBits2::eUniformRead | vk::AccessFlagBits2::eInputAttachmentRead | vk::AccessFlagBits2::eShaderRead | vk::AccessFlagBits2::eShaderSampledRead | vk::AccessFlagBits2::eShaderStorageRead))
@@ -231,6 +235,7 @@ namespace WITE {
     vk::Framebuffer fb;
     vk::ImageView attachments[2];
     vk::FramebufferCreateInfo fbci { {}, {}, 2, attachments };
+    uint64_t lastUpdatedFrame;
   };
 
   struct perTargetLayoutPerSourceLayoutPerShader {

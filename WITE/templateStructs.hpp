@@ -29,8 +29,19 @@ namespace WITE {
     bool hostVisible = false;
     //MAYBE isTexel
   };
-  //TODO better way to make constant buffers (so staging buffer doesn't sit around forever)
-  //make a function in buffer that allocates a new staging buffer, does thetransfer, then frees the staging buffer. Not to be called concurrently.
+
+  enum class imageResizeType { eNone, eBlit, eClear, eDiscard };
+
+  struct imageResizeBehavior {
+    imageResizeType type;
+    vk::ClearValue clearValue;
+    bool trackWindow;
+  };
+
+  union resizeBehavior_t {
+    imageResizeBehavior image;
+    //just in case we want to do that with buffers too someday
+  };
 
   enum class resourceUsageType { eNone, eDescriptor, eVertex };//none for copy and maybe others
 
@@ -67,6 +78,7 @@ namespace WITE {
     literalList<uint64_t> resourceReferences;//FK to resourceReference
     uint8_t hostAccessOffset = 0;
     bool external = false;//for static or shared things like vertex buffers, must be assigned before render is called
+    resizeBehavior_t resizeBehavior;
   };
 
   struct targetLayout {

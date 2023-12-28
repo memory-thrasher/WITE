@@ -45,8 +45,7 @@ find $BUILDAPP $BUILDTESTS -iname '*.glsl' -type f -print0 |
 	(
 	    if ! [ -f "${DSTFILE}" ] || [ "${SRCFILE}" -nt "${DSTFILE}" ] || [ "$0" -nt "${DSTFILE}" ]; then
 		#echo building
-		$WORKNICE $GLCOMPILER -V --target-env vulkan1.3 -gVS "${SRCFILE}" -o "${DSTFILE}" --vn "${VARNAME}" 1>&2 ||
-		    rm "${DSTFILE}" 2>/dev/null
+		$WORKNICE $GLCOMPILER -V --target-env vulkan1.3 -gVS "${SRCFILE}" -o "${DSTFILE}" --vn "${VARNAME}" 1>/dev/null || rm "${DSTFILE}" 2>/dev/null
 	    fi
 	) 2>"${THISERRLOG}" &
     done
@@ -64,9 +63,6 @@ find $BUILDLIBS $BUILDAPP $BUILDTESTS -name '*.cpp' -type f -print0 |
 	mkdir -p "$(dirname "$DSTFILE")";
 	(
 	    if [ -f "${DSTFILE}" ] && [ "${DSTFILE}" -nt "$0" ] && [ "${DSTFILE}" -nt "${SRCFILE}" ]; then
-		if ! test -f "${DEPENDENCIES}" || test "${SRCFILE}" -nt "${DEPENDENCIES}"; then
-		    $WORKNICE $COMPILER $VK_INCLUDE -I "${BUILDDIR}" -E -o /dev/null -w -ferror-limit=1 -H "${SRCFILE}" 2>&1 | grep '^\.' | grep -o '[^[:space:]]*$' | sort -u &>"${DEPENDENCIES}"
-		fi
 		while read depend; do
 		    if ! [ -f "${depend}" ]; then
 			echo "rebuilding ${SRCFILE} because ${depend} not found (dependencies: ${DEPENDENCIES})";
@@ -76,10 +72,9 @@ find $BUILDLIBS $BUILDAPP $BUILDTESTS -name '*.cpp' -type f -print0 |
 			break;
 		    fi
 		done <"${DEPENDENCIES}" | grep -Fq rebuild || exit 0;
-	    #else
-		#echo "building ${DSTFILE}"
+	    else
+		$WORKNICE $COMPILER $VK_INCLUDE -I "${BUILDDIR}" -E -o /dev/null -w -ferror-limit=1 -H "${SRCFILE}" 2>&1 | grep '^\.' | grep -o '[^[:space:]]*$' | sort -u >"${DEPENDENCIES}"
 	    fi
-	    rm "${DEPENDENCIES}" &>/dev/null
 	    # -I "${BUILDDIR}" is for shaders which get turned into headers
 	    if ! $WORKNICE $COMPILER $VK_INCLUDE -I "${BUILDDIR}" --std=c++20 -D_POSIX_C_SOURCE=200112L -fPIC $BOTHOPTS -Werror -Wall "${SRCFILE}" -c -o "${DSTFILE}" >>"${LOGFILE}" 2>>"${THISERRLOG}"; then
 		rm "${DSTFILE}" 2>/dev/null
@@ -91,7 +86,15 @@ find $BUILDLIBS $BUILDAPP $BUILDTESTS -name '*.cpp' -type f -print0 |
 	) &
     done
 
-while pgrep $COMPILER &>/dev/null; do sleep 0.2s; done
+let nocompiles=0;
+while [ $nocompiles -lt 4 ]; do
+    if pgrep "$COMPILER" &>/dev/null; then
+	let nocompiles=0;
+    else
+	let nocompiles++;
+    fi;
+    sleep 0.05s;
+done
 cat ${ERRLOGBITDIR}/*-${ERRLOGBIT} >"${ERRLOG}"
 
 #libs
@@ -101,8 +104,6 @@ if ! [ -f "${ERRLOG}" ] || [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
 	BUILTLIBS="${BUILTLIBS} -l:${DIRNAME}.so"
 	LIBNAME="$OUTDIR/$(basename "${DIRNAME}").so"
 	if [ -f "$LIBNAME" ] && [ $(find "$OUTDIR/$DIRNAME" -iname '*.o' -newer "$LIBNAME" | wc -l) -eq 0 ]; then continue; fi;
-	#TODO VK_LIB ?
-	#test -f "$OUTDIR/${DIRNAME}.so" && cp "$OUTDIR/${DIRNAME}.so" "$OUTDIR/${DIRNAME}.so.bak.$(date '+%y%m%d%H%M')"
 	#echo "Linking $LIBNAME"
 	$WORKNICE $COMPILER -shared $BOTHOPTS $LINKOPTS $(find "$OUTDIR/$DIRNAME" -name '*.o') -o $LIBNAME >>"${LOGFILE}" 2>>"${ERRLOG}"
     done
@@ -113,12 +114,13 @@ if ! [ -f "${ERRLOG}" ] || [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
     for DIRNAME in $BUILDTESTS; do
 	find "$OUTDIR/$DIRNAME" -iname '*.o' -print0 |
 	    while IFS= read -d '' OFILE; do
-		#TODO VK_LIB ?
 		TESTNAME="${OFILE%.*}"
 		#echo running test $TESTNAME
 		#test -f "${TESTNAME}" && cp "${TESTNAME}" "${TESTNAME}.bak.$(date '+%y%m%d%H%M')"
+		rm "$TESTNAME"
 		$WORKNICE $COMPILER "$OFILE" -o "$TESTNAME" -L "${OUTDIR}" "-Wl,-rpath,$OUTDIR" $BUILTLIBS $LINKOPTS $BOTHOPTS 2>>"${ERRLOG}" >>"${LOGFILE}"
 		echo running test "${TESTNAME}" >>"${LOGFILE}"
+		md5sum $TESTNAME >>"${LOGFILE}"
 		#VK_LOADER_DEBUG=all
 		$WORKNICE time timeout 30s timeout -s9 35s $TESTNAME 2>>"${ERRLOG}" >>"${LOGFILE}"
 		code=$?

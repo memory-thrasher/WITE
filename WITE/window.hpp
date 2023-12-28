@@ -39,6 +39,7 @@ namespace WITE {
     window(size_t gpuIdx, intBox3D box);//z axis ignored
 
     vk::Extent2D getSize();//fetch from the os. Note that this may be different from the requested size in various legit cases.
+    vk::Extent3D getSize3D();
     void acquire();
     void present(vk::Image src, vk::ImageLayout srcLayout, vk::Offset3D size, vk::SemaphoreSubmitInfo& renderWaitSem);
     void resize();//TODO

@@ -39,6 +39,14 @@ namespace WITE {
       return frame % R.frameswapCount;
     };
 
+    inline uint64_t frameUpdated(uint64_t currentFrame) {
+      return 0;//NYI for buffers. Buffers not resizable (and why would you?)
+    };
+
+    // template<resizeBehavior RB, resizeReference RR> inline void applyPendingResize(uint64_t frame, vk::CommandBuffer cmd, garbageCollector& gc) {
+    //   //NYI for buffers
+    // };
+
     vk::Buffer frameBuffer(int64_t frame) const {
       return vkBuffer[frameBufferIdx(frame)];
     };

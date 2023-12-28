@@ -29,7 +29,7 @@ namespace WITE {
     y = (uint32_t)box.miny;
     w = (uint32_t)box.width();
     h = (uint32_t)box.height();
-    swapCI.setMinImageCount(3).setImageColorSpace(vk::ColorSpaceKHR::eSrgbNonlinear).setImageArrayLayers(1)
+    swapCI.setMinImageCount(3).setImageArrayLayers(1).setImageColorSpace(vk::ColorSpaceKHR::eSrgbNonlinear)
       .setImageUsage(vk::ImageUsageFlagBits::eTransferDst).setImageSharingMode(vk::SharingMode::eExclusive)
       .setPreTransform(vk::SurfaceTransformFlagBitsKHR::eIdentity).setPresentMode(vk::PresentModeKHR::eMailbox)
       .setClipped(true);
@@ -54,6 +54,8 @@ namespace WITE {
       //file:///home/sid/Downloads/Vulkan%201.3.html#VUID-vkCmdBlitImage-srcImage-00230
       if(swapCI.imageFormat == vk::Format::eUndefined)//vk standard meaning "any is fine"
 	swapCI.imageFormat = vk::Format::eB8G8R8Unorm;
+      else
+	swapCI.setImageColorSpace(formats[0].colorSpace);
     }
     VK_ASSERT(phys.getSurfaceCapabilitiesKHR(surface, &surfCaps), "Could not fetch surface capabilities.");
     swapCI.setImageExtent({
@@ -101,6 +103,12 @@ namespace WITE {
     int w, h;
     SDL_Vulkan_GetDrawableSize(sdlWindow, &w, &h);
     return { (uint32_t)w, (uint32_t)h };
+  };
+
+  vk::Extent3D window::getSize3D() {//because iamges are 3d, easier to accomodate here than convert in caller
+    int w, h;
+    SDL_Vulkan_GetDrawableSize(sdlWindow, &w, &h);
+    return { (uint32_t)w, (uint32_t)h, 1 };
   };
 
   void window::acquire() {

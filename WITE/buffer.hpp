@@ -71,6 +71,7 @@ namespace WITE {
       auto dev = gpu::get(R.deviceId).getVkDevice();
       void* data;
       //for static buffers. Do not use while a render is in progress unless you know that the buffers in use are not in the mask
+      //even then, recreating a buffer regularly is just bad
       if constexpr(R.hostVisible) {//TODO || runtime memory type happens to be host visible anyway
 	for(uint8_t i = 0;i < R.frameswapCount;i++) {
 	  if((1 << i) & frameMask) {

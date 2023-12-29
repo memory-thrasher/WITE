@@ -10,5 +10,6 @@
 #include "image.hpp"
 #include "buffer.hpp"
 #include "window.hpp"
+#include "templateHelpers.hpp"
 
 

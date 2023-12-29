@@ -34,7 +34,7 @@ find "${OUTDIR}" -type f -iname '*.o' -print0 |
 	    rm "${OFILE}" 2>/dev/null;
     done;
 
-#compile shaders first (so they can be imported as strings if desired)
+#compile shaders first (so they can be imported as c data members)
 find $BUILDAPP $BUILDTESTS -iname '*.glsl' -type f -print0 |
     while IFS= read -d '' SRCFILE && [ $(cat ${ERRLOGBITDIR}/*-${ERRLOGBIT} 2>/dev/null | wc -l) -eq 0 ]; do
 	DSTFILE="${OUTDIR}/${SRCFILE%.*}.spv.h"
@@ -45,9 +45,9 @@ find $BUILDAPP $BUILDTESTS -iname '*.glsl' -type f -print0 |
 	(
 	    if ! [ -f "${DSTFILE}" ] || [ "${SRCFILE}" -nt "${DSTFILE}" ] || [ "$0" -nt "${DSTFILE}" ]; then
 		#echo building
-		$WORKNICE $GLCOMPILER -V --target-env vulkan1.3 -gVS "${SRCFILE}" -o "${DSTFILE}" --vn "${VARNAME}" 1>/dev/null || rm "${DSTFILE}" 2>/dev/null
+		$WORKNICE $GLCOMPILER -V --target-env vulkan1.3 -gVS "${SRCFILE}" -o "${DSTFILE}" --vn "${VARNAME}" || rm "${DSTFILE}" 2>/dev/null
 	    fi
-	) 2>"${THISERRLOG}" &
+	) 2>&1 | grep -v "^${SRCFILE}$" > "${THISERRLOG}" &
     done
 
 while pgrep $GLCOMPILER &>/dev/null; do sleep 0.2s; done

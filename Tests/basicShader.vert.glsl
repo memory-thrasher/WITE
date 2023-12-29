@@ -10,9 +10,11 @@ layout (std140, set = 0, binding = 0) uniform rendbuf {
 } source;
 layout (location = 0) in vec3 pos;
 layout (location = 0) out vec3 norm;
+layout (location = 1) out vec3 worldPos;
 void main() {
-  gl_Position = vec4(target.trans * (source.trans * vec4(pos, 1)));
-  norm = normalize(pos.xyz);
+  worldPos = vec3((source.trans * vec4(pos, 1)).xyz);
+  gl_Position = vec4(target.trans * vec4(worldPos, 1));
+  norm = vec3(normalize(worldPos.xyz - source.trans[3].xyz));
 }
 
 

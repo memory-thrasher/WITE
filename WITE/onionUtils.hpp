@@ -61,6 +61,14 @@ namespace WITE {
     return ret;
   };
 
+  template<class T> consteval T withId(T t, uint64_t id) {
+    T ret = t;
+    ret.id = id;
+    return ret;
+  };
+
+#define NEW_ID(t) ::WITE::withId(t, __LINE__)
+
   template<class T> consteval size_t findId(literalList<T> l, uint64_t id) {
     for(size_t i = 0;i < l.len;i++)
       if(l[i].id == id)

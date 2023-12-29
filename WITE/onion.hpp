@@ -384,6 +384,8 @@ namespace WITE {
 
     public:
 
+      inline auto& getWindow() { return presentWindow; };
+
       template<uint64_t resourceMapId> auto& get() {
 	return resources.template at<findId(TL.resources, resourceMapId)>();
       };

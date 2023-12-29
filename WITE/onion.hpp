@@ -15,7 +15,25 @@ namespace WITE {
 
   template<onionDescriptor OD> struct onion {
 
-    static constexpr size_t cmdFrameswapCount = 2;//TODO number logic
+    static consteval size_t frameswapLCM(literalList<resourceMap> rms) {
+      size_t ret = 1;
+      for(const resourceMap& rm : rms)
+	ret = std::lcm(ret, containsId(OD.IRS, rm.requirementId) ?
+		       findById(OD.IRS, rm.requirementId).frameswapCount :
+		       findById(OD.BRS, rm.requirementId).frameswapCount);
+      return ret;
+    };
+
+    static consteval size_t frameswapLCMAll() {
+      size_t ret = 1;
+      for(const auto& L : OD.TLS)
+	ret = std::lcm(ret, frameswapLCM(L.resources));
+      for(const auto& L : OD.SLS)
+	ret = std::lcm(ret, frameswapLCM(L.resources));
+      return ret;
+    };
+
+    static constexpr size_t cmdFrameswapCount = max(3, frameswapLCMAll());
 
     uint64_t frame = 1;//can't signal a timeline semaphore with 0
     syncLock mutex;
@@ -59,8 +77,8 @@ namespace WITE {
 	//rendering:
 	for(uint64_t substepId : layer.renders) {
 	  const auto& substep = findById(OD.RPRS, substepId);
-	  if(RM.resourceReferences.contains(substep.depthStencil.id))
-	    ret.push_back({ layerIdx, substep_e::render, substep.depthStencil });
+	  if(RM.resourceReferences.contains(substep.depth.id))
+	    ret.push_back({ layerIdx, substep_e::render, substep.depth });
 	  if(RM.resourceReferences.contains(substep.color.id))
 	    ret.push_back({ layerIdx, substep_e::render, substep.color });
 	  resourceReference urr[256];
@@ -273,15 +291,6 @@ namespace WITE {
     };
 
     template<uint64_t LAYOUT_ID, literalList<resourceMap> RM> requires(RM.len == 0) struct mappedResourceTuple<LAYOUT_ID, RM> : std::false_type {};
-
-    static consteval size_t frameswapLCM(literalList<resourceMap> rms) {
-      size_t ret = 1;
-      for(const resourceMap& rm : rms)
-	ret = std::lcm(ret, containsId(OD.IRS, rm.requirementId) ?
-		       findById(OD.IRS, rm.requirementId).frameswapCount :
-		       findById(OD.BRS, rm.requirementId).frameswapCount);
-      return ret;
-    };
 
     template<literalList<resourceMap> RMS> static consteval size_t imagesIn() {
       return RMS.countWhereCE([](resourceMap RM) consteval { return containsId(OD.IRS, RM.requirementId); });
@@ -694,15 +703,15 @@ namespace WITE {
 
     template<renderPassRequirements RP, targetLayout TL> struct renderPassInfoBundle {
       static constexpr const resourceMap *colorRM = findResourceReferencing(TL.resources, RP.color.id),
-	*depthRM = findResourceReferencing(TL.resources, RP.depthStencil.id);
+	*depthRM = findResourceReferencing(TL.resources, RP.depth.id);
       static constexpr imageRequirements colorIR = findById(OD.IRS, colorRM->requirementId),
 	depthIR = findById(OD.IRS, depthRM->requirementId);
       static constexpr vk::AttachmentReference colorRef { 0, imageLayoutFor(RP.color.access) },
-	depthRef { 1, imageLayoutFor(RP.depthStencil.access) };
+	depthRef { 1, imageLayoutFor(RP.depth.access) };
       static constexpr vk::SubpassDescription subpass { {}, vk::PipelineBindPoint::eGraphics, 0, NULL, 1, &colorRef, NULL, &depthRef };
       static constexpr vk::AttachmentDescription attachments[2] = {//MAYBE variable attachments when inputs are allowed
-	{ {}, colorIR.format, vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eClear, vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare, imageLayoutFor(RP.color.access), imageLayoutFor(RP.color.access) },
-	{ {}, depthIR.format, vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eClear, vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eLoad, vk::AttachmentStoreOp::eStore, imageLayoutFor(RP.depthStencil.access), imageLayoutFor(RP.depthStencil.access) }
+	{ {}, colorIR.format, vk::SampleCountFlagBits::e1, RP.clearColor ? vk::AttachmentLoadOp::eClear : vk::AttachmentLoadOp::eLoad, vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare, imageLayoutFor(RP.color.access), imageLayoutFor(RP.color.access) },
+	{ {}, depthIR.format, vk::SampleCountFlagBits::e1, RP.clearDepth ? vk::AttachmentLoadOp::eClear : vk::AttachmentLoadOp::eLoad, vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eLoad, vk::AttachmentStoreOp::eStore, imageLayoutFor(RP.depth.access), imageLayoutFor(RP.depth.access) }
       };
       //TODO multiview
       //static constexpr vk::RenderPassMultiviewCreateInfo multiview {
@@ -857,17 +866,17 @@ namespace WITE {
 		    "failed to create render pass ", TL.id, " ", RP.id);
 	}
 	static constexpr const resourceMap* colorRM = findResourceReferencing(TL.resources, RP.color.id),
-	  *depthRM = findResourceReferencing(TL.resources, RP.depthStencil.id);
+	  *depthRM = findResourceReferencing(TL.resources, RP.depth.id);
 	auto& color = target.template get<colorRM->id>();
 	auto& depth = target.template get<depthRM->id>();
 	frameBufferBundle& fbb = target.fbByRpIdByFrame[RP.id][frame % target_t<TL.id>::maxFrameswap];
-	bool depthOutdated = fbb.fb && fbb.lastUpdatedFrame < depth.frameUpdated(frame + RP.depthStencil.frameLatency);
+	bool depthOutdated = fbb.fb && fbb.lastUpdatedFrame < depth.frameUpdated(frame + RP.depth.frameLatency);
 	bool colorOutdated = fbb.fb && fbb.lastUpdatedFrame < color.frameUpdated(frame + RP.color.frameLatency);
 	vk::Rect2D size = color.getSizeRect(frame + RP.color.frameLatency);
 	if(!fbb.fb || colorOutdated || depthOutdated) [[unlikely]] {
 	  if(fbb.fb)
 	    collectors[frame % cmdFrameswapCount].push(fbb.fb);
-	  ASSERT_TRAP(size == depth.getSizeRect(frame + RP.depthStencil.frameLatency), "framebuffer depth color size mismatch");
+	  ASSERT_TRAP(size == depth.getSizeRect(frame + RP.depth.frameLatency), "framebuffer depth color size mismatch");
 	  fbb.fbci.renderPass = rp;
 	  fbb.fbci.width = size.extent.width;
 	  fbb.fbci.height = size.extent.height;
@@ -879,7 +888,7 @@ namespace WITE {
 	  if(!fbb.fb || colorOutdated)
 	    fbb.attachments[0] = color.createView(frame + RP.color.frameLatency);
 	  if(!fbb.fb || depthOutdated)
-	    fbb.attachments[1] = depth.createView(frame + RP.depthStencil.frameLatency);
+	    fbb.attachments[1] = depth.createView(frame + RP.depth.frameLatency);
 	  VK_ASSERT(dev->getVkDevice().createFramebuffer(&fbb.fbci, ALLOCCB, &fbb.fb), "failed to create framebuffer");
 	  fbb.lastUpdatedFrame = frame;
 	}
@@ -887,19 +896,8 @@ namespace WITE {
 	vk::Viewport viewport = { 0, 0, (float)size.extent.width, (float)size.extent.height, 0.0f, 1.0f };
 	cmd.setViewport(0, 1, &viewport);
 	cmd.setScissor(0, 1, &size);
-
-	vk::ClearValue clears[2];
-	clears[0].color.float32[0] = 0.2f;
-	clears[0].color.float32[1] = 0.2f;
-	clears[0].color.float32[2] = 0.2f;
-	clears[0].color.float32[3] = 0.2f;
-	clears[1].depthStencil.depth = 1.0f;
-	clears[1].depthStencil.stencil = 0;
-	vk::RenderPassBeginInfo rpBegin(rp, fbb.fb, size, 2, clears);
-	// WARN("Clear");
-	//TODO control clear with template struct. Probably only desited on first RP
-	// AttachmentDescription also needs to choose load or clear from same flag
-
+	static constexpr vk::ClearValue clears[2] { RP.clearColorValue, RP.clearDepthValue };
+	vk::RenderPassBeginInfo rpBegin(rp, fbb.fb, size,(uint32_t)RP.clearColor + (uint32_t)RP.clearDepth, RP.clearColor ? clears : clears+1);
 	cmd.beginRenderPass(&rpBegin, vk::SubpassContents::eInline);
 	recordRenders<TL, LR, RP.shaders>(target, ptl, od, rp, cmd);
 	cmd.endRenderPass();

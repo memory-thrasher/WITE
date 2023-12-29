@@ -221,8 +221,11 @@ constexpr graphicsShaderRequirements S_simple {
 
 constexpr renderPassRequirements RP_simple {
   .id = __LINE__,
-  .depthStencil = RR_depth,
+  .depth = RR_depth,
   .color = RR_color,
+  .clearDepth = true,
+  .clearColor = true,
+  .clearColorValue = { 0.1f, 0.1f, 0.1f, 1.0f },
   .shaders = S_simple//takes a literalList of shaders, normally there'd be much more than one
 };
 

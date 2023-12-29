@@ -41,6 +41,8 @@ namespace WITE {
 	dev.allocate(mrs[i], flags, &rams[i]);
 	dev.getVkDevice().bindImageMemory(vkImage[i], rams[i].handle, 0);
 	frameImageExtent[i] = ci.extent;
+	frameImageCreated[i] = 0;
+	ASSERT_TRAP(frameImageCreated[i] == 0, "assignment fail");//yes, this has triggered. ASM for assignment above seemed missing. Compiler bug?
       }
     };
 
@@ -66,6 +68,7 @@ namespace WITE {
       static constexpr imageResizeBehavior B = RB.image;
       static constexpr vk::ImageLayout layout = imageLayoutFor(RR.access);
       size_t idx = frameImageIdx(frame);
+      ASSERT_TRAP(frame >= frameImageCreated[idx], "image creation framestamp is in the future");
       if(frameCiUpdated <= frameImageCreated[idx])
 	return;
       if constexpr(B.type == imageResizeType::eNone) {

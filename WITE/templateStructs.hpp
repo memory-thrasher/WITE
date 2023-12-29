@@ -122,7 +122,10 @@ namespace WITE {
 
   struct renderPassRequirements {
     uint64_t id;//unique among render passes
-    resourceReference depthStencil, color; //MAYBE input attachment
+    resourceReference depth, color; //MAYBE input attachment
+    bool clearDepth = false, clearColor = false;
+    vk::ClearColorValue clearColorValue;
+    vk::ClearDepthStencilValue clearDepthValue = { 1.0f, 0 };
     literalList<graphicsShaderRequirements> shaders;
   };
 
@@ -150,6 +153,7 @@ namespace WITE {
   };
 
   /*
+note: this is missing some stuff but you get the idea:
 onion
   >= 0 image requirements
   >= 0 buffer requirements

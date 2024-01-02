@@ -99,6 +99,18 @@ namespace WITE {
     delete [] names;
   };
 
+  glm::uvec2 window::getUvecSize() {
+    int w, h;
+    SDL_Vulkan_GetDrawableSize(sdlWindow, &w, &h);
+    return { (uint32_t)w, (uint32_t)h };
+  };
+
+  glm::vec2 window::getVecSize() {
+    int w, h;
+    SDL_Vulkan_GetDrawableSize(sdlWindow, &w, &h);
+    return { w, h };
+  };
+
   vk::Extent2D window::getSize() {
     int w, h;
     SDL_Vulkan_GetDrawableSize(sdlWindow, &w, &h);

@@ -30,6 +30,7 @@ namespace WITE {
 	}
 	dev.allocate(mrs[i], flags, &rams[i]);
 	dev.getVkDevice().bindBufferMemory(vkBuffer[i], rams[i].handle, 0);
+	// WARN("bound ram ", rams[i].handle, " to buffer ", vkBuffer[i]);
       }
     };
 
@@ -60,9 +61,10 @@ namespace WITE {
       auto dev = gpu::get(R.deviceId).getVkDevice();
       void* data;
       VK_ASSERT(dev.mapMemory(rams[idx].handle, 0, R.size, {}, &data), "Failed to map memory.");
-      memcpy(data, t);
+      std::memcpy(data, (void*)&t, R.size);
       dev.unmapMemory(rams[idx].handle);
       lastUpdated = frame;
+      // WARN("wrote ", sizeof(T), " bytes to vram ", rams[idx].handle);
     };
 
     template<class T> void slowOutOfBandSet(const T& t, uint64_t frameMask = 0xFFFFFFFFFFFFFFFF) {

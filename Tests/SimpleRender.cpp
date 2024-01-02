@@ -7,8 +7,6 @@
 
 using namespace WITE;
 
-//TODO store some of these configurations in a canned header
-
 constexpr uint64_t gpuId = 0;
 
 /*
@@ -61,8 +59,8 @@ constexpr copyStep C_updateCubeTransforms = defineCopy(),
 
 constexpr resourceReference RR_depth = defineSimpleDepthReference(),
 	    RR_color = defineSimpleColorReference(),
-	    RR_cameraTrans = defineSimpleTransformReference(),
-	    RR_cubeTrans = defineSimpleTransformReference(),
+	    RR_cameraTrans = defineUBReferenceAtVertex(),
+	    RR_cubeTrans = defineUBReferenceAtVertex(),
 	    RRL_simpleSource[] = { RR_cubeTrans, cubeMesh.resourceReference_v };
 
 constexpr uint64_t RR_IDL_cubeTrans[] = { RR_cubeTrans.id, C_updateCubeTransforms.dst.id },
@@ -180,10 +178,9 @@ int main(int argc, char** argv) {
   cube->set<cubeMesh.resourceMap_v.id>(cubeMeshBuf.get());
   glm::dvec3 rotAxis = glm::normalize(glm::dvec3(0, 1, 0));
   glm::dmat4 model = glm::dmat4(1);//model: diagonal identity
-  for(size_t i = 0;i < 60*60*60;i++) {
+  for(size_t i = 0;i < 10000;i++) {
     model = glm::rotate(model, glm::radians(0.01), rotAxis);
     cube->write<RMS_cubeTrans.id>(model);
-    //TODO abstract out the below math to a camera object or helper function
     camera->write<RMT_cameraTrans_staging.id>(makeCameraProjection(45, camera->getWindow(), 0.1f, 100.0f, glm::dvec3(-15, 13, -10), glm::dvec3(0, 0, 0), glm::dvec3(0, 1, 0)));
     primaryOnion->render();
   }

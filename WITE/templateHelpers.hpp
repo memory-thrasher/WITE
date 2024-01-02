@@ -54,6 +54,18 @@ namespace WITE {
 
   };
 
+#define defineSimpleUniformBuffer(gpuId, size) simpleUB<gpuId, __LINE__, size>::value
+
+  template<size_t GPUID, uint64_t ID, uint32_t size> struct simpleUB {
+    static constexpr bufferRequirements value {
+      .deviceId = GPUID,
+      .id = ID,
+      .usage = vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eUniformBuffer,
+      .size = size,
+      .frameswapCount = 1,//staging should be frameswapped, updated data will blow away this buffer every frame
+    };
+  };
+
 #define defineSingleTransform(gpuId) singleTransform<gpuId, __LINE__>::value
 
   template<size_t GPUID, uint64_t ID> struct singleTransform {
@@ -66,13 +78,26 @@ namespace WITE {
     };
   };
 
+#define defineComputeDepth(gpuId) computeDepth<gpuId, __LINE__>::value
+
+  template<size_t GPUID, uint64_t ID> struct computeDepth {
+    static constexpr imageRequirements value {
+      .deviceId = GPUID,
+      .id = ID,
+      .format = Format::R32float,//drivers are REQUIRED by vulkan to support this format for storage and blit ops
+      //MAYBE switch to R32uint in the future because it has atomic BUT complicates blit
+      .usage = vk::ImageUsageFlagBits::eStorage,
+      .frameswapCount = 1
+    };
+  };
+
 #define defineSimpleDepth(gpuId) simpleDepth<gpuId, __LINE__>::value
 
   template<size_t GPUID, uint64_t ID> struct simpleDepth {
     static constexpr imageRequirements value {
       .deviceId = GPUID,
       .id = ID,
-      .format = Format::D16unorm,//drivers are REQUIRED by vulkan to support this format for depth operations
+      .format = Format::D16unorm,//drivers are REQUIRED by vulkan to support this format for depth operations (and blit src)
       .usage = vk::ImageUsageFlagBits::eDepthStencilAttachment,
       .frameswapCount = 1
     };
@@ -85,7 +110,7 @@ namespace WITE {
       .deviceId = GPUID,
       .id = ID,
       .format = Format::RGBA8unorm,//drivers are REQUIRED by vulkan to support this format for most operations (including color attachment)
-      .usage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferSrc,//transfer src is needed by window to present
+      .usage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eTransferSrc,//transfer src is needed by window to present
       .frameswapCount = 2
     };
   };
@@ -110,7 +135,19 @@ namespace WITE {
     static constexpr resourceReference value {
       .id = ID,
       .stages = vk::ShaderStageFlagBits::eFragment,
-      .access = vk::AccessFlagBits2::eDepthStencilAttachmentWrite | vk::AccessFlagBits2::eDepthStencilAttachmentRead
+      .access = vk::AccessFlagBits2::eDepthStencilAttachmentWrite | vk::AccessFlagBits2::eDepthStencilAttachmentRead,
+      .usage = { vk::DescriptorType::eStorageImage }
+    };
+  };
+
+#define defineComputeDepthReference() computeDepthReference<__LINE__>::value
+
+  template<uint64_t ID> struct computeDepthReference {
+    static constexpr resourceReference value {
+      .id = ID,
+      .stages = vk::ShaderStageFlagBits::eCompute,
+      .access = vk::AccessFlagBits2::eShaderStorageWrite | vk::AccessFlagBits2::eShaderStorageRead,
+      .usage = { vk::DescriptorType::eStorageImage }
     };
   };
 
@@ -119,18 +156,31 @@ namespace WITE {
   template<uint64_t ID> struct simpleColorReference {
     static constexpr resourceReference value {
       .id = ID,
-      .stages = vk::ShaderStageFlagBits::eFragment,
-      .access = vk::AccessFlagBits2::eColorAttachmentWrite
+      .stages = vk::ShaderStageFlagBits::eFragment | vk::ShaderStageFlagBits::eCompute,
+      .access = vk::AccessFlagBits2::eColorAttachmentWrite | vk::AccessFlagBits2::eShaderStorageWrite,
+      .usage = { vk::DescriptorType::eStorageImage }
     };
   };
 
-#define defineSimpleTransformReference() simpleTransformReference<__LINE__>::value
+#define defineUBReferenceAtVertex() simpleVertexReference<__LINE__>::value
 
-  template<uint64_t ID> struct simpleTransformReference {
+  template<uint64_t ID> struct simpleVertexReference {
     static constexpr resourceReference value {
       .id = ID,
       .stages = vk::ShaderStageFlagBits::eVertex,
       .access = vk::AccessFlagBits2::eUniformRead,
+      .usage = { vk::DescriptorType::eUniformBuffer }
+    };
+  };
+
+#define defineUBReferenceAtCompute() simpleComputeReference<__LINE__>::value
+
+  template<uint64_t ID> struct simpleComputeReference {
+    static constexpr resourceReference value {
+      .id = ID,
+      .stages = vk::ShaderStageFlagBits::eCompute,
+      .access = vk::AccessFlagBits2::eUniformRead,
+      .frameLatency = 1,
       .usage = { vk::DescriptorType::eUniformBuffer }
     };
   };

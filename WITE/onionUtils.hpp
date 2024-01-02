@@ -53,7 +53,7 @@ namespace WITE {
     return ret;
   };
 
-  consteval bufferRequirements stagingRequirementsFor(bufferRequirements r, uint8_t fc = 1) {
+  consteval bufferRequirements stagingRequirementsFor(bufferRequirements r, uint8_t fc = 2) {
     bufferRequirements ret = r;
     ret.hostVisible = true;
     ret.usage = vk::BufferUsageFlagBits::eTransferSrc | vk::BufferUsageFlagBits::eTransferDst;

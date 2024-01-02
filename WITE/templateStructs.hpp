@@ -49,7 +49,7 @@ namespace WITE {
     resourceUsageType type;
     union {
       struct {
-	vk::DescriptorType descriptorType;//only used for descriptors
+	vk::DescriptorType descriptorType;
 	vk::SamplerCreateInfo sampler;//only for when decriptorType is sampler or combinedSampler
       } asDescriptor;
       struct {
@@ -104,10 +104,12 @@ namespace WITE {
 
   struct computeShaderRequirements {
     uint64_t id;//unique among shaders
-    literalList<shaderModule> modules;
+    const shaderModule* module;//must be ptr or this struct becomes unusable in template args
     literalList<resourceReference> targetProvidedResources;
     literalList<resourceReference> sourceProvidedResources;
-    //TODO work unit size
+    uint64_t primaryOutputReferenceId = NONE;
+    uint32_t strideX = 1, strideY = 1, strideZ = 1;
+    //one invocation per member of primary output. If reference is an image, one invocation per stride pixels (workgroup [x, y, z] = pixels [x/strideX, y/strideY, z/strideZ; if image is 2d array, z = array layer. If reference is a buffer, one invocation per strideX of bytes (workgroup has only an X value, other strides ignored)
   };
 
   struct graphicsShaderRequirements {

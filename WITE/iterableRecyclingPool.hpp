@@ -10,6 +10,7 @@ namespace WITE {
 
   template<class T> class iterableRecyclingPool {
   private:
+    static_assert(std::is_default_constructible<T>::value);
     std::deque<T> store;
     std::stack<T*> available;
     std::vector<T*> allocated;

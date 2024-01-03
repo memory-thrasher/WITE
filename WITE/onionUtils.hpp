@@ -101,7 +101,7 @@ namespace WITE {
     return NULL;
   };
 
-  enum class substep_e : uint8_t { barrier1, copy, barrier2, render, barrier3, compute, barrier4, post };
+  enum class substep_e : uint8_t { barrier0, copy, barrier1, clear, barrier2, render, barrier3, compute, barrier4, post };
 
   struct resourceAccessTime {
     size_t layerIdx = NONE_size;
@@ -135,10 +135,12 @@ namespace WITE {
     return l;
   };
 
+  consteval bool isDepth(imageRequirements R) { return bool(R.usage & vk::ImageUsageFlagBits::eDepthStencilAttachment); };
+
   consteval vk::ImageSubresourceRange getAllInclusiveSubresource(const imageRequirements R) {
     // | vk::ImageAspectFlagBits::eStencil no stencil format has required support so stencil would need format cap detection
     return {
-      /* .aspectMask =*/ (R.usage & vk::ImageUsageFlagBits::eDepthStencilAttachment) ? vk::ImageAspectFlagBits::eDepth : vk::ImageAspectFlagBits::eColor, //MAYBE multiplanar someday?
+      /* .aspectMask =*/ isDepth(R) ? vk::ImageAspectFlagBits::eDepth : vk::ImageAspectFlagBits::eColor, //MAYBE multiplanar someday?
       /* .baseMipLevel =*/ 0,
       /* .levelCount =*/ R.mipLevels,
       /* .baseArrayLayer =*/ 0,

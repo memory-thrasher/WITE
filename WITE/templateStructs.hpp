@@ -137,9 +137,15 @@ namespace WITE {
     vk::Filter filter = vk::Filter::eNearest;//only meaningful for image-to-image
   };
 
+  struct clearStep {
+    uint64_t id;
+    resourceReference rr;
+    vk::ClearValue clearValue;
+  };
+
   //NOTE: barriers are NOT allowed between executions of individual copies or shaders of the same type. Barriers are allowed between types of executions. Barrier between copy and render is allowed, barrier between shader 1 and 2 of the same RP is not.
   struct layerRequirements {
-    literalList<uint64_t> sourceLayouts, targetLayouts, copies, renders, computeShaders;
+    literalList<uint64_t> sourceLayouts, targetLayouts, clears, copies, renders, computeShaders;
   };
 
   struct onionDescriptor {
@@ -147,6 +153,7 @@ namespace WITE {
     literalList<bufferRequirements> BRS;
     literalList<computeShaderRequirements> CSRS;
     literalList<renderPassRequirements> RPRS;
+    literalList<clearStep> CLS;
     literalList<copyStep> CSS;
     literalList<layerRequirements> LRS;
     literalList<targetLayout> TLS;

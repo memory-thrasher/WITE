@@ -26,9 +26,11 @@ L layer
 IDL id list
  */
 
+static constexpr size_t sphereCount = 256;
+
 //this should match the one in the shader.
 struct sphereData_t {
-  glm::vec4 loc;//xyz = location, w = radius
+  glm::vec4 loc[sphereCount];//xyz = location, w = radius
 };
 
 struct cameraData_t {
@@ -57,6 +59,10 @@ constexpr copyStep C_updateSphereData = defineCopy(),
 	      C_updateSphereData, C_updateCameraData
 	    };
 
+constexpr clearStep CL_color = defineClear(0.2f, 0.2f, 0.2f, 1.0f),
+	    CL_depth = defineClear(1.0f, 0),
+	    CL_all[] = { CL_depth, CL_color };
+
 constexpr resourceReference RR_depth = defineComputeDepthReference(),
 	    RR_color = defineSimpleColorReference(),
 	    RR_cameraData = defineUBReferenceAtCompute(),
@@ -65,7 +71,10 @@ constexpr resourceReference RR_depth = defineComputeDepthReference(),
 
 constexpr uint64_t RR_IDL_sphereData[] = { RR_sphereData.id, C_updateSphereData.dst.id },
 	    RR_IDL_cameraData[] = { RR_cameraData.id, C_updateCameraData.dst.id },
-	    C_IDL_L1[] = { C_updateCameraData.id, C_updateSphereData.id };
+	    RR_IDL_color[] = { RR_color.id, CL_color.rr.id },
+	    RR_IDL_depth[] = { RR_depth.id, CL_depth.rr.id },
+	    C_IDL_L1[] = { C_updateCameraData.id, C_updateSphereData.id },
+	    CL_IDL_L1[] = { CL_color.id, CL_depth.id };
 
 constexpr resourceMap RMT_cameraData_staging = {
   .id = __LINE__,
@@ -74,7 +83,7 @@ constexpr resourceMap RMT_cameraData_staging = {
 }, RMT_color = {
   .id = __LINE__,
   .requirementId = IR_standardColor.id,
-  .resourceReferences = RR_color.id,
+  .resourceReferences = RR_IDL_color,
   .resizeBehavior = { imageResizeType::eDiscard, {}, true }
 }, RMT_target[] = {
   RMT_cameraData_staging,
@@ -82,7 +91,7 @@ constexpr resourceMap RMT_cameraData_staging = {
   {//depth map, does not need it's own name because it's not linked externally.
     .id = __LINE__,
     .requirementId = IR_computeDepth.id,
-    .resourceReferences = RR_depth.id,
+    .resourceReferences = RR_IDL_depth,
     .resizeBehavior = { imageResizeType::eDiscard, {}, true }
   }, {
     .id = __LINE__,
@@ -127,6 +136,7 @@ constexpr sourceLayout SL_simple {
 constexpr layerRequirements L_1 {
   .sourceLayouts = SL_simple.id,
   .targetLayouts = TL_standardRender.id,
+  .clears = CL_IDL_L1,
   .copies = C_IDL_L1,
   .computeShaders = S_sphere.id
 };
@@ -147,6 +157,7 @@ constexpr onionDescriptor od = {
   .IRS = allImageRequirements,
   .BRS = allBufferRequirements,
   .CSRS = S_sphere,
+  .CLS = CL_all,
   .CSS = C_all,
   .LRS = L_1,
   .TLS = TL_standardRender,
@@ -157,19 +168,36 @@ constexpr onionDescriptor od = {
 typedef WITE::onion<od> onion_t;
 std::unique_ptr<onion_t> primaryOnion;
 
+/* fps log:
+single sphere: 2857fps
+
+256 spheres:
+  no optimizations (each gets it's own buffer and dispatch): 12.6fps
+  preload buffers: 12.6fps
+  single dispatch with gpu loop: 568fps
+  single dispatch with gpu loop, single image write: 606fps
+
+now with depth: 507fps
+*/
+
 int main(int argc, char** argv) {
   gpu::init("Simple render test");
   primaryOnion = std::make_unique<onion_t>();
   auto camera = primaryOnion->createTarget<TL_standardRender.id>();
-  auto sphere = primaryOnion->createSource<SL_simple.id>();
-  sphereData_t sd { { 0, 0, 0, 1 } };
+  onion_t::source_t<SL_simple.id>* spheres = primaryOnion->createSource<SL_simple.id>();
+  sphereData_t sd;
+  for(size_t i = 0;i < sphereCount;i++)
+    sd.loc[i] = { 3 * std::cos(i), 3 * std::sin(i), i, 0.5f };
   glm::vec2 size = camera->getWindow().getVecSize();
-  WARN(sizeof(cameraData_t), ", ", size.x, ", ", size.y);
-  cameraData_t cd { { 0, 0, -5, 0 }, { 0, 0, 1, 0 }, { 0, 1, 0, 0 }, { 0, 0, 1, 0 }, { size.x, size.y, glm::radians(45.0f)/size.y, 0 } };
+  cameraData_t cd { { 0, 0, -5, 0 }, { 0, 0, 1, 0 }, { 0, 1, 0, 0 }, { 1, 0, 0, 0 }, { size.x, size.y, glm::radians(45.0f)/size.y, 0 } };
   // WARN(cd.loc.x, ", ", cd.norm.x, ", ", cd.up.x, ", ", cd.right.x, ", ", cd.size.x);
   // memset((void*)&cd, 1, sizeof(cd));
-  for(size_t i = 0;i < 10000;i++) {
-    sphere->write<RMS_sphereData.id>(sd);
+  for(size_t i = 0;i < 100000;i++) {
+    cd.norm.x = std::sin(i/1000.0f);
+    cd.norm.z = std::cos(i/1000.0f);
+    cd.loc = cd.norm * -5.0f;
+    cd.right = glm::vec4(glm::cross(glm::vec3(cd.up), glm::vec3(cd.norm)), 0);
+    spheres->write<RMS_sphereData.id>(sd);
     camera->write<RMT_cameraData_staging.id>(cd);
     primaryOnion->render();
   }

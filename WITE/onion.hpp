@@ -82,9 +82,15 @@ namespace WITE {
 	  if(RM.resourceReferences.contains(substep.dst.id))
 	    ret.push_back({ layerIdx, substep_e::copy, { substep.dst.id, {}, vk::AccessFlagBits2::eTransferWrite, substep.src.frameLatency }});
 	}
+	//clear:
+	for(uint64_t substepId : layer.clears) {
+	  const auto& substep = findById(OD.CLS, substepId);
+	  if(RM.resourceReferences.contains(substep.rr.id))
+	    ret.push_back({ layerIdx, substep_e::clear, { substep.rr.id, {}, vk::AccessFlagBits2::eTransferWrite, substep.rr.frameLatency }});
+	}
+	//rendering:
 	constexpr size_t urrLen = std::numeric_limits<decltype(resourceBarrier::frameLatency)>::max();
 	static_assert(std::numeric_limits<decltype(resourceBarrier::frameLatency)>::min() == 0);
-	//rendering:
 	for(uint64_t substepId : layer.renders) {
 	  const auto& substep = findById(OD.RPRS, substepId);
 	  if(RM.resourceReferences.contains(substep.depth.id))
@@ -142,7 +148,7 @@ namespace WITE {
 	rb.timing.layerIdx = rb.after.layerIdx;
 	rb.frameLatency = rb.after.usage.frameLatency;
 	if(rb.before.layerIdx != rb.after.layerIdx) {//prefer top of layer for barriers
-	  rb.timing.substep = substep_e::barrier1;
+	  rb.timing.substep = substep_e::barrier0;
 	} else {
 	  constexpr_assert(rb.after.substep != rb.before.substep);
 	  rb.timing.substep = (substep_e)((int)rb.after.substep - 1);//otherwise wait as long as possible
@@ -535,6 +541,22 @@ namespace WITE {
       return ret->get();
     };
 
+    template<uint64_t sourceId> void createSourceArray(source_t<sourceId>** out, size_t cnt) {
+      scopeLock lock(&mutex);
+      auto cmd = dev->getTempCmd();
+      std::unique_ptr<source_t<sourceId>>* ret;
+      while(cnt) {
+	ret = allSources.template ofLayout<sourceId>().allocate();
+	if(!*ret)
+	  ret->reset(new source_t<sourceId>(this));
+	ret->get()->reinit(frame, cmd.cmd);
+	--cnt;
+	out[cnt] = ret->get();
+      }
+      cmd.submit();
+      cmd.waitFor();
+    };
+
     template<uint64_t sourceId> void freeSource(source_t<sourceId>* d) {
       scopeLock lock(&mutex);
       allSources.template ofLayout<sourceId>().free(d);
@@ -672,6 +694,7 @@ namespace WITE {
 	  static_assert(!(srcIsImage ^ dstIsImage));//NYI buffer to/from image (why would you do that?)
 	  if constexpr(srcIsImage && dstIsImage) {
 	    //always blit, no way to know at compile time if they're the same size
+	    //TODO resolve if different sample counts
 	    std::array<vk::Offset3D, 2> srcBounds, dstBounds;
 	    vk::ImageBlit blitInfo(getAllInclusiveSubresourceLayers(findById(OD.IRS, SRM->requirementId)),
 				   srcBounds,
@@ -712,6 +735,36 @@ namespace WITE {
 	recordCopies<CS, LR.targetLayouts>(cmd);
 	recordCopies<CS, LR.sourceLayouts>(cmd);
 	recordCopies<CSIDS.sub(1), LR>(cmd);
+      }
+    };
+
+    template<clearStep CS, literalList<uint64_t> XLS> inline void recordClears(vk::CommandBuffer cmd) {
+      if constexpr(XLS.len) {
+	static constexpr auto XL = findLayoutById<XLS[0]>();
+	static constexpr const resourceMap * RM = findResourceReferencing(XL.resources, CS.rr.id);
+	if constexpr(RM) {
+	  static_assert(containsId(OD.IRS, RM->requirementId));
+	  static constexpr imageRequirements IR = findById(OD.IRS, RM->requirementId);
+	  static constexpr vk::ImageSubresourceRange SR = getAllInclusiveSubresource(IR);
+	  for(auto& cluster : getAllOfLayout<XL.id>()) {
+	    auto img = cluster->get()->template get<RM->id>().frameImage(CS.rr.frameLatency + frame);
+	    if constexpr(isDepth(IR)) {
+	      cmd.clearDepthStencilImage(img, vk::ImageLayout::eTransferDstOptimal, &CS.clearValue.depthStencil, 1, &SR);
+	    } else {
+	      cmd.clearColorImage(img, vk::ImageLayout::eTransferDstOptimal, &CS.clearValue.color, 1, &SR);
+	    }
+	  }
+	}
+	recordClears<CS, XLS.sub(1)>(cmd);
+      }
+    };
+
+    template<literalList<uint64_t> CLIDS, layerRequirements LR> inline void recordClears(vk::CommandBuffer cmd) {
+      if constexpr(CLIDS.len) {
+	static constexpr clearStep CS = findById(OD.CLS, CLIDS[0]);
+	recordClears<CS, LR.targetLayouts>(cmd);
+	recordClears<CS, LR.sourceLayouts>(cmd);
+	recordClears<CLIDS.sub(1), LR>(cmd);
       }
     };
 
@@ -1030,8 +1083,6 @@ namespace WITE {
 	      workgroupSizeY = 1;
 	      workgroupSizeZ = 1;
 	    }
-	    if(frame == 1)
-	      WARN("Dispatch size ", workgroupSizeX, ", ", workgroupSizeY, ", ", workgroupSizeZ);
 	    cmd.dispatch(workgroupSizeX, workgroupSizeY, workgroupSizeZ);
 	  }
 	}
@@ -1089,8 +1140,10 @@ namespace WITE {
     template<size_t layerIdx> inline void renderFrom(vk::CommandBuffer cmd) {
       if constexpr(layerIdx < OD.LRS.len) {
 	static constexpr layerRequirements LR = OD.LRS[layerIdx];
-	recordBarriersForTime<resourceBarrierTiming { .layerIdx = layerIdx, .substep = substep_e::barrier1 }>(cmd);
+	recordBarriersForTime<resourceBarrierTiming { .layerIdx = layerIdx, .substep = substep_e::barrier0 }>(cmd);
 	recordCopies<LR.copies, LR>(cmd);
+	recordBarriersForTime<resourceBarrierTiming { .layerIdx = layerIdx, .substep = substep_e::barrier1 }>(cmd);
+	recordClears<LR.clears, LR>(cmd);
 	recordBarriersForTime<resourceBarrierTiming { .layerIdx = layerIdx, .substep = substep_e::barrier2 }>(cmd);
 	if constexpr(LR.renders)
 	  recordRenders<LR.targetLayouts, LR>(cmd);

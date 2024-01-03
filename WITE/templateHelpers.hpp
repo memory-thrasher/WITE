@@ -86,7 +86,7 @@ namespace WITE {
       .id = ID,
       .format = Format::R32float,//drivers are REQUIRED by vulkan to support this format for storage and blit ops
       //MAYBE switch to R32uint in the future because it has atomic BUT complicates blit
-      .usage = vk::ImageUsageFlagBits::eStorage,
+      .usage = vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eTransferDst,//transfer dst is needed for clear and for copying from a traditional depth map, one of those should happen
       .frameswapCount = 1
     };
   };
@@ -110,7 +110,7 @@ namespace WITE {
       .deviceId = GPUID,
       .id = ID,
       .format = Format::RGBA8unorm,//drivers are REQUIRED by vulkan to support this format for most operations (including color attachment)
-      .usage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eTransferSrc,//transfer src is needed by window to present
+      .usage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eTransferDst,//transfer src is needed by window to present, transfer dst to clear (unless on a RP)
       .frameswapCount = 2
     };
   };
@@ -126,6 +126,18 @@ namespace WITE {
       .dst = {
 	.id = ID+2
       },
+    };
+  };
+
+#define defineClear(...) simpleClear<vk::ClearValue {{ __VA_ARGS__ }}, __LINE__ * 1000000>::value
+  //yeah there's not much to this, just a crosswalk
+  template<vk::ClearValue CV, uint64_t ID> struct simpleClear {
+    static constexpr clearStep value {
+      .id = ID,
+      .rr = {
+	.id = ID+1
+      },
+      .clearValue = CV,
     };
   };
 

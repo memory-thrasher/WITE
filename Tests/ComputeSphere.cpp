@@ -192,7 +192,7 @@ int main(int argc, char** argv) {
   cameraData_t cd { { 0, 0, -5, 0 }, { 0, 0, 1, 0 }, { 0, 1, 0, 0 }, { 1, 0, 0, 0 }, { size.x, size.y, glm::radians(45.0f)/size.y, 0 } };
   // WARN(cd.loc.x, ", ", cd.norm.x, ", ", cd.up.x, ", ", cd.right.x, ", ", cd.size.x);
   // memset((void*)&cd, 1, sizeof(cd));
-  for(size_t i = 0;i < 100000;i++) {
+  for(size_t i = 0;i < 10000;i++) {
     cd.norm.x = std::sin(i/1000.0f);
     cd.norm.z = std::cos(i/1000.0f);
     cd.loc = cd.norm * -5.0f;

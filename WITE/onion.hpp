@@ -314,6 +314,8 @@ namespace WITE {
       vk::DescriptorBufferInfo buffers[RMS.len];
       uint32_t writeCount;//a shader may use a subset of target data
       uint32_t skipCount;//util for filling this struct
+      vk::DescriptorSet descriptorSet;
+      uint64_t frameLastUpdated;
       void reset() {
 	writeCount = skipCount = 0;
       };
@@ -366,6 +368,29 @@ namespace WITE {
       }
     };
 
+    template<literalList<resourceMap> RMS, literalList<resourceReference> RRS, uint64_t LAYOUT_ID>
+    inline void prepareDescriptors(descriptorUpdateData_t<RMS>& descriptorBundle,
+				   std::unique_ptr<descriptorPoolPoolBase>& dpp,
+				   mappedResourceTuple<LAYOUT_ID, RMS>& resources,
+				   size_t frameMod) {
+      if(!descriptorBundle.descriptorSet) [[unlikely]] {
+	if(!dpp) [[unlikely]]
+	  dpp.reset(new descriptorPoolPool<RRS, OD.GPUID>());
+	descriptorBundle.descriptorSet = dpp->allocate();
+	descriptorBundle.reset();
+	fillWrites<RMS, RRS>(descriptorBundle, resources, descriptorBundle.descriptorSet, frameMod, NONE);
+	dev->getVkDevice().updateDescriptorSets(descriptorBundle.writeCount,
+						descriptorBundle.writes, 0, NULL);
+	descriptorBundle.frameLastUpdated = frame;
+      } else if(descriptorBundle.frameLastUpdated < resources.frameLastUpdated(frame)) [[unlikely]] {
+	descriptorBundle.reset();
+	fillWrites<RMS, RRS>(descriptorBundle, resources, descriptorBundle.descriptorSet, frameMod, descriptorBundle.frameLastUpdated);
+	dev->getVkDevice().updateDescriptorSets(descriptorBundle.writeCount,
+						descriptorBundle.writes, 0, NULL);
+	descriptorBundle.frameLastUpdated = frame;
+      }
+    };
+
     template<uint64_t TARGET_ID> class target_t {
     public:
       static constexpr size_t TARGET_IDX = findId(OD.TLS, TARGET_ID);
@@ -375,16 +400,10 @@ namespace WITE {
       static constexpr bool needsPostrender = hasWindow;
 
     private:
-      struct perShaderBundle {
-	descriptorUpdateData_t<TL.resources> descriptorUpdateData;
-	vk::DescriptorSet descriptorSet;
-	uint64_t frameLastUpdated;
-      };
-
       onion<OD>* o;
       mappedResourceTuple<TARGET_ID, TL.resources> resources;
       std::map<uint64_t, frameBufferBundle[maxFrameswap]> fbByRpIdByFrame;
-      std::map<uint64_t, perShaderBundle[maxFrameswap]> perShaderByIdByFrame;
+      std::map<uint64_t, descriptorUpdateData_t<TL.resources>[maxFrameswap]> perShaderByIdByFrame;
       std::conditional_t<hasWindow, window, size_t> presentWindow;//size_t so the gpu idx has somewhere to go. Aren't I clever.
 
       target_t(const target_t&) = delete;
@@ -476,15 +495,9 @@ namespace WITE {
       static constexpr size_t maxFrameswap = frameswapLCM(SOURCE_PARAMS.resources);
 
     private:
-      struct perShaderBundle {
-	descriptorUpdateData_t<SOURCE_PARAMS.resources> descriptorUpdateData;
-	vk::DescriptorSet descriptorSet;
-	uint64_t frameLastUpdated;
-      };
-
       onion<OD>* o;
       mappedResourceTuple<SOURCE_ID, SOURCE_PARAMS.resources> resources;
-      std::map<uint64_t, perShaderBundle[maxFrameswap]> perShaderByIdByFrame;
+      std::map<uint64_t, descriptorUpdateData_t<SOURCE_PARAMS.resources>[maxFrameswap]> perShaderByIdByFrame;
 
       source_t(const source_t&) = delete;
       source_t() = delete;
@@ -789,7 +802,7 @@ namespace WITE {
     //MAYBE match like clusters of shaders, sources, and targets so they can share layouts and descriptor pools?
 
     template<targetLayout TL, graphicsShaderRequirements GSR, literalList<uint64_t> SLIDS>
-    inline void recordRenders(auto& target, perTargetLayout& ptl, perTargetLayoutPerShader& ptlps, target_t<TL.id>::perShaderBundle& perShader, vk::RenderPass rp, vk::CommandBuffer cmd) {
+    inline void recordRenders(auto& target, perTargetLayout& ptl, perTargetLayoutPerShader& ptlps, descriptorUpdateData_t<TL.resources>& targetDescriptors, vk::RenderPass rp, vk::CommandBuffer cmd) {
       if constexpr(SLIDS.len) {
 	static constexpr sourceLayout SL = findById(OD.SLS, SLIDS[0]);
 	if constexpr(satisfies(SL.resources, GSR.sourceProvidedResources)) {
@@ -858,24 +871,13 @@ namespace WITE {
 		      "Failed to create graphics pipeline ", GSR.id);
 	  }
 	  cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, shaderInstance.pipeline);
-	  cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, shaderInstance.pipelineLayout, 1, 1, &perShader.descriptorSet, 0, NULL);
+	  cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, shaderInstance.pipelineLayout, 1, 1, &targetDescriptors.descriptorSet, 0, NULL);
 	  for(auto& sourceUPP : allSources.template ofLayout<SL.id>()) {
 	    auto* source = sourceUPP->get();
 	    size_t frameMod = frame % source_t<SL.id>::maxFrameswap;
-	    auto& sourcePerShaderPerFrame = source->perShaderByIdByFrame[GSR.id][frameMod];
-	    if(!sourcePerShaderPerFrame.descriptorSet) [[unlikely]] {
-	      sourcePerShaderPerFrame.descriptorSet = pslps.descriptorPool->allocate();
-	      sourcePerShaderPerFrame.descriptorUpdateData.reset();
-	      fillWrites<SL.resources, GSR.sourceProvidedResources>(sourcePerShaderPerFrame.descriptorUpdateData, source->resources, sourcePerShaderPerFrame.descriptorSet, frameMod, NONE);
-	      dev->getVkDevice().updateDescriptorSets(sourcePerShaderPerFrame.descriptorUpdateData.writeCount, sourcePerShaderPerFrame.descriptorUpdateData.writes, 0, NULL);
-	      sourcePerShaderPerFrame.frameLastUpdated = frame;
-	    } else if(sourcePerShaderPerFrame.frameLastUpdated < source->resources.frameLastUpdated(frame)) [[unlikely]] {
-	      sourcePerShaderPerFrame.descriptorUpdateData.reset();
-	      fillWrites<SL.resources, GSR.sourceProvidedResources>(sourcePerShaderPerFrame.descriptorUpdateData, source->resources, sourcePerShaderPerFrame.descriptorSet, frameMod, sourcePerShaderPerFrame.frameLastUpdated);
-	      dev->getVkDevice().updateDescriptorSets(sourcePerShaderPerFrame.descriptorUpdateData.writeCount, sourcePerShaderPerFrame.descriptorUpdateData.writes, 0, NULL);
-	      sourcePerShaderPerFrame.frameLastUpdated = frame;
-	    }
-	    cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, shaderInstance.pipelineLayout, 0, 1, &sourcePerShaderPerFrame.descriptorSet, 0, NULL);
+	    auto& descriptorBundle = source->perShaderByIdByFrame[GSR.id][frameMod];
+	    prepareDescriptors<SL.resources, GSR.sourceProvidedResources, SL.id>(descriptorBundle, pslps.descriptorPool, source->resources, frameMod);
+	    cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, shaderInstance.pipelineLayout, 0, 1, &descriptorBundle.descriptorSet, 0, NULL);
 	    static constexpr vk::DeviceSize zero = 0;//offsets below
 	    static constexpr resourceMap vbm = *findResourceReferencing(SL.resources, vb->id);
 	    vk::Buffer verts[2];
@@ -893,7 +895,7 @@ namespace WITE {
 	    //TODO more flexibility with draw. Allow source layout to ask for multi-draw, indexed, indirect etc. Allow allow (dynamic) less than the whole buffer.
 	  }
 	}
-	recordRenders<TL, GSR, SLIDS.sub(1)>(target, ptl, ptlps, perShader, rp, cmd);
+	recordRenders<TL, GSR, SLIDS.sub(1)>(target, ptl, ptlps, targetDescriptors, rp, cmd);
       }
     };
 
@@ -903,25 +905,10 @@ namespace WITE {
 	static constexpr graphicsShaderRequirements GSR = GSRS[0];
 	if constexpr(satisfies(TL.resources, GSR.targetProvidedResources)) {
 	  size_t frameMod = frame % target_t<TL.id>::maxFrameswap;
-	  auto& perShaderPerFrame = target.perShaderByIdByFrame[GSR.id][frameMod];
+	  auto& descriptorBundle = target.perShaderByIdByFrame[GSR.id][frameMod];
 	  perTargetLayoutPerShader& ptlps = ptl.perShader[GSR.id];
-	  if(!perShaderPerFrame.descriptorSet) [[unlikely]] {
-	    if(!ptlps.descriptorPool) [[unlikely]]
-	      ptlps.descriptorPool.reset(new descriptorPoolPool<GSR.targetProvidedResources, OD.GPUID>());
-	    perShaderPerFrame.descriptorSet = ptlps.descriptorPool->allocate();
-	    perShaderPerFrame.descriptorUpdateData.reset();
-	    fillWrites<TL.resources, GSR.targetProvidedResources>(perShaderPerFrame.descriptorUpdateData, target.resources, perShaderPerFrame.descriptorSet, frameMod, NONE);
-	    dev->getVkDevice().updateDescriptorSets(perShaderPerFrame.descriptorUpdateData.writeCount,
-						    perShaderPerFrame.descriptorUpdateData.writes, 0, NULL);
-	    perShaderPerFrame.frameLastUpdated = frame;
-	  } else if(perShaderPerFrame.frameLastUpdated < target.resources.frameLastUpdated(frame)) [[unlikely]] {
-	    perShaderPerFrame.descriptorUpdateData.reset();
-	    fillWrites<TL.resources, GSR.targetProvidedResources>(perShaderPerFrame.descriptorUpdateData, target.resources, perShaderPerFrame.descriptorSet, frameMod, perShaderPerFrame.frameLastUpdated);
-	    dev->getVkDevice().updateDescriptorSets(perShaderPerFrame.descriptorUpdateData.writeCount,
-						    perShaderPerFrame.descriptorUpdateData.writes, 0, NULL);
-	    perShaderPerFrame.frameLastUpdated = frame;
-	  }
-	  recordRenders<TL, GSR, LR.sourceLayouts>(target, ptl, ptlps, perShaderPerFrame, rp, cmd);
+	  prepareDescriptors<TL.resources, GSR.targetProvidedResources, TL.id>(descriptorBundle, ptlps.descriptorPool, target.resources, frameMod);
+	  recordRenders<TL, GSR, LR.sourceLayouts>(target, ptl, ptlps, descriptorBundle, rp, cmd);
 	}
 	recordRenders<TL, LR, GSRS.sub(1)>(target, ptl, rp, cmd);
       }
@@ -1010,16 +997,16 @@ namespace WITE {
 
     template<computeShaderRequirements CS, literalList<uint64_t> SLS>
     inline void recordComputeDispatches_sourceOnly(vk::CommandBuffer cmd) {
-      //TODO
+      asm("int3");//NYI
     };
 
     template<computeShaderRequirements CS, literalList<uint64_t> TLS>
     inline void recordComputeDispatches_targetOnly(vk::CommandBuffer cmd) {
-      //TODO
+      asm("int3");//NYI
     };
 
     template<computeShaderRequirements CS, targetLayout TL, literalList<uint64_t> SLS>
-    inline void recordComputeDispatches_nested(target_t<TL.id>* target, perTargetLayoutPerShader& ptlps, target_t<TL.id>::perShaderBundle& perShader, vk::CommandBuffer cmd) {
+    inline void recordComputeDispatches_nested(target_t<TL.id>* target, perTargetLayoutPerShader& ptlps, descriptorUpdateData_t<TL.resources>& perShader, vk::CommandBuffer cmd) {
       if constexpr(SLS.len) {
 	static constexpr sourceLayout SL = findById(OD.SLS, SLS[0]);
 	if constexpr(satisfies(SL.resources, CS.sourceProvidedResources)) {
@@ -1052,21 +1039,9 @@ namespace WITE {
 	  for(auto& sourceUPP : allSources.template ofLayout<SL.id>()) {
 	    auto* source = sourceUPP->get();
 	    size_t frameMod = frame % source_t<SL.id>::maxFrameswap;
-	    //TODO move this thing to a util function
-	    auto& sourcePerShaderPerFrame = source->perShaderByIdByFrame[CS.id][frameMod];
-	    if(!sourcePerShaderPerFrame.descriptorSet) [[unlikely]] {
-	      sourcePerShaderPerFrame.descriptorSet = pslps.descriptorPool->allocate();
-	      sourcePerShaderPerFrame.descriptorUpdateData.reset();
-	      fillWrites<SL.resources, CS.sourceProvidedResources>(sourcePerShaderPerFrame.descriptorUpdateData, source->resources, sourcePerShaderPerFrame.descriptorSet, frameMod, NONE);
-	      dev->getVkDevice().updateDescriptorSets(sourcePerShaderPerFrame.descriptorUpdateData.writeCount, sourcePerShaderPerFrame.descriptorUpdateData.writes, 0, NULL);
-	      sourcePerShaderPerFrame.frameLastUpdated = frame;
-	    } else if(sourcePerShaderPerFrame.frameLastUpdated < source->resources.frameLastUpdated(frame)) [[unlikely]] {
-	      sourcePerShaderPerFrame.descriptorUpdateData.reset();
-	      fillWrites<SL.resources, CS.sourceProvidedResources>(sourcePerShaderPerFrame.descriptorUpdateData, source->resources, sourcePerShaderPerFrame.descriptorSet, frameMod, sourcePerShaderPerFrame.frameLastUpdated);
-	      dev->getVkDevice().updateDescriptorSets(sourcePerShaderPerFrame.descriptorUpdateData.writeCount, sourcePerShaderPerFrame.descriptorUpdateData.writes, 0, NULL);
-	      sourcePerShaderPerFrame.frameLastUpdated = frame;
-	    }
-	    cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute, shaderInstance.pipelineLayout, 0, 1, &sourcePerShaderPerFrame.descriptorSet, 0, NULL);
+	    auto& descriptorBundle = source->perShaderByIdByFrame[CS.id][frameMod];
+	    prepareDescriptors<SL.resources, CS.sourceProvidedResources, SL.id>(descriptorBundle, pslps.descriptorPool, source->resources, frameMod);
+	    cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute, shaderInstance.pipelineLayout, 0, 1, &descriptorBundle.descriptorSet, 0, NULL);
 	    static constexpr resourceMap primaryOutputRM = resolveReference<CS.primaryOutputReferenceId, TL.id, SL.id>();
 	    uint32_t workgroupSizeX, workgroupSizeY, workgroupSizeZ;
 	    if constexpr(containsId(OD.IRS, primaryOutputRM.requirementId)) {
@@ -1098,25 +1073,10 @@ namespace WITE {
 	  for(auto& targetUPP : allTargets.template ofLayout<TL.id>()) {
 	    auto* target = targetUPP->get();
 	    perTargetLayoutPerShader& ptlps = od.perTL[TL.id].perShader[CS.id];
-	    if(!ptlps.descriptorPool) [[unlikely]]
-	      ptlps.descriptorPool.reset(new descriptorPoolPool<CS.targetProvidedResources, OD.GPUID>());
 	    size_t frameMod = frame % target_t<TL.id>::maxFrameswap;
-	    auto& perShaderPerFrame = target->perShaderByIdByFrame[CS.id][frameMod];
-	    if(!perShaderPerFrame.descriptorSet) [[unlikely]] {
-	      perShaderPerFrame.descriptorSet = ptlps.descriptorPool->allocate();
-	      perShaderPerFrame.descriptorUpdateData.reset();
-	      fillWrites<TL.resources, CS.targetProvidedResources>(perShaderPerFrame.descriptorUpdateData, target->resources, perShaderPerFrame.descriptorSet, frameMod, NONE);
-	      dev->getVkDevice().updateDescriptorSets(perShaderPerFrame.descriptorUpdateData.writeCount,
-						      perShaderPerFrame.descriptorUpdateData.writes, 0, NULL);
-	      perShaderPerFrame.frameLastUpdated = frame;
-	    } else if(perShaderPerFrame.frameLastUpdated < target->resources.frameLastUpdated(frame)) [[unlikely]] {
-	      perShaderPerFrame.descriptorUpdateData.reset();
-	      fillWrites<TL.resources, CS.targetProvidedResources>(perShaderPerFrame.descriptorUpdateData, target->resources, perShaderPerFrame.descriptorSet, frameMod, perShaderPerFrame.frameLastUpdated);
-	      dev->getVkDevice().updateDescriptorSets(perShaderPerFrame.descriptorUpdateData.writeCount,
-						      perShaderPerFrame.descriptorUpdateData.writes, 0, NULL);
-	      perShaderPerFrame.frameLastUpdated = frame;
-	    }
-	    recordComputeDispatches_nested<CS, TL, SLS>(target, ptlps, perShaderPerFrame, cmd);
+	    auto& descriptorBundle = target->perShaderByIdByFrame[CS.id][frameMod];
+	    prepareDescriptors<TL.resources, CS.targetProvidedResources, TL.id>(descriptorBundle, ptlps.descriptorPool, target->resources, frameMod);
+	    recordComputeDispatches_nested<CS, TL, SLS>(target, ptlps, descriptorBundle, cmd);
 	  }
 	}
 	recordComputeDispatches_nested<CS, TLS.sub(1), SLS>(cmd);

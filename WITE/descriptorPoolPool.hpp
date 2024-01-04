@@ -16,12 +16,10 @@ namespace WITE {
     virtual ~descriptorPoolPoolBase() = default;
     virtual vk::DescriptorSet allocate() = 0;
     virtual void free(vk::DescriptorSet f) = 0;
-    virtual vk::DescriptorSetLayout getDSL() = 0;
   };
 
   template<literalList<resourceReference> allRRS, uint64_t GPUID>
   struct descriptorPoolPool : public descriptorPoolPoolBase {
-  private:
 
     struct isDescriptor {
       constexpr bool operator()(resourceReference rr) {
@@ -38,6 +36,8 @@ namespace WITE {
       return vk::DescriptorPoolSize { RRS[i].usage.asDescriptor.descriptorType, 1 };
     };
     static constexpr vk::DescriptorPoolCreateInfo dpci { {}, batchSize, RRS.LENGTH, poolSizes.ptr() };
+
+  private:
     gpu& dev;
     vk::DescriptorSetLayout layoutStaging[batchSize];//N copies of the same layout
     vk::DescriptorSet setsStaging[batchSize];
@@ -47,8 +47,7 @@ namespace WITE {
 
   public:
     descriptorPoolPool() : dev(gpu::get(GPUID)) {
-      vk::DescriptorSetLayout layout;
-      VK_ASSERT(dev.getVkDevice().createDescriptorSetLayout(&dslci, ALLOCCB, &layout), "failed to create descriptor set layout");
+      vk::DescriptorSetLayout layout = dev.getDescriptorSetLayout<dslci>();
       memset<batchSize>(layoutStaging, layout);
       allocInfo.setDescriptorSetCount(batchSize)
 	.setPSetLayouts(layoutStaging);
@@ -80,10 +79,6 @@ namespace WITE {
 
     virtual void free(vk::DescriptorSet f) override {
       available.push(f);
-    };
-
-    virtual vk::DescriptorSetLayout getDSL() override {
-      return layoutStaging[0];
     };
 
   };

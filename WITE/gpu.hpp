@@ -54,7 +54,9 @@ namespace WITE {
     std::array<vk::MemoryPropertyFlags, VK_MAX_MEMORY_TYPES> memoryFlagsByType;
     std::array<std::atomic_uint64_t, VK_MAX_MEMORY_HEAPS> freeMemoryByHeap;
     std::map<hash_t, vk::Sampler> samplers;
-    syncLock samplersMutex, queueMutex, lowPrioQueueMutex;
+    std::map<hash_t, vk::DescriptorSetLayout> descriptorSetLayouts;
+    std::map<hash_t, vk::PipelineLayout> pipelineLayouts;
+    syncLock samplersMutex, descriptorSetLayoutsMutex, pipelineLayoutsMutex, queueMutex, lowPrioQueueMutex;
     Platform::ThreadResource<cmdPool> tempCmds;
 
     gpu(size_t idx, vk::PhysicalDevice);
@@ -84,13 +86,45 @@ namespace WITE {
     inline auto getPhysical() { return pv; };
     void allocate(const vk::MemoryRequirements& mr, vk::MemoryPropertyFlags requiredFlags, vram* out);
 
+    template<vk::DescriptorSetLayoutCreateInfo CI> vk::DescriptorSetLayout getDescriptorSetLayout() {
+      scopeLock lock(&descriptorSetLayoutsMutex);
+      static constexpr hash_t CIHASH = hash(CI);
+      vk::DescriptorSetLayout& ret = descriptorSetLayouts[CIHASH];
+      if(!ret)
+	VK_ASSERT(getVkDevice().createDescriptorSetLayout(&CI, ALLOCCB, &ret), "failed to create descriptorSetLayout");
+      return ret;
+    };
+
+    template<literalList<vk::DescriptorSetLayoutCreateInfo> DSLS> void populateDSLS(vk::DescriptorSetLayout* dsls) {
+      if constexpr(DSLS.len) {
+	*dsls = getDescriptorSetLayout<DSLS[0]>();
+	populateDSLS<DSLS.sub(1)>(dsls+1);
+      }
+    };
+
+    template<literalList<vk::DescriptorSetLayoutCreateInfo> DSLS> vk::PipelineLayout getPipelineLayout() {
+      static constexpr hash_t PLHASH = hash(DSLS);
+      vk::PipelineLayout& ret = pipelineLayouts[PLHASH];
+      if(!ret) {
+	scopeLock lock(&pipelineLayoutsMutex);
+	if(!ret) {
+	  vk::PipelineLayoutCreateInfo ci;//NOTE: push constants NYI, supply here if needed
+	  vk::DescriptorSetLayout dsls[DSLS.len];
+	  ci.setLayoutCount = DSLS.len;
+	  ci.pSetLayouts = dsls;
+	  populateDSLS<DSLS>(dsls);
+	  VK_ASSERT(getVkDevice().createPipelineLayout(&ci, ALLOCCB, &ret), "failed to create pipelineLayout");
+	}
+      }
+      return ret;
+    };
+
     template<vk::SamplerCreateInfo CI> vk::Sampler getSampler() {
       scopeLock lock(&samplersMutex);
-      static constexpr hash_t CIHASH = hash(vkToTuple(CI));
+      static constexpr hash_t CIHASH = hash(CI);
       vk::Sampler& ret = samplers[CIHASH];
-      if(!ret) {
+      if(!ret)
 	VK_ASSERT(getVkDevice().createSampler(&CI, ALLOCCB, &ret), "failed to create sampler");
-      }
       return ret;
     };
 

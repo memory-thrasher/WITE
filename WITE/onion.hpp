@@ -832,12 +832,14 @@ namespace WITE {
 	  if(!pslps.descriptorPool) [[unlikely]]
 	    pslps.descriptorPool.reset(new descriptorPoolPool<GSR.sourceProvidedResources, OD.GPUID>());
 	  if(!shaderInstance.pipeline) [[unlikely]] {
+	    if(shaderInstance.pipelineLayout == NULL) {
+	      static constexpr vk::DescriptorSetLayoutCreateInfo dslcis[] = {
+		descriptorPoolPool<GSR.sourceProvidedResources, OD.GPUID>::dslci,
+		descriptorPoolPool<GSR.targetProvidedResources, OD.GPUID>::dslci
+	      };
+	      shaderInstance.pipelineLayout = dev->getPipelineLayout<dslcis>();
+	    }
 	    auto vkDev = dev->getVkDevice();
-	    vk::DescriptorSetLayout dsls[2] { pslps.descriptorPool->getDSL(), ptlps.descriptorPool->getDSL() };
-	    vk::PipelineLayoutCreateInfo plci { {}, 2, dsls };//NOTE: push constants NYI, supply here if needed
-	    ASSERT_TRAP(shaderInstance.pipelineLayout == NULL, "pipeline layout already exists");
-	    VK_ASSERT(vkDev.createPipelineLayout(&plci, ALLOCCB, &shaderInstance.pipelineLayout),
-		      "Failed to create pipeline layout; source: ", SL.id, " target: ", TL.id);
 	    vk::ShaderModuleCreateInfo moduleCI;
 	    vk::ShaderModule module;
 	    vk::PipelineShaderStageCreateInfo stages[GSR.modules.len];
@@ -892,7 +894,7 @@ namespace WITE {
 	      cmd.draw(findById(OD.BRS, vbm.requirementId).size / sizeofUdm<vb->usage.asVertex.format>(), 1, 0, 0);
 	    }
 	    // WARN("Drew ", findById(OD.BRS, vbm.requirementId).size / sizeofUdm<vb->usage.asVertex.format>(), " from ", verts[0]);
-	    //TODO more flexibility with draw. Allow source layout to ask for multi-draw, indexed, indirect etc. Allow allow (dynamic) less than the whole buffer.
+	    //TODO more flexibility with draw. Allow source layout to ask for multi-draw, indexed, indirect etc. Allow (dynamic) less than the whole buffer.
 	  }
 	}
 	recordRenders<TL, GSR, SLIDS.sub(1)>(target, ptl, ptlps, targetDescriptors, rp, cmd);
@@ -1015,12 +1017,14 @@ namespace WITE {
 	  if(!pslps.descriptorPool) [[unlikely]]
 	    pslps.descriptorPool.reset(new descriptorPoolPool<CS.sourceProvidedResources, OD.GPUID>());
 	  if(!shaderInstance.pipeline) [[unlikely]] {
+	    if(shaderInstance.pipelineLayout == NULL) {
+	      static constexpr vk::DescriptorSetLayoutCreateInfo dslcis[] = {
+		descriptorPoolPool<CS.sourceProvidedResources, OD.GPUID>::dslci,
+		descriptorPoolPool<CS.targetProvidedResources, OD.GPUID>::dslci
+	      };
+	      shaderInstance.pipelineLayout = dev->getPipelineLayout<dslcis>();
+	    }
 	    auto vkDev = dev->getVkDevice();
-	    vk::DescriptorSetLayout dsls[2] { pslps.descriptorPool->getDSL(), ptlps.descriptorPool->getDSL() };
-	    vk::PipelineLayoutCreateInfo plci { {}, 2, dsls };//NOTE: push constants NYI, supply here if needed
-	    ASSERT_TRAP(shaderInstance.pipelineLayout == NULL, "pipeline layout already exists");
-	    VK_ASSERT(vkDev.createPipelineLayout(&plci, ALLOCCB, &shaderInstance.pipelineLayout),
-		      "Failed to create pipeline layout; source: ", SL.id, " target: ", TL.id);
 	    vk::ShaderModuleCreateInfo moduleCI;
 	    vk::ShaderModule module;
 	    vk::PipelineShaderStageCreateInfo stage;

@@ -14,10 +14,6 @@ namespace WITE {
     return TO(TO::MaskType(FROM::MaskType(f))) & vk::FlagTraits<TO>::allFlags;
   };
 
-  template<class T> constexpr auto vkToTuple(const T& t) {
-    return t.reflect();
-  };
-
   template<typename T, int C> auto& operator<<(std::ostream& s, glm::vec<C, T> v) {
     for(size_t i = 0;i < C;i++)
       s << v[i] << " ";

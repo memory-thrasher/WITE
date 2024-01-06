@@ -115,12 +115,12 @@ if ! [ -f "${ERRLOG}" ] || [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
 	find "$OUTDIR/$DIRNAME" -iname '*.o' -print0 |
 	    while IFS= read -d '' OFILE; do
 		TESTNAME="${OFILE%.*}"
-		#echo running test $TESTNAME
+		grep -qF "$(basename "${TESTNAME#*/}")" test_skips.txt && continue;
 		#test -f "${TESTNAME}" && cp "${TESTNAME}" "${TESTNAME}.bak.$(date '+%y%m%d%H%M')"
 		rm "$TESTNAME"
 		$WORKNICE $COMPILER "$OFILE" -o "$TESTNAME" -L "${OUTDIR}" "-Wl,-rpath,$OUTDIR" $BUILTLIBS $LINKOPTS $BOTHOPTS 2>>"${ERRLOG}" >>"${LOGFILE}"
 		echo running test "${TESTNAME}" >>"${LOGFILE}"
-		md5sum $TESTNAME >>"${LOGFILE}"
+		# md5sum $TESTNAME >>"${LOGFILE}"
 		#VK_LOADER_DEBUG=all
 		$WORKNICE time timeout 30s timeout -s9 35s $TESTNAME 2>>"${ERRLOG}" >>"${LOGFILE}"
 		code=$?

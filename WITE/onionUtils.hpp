@@ -248,14 +248,15 @@ namespace WITE {
     uint64_t lastUpdatedFrame;
   };
 
-  struct perTargetLayoutPerSourceLayoutPerShader {
+  struct shaderInstance {
     vk::PipelineLayout pipelineLayout;
     vk::Pipeline pipeline;
   };
 
   struct perTargetLayoutPerShader {
     std::unique_ptr<descriptorPoolPoolBase> descriptorPool;
-    std::map<uint64_t, perTargetLayoutPerSourceLayoutPerShader> perSL;
+    std::map<uint64_t, shaderInstance> perSL;
+    shaderInstance targetOnlyShader;
   };
 
   struct perTargetLayoutPerSourceLayout {

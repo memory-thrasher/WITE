@@ -827,7 +827,7 @@ namespace WITE {
 	  static constexpr const resourceReference* ib = GSR.sourceProvidedResources.firstWhere(findIB());
 	  static constexpr size_t vibCount = ib ? 2 : 1;
 	  static_assert(vb);
-	  perTargetLayoutPerSourceLayoutPerShader& shaderInstance = ptlps.perSL[SL.id];
+	  shaderInstance& shaderInstance = ptlps.perSL[SL.id];
 	  perSourceLayoutPerShader& pslps = od.perSL[SL.id].perShader[GSR.id];
 	  if(!pslps.descriptorPool) [[unlikely]]
 	    pslps.descriptorPool.reset(new descriptorPoolPool<GSR.sourceProvidedResources, OD.GPUID>());
@@ -997,6 +997,24 @@ namespace WITE {
       return *RM;
     };
 
+    template<computeShaderRequirements CS, uint64_t TID, uint64_t SID> static inline void getWorkgroupSize(vk::Extent3D& workgroupSize, target_t<TID>* target, source_t<SID>* source, uint64_t frameMod) {
+      static constexpr resourceMap primaryOutputRM = resolveReference<CS.primaryOutputReferenceId, TID, SID>();
+      if constexpr(containsId(OD.IRS, primaryOutputRM.requirementId)) {
+	vk::Extent3D imageSize;
+	if constexpr(TID != NONE && containsId(findById(OD.TLS, TID).resources, primaryOutputRM.id))
+	  imageSize = target->template get<primaryOutputRM.id>().getSizeExtent(frameMod);
+	else
+	  imageSize = source->template get<primaryOutputRM.id>().getSizeExtent(frameMod);
+	workgroupSize.width = (imageSize.width - 1) / CS.strideX + 1;
+	workgroupSize.height = (imageSize.height - 1) / CS.strideY + 1;
+	workgroupSize.depth = (imageSize.depth - 1) / CS.strideZ + 1;
+      } else {
+	workgroupSize.width = (findById(OD.BRS, primaryOutputRM.requirementId).size - 1) / CS.strideX + 1;
+	workgroupSize.height = 1;
+	workgroupSize.depth = 1;
+      }
+    };
+
     template<computeShaderRequirements CS, literalList<uint64_t> SLS>
     inline void recordComputeDispatches_sourceOnly(vk::CommandBuffer cmd) {
       asm("int3");//NYI
@@ -1004,7 +1022,39 @@ namespace WITE {
 
     template<computeShaderRequirements CS, literalList<uint64_t> TLS>
     inline void recordComputeDispatches_targetOnly(vk::CommandBuffer cmd) {
-      asm("int3");//NYI
+      if constexpr(TLS.len) {
+	static constexpr targetLayout TL = findById(OD.TLS, TLS[0]);
+	if constexpr(satisfies(TL.resources, CS.targetProvidedResources)) {
+	  for(auto& targetUPP : allTargets.template ofLayout<TL.id>()) {
+	    auto* target = targetUPP->get();
+	    perTargetLayoutPerShader& ptlps = od.perTL[TL.id].perShader[CS.id];
+	    size_t frameMod = frame % target_t<TL.id>::maxFrameswap;
+	    auto& descriptorBundle = target->perShaderByIdByFrame[CS.id][frameMod];
+	    prepareDescriptors<TL.resources, CS.targetProvidedResources, TL.id>(descriptorBundle, ptlps.descriptorPool, target->resources, frameMod);
+	    if(!ptlps.targetOnlyShader.pipeline) [[unlikely]] {
+	      ptlps.targetOnlyShader.pipelineLayout = dev->getPipelineLayout<descriptorPoolPool<CS.targetProvidedResources, OD.GPUID>::dslci>();
+	      auto vkDev = dev->getVkDevice();
+	      vk::ShaderModuleCreateInfo moduleCI;
+	      vk::ShaderModule module;
+	      vk::PipelineShaderStageCreateInfo stage;
+	      moduleCI.setPCode(CS.module->data)
+		.setCodeSize(CS.module->size);
+	      VK_ASSERT(vkDev.createShaderModule(&moduleCI, ALLOCCB, &module), "Failed to create shader module");
+	      stage.setStage(CS.module->stage)
+		.setModule(module)
+		.setPName(CS.module->entryPoint);
+	      vk::ComputePipelineCreateInfo ci { {}, stage, ptlps.targetOnlyShader.pipelineLayout };
+	      VK_ASSERT(vkDev.createComputePipelines(dev->getPipelineCache(), 1, &ci, ALLOCCB, &ptlps.targetOnlyShader.pipeline), "failed to create compute pipeline");
+	    }
+	    cmd.bindPipeline(vk::PipelineBindPoint::eCompute, ptlps.targetOnlyShader.pipeline);
+	    cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute, ptlps.targetOnlyShader.pipelineLayout, 0, 1, &descriptorBundle.descriptorSet, 0, NULL);
+	    vk::Extent3D workgroupSize;
+	    getWorkgroupSize<CS, TL.id, NONE>(workgroupSize, target, NULL, frameMod);
+	    cmd.dispatch(workgroupSize.width, workgroupSize.height, workgroupSize.depth);
+	  }
+	}
+	recordComputeDispatches_targetOnly<CS, TLS.sub(1)>(cmd);
+      }
     };
 
     template<computeShaderRequirements CS, targetLayout TL, literalList<uint64_t> SLS>
@@ -1012,12 +1062,12 @@ namespace WITE {
       if constexpr(SLS.len) {
 	static constexpr sourceLayout SL = findById(OD.SLS, SLS[0]);
 	if constexpr(satisfies(SL.resources, CS.sourceProvidedResources)) {
-	  perTargetLayoutPerSourceLayoutPerShader& shaderInstance = ptlps.perSL[SL.id];
+	  shaderInstance& shaderInstance = ptlps.perSL[SL.id];
 	  perSourceLayoutPerShader& pslps = od.perSL[SL.id].perShader[CS.id];
 	  if(!pslps.descriptorPool) [[unlikely]]
 	    pslps.descriptorPool.reset(new descriptorPoolPool<CS.sourceProvidedResources, OD.GPUID>());
 	  if(!shaderInstance.pipeline) [[unlikely]] {
-	    if(shaderInstance.pipelineLayout == NULL) {
+	    if(shaderInstance.pipelineLayout == NULL) [[unlikely]] {
 	      static constexpr vk::DescriptorSetLayoutCreateInfo dslcis[] = {
 		descriptorPoolPool<CS.sourceProvidedResources, OD.GPUID>::dslci,
 		descriptorPoolPool<CS.targetProvidedResources, OD.GPUID>::dslci
@@ -1046,23 +1096,9 @@ namespace WITE {
 	    auto& descriptorBundle = source->perShaderByIdByFrame[CS.id][frameMod];
 	    prepareDescriptors<SL.resources, CS.sourceProvidedResources, SL.id>(descriptorBundle, pslps.descriptorPool, source->resources, frameMod);
 	    cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute, shaderInstance.pipelineLayout, 0, 1, &descriptorBundle.descriptorSet, 0, NULL);
-	    static constexpr resourceMap primaryOutputRM = resolveReference<CS.primaryOutputReferenceId, TL.id, SL.id>();
-	    uint32_t workgroupSizeX, workgroupSizeY, workgroupSizeZ;
-	    if constexpr(containsId(OD.IRS, primaryOutputRM.requirementId)) {
-	      vk::Extent3D imageSize;
-	      if constexpr(containsId(TL.resources, primaryOutputRM.id))
-		imageSize = target->template get<primaryOutputRM.id>().getSizeExtent(frameMod);
-	      else
-		imageSize = source->template get<primaryOutputRM.id>().getSizeExtent(frameMod);
-	      workgroupSizeX = (imageSize.width - 1) / CS.strideX + 1;
-	      workgroupSizeY = (imageSize.height - 1) / CS.strideY + 1;
-	      workgroupSizeZ = (imageSize.depth - 1) / CS.strideZ + 1;
-	    } else {
-	      workgroupSizeX = (findById(OD.BRS, primaryOutputRM.requirementId).size - 1) / CS.strideX + 1;
-	      workgroupSizeY = 1;
-	      workgroupSizeZ = 1;
-	    }
-	    cmd.dispatch(workgroupSizeX, workgroupSizeY, workgroupSizeZ);
+	    vk::Extent3D workgroupSize;
+	    getWorkgroupSize<CS, TL.id, SL.id>(workgroupSize, target, source, frameMod);
+	    cmd.dispatch(workgroupSize.width, workgroupSize.height, workgroupSize.depth);
 	  }
 	}
 	recordComputeDispatches_nested<CS, TL, SLS.sub(1)>(target, ptlps, perShader, cmd);

@@ -181,7 +181,7 @@ now with depth: 507fps
 */
 
 int main(int argc, char** argv) {
-  gpu::init("Simple render test");
+  gpu::init("Compute render test");
   primaryOnion = std::make_unique<onion_t>();
   auto camera = primaryOnion->createTarget<TL_standardRender.id>();
   onion_t::source_t<SL_simple.id>* spheres = primaryOnion->createSource<SL_simple.id>();
@@ -190,12 +190,10 @@ int main(int argc, char** argv) {
     sd.loc[i] = { 3 * std::cos(i), 3 * std::sin(i), i, 0.5f };
   glm::vec2 size = camera->getWindow().getVecSize();
   cameraData_t cd { { 0, 0, -5, 0 }, { 0, 0, 1, 0 }, { 0, 1, 0, 0 }, { 1, 0, 0, 0 }, { size.x, size.y, glm::radians(45.0f)/size.y, 0 } };
-  // WARN(cd.loc.x, ", ", cd.norm.x, ", ", cd.up.x, ", ", cd.right.x, ", ", cd.size.x);
-  // memset((void*)&cd, 1, sizeof(cd));
-  for(size_t i = 0;i < 10000;i++) {
+  for(size_t i = 0;i < 3000;i++) {
     cd.norm.x = std::sin(i/1000.0f);
     cd.norm.z = std::cos(i/1000.0f);
-    cd.loc = cd.norm * -5.0f;
+    cd.loc = cd.norm * -5.0f + glm::vec4(0, 0, i/10.0, 0);
     cd.right = glm::vec4(glm::cross(glm::vec3(cd.up), glm::vec3(cd.norm)), 0);
     spheres->write<RMS_sphereData.id>(sd);
     camera->write<RMT_cameraData_staging.id>(cd);

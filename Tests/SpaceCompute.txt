@@ -1,0 +1,119 @@
+rng notes:
+
+With the goal of producing a random number generator for which a frequency distribution can be produced for all generated numbers within a given 3D rectangular volume with logorithmic complexity, a very simple point algorithm was considered: `dot(xyz, (3, 3, 3)) % p1`, and later, `dot(xyz, (p1, p2, p3)) % p4`, where px is some prime on the order of 10^5. While this technically has a high modulo, it also has a much lower, visually obvious, false-modulo.
+
+A more "random-looking" rng was developed, with a slightly less random-looking alternative variation, to solve this.
+
+`floor(floor(x/p1)*p2/(x % p1 + p1)^2 + floor(y/p1)*p2/(y % p1 + p1)^2 + floor(z/p1)*p2/(z % p1 + p1)^2) % p3`
+p1-3 all prime constants
+x,y,z all ints
+p1 < p3
+p2 = p1*p3
+
+divide into cubes of size p1
+F(n) = p2/(n % p1 + p1)^2   0 <= n < p1
+G(m) = freq dist of F(n) % p3  0 <= n < p1  0 <= m < p3
+blockId = int vector floor(xyz/p1)
+element xyz at block b.xyz = (b.x*p2*F(x) + b.y*p2*F(y) + b.z*p2*F(z)) % p3
+baseline block: BBFD(n) =
+fd @ block b for output n = ?
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+alg considered and abandoned:
+
+  `x^2*y*p1%p2%p3` and
+  `x^2*y*p1%p2`
+
+The old freq dist alg worked on the principal: (x+y)%p = (x%p+y%p)%p
+
+
+px is a known prime
+nx is any integer
+F(x, y) = x^2*y*p1%p2%p3
+v is a possible output value of F
+question: how many (x, y) pairs exist in the range ((x1, y1), (x2, y2)) for which F(x, y) = v ?
+v = x^2*y*p1%p2%p3
+v+p3*n3 = x^2*y*p1%p2
+v+p3*n3+p2*n2 = x^2*y*p1
+
+
+
+x1 <= x <= x2
+y1 <= y <= y2
+px is a known prime
+nx is any integer
+F(x, y) = x^2*y*p1%p2
+v is a possible output value of F
+question: how many (x, y) pairs exist in the range ((x1, y1), (x2, y2)) for which F(x, y) = v ?
+v = x^2*y*p1%p2
+v + p2*n2 = x^2*y*p1
+v/n2 = x^2*y*p1/n2 - p2
+p2 = x^2*y*p1/n2 - v/n2
+p2/p1 = x^2*y/n2 - v/(n2*p1)
+p2/p1 = (x^2*y - v/p1)/n2
+(x^2*y - v/p1) % p2/p1 = 0
+
+v + p2*n2 = x^2*y*p1
+y = (v + p2*n2)/(p1*x^2)
+
+v + p2*n2 = x^2*y*p1
+v/n2 + p2 = x^2*y*p1/n2
+p2/p1 = x^2*y/n2 - v/(n2*p2)
+
+v + p2*n2 = x^2*y*p1
+n2 = (x^2*y*p1 - v)/p2
+
+x^2*y - v/p1 = n2*p2/p1
+x^2*y = n2*p2/p1 + v/p1
+y = (n2*p2/p1 + v/p1)/x^2
+x^2 = (n2*p2/p1 + v/p1)/y
+
+k, treat x^2 as a constant and find the line of solutions over the plane of values for (n2, y)
+n2 = (x^2*y*p1 - v)/p2
+G(y) = n2 = (y*x^2*p1 - v)/p2
+Q: how many times does that line pass over an int within range?
+floor(G(y2)) - floor(G(y1))
+??but howmany of them are integral y???
+formula needed: find next match
+(ceil(G(y)) + v/p2) / (p1*x^2) = y3
+but G(y3) might not be an int
+LCM?
+
+n2 = (x^2*y*p1 - v)/p2
+G(y) = n2 = (y*x^2*p1 - v)/p2
+G(y+1) = ((y+1)*x^2*p1 - v)/p2
+G(y+1) = (y*x^2*p1 + x^2*p1 - v)/p2
+G(y+1) = (y*x^2*p1 - v)/p2 + x^2*p1/p2
+G(y+1) = G(y) + x^2*p1/p2
+
+y = (v + p2*n2)/(p1*x^2)
+H(n2) = y = (v + p2*n2)/(p1*x^2)
+H(n2+1) = (v + p2*(n2 + 1))/(p1*x^2)
+H(n2+1) = (v + p2*n2 + p2)/(p1*x^2)
+H(n2+1) = (v + p2*n2)/(p1*x^2) + p2/(p1*x^2)
+H(n2+1) = H(n2) + p2/(p1*x^2)
+
+modulus of y at x = LCM(p2/(p1*x^2), x^2*p1/p2)
+LCM is slow so just multiply the numbers and risk having a multiple of the real modulo be the detected modulo?
+ym = p2/(p1*x^2) * x^2*p1/p2
+ym = 1 F
+
+
+if x^2++ then v -= p1*y
+

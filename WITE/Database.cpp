@@ -1,251 +1,379 @@
-#include "DBDatabase.hpp"
-#include "DBRecord.hpp"
-#include "DBDelta.hpp"
-#include "DBThread.hpp"
-
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
+#include <sys/resource.h>
+
+#include "Thread.hpp"
+#include "Database.hpp"
+#include "DBEntity.hpp"
+#include "DBRecord.hpp"
+#include "DBDelta.hpp"
+#include "DBThread.hpp"
+#include "DEBUG.hpp"
+#include "DBRecordFlag.hpp"
+#include "FrameCounter.hpp"
+
+#define PAGEPOW 23
+#define MAPTHRESH (2 << PAGEPOW)
 
 namespace WITE::DB {
 
-  Database::Database() {
-    DBThread* threads = reinterpret_cast<DBThread*>(malloc(sizeof(DbThread) * DB_THREAD_COUNT));
+  Database::Database(struct entity_type* types, size_t typeCount, size_t entityCount, int backingStoreFd) {
+    //entityCount param will yield to size of file if backing store is given and exists
+    deltaIsInPast_cb = deltaIsInPast_cb_t_F::make(this, &Database::deltaIsInPast);
+    threads = reinterpret_cast<DBThread*>(malloc(sizeof(DBThread) * DB_THREAD_COUNT));
     if(!threads)
-      CRASH_PREINIT("Faialed to create thread array");
+      CRASH_PREINIT("Failed to create thread array");
     for(size_t i = 0;i < DB_THREAD_COUNT;i++)
       new(&threads[i])DBThread(this, i);
-    this.threads = std::unique_ptr<DBThread>(threads);
-    //TODO populate threadsByTid
-  }
-
-  Database::Database(size_t entityCount) : this(),
-    entityCount(entityCount), free(entityCount) {
-    DBEntity* entities = reinterpret_cast<DBEntity*>(malloc(sizeof(DBEntity) * entityCount));
-    for(size_t i = 0;i < entityCount;i++)
-      free.push(new(&entities[i])DBEntity(this, i));
-    //no need to load anything when there's no file to load from
-    this->metadata = std::unique_ptr(entities);
-    data = reinterpret_cast<DBRecord*>(mmap(NULL, sizeof(DBRecord) * entityCount, PROT_READ | PROT_WRITE,
-					    MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB | MAP_HUGE_2MB, -1, 0));
-  }
-
-  Database::Database(int backingStoreFd, size_t entityCount) : this() {
-    if(!entityCount) {
+    for(size_t i = 0;i < typeCount;i++) {
+      this->types.insert({types[i].typeId, types[i]});
+    }
+    int mmapFlags = 0;
+    if(backingStoreFd >= 0) {
       struct stat stat;
       fstat(backingStoreFd, &stat);
-      entityCount = stat.st_size / sizeof(DBRecord);
+      size_t entityCountFromFile = stat.st_size / sizeof(DBRecord);
+      if(entityCountFromFile > entityCount)
+	entityCount = entityCountFromFile;
+      // else
+	//TODO grow file
+      mmapFlags |= MAP_SHARED | MAP_POPULATE;
+    } else { //anonymous db
+      mmapFlags |= MAP_PRIVATE | MAP_ANONYMOUS;
     }
     this->entityCount = entityCount;
-    free = AtomicRollingQueue<DBEntity*>(entityCount);
-    data = reinterpret_cast<DBRecord*>(mmap(NULL, sizeof(DBRecord) * entityCount, PROT_READ | PROT_WRITE,
-					    MAP_SHARED | MAP_HUGETLB | MAP_HUGE_2MB | MAP_POPULATE, backingStoreFd, 0));
+    size_t mmapsize = sizeof(DBRecord) * entityCount;
+    // if(mmapsize > MAPTHRESH)
+    //   mmapFlags |= MAP_HUGETLB;// | (PAGEPOW << MAP_HUGE_SHIFT);
+    data_raw = mmap(NULL, mmapsize, PROT_READ | PROT_WRITE, mmapFlags, backingStoreFd, 0);
+    if(data_raw == MAP_FAILED) {
+      int e = errno;
+      if(e == ENOMEM) { //data rlimit might be to blame. Try to increase it.
+	WARN("Attempting to increase data rlimit because mmap failed with ENOMEM");
+	struct rlimit rlim;
+	if(getrlimit(RLIMIT_DATA, &rlim)) CRASH_PREINIT("Failed to fetch data rlimit");
+	WARN("Data rlimt old: ", rlim.rlim_cur);
+	rlim.rlim_cur = max(rlim.rlim_cur + mmapsize, rlim.rlim_max);
+	WARN("Data rlimt new: ", rlim.rlim_cur);
+	if(rlim.rlim_cur < mmapsize) CRASH_PREINIT("Data rlimit hard limit too low");
+	if(setrlimit(RLIMIT_DATA, &rlim)) CRASH_PREINIT("Failed to set data rlimit");
+	data_raw = mmap(NULL, mmapsize, PROT_READ | PROT_WRITE, mmapFlags, backingStoreFd, 0);
+	e = errno;
+      }
+      if(data_raw == MAP_FAILED)
+	CRASH_PREINIT("Failed to create memory map with size ", sizeof(DBRecord) * entityCount,
+		      " flags ", mmapFlags, " and errno ", e);
+    }
     DBEntity* entities = reinterpret_cast<DBEntity*>(malloc(sizeof(DBEntity) * entityCount));
+    scopeLock lock(&free_mutex);
     for(size_t i = 0;i < entityCount;i++) {
+      //TODO progress report callback for loading bar?
       DBEntity* dbe = new(&entities[i])DBEntity(this, i);
-      if(data[i].header.flags & DBRecord::flag_t::allocated) {
+      if((data[i].header.flags & DBRecordFlag::allocated) != 0) {
 	size_t tid = i % DB_THREAD_COUNT;
-	dbe->masterThread = tid;
-	threads[tid].addToSlice(dbe);
+	auto type = &this->types[cv_remove(data[i].header.type)];
+	if(type->onSpinUp)
+	  type->onSpinUp(&entities[i]);
+	if((data[i].header.flags & DBRecordFlag::head_node) != 0) {
+	  threads[tid].addToSlice(dbe, type->typeId);
+	}
       } else {
 	free.push(dbe);
       }
     }
-    this->metadata = std::unique_ptr(entities);
+    this->metadata = entities;
   }
 
-  DBThread* getLightestThread() {
+  Database::~Database() {
+    stop();
+    DBDelta transaction;
+    for(size_t i = 0;i < DB_THREAD_COUNT;i++) {
+      while(threads[i].transactionPool.popIf(&transaction, deltaIsInPast_cb))
+	transaction.applyTo(&data[i]);
+      threads[i].~DBThread();
+    }
+    ::free(threads);
+    ::free(metadata);
+    msync(data_raw, sizeof(DBRecord) * entityCount, MS_SYNC);//flush
+    munmap(data_raw, sizeof(DBRecord) * entityCount);
+  }
+
+  bool Database::anyThreadIs(DBThread::semaphoreState state) {
+    for(size_t i = 0;i < DB_THREAD_COUNT;i++)
+      if(threads[i].semaphore == state)
+	return true;
+    return false;
+  }
+
+  bool Database::anyThreadBroke() {
+    for(size_t i = 0;i < DB_THREAD_COUNT;i++) {
+      auto state = threads[i].semaphore.load();
+      if(state == DBThread::state_exited || state == DBThread::state_exiting || state == DBThread::state_exploded)
+	return true;
+    }
+    return false;
+  }
+
+  void Database::signalThreads(DBThread::semaphoreState from, DBThread::semaphoreState to, DBThread::semaphoreState waitFor) {
+    for(size_t i = 0;i < DB_THREAD_COUNT;i++) {
+      bool good = threads[i].setState(from, to);
+      ASSERT_TRAP(good, "thread state desync!");
+    }
+    for(size_t i = 0;i < DB_THREAD_COUNT;i++) {
+      while(true) {
+	auto state = threads[i].semaphore.load(std::memory_order_consume);
+	if(state == waitFor) break;
+	if(state != to) CRASH("Thread state mismatch! signalThreads(from, to, waitFor)", (int)from, ", ", (int)to, ", ",
+			      (int)waitFor, ", ", " but thread ", i, " is in state ", (int)state);
+	WITE::Platform::Thread::sleepShort();
+      }
+    }
+  }
+
+  Database* Database::liveDb = NULL;
+
+  void Database::start() {
+    liveDb = this;
+    Platform::Thread::init();
+    started = true;
+    for(size_t i = 0;i < DB_THREAD_COUNT;i++) {
+      threads[i].start();
+      threadsByTid.insert({ threads[i].getTid(), i });
+    }
+    signalThreads(DBThread::state_ready, DBThread::state_updating, DBThread::state_updated);
+    while(true) {
+      if(anyThreadBroke()) {
+	stop();
+	break;
+      }
+      signalThreads(DBThread::state_updated, DBThread::state_maintaining, DBThread::state_maintained);
+      if(anyThreadBroke() || shuttingDown) {
+	stop();
+	LOG("main thread returning from db start");
+	break;
+      }
+      currentFrame++;
+      Util::FrameCounter::advanceFrame();
+      signalThreads(DBThread::state_maintained, DBThread::state_updating, DBThread::state_updated);
+    }
+    for(auto& type : types)
+      if(type.second.onSpinDown)
+	for(DBEntity& e : getByType(type.first))
+	  type.second.onSpinDown(&e);
+  }
+
+  void Database::shutdown() {
+    LOG("shutdown requested");
+    shuttingDown = true;
+  }
+
+  void Database::stop() {
+    shuttingDown = true;
+    LOG("stop requested");
+    for(size_t i = 0;i < DB_THREAD_COUNT;i++)
+      threads[i].join();
+  }
+
+  DBThread* Database::getLightestThread() {
     DBThread* ret = &threads[0];
     for(size_t i = 1;i < DB_THREAD_COUNT;i++)
-      if(threads[i].timeSPentOnLastFrame < ret->timeSPentOnLastFrame)
+      if(threads[i].nsSpentOnLastFrame < ret->nsSpentOnLastFrame)
 	ret = &threads[i];
     return ret;
   }
 
-  DBEntity* Database::allocate(size_t count) {
+  DBEntity* Database::allocate(DBRecord::type_t type, size_t count, bool isHead) {
     DBThread* t = getLightestThread();//TODO something cleverer
-    DBEntity* ret = free.pop();
-    if(!ret) return NULL;
-    ret->masterThread = t->dbId;
-    t->addToSlice(ret);
-    DBDelta delta;//set allocated flag
-    delta.targetEntityId = ret->idx;
-    delta.flagWriteValues = DBRecord::allocated | DBRecord::head_node;
-    if(count > 1) {
-      delta.flagWriteValues |= DBRecord::has_next;
-      delta.write_nextGlobalId = true;
-      delta.new_nextGlobalId = allocate(count - 1)->idx;
+    DBEntity* ret;
+    {
+      scopeLock lock(&free_mutex);
+      if(free.empty()) return NULL;
+      ret = free.front();
+      if(started && ret->lastWrittenFrame == currentFrame)//the chosen entity was deallocated on this frame
+	return NULL;
+      free.pop();
     }
-    delta.flagWriteMask = delta.flagWriteValues;
-    write(delta);
+    //LOG("Allocated:  ", ret->getId(), " on frame ", currentFrame);
+#ifdef DEBUG
+    DBRecord::header_t header;
+    readHeader(ret, &header);
+    ASSERT_TRAP(!(header.flags >> DBRecordFlag::allocated), "Allocated entity found in free queue! ent: ", ret->getId(), ", frame: ", currentFrame, ", last log: ", (ret->log.peekLast() ? ret->log.peekLast()->frame : 0), ", last write: ", ret->lastWrittenFrame);
+#endif
+#ifdef DEBUG_THREAD_SLICES
+    ret->lastAllocatedFrame = currentFrame;
+    ret->lastAllocatedOpIdx = ret->operationIdx++;
+#endif
+    ASSERT_TRAP(std::less()(metadata-1, ret) && std::less()(ret, metadata + entityCount), "Illegal entity returned from free");
+    ASSERT_TRAP(ret->masterThread == ~0, "Duplicate entity allocation.");
+    if(isHead) {
+      t->addToSlice(ret, type);
+    } else {
+      ret->masterThread = ~0;
+    }
     return ret;
   }
 
-  void Database::deallocate(DBEntity* libre, DBRecord* state) {
-    free.push(libre);
-    threads[libre->idx].removeFromSlice(libre);
-    libre->masterThread = ~0;
-    union {
-      DBRecord temp;
-      DBDelta delta;
-    }
+  const struct entity_type* Database::getType(DBRecord::type_t t) {
+    return &types[t];
+  }
+
+  void Database::deallocate(DBEntity* libre, DBRecord::header_t* state) {
+    ASSERT_TRAP(std::less()(metadata-1, libre) && std::less()(libre, metadata + entityCount), "Illegal entity fed to free");
+    // LOG("Deallocated:", libre->getId(), " on frame ", currentFrame);
+    ASSERT_TRAP(libre->masterThread < DB_THREAD_COUNT, "attempting to free entity with no master");
+    threads[libre->masterThread].removeFromSlice(libre);
+    DBRecord::header_t stateHeader = {};
     if(!state) {
       //TODO only read the part that we need
-      read(getEntity(libre->idx), &temp);
-      state = &temp;
+      readHeader(getEntity(libre->idx), &stateHeader);
+      state = &stateHeader;
     }
-    if(state->header.flags & DBRecord::has_next) {
-      deallocate(getEntity(state->header.nextGlobalId));
+    if((state->flags & DBRecordFlag::has_next) != 0) {
+      deallocate(getEntity(state->nextGlobalId));
     }
-    delta = DBDelta();
+#ifdef DEBUG_THREAD_SLICES
+    libre->lastDeallocatedFrame = currentFrame;
+    libre->lastDeallocatedOpIdx = libre->operationIdx++;
+#endif
+    auto type = &types[state->type];
+    if(type->onSpinDown)
+      type->onSpinDown(libre);
+    if(type->onDeallocate)
+      type->onDeallocate(libre);
+    DBDelta delta;
+    delta.clear();
     delta.targetEntityId = libre->idx;
     //set allocated flag
-    delta.flagWriteMask = ~0;
-    delta.flagWriteValues = 0;
-    write(delta);
+    delta.flagWriteMask = DBRecordFlag::all;
+    delta.flagWriteValues = DBRecordFlag::none;
+    write(&delta);
+  }
+
+  DBThread* Database::getCurrentThread() {
+    return &threads[threadsByTid[DBThread::getCurrentTid()]];
   }
 
   void Database::write(DBDelta* src) {
     if(started) {
-      delta->frame = curentFrame;
-      auto threadLog = &DBThread.getCurrentThread()->transactions;
-      if(!threadLog->push(src)) {
-	ScopeLock lock(&logMutex);
-	size_t freeLog = log.freeSpace();
-	if(freeLog < DBThread::TRANSACTION_COUNT)
-	  applyLogTransactions(DBThread::TRANSACTION_COUNT - freeLog);
-	DBDelta temp;
-	while(threadLog->pop(&temp)) {
-	  DBEntity* e = getEntity(temp.targetEntityId);
-	  DBDelta* last = e->last,
-	    *newLast = log.push(temp);
-	  e->last = newLast;
-	  last->nextForEntity = newLast;
-	}
-	threadLog->push(src);//threadLog is now empty, no point in checking the result
-      }
+      ASSERT_TRAP((void*)this == (void*)liveDb, "I am a teapot");
+      ASSERT_TRAP(getEntity(src->targetEntityId)->masterThread == getCurrentThread()->dbId,
+		  "Write to entity from wrong thread!");
+      src->frame = metadata[src->targetEntityId].lastWrittenFrame = currentFrame;
+      src->integrityCheck(this);
+      // LOG("Writing delta: ", src, *src);
+      getEntity(src->targetEntityId)->log.push(getCurrentThread()->transactionPool.push(src));
     } else {
+      // LOG("Pre-start writing delta: ", src, *src);
       //this is for setting up the game start or menus
+      src->frame = 0;
+      src->integrityCheck(this);
       src->applyTo(&data[src->targetEntityId]);
     }
   }
 
-  bool Database::deltaIsInPast(DBDelta* t) {
+  void Database::idle(DBThread* thread) {
+    for(size_t i = 0;i < 100;i++)
+      if(!applyLogTransactions(thread))
+	break;
+    //TODO other stuff?
+  };
+
+  bool Database::deltaIsInPast(const DBDelta* t) {
     return t->frame < currentFrame;
   }
 
-  static Database::Callback_t<bool, DBDelta*> deltaIsInPast_cb =
-    Callback_Factory<bool, DBDelta*>::make(&Database::deltaIsInPast);
-
-  void Database::applyLogTransactions(size_t minimumApplyRemaining) {
-    static const size_t MAX_BATCH_SIZE = 4*1024/sizeof(DBDelta);
-    DBDelta batch[MAX_BATCH_SIZE];//4kb (max thread stack size (ulimit -s) is often 8kb
-    do {
-      size_t thisBatchSize = log.bulkPop(&batch, MAX_BATCH_SIZE, &deltaIsInPast_cb);
-      for(size_t i = 0;i < thisBatchSize;i++) {
-	DBDelta* delta = &batch[i];
-	size_t id = delta->targetEntityId;
-	DBEntity* dbe = &metadata[id];
-	delta->applyTo(&data[id]);
-	//TODO memory barrier?
-	dbe->firstLog = delta->nextForEntity;
-	if(!delta->nextForEntity)
-	  dbe->lastLog = NULL;
+  size_t Database::applyLogTransactions(DBThread* thread) {
+    size_t ret = 0;
+    DBDelta transaction;
+    //TODO more dynamic batch size, and larger batches
+    if(thread->transactionPool.popIf(&transaction, deltaIsInPast_cb)) {
+      size_t id = transaction.targetEntityId;
+      ASSERT_TRAP(transaction.frame != currentFrame, "Attempted to apply log on its origin frame!");
+      DBEntity* dbe = &metadata[id];
+#ifdef DEBUG_THREAD_SLICES
+      dbe->lastAppliedTranFrame = currentFrame;
+      dbe->lastAppliedTranOpIdx = dbe->operationIdx++;
+#endif
+      transaction.applyTo(&data[id]);
+      DBDelta* temp = dbe->log.pop();
+      ASSERT_TRAP(*temp == transaction, "Logs applied out of order!");
+      if((transaction.flagWriteMask >> DBRecordFlag::allocated) &&
+	 !(transaction.flagWriteValues >> DBRecordFlag::allocated)) {
+	//on deallocate
+	dbe->masterThread = ~0;
+#ifdef DEBUG_THREAD_SLICES
+	dbe->lastAppliedDeallocationTranFrame = currentFrame;
+	dbe->lastAppliedDeallocationTranOpIdx = dbe->operationIdx++;
+#endif
+	scopeLock lock(&free_mutex);
+	free.push(dbe);
       }
-      if(minimumApplyRemaining <= thisBatchSize) {
-	minimumApplyRemaining = 0;
-      } else if(thisBatchSize < MAX_BATCH_SIZE) {//this means ran out of deltas that belong to previous frames to flush, yet still don't have enough room in the log; this is fatal
-	//this is actually the best possible time to crash: we have just finished writing an entire frame to the save
-	msync(reinterpret_cast<void*>(data), sizeof(DBRecord) * entityCount, MS_SYNC);//flush
-	shuttingDown = true;
-	exit(EXIT_FAILURE);
-	while(1);//do not release mutex
+      if((transaction.flagWriteMask >> DBRecordFlag::allocated) &&
+	 (transaction.flagWriteValues >> DBRecordFlag::allocated)) {
+	//on allocate
+#ifdef DEBUG_THREAD_SLICES
+	dbe->lastAppliedAllocationTranFrame = currentFrame;
+	dbe->lastAppliedAllocationTranOpIdx = dbe->operationIdx++;
+#endif
       }
-    } while(minimumApplyRemaining);
+      ret++;
+    };
+    return ret;
   }
 
   void Database::read(DBEntity* src, DBRecord* dst) {
-    dst* = data[src->idx];
-    DBDelta* delta = src->firstLog;
-    while(delta && delta->frame < currentFrame) {
-      delta->apply(dst);
-      delta = delta->nextForEntity;
+    auto iter = src->log.begin();
+    *dst = *cv_remove(&data[src->idx]);
+    while(iter && iter->frame < currentFrame) {
+      iter->applyTo(dst);
+      ASSERT_TRAP(iter->targetEntityId == src->getId(), "Log stack collission, frame: ", currentFrame);
+      // ASSERT_TRAP(iter->nextForEntity || iter == src->log.peekLastDirty(), "Desync at end of log");
+      iter++;
     }
   }
 
+  void Database::readHeader(DBEntity* e, DBRecord::header_t* out, bool readNext, bool readType, bool readFlags) {
+    auto delta = e->log.begin();
+    *out = *cv_remove(&data[e->idx].header);
+    while(delta && delta->frame < currentFrame) {
+      ASSERT_TRAP(delta->targetEntityId == e->getId(), "Log stack collission, frame: ", currentFrame);
+      if(readNext && delta->write_nextGlobalId)
+	out->nextGlobalId = delta->new_nextGlobalId;
+      if(readType && delta->write_type)
+	out->type = delta->new_type;
+      if(readFlags && delta->flagWriteMask != 0)
+	out->flags ^= delta->flagWriteMask & (out->flags ^ delta->flagWriteValues);
+      // ASSERT_TRAP(delta->nextForEntity || delta == e->log.peekLastDirty(), "Desync at end of log");
+      delta++;
+    }
+  }
+
+  DBEntity* Database::getEntityAfter(DBEntity* src) {
+    DBRecord::header_t header;
+    readHeader(src, &header, true, false, true);
+    return (header.flags & DBRecordFlag::has_next) != 0 ? getEntity(header.nextGlobalId) : NULL;
+  }
+
+  Database::threadTypeSearchIterator::fetcher_cb_return
+  typeMembersFromThread(DBRecord::type_t t,
+			Database::threadTypeSearchIterator::fetcher_cb_param thread) {
+    auto ret = thread->getSliceMembersOfType(t);
+    return ret;
+  }
+
+  Database::threadTypeSearchIterator Database::getByType(DBRecord::type_t t) const {
+    auto l2_cb = threadTypeSearchIterator::fetcher_cb_F::make<DBRecord::type_t>(t, &typeMembersFromThread);
+    return threadTypeSearchIterator(Collections::IteratorWrapper(threads, DB_THREAD_COUNT), l2_cb);
+  };
+
+  DBEntity* Database::getEntity(size_t id) {
+    ASSERT_TRAP(id < entityCount, "insane entity id: ", id);
+    return &metadata[id];
+  };
+
+  size_t Database::getEntityCount() {
+    return entityCount;
+  };
+
 }
-
-
-
-
-
-// #include "Database.hpp"
-// #include "DBEntity.hpp"
-// #include "DBThread.hpp"
-
-// namespace WITE::DB {
-
-//   Database::Database(int threadCount, FILE* backingStore) : this(threadCount, mmap(TODO), 0) {}
-
-//   Database::Database(int threadCount, void* backingStore, size_t backingStoreSize) :
-//     metadata(std::make_unique<DBEntity[]>(backingStoreSize)),
-//     shuttingDown(false),
-//     threadCount(threadCount) {
-//     DBThread* threads = new DBThread[threadCount];
-//     for(size_t i = 0;i < threadCount;i++) {
-//       new(&threads[i])DBThread(this, i);
-//     }
-//     this.threads = new std::unique_ptr<DBThread[]>(threads);
-//   }
-
-//   Database::anyThreadIs(DBThread::semaphoreState state) {
-//     for(size_t i = 0;i < threadCount;i++)
-//       if(threads[i].semaphore == state)
-// 	return true;
-//     return false;
-//   }
-
-//   void mainLoop() {
-//     for(size_t i = 0;i < threadCount;i++)
-//       threads[i].semaphore = startup;
-//     size_t entityInCommitSweep = 0;
-//     DBEntity* tempE;
-//     while(!shuttingDown) {
-//       // gathering: each thread calls update for each entity it owns (generating transactions)
-//       for(size_t i = 0;i < threadCount && !shuttingDown;i++)
-// 	threads[i].semaphore = gathering;
-//       //     while those do that, this thread applies logs from previous frames to the backing store
-//       while(anyThreadIs(gathering)) {
-// 	tempE = getEntity(id);
-// 	if(tempE->pendingTransactions) {
-// 	  [[likely]]
-// 	  //TODO apply backlog
-// 	}
-// 	if(++entityInCommitSweep >= entityCount) [[unlikely]] entityInCommitSweep = 0;
-//       }
-//       for(size_t i = 0;i < threadCount && !shuttingDown;i++)
-// 	while(threads[i].semaphore != gathered);
-//       // mapping: this thread builds a conflict tree forest of transactions and assigns each transaction tree to a worker thread
-//       //TODO
-//       // resolving: each thread calls the conflict resolution on each transaction tree it has been assigned, writing single-object deltas to those objects' own log spaces
-//       for(size_t i = 0;i < threadCount && !shuttingDown;i++)
-// 	threads[i].semaphore = gathering;
-//       //    while they do that, this thread rethinks which thread owns what DbEntities (takes affect on the next gathering step)
-//       //    also expands the backing file if it exists and space is running low
-//       //TODO
-//       for(size_t i = 0;i < threadCount && !shuttingDown;i++)
-// 	while(threads[i].semaphore != gathered);
-//     }
-//     for(size_t i = 0;i < threadCount;i++)
-//       threads[i].semaphore = exiting;
-//   }
-
-//   void write(DBOpenTransaction* transaction) {
-//     DBThread* thisThread = DBThread::getCurrentThread();
-//     if(!thisThread)
-//       [[unlikely]]
-// 	throw std::runtime_exception("Transaction cannot be saved from non-worker thread. This is a bug. Transactions should only be created via update.");
-//     //TODO
-//   }
-
-// }

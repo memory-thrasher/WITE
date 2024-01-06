@@ -1,45 +1,74 @@
+#include "SyncLock.hpp"
+
+#include <atomic>
+
 namespace WITE::Collections {
 
-  template<class Node> using AtomicLinkedListNodeMember = Node*;//should this be atomic?
+  template<class Node> using AtomicLinkedListNodeMember = Node*;
 
-  template<class Node, AtomicLinnkedListNodeMember Node::*NodePtr> class AtomicLinkedList {
+  template<class Node, AtomicLinkedListNodeMember<Node> Node::*NodePtr> class AtomicLinkedList {
   private:
-    std::atomic<Node*> first, last;
+    Node* first, *last;
+    Util::SyncLock mutex;
     AtomicLinkedList(AtomicLinkedList&) = delete;
   public:
+    AtomicLinkedList() {};
     void push(Node* gnu) {
       gnu->*NodePtr = NULL;
-      Node* previousLast = last.exchange(gnu, std::memory_order_acq_rel);
-      previousLast->*NodePtr = gnu;
+      Util::ScopeLock lock(&mutex);
+      Node* previousLast;
+      previousLast = last;
+      last = gnu;
+      if(!previousLast)
+	first = gnu;
+      else
+	previousLast->*NodePtr = gnu;
+      ASSERT_TRAP(previousLast != gnu, "Attempted to self-reference linked list!");
     };
     Node* pop() {
-      Node* ret = first.Load(std::memory_order_acquire);
-      do {
-	if(!ret) return NULL;
-	Node* next = ret->*NodePtr;
-      } while(!first.compare_exchange_strong(&ret, next, std::memory_order_release, std::memory_order_acq_rel));
+      Util::ScopeLock lock(&mutex);
+      Node* ret = first;
+      if(!ret) return NULL;
+      Node* next = ret->*NodePtr;
+      first = next;
+      if(!next)
+	last = NULL;
       return ret;
     };
-    Node* peek() {
-      return first.Load(std::memory_order_consume);
+    Node* peek() const {
+      return first;
     };
-    class Iterator {
+    const Node* const peekLast() const {
+      Util::ScopeLock lock(&mutex);
+      return last;
+    };
+    const Node* const peekLastDirty() const {
+      return peekLast();
+    };
+    class iterator {
     private:
       Node* current;
-      Iterator(Node* c) : current(c) {}
+      iterator(Node* c) : current(c) {}
+      // iterator(Node* c, AtomicLinkedList<Node>* t) : current(c), lock(m) {}
+      iterator(iterator& o) : current(o.current) {}
+      friend class AtomicLinkedList;
     public:
+      operator Node*() { return current; };
       Node* operator->() { return current; };
-      Iterator& operator++() {
+      iterator& operator++() {
 	if(current) current = current->*NodePtr;
 	return *this;
       };
-      Iterator operator++(int) {
-	Iterator old = *this;
+      iterator operator++(int) {
+	iterator old = *this;
 	operator++();
 	return old;
       };
+      operator bool() { return current; };
     };
-    Iterator begin() { return Iterator(first.load(std::memory_order_consume)); };
-  }
+    iterator begin() {
+      return iterator(root.load(std::memory_order_consume).first);
+    };
+  };
 
 }

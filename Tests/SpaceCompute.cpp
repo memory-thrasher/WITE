@@ -29,8 +29,10 @@ IDL id list
 struct cameraData_t {
   glm::vec4 loc, norm, up, right;
   glm::vec4 size;
+  glm::ivec4 gridOrigin; //xyz is origin sector, w is render distance (iterations)
 };
 
+// constexpr bufferRequirements BR_scatterData = defineSimpleStorageBuffer(gpuId, sizeof(scatplot_freq_dist));
 constexpr bufferRequirements BR_cameraData = defineSimpleUniformBuffer(gpuId, sizeof(cameraData_t));
 constexpr bufferRequirements BRS_cameraData = NEW_ID(stagingRequirementsFor(BR_cameraData, 2));
 
@@ -47,7 +49,8 @@ constexpr clearStep CL_color = defineClear(0.2f, 0.2f, 0.2f, 1.0f),
 
 constexpr resourceReference RR_color = defineSimpleColorReference(),
 	    RR_cameraData = defineUBReferenceAtCompute(),
-	    RRL_camera[] { RR_cameraData, RR_color };
+	    // RR_scatterData = defineSBReferenceAtCompute(),
+	    RRL_camera[] { RR_cameraData, /*RR_scatterData,*/ RR_color };//order here is binding idx in shader
 
 constexpr uint64_t RR_IDL_cameraData[] = { RR_cameraData.id, C_updateCameraData.dst.id },
 	    RR_IDL_color[] = { RR_color.id, CL_color.rr.id },
@@ -58,6 +61,11 @@ constexpr resourceMap RMT_cameraData_staging = {
   .id = __LINE__,
   .requirementId = BRS_cameraData.id,
   .resourceReferences = C_updateCameraData.src.id
+// }, RMT_scatterData = {
+//   .id = __LINE__,
+//   .requirementId = BR_scatterData.id,
+//   .resourceReferences = RR_scatterData.id,
+//   .external = true
 }, RMT_color = {
   .id = __LINE__,
   .requirementId = IR_standardColor.id,
@@ -65,6 +73,7 @@ constexpr resourceMap RMT_cameraData_staging = {
   .resizeBehavior = { imageResizeType::eDiscard, {}, true }
 }, RMT_target[] = {
   RMT_cameraData_staging,
+  //  RMT_scatterData,
   RMT_color,
   {
     .id = __LINE__,
@@ -99,6 +108,7 @@ constexpr imageRequirements allImageRequirements[] = {
 };
 
 constexpr bufferRequirements allBufferRequirements[] = {
+  // BR_scatterData,
   BR_cameraData,
   BRS_cameraData
 };
@@ -117,13 +127,19 @@ constexpr onionDescriptor od = {
 typedef WITE::onion<od> onion_t;
 std::unique_ptr<onion_t> primaryOnion;
 
+constexpr float fov = 45.0f;
+
 int main(int argc, char** argv) {
   gpu::init("Space test");
   primaryOnion = std::make_unique<onion_t>();
+  // buffer<BR_scatterData> scatterDataBuf;
+  // scatterDataBuf.slowOutOfBandSet(scatplot_freq_dist);
   auto camera = primaryOnion->createTarget<TL_standardRender.id>();
+  // camera->set<RMT_scatterData.id>(&scatterDataBuf);
   glm::vec2 size = camera->getWindow().getVecSize();
-  cameraData_t cd { { 0, 0, -5, 0 }, { 0, 0, 1, 0 }, { 0, 1, 0, 0 }, { 1, 0, 0, 0 }, { size.x, size.y, glm::radians(45.0f)/size.y, 0 } };
-  for(size_t i = 0;i < 100;i++) {
+  cameraData_t cd { { 0, 0, -5, 0 }, { 0, 0, 1, 0 }, { 0, 1, 0, 0 }, { 1, 0, 0, 0 }, { size.x, size.y, glm::radians(fov)/size.y, 0 }, { 1<<10, 1<<16, 1<<20, 64 } };
+  cd.size.w = std::tan(cd.size.z);
+  for(size_t i = 0;i < 10000;i++) {
     cd.norm.x = std::sin(i/1000.0f);
     cd.norm.z = std::cos(i/1000.0f);
     cd.loc = cd.norm * -5.0f;
@@ -131,7 +147,8 @@ int main(int argc, char** argv) {
     camera->write<RMT_cameraData_staging.id>(cd);
     primaryOnion->render();
   }
+  WARN("sleeping...");
+  WITE::Platform::Thread::sleep(1000);//waiting for render to finish. Should have onion destructor wait the active fence instead.
   WARN("NOTE: done rendering (any validation whining after here is in cleanup)");
-  Platform::Thread::sleep(5000);
 }
 

@@ -122,7 +122,7 @@ if ! [ -f "${ERRLOG}" ] || [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
 		echo running test "${TESTNAME}" >>"${LOGFILE}"
 		# md5sum $TESTNAME >>"${LOGFILE}"
 		#VK_LOADER_DEBUG=all
-		$WORKNICE time timeout 30s timeout -s9 35s $TESTNAME 2>>"${ERRLOG}" >>"${LOGFILE}"
+		$WORKNICE time $TESTNAME 2>>"${ERRLOG}" >>"${LOGFILE}"
 		code=$?
 		if [ $code -ne 0 ]; then echo "Exit code: " $code >>"${ERRLOG}"; fi;
 		#test -f "${TESTNAME}.bak" && ! test -f "${TESTNAME}" && cp "${TESTNAME}.bak" "${TESTNAME}"

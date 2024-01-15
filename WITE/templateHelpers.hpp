@@ -66,6 +66,18 @@ namespace WITE {
     };
   };
 
+#define defineSimpleStorageBuffer(gpuId, size) simpleSB<gpuId, __LINE__, size>::value
+
+  template<size_t GPUID, uint64_t ID, uint32_t size> struct simpleSB {
+    static constexpr bufferRequirements value {
+      .deviceId = GPUID,
+      .id = ID,
+      .usage = vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eStorageBuffer,
+      .size = size,
+      .frameswapCount = 1,
+    };
+  };
+
 #define defineSingleTransform(gpuId) singleTransform<gpuId, __LINE__>::value
 
   template<size_t GPUID, uint64_t ID> struct singleTransform {
@@ -194,6 +206,18 @@ namespace WITE {
       .access = vk::AccessFlagBits2::eUniformRead,
       .frameLatency = 1,
       .usage = { vk::DescriptorType::eUniformBuffer }
+    };
+  };
+
+#define defineSBReferenceAtCompute() simpleComputeStorageReference<__LINE__>::value
+
+  template<uint64_t ID> struct simpleComputeStorageReference {
+    static constexpr resourceReference value {
+      .id = ID,
+      .stages = vk::ShaderStageFlagBits::eCompute,
+      .access = vk::AccessFlagBits2::eShaderStorageRead,
+      .frameLatency = 1,
+      .usage = { vk::DescriptorType::eStorageBuffer }
     };
   };
 

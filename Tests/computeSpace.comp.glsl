@@ -7,7 +7,7 @@
 // const ivec3 pi = ivec3(5, 17, 31), po = ivec3(0, 0, 2);
 //const vec3 pi = vec3(5.47, 4.19, 0.283), po = vec3(1.51313, 1.5583, 1.6067);
 const ivec3 pi = ivec3(547, 419, 283), po = ivec3(151313, 15583, 16067);
-const uint modulus = 1<<16, modulusMask = modulus - 1;
+const int modulus = 1<<18, modulusMask = modulus - 1;
 const vec3 pn = normalize(vec3(float(pi.x)/pi.z, float(pi.y)/pi.z, 1));
 // const vec3 colors[passValues] = { vec3(1, 1, 1), vec3(1, 0.5f, 0.4f), vec3(0.5, 0.6, 1) };
 const float pd = modulus/dot(pn, pi), po2 = dot(po, pi);
@@ -81,14 +81,12 @@ void main() {
 
   float planeDistanceAlongRay = abs(pd / dot(pn, norm));
   ivec3 rayOrigin = target.gridOrigin.xyz;
-  // const float max_range = pow(2, 30);
   float max_range = 1/target.size.w;
   uint max_iterations = target.gridOrigin.w;
   bool found = false;
   float depth = max_range;
   float depthTemp;
   float rol = mod((po2 - dot(rayOrigin, pi)) / dot(norm, pi), planeDistanceAlongRay);
-  if(rol < 0) rol += planeDistanceAlongRay;
 
   if(rol < 0) {
     imageStore(color, ivec2(gl_WorkGroupID.xy), vec4(1, 0, 0, 1));
@@ -99,11 +97,10 @@ void main() {
     depthTemp = rol + planeDistanceAlongRay*i;
     if(depthTemp >= depth)
       break;
-    ivec3 hit = rayOrigin + ivec3(depthTemp*norm + vec3(0.5, 0.5, 0.5)) - po;
+    ivec3 hit = rayOrigin + ivec3(depthTemp*norm + sign(norm) * 0.5f) - po;
     if(((hit.x * pi.x + hit.y * pi.y + hit.z * pi.z) & modulusMask) == 0) {
       depth = depthTemp;
       found = true;
-      break;
     }
   }
 

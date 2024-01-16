@@ -3,14 +3,14 @@
 
 // const uvec3[8] pByBlock = { uvec3(15131, 15583, 16067), uvec3(19121, 41213, 24977), uvec3(38963, 32279, 56139), uvec3(13561, 24485, 27625), uvec3(12299, 35599, 19091), uvec3(42881, 39309, 28801), uvec3(59555, 20935, 24219), uvec3(5193, 55477, 38233) };
 
-// const ivec3 pi = ivec3(1, 1, 1), po = ivec3(0, 0, 2);
-// const ivec3 pi = ivec3(5, 17, 31), po = ivec3(0, 0, 2);
-//const vec3 pi = vec3(5.47, 4.19, 0.283), po = vec3(1.51313, 1.5583, 1.6067);
-const ivec3 pi = ivec3(547, 419, 283), po = ivec3(151313, 15583, 16067);
-const int modulus = 1<<18, modulusMask = modulus - 1;
-const vec3 pn = normalize(vec3(float(pi.x)/pi.z, float(pi.y)/pi.z, 1));
-// const vec3 colors[passValues] = { vec3(1, 1, 1), vec3(1, 0.5f, 0.4f), vec3(0.5, 0.6, 1) };
-const float pd = modulus/dot(pn, pi), po2 = dot(po, pi);
+// // const ivec3 pi = ivec3(1, 1, 1), po = ivec3(0, 0, 2);
+// // const ivec3 pi = ivec3(5, 17, 31), po = ivec3(0, 0, 2);
+// //const vec3 pi = vec3(5.47, 4.19, 0.283), po = vec3(1.51313, 1.5583, 1.6067);
+// const ivec3 pi = ivec3(547, 419, 283), po = ivec3(151313, 15583, 16067);
+// const int modulus = 1<<18, modulusMask = modulus - 1;
+// const vec3 pn = normalize(vec3(float(pi.x)/pi.z, float(pi.y)/pi.z, 1));
+// // const vec3 colors[passValues] = { vec3(1, 1, 1), vec3(1, 0.5f, 0.4f), vec3(0.5, 0.6, 1) };
+// const float pd = modulus/dot(pn, pi), po2 = dot(po, pi);
 
 //NOTE: each element is rounded up to vec4 size (16 bytes) so do not use vec3! See https://www.khronos.org/opengl/wiki/Interface_Block_(GLSL)
 layout (std140, set = 0, binding = 0) uniform target_t {
@@ -21,9 +21,10 @@ layout (std140, set = 0, binding = 0) uniform target_t {
 
 layout (rgba8, set = 0, binding = 1) uniform image2D color;
 
-// layout (std140, set = 0, binding = 2) readonly buffer scatterData_t {
-//   uvec4[maxDepth * modulus / 4] data;
-// } scatterData;
+layout (std140, set = 0, binding = 2) readonly buffer scatterData_t {
+  uvec4 size; //x = num of planes stored in data
+  ivec4[] data;//2 data per plane, {(pi.xyz, m), (po.xyz, unused)}
+} scatterData;
 
 // //Stein's algorithm
 // uint gcd(uint m, uint n) {
@@ -79,38 +80,38 @@ void main() {
   norm = norm * cos(angleFromCenter.x) + target.right.xyz * sin(angleFromCenter.x);
   // vec3 right = cross(up, norm);
 
-  float planeDistanceAlongRay = abs(pd / dot(pn, norm));
   ivec3 rayOrigin = target.gridOrigin.xyz;
   float max_range = 1/target.size.w;
   uint max_iterations = target.gridOrigin.w;
   bool found = false;
   float depth = max_range;
   float depthTemp;
-  float rol = mod((po2 - dot(rayOrigin, pi)) / dot(norm, pi), planeDistanceAlongRay);
 
-  if(rol < 0) {
-    imageStore(color, ivec2(gl_WorkGroupID.xy), vec4(1, 0, 0, 1));
-    return;
-  }
+  for(uint planeIdx = 0;planeIdx < scatterData.size.x;planeIdx++) {
+    uint modulus = scatterData.data[planeIdx*2].w;//TODO non-power-of-2 modulus
+    ivec3 pi = scatterData.data[planeIdx*2].xyz;
+    ivec3 po = scatterData.data[planeIdx*2+1].xyz;
+    vec3 pn = normalize(vec3(float(pi.x)/pi.z, float(pi.y)/pi.z, 1));
 
-  for(uint i = 0;i < max_iterations;i++) {
-    depthTemp = rol + planeDistanceAlongRay*i;
-    if(depthTemp >= depth)
-      break;
-    ivec3 hit = rayOrigin + ivec3(depthTemp*norm + sign(norm) * 0.5f) - po;
-    if(((hit.x * pi.x + hit.y * pi.y + hit.z * pi.z) & modulusMask) == 0) {
-      depth = depthTemp;
-      found = true;
+    float planeDistanceAlongRay = abs(modulus / (dot(pn, pi)*dot(pn, norm)));
+    float rol = mod((dot(po, pi) - dot(rayOrigin, pi)) / dot(norm, pi), planeDistanceAlongRay);
+    for(uint i = 0;i < max_iterations;i++) {
+      depthTemp = rol + planeDistanceAlongRay*i;
+      if(depthTemp >= depth)
+	break;
+      ivec3 hit = rayOrigin + ivec3(depthTemp*norm + sign(norm) * 0.5f) - po;
+      if(mod((hit.x * pi.x + hit.y * pi.y + hit.z * pi.z), modulus) == 0) {
+	depth = depthTemp;
+	found = true;
+      }
     }
   }
-
-  // found = rol < max_range;
-  // depth = rol;
 
   if(!found) {
     imageStore(color, ivec2(gl_WorkGroupID.xy), vec4(0, 0, 0, 1));
   } else {
-    vec3 foundColor = vec3(1, 1, 1) * pow(2, 30) / (depth*depth);
+    vec3 foundColor = vec3(1, 1, 1);
+    // vec3 foundColor = vec3(1, 1, 1) * pow(2, 30) / (depth*depth);
     // vec3 foundColor = vec3(1, 1, 1) * planeDistanceAlongRay / pow(2, 20);
     // vec3 foundColor = vec3(1, 1, 1) * depth / float(1<<6);
     // vec3 foundColor = norm / 2 + vec3(1, 1, 1) / 2;

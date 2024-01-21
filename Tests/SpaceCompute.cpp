@@ -3,6 +3,8 @@
 
 //include the compiled shader code which was outputted as a header in the build dir before c++ code gets compiled.
 #include "computeSpace.comp.spv.h"
+#include "computeFlare.comp.spv.h"
+#include "computeFlarePart2.comp.spv.h"
 
 using namespace WITE;
 
@@ -32,65 +34,110 @@ struct cameraData_t {
   glm::ivec4 gridOrigin; //xyz is origin sector, w is render distance (iterations)
 };
 
-constexpr uint32_t scatterCount = 4;
+constexpr uint32_t skyboxPlaneCount = 24;
 
-struct scatterData_t {
+struct skyboxData_t {
   glm::uvec4 size;
-  glm::ivec4 data[scatterCount * 2];
+  glm::ivec4 data[skyboxPlaneCount * 2];
 };
 
-scatterData_t scatterData {
-  glm::uvec4(scatterCount, 0, 0, 0),
-  // { { 547, -419, 283, 1<<18 }, { 151313, 15583, 16067, 0 } }
-  { { 547, 419, 283, 1<<19 }, { 151313, 15583, 16067, 0 },
-    { 607, -641, 683, 1<<20 }, { 13, 14, 15, 0 },
-    { 809, 811, -859, 1<<21 }, { 16, 17, 18, 0 },
-    { -8017, 8377, 8999, 1<<22 }, { 19, 20, 21, 0 } }
+skyboxData_t skyboxData {
+  glm::uvec4(skyboxPlaneCount, 0, 0, 0),
+  {
+    { 30047, 8999, 283, 1<<24 }, { 0, 1, 2, 16 },
+    { 30047, 283, 8999, 1<<24 }, { 3, 4, 5, 16 },
+    { 8999, 30047, 283, 1<<24 }, { 6, 7, 8, 16 },
+    { 283, 30047, 8999, 1<<24 }, { 9, 10, 11, 16 },
+    { 8999, 283, 30047, 1<<24 }, { 12, 13, 14, 16 },
+    { 283, 8999, 30047, 1<<24 }, { 15, 16, 17, 16 },
+    { -30047, 8999, 283, 1<<24 }, { 18, 19, 20, 16 },
+    { -30047, 283, 8999, 1<<24 }, { 21, 22, 23, 16 },
+    { -8999, 30047, 283, 1<<24 }, { 24, 25, 26, 16 },
+    { -283, 30047, 8999, 1<<24 }, { 27, 28, 29, 16 },
+    { -8999, 283, 30047, 1<<24 }, { 30, 31, 32, 16 },
+    { -283, 8999, 30047, 1<<24 }, { 33, 34, 35, 16 },
+    { 30047, -8999, 283, 1<<24 }, { 36, 37, 38, 16 },
+    { 30047, -283, 8999, 1<<24 }, { 39, 40, 41, 16 },
+    { 8999, -30047, 283, 1<<24 }, { 42, 43, 44, 16 },
+    { 283, -30047, 8999, 1<<24 }, { 45, 46, 47, 16 },
+    { 8999, -283, 30047, 1<<24 }, { 48, 49, 50, 16 },
+    { 283, -8999, 30047, 1<<24 }, { 51, 52, 53, 16 },
+    { 30047, 8999, -283, 1<<24 }, { 54, 55, 56, 16 },
+    { 30047, 283, -8999, 1<<24 }, { 57, 58, 59, 16 },
+    { 8999, 30047, -283, 1<<24 }, { 60, 61, 62, 16 },
+    { 283, 30047, -8999, 1<<24 }, { 63, 64, 65, 16 },
+    { 8999, 283, -30047, 1<<24 }, { 66, 67, 68, 16 },
+    { 283, 8999, -30047, 1<<24 }, { 69, 70, 71, 16 },
+  }
 };
 
-constexpr bufferRequirements BR_scatterData = defineSimpleStorageBuffer(gpuId, sizeof(scatterData_t));
+constexpr bufferRequirements BR_skyboxData = defineSimpleStorageBuffer(gpuId, sizeof(skyboxData_t));
 constexpr bufferRequirements BR_cameraData = defineSimpleUniformBuffer(gpuId, sizeof(cameraData_t));
 constexpr bufferRequirements BRS_cameraData = NEW_ID(stagingRequirementsFor(BR_cameraData, 2));
 
-//NOTE: standard color is uniform storage compatible for compute shaders. Sometimes they're better than drawing a mesh
-constexpr imageRequirements IR_standardColor = defineSimpleColor(gpuId);
+constexpr imageRequirements IR_standardColor = {
+  .deviceId = gpuId,
+  .id = __LINE__,
+  .format = Format::RGBA32float,//drivers are REQUIRED by vulkan to support this format for most operations (including color attachment)
+  .usage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eTransferDst,//transfer src is needed by window to present, transfer dst to clear (unless on a RP)
+  .frameswapCount = 2
+};
+
+constexpr imageRequirements IR_flareTempColor = {
+  .deviceId = gpuId,
+  .id = __LINE__,
+  .format = Format::RGBA32float,//drivers are REQUIRED by vulkan to support this format for most operations (including color attachment)
+  .usage = vk::ImageUsageFlagBits::eStorage,
+  .frameswapCount = 2
+};
 
 constexpr copyStep C_updateCameraData = defineCopy(),
 	    C_all[] = {
 	      C_updateCameraData
 	    };
 
-constexpr clearStep CL_color = defineClear(0.2f, 0.2f, 0.2f, 1.0f),
-	    CL_all[] = { CL_color };
+constexpr clearStep CL_flareTemp = defineClear(0, 0, 0, 0);
 
-constexpr resourceReference RR_color = defineSimpleColorReference(),
+constexpr resourceReference RR_color = defineComputeColorReference(),
+	    RR_color_flare = defineComputeColorReference(),
+	    RR_flareTempColor = defineComputeColorReference(),
+	    RR_color_flarePart2 = defineComputeColorReference(),
+	    RR_flareTempColorPart2 = defineComputeColorReference(),
 	    RR_cameraData = defineUBReferenceAtCompute(),
-	    RR_scatterData = defineSBReferenceAtCompute(),
-	    RRL_camera[] { RR_cameraData, RR_color, RR_scatterData };//order here is binding idx in shader
+	    RR_skyboxData = defineSBReferenceAtCompute(),
+	    RRL_flare[] = { RR_color_flare, RR_flareTempColor },
+	    RRL_flarePart2[] = { RR_color_flarePart2, RR_flareTempColorPart2 },
+	    RRL_camera[] = { RR_cameraData, RR_color, RR_skyboxData };//order here is binding idx in shader
 
 constexpr uint64_t RR_IDL_cameraData[] = { RR_cameraData.id, C_updateCameraData.dst.id },
-	    RR_IDL_color[] = { RR_color.id, CL_color.rr.id },
-	    C_IDL_L1[] = { C_updateCameraData.id },
-	    CL_IDL_L1[] = { CL_color.id };
+	    RR_IDL_color[] = { RR_color.id, RR_color_flare.id, RR_color_flarePart2.id },
+	    RR_IDL_flareTempColor[] = { CL_flareTemp.id, RR_flareTempColor.id, RR_flareTempColorPart2.id },
+	    C_IDL_L1[] = { C_updateCameraData.id };
 
 constexpr resourceMap RMT_cameraData_staging = {
   .id = __LINE__,
   .requirementId = BRS_cameraData.id,
   .resourceReferences = C_updateCameraData.src.id
-}, RMT_scatterData = {
+}, RMT_skyboxData = {
   .id = __LINE__,
-  .requirementId = BR_scatterData.id,
-  .resourceReferences = RR_scatterData.id,
+  .requirementId = BR_skyboxData.id,
+  .resourceReferences = RR_skyboxData.id,
   .external = true
 }, RMT_color = {
   .id = __LINE__,
   .requirementId = IR_standardColor.id,
   .resourceReferences = RR_IDL_color,
   .resizeBehavior = { imageResizeType::eDiscard, {}, true }
+}, RMT_flareTemp = {
+  .id = __LINE__,
+  .requirementId = IR_flareTempColor.id,
+  .resourceReferences = RR_IDL_flareTempColor,
+  .resizeBehavior = { imageResizeType::eDiscard, {}, true }
 }, RMT_target[] = {
   RMT_cameraData_staging,
-   RMT_scatterData,
+  RMT_skyboxData,
   RMT_color,
+  RMT_flareTemp,
   {
     .id = __LINE__,
     .requirementId = BR_cameraData.id,
@@ -109,22 +156,55 @@ constexpr computeShaderRequirements S_space {
   .id = __LINE__,
   .module = &spaceShaderModule,
   .targetProvidedResources = RRL_camera,//layout set 0 because there are no sources
-  .primaryOutputReferenceId = RR_color.id
+  .primaryOutputReferenceId = RR_color.id,
+  .strideX = 30,
+  .strideY = 30
 };
+
+constexpr shaderModule flareShaderModule { computeFlare_comp, sizeof(computeFlare_comp), vk::ShaderStageFlagBits::eCompute };
+
+constexpr computeShaderRequirements S_flare {
+  .id = __LINE__,
+  .module = &flareShaderModule,
+  .targetProvidedResources = RRL_flare,//layout set 0 because there are no sources
+  .primaryOutputReferenceId = RR_color_flare.id,
+  .strideX = 128,
+  .strideY = 99999
+};
+
+constexpr shaderModule flarePart2ShaderModule { computeFlarePart2_comp, sizeof(computeFlarePart2_comp), vk::ShaderStageFlagBits::eCompute };
+
+constexpr computeShaderRequirements S_flarePart2 {
+  .id = __LINE__,
+  .module = &flarePart2ShaderModule,
+  .targetProvidedResources = RRL_flarePart2,//layout set 0 because there are no sources
+  .primaryOutputReferenceId = RR_color_flare.id,
+  .strideX = 99999,
+  .strideY = 128
+};
+
+constexpr uint64_t IDL_computeShaders[] = {
+  S_space.id,
+  S_flare.id,
+  S_flarePart2.id,
+};
+
+constexpr computeShaderRequirements S_L_computeShaders[] { S_space, S_flare, S_flarePart2 };
 
 constexpr layerRequirements L_1 {
   .targetLayouts = TL_standardRender.id,
-  .clears = CL_IDL_L1,
+  .clears = CL_flareTemp.id,
   .copies = C_IDL_L1,
-  .computeShaders = S_space.id
+  .computeShaders = IDL_computeShaders
 };
 
 constexpr imageRequirements allImageRequirements[] = {
-  IR_standardColor
+  IR_standardColor,
+  IR_flareTempColor
 };
 
 constexpr bufferRequirements allBufferRequirements[] = {
-  BR_scatterData,
+  BR_skyboxData,
   BR_cameraData,
   BRS_cameraData
 };
@@ -132,8 +212,8 @@ constexpr bufferRequirements allBufferRequirements[] = {
 constexpr onionDescriptor od = {
   .IRS = allImageRequirements,
   .BRS = allBufferRequirements,
-  .CSRS = S_space,
-  .CLS = CL_all,
+  .CSRS = S_L_computeShaders,
+  .CLS = CL_flareTemp,
   .CSS = C_all,
   .LRS = L_1,
   .TLS = TL_standardRender,
@@ -148,16 +228,16 @@ constexpr float fov = 45.0f;
 int main(int argc, char** argv) {
   gpu::init("Space test");
   primaryOnion = std::make_unique<onion_t>();
-  buffer<BR_scatterData> scatterDataBuf;
-  scatterDataBuf.slowOutOfBandSet(scatterData);
+  buffer<BR_skyboxData> skyboxDataBuf;
+  skyboxDataBuf.slowOutOfBandSet(skyboxData);
   auto camera = primaryOnion->createTarget<TL_standardRender.id>();
-  camera->set<RMT_scatterData.id>(&scatterDataBuf);
+  camera->set<RMT_skyboxData.id>(&skyboxDataBuf);
   glm::vec2 size = camera->getWindow().getVecSize();
-  cameraData_t cd { { 0, 0, -5, 0 }, { 0, 0, 1, 0 }, { 0, 1, 0, 0 }, { 1, 0, 0, 0 }, { size.x, size.y, glm::radians(fov)/size.y, 0 }, { 1<<10, 1<<16, 1<<20, 64 } };
+  cameraData_t cd { { 0, 0, -5, 0 }, { 0, 0, 1, 0 }, { 0, 1, 0, 0 }, { 1, 0, 0, 0 }, { size.x, size.y, glm::radians(fov)/size.y, 0 }, { 1<<10, 1<<16, 1<<20, 4 } };
   cd.size.w = std::tan(cd.size.z);
   for(size_t i = 0;i < 10000;i++) {
-    cd.norm.x = std::sin(i/1000.0f);
-    cd.norm.z = std::cos(i/1000.0f);
+    cd.norm.x = std::sin(i/10000.0f);
+    cd.norm.z = std::cos(i/10000.0f);
     cd.loc = cd.norm * -5.0f;
     cd.right = glm::vec4(glm::cross(glm::vec3(cd.up), glm::vec3(cd.norm)), 0);
     camera->write<RMT_cameraData_staging.id>(cd);

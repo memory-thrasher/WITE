@@ -97,7 +97,7 @@ namespace WITE {
     const uint32_t* data;
     uint32_t size;
     vk::ShaderStageFlagBits stage;
-    const char* entryPoint = "main";
+    const char* entryPoint = "main";//NYI
   };
 
 #define defineShaderModules(NOM, ...) defineLiteralList(shaderModule, NOM, __VA_ARGS__)
@@ -108,7 +108,9 @@ namespace WITE {
     literalList<resourceReference> targetProvidedResources;
     literalList<resourceReference> sourceProvidedResources;
     uint64_t primaryOutputReferenceId = NONE;
-    uint32_t strideX = 1, strideY = 1, strideZ = 1;
+    //TODO more flexible stride. Need a square option: workgroupX = max(image.xy / strideX)
+    //callback that takes resource size and returns workgroup size
+    uint32_t strideX = 1, strideY = 1, strideZ = 1;//should probably be a multiple of local_size in shader
     //one invocation per member of primary output. If reference is an image, one invocation per stride pixels (workgroup [x, y, z] = pixels [x/strideX, y/strideY, z/strideZ; if image is 2d array, z = array layer. If reference is a buffer, one invocation per strideX of bytes (workgroup has only an X value, other strides ignored)
   };
 

@@ -180,8 +180,18 @@ namespace WITE {
   template<uint64_t ID> struct simpleColorReference {
     static constexpr resourceReference value {
       .id = ID,
-      .stages = vk::ShaderStageFlagBits::eFragment | vk::ShaderStageFlagBits::eCompute,
-      .access = vk::AccessFlagBits2::eColorAttachmentWrite | vk::AccessFlagBits2::eShaderStorageWrite,
+      .stages = vk::ShaderStageFlagBits::eFragment,
+      .access = vk::AccessFlagBits2::eColorAttachmentWrite
+    };
+  };
+
+#define defineComputeColorReference() computeColorReference<__LINE__>::value
+
+  template<uint64_t ID> struct computeColorReference {
+    static constexpr resourceReference value {
+      .id = ID,
+      .stages = vk::ShaderStageFlagBits::eCompute,
+      .access = vk::AccessFlagBits2::eShaderStorageWrite,
       .usage = { vk::DescriptorType::eStorageImage }
     };
   };

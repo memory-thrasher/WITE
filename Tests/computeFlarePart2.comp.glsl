@@ -27,7 +27,7 @@ shader call overhead: 0
 void main() {
   const ivec2 size = imageSize(color);
   const uint tid = uint(gl_WorkGroupID.y * 128 + gl_LocalInvocationID.x);//gl_LocalInvocationID.y is always 0
-  const uint maxFlare = 4, bufferSize = maxFlare * 2 + 1;
+  const uint maxFlare = 16, bufferSize = maxFlare * 2 + 1;
   vec3[bufferSize] colors;
   for(uint x = 0;x < bufferSize;x++) {
     colors[x] = vec3(0, 0, 0);

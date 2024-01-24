@@ -11,7 +11,7 @@ layout(rgba8, set = 0, binding = 1) uniform image2D temp;
 void main() {
   const ivec2 size = imageSize(color);
   const uint tid = uint(gl_GlobalInvocationID.x);//gl_LocalInvocationID.y is always 0
-  const uint maxFlare = 4, bufferSize = maxFlare * 2 + 1;
+  const uint maxFlare = 16, bufferSize = maxFlare * 2 + 1;
   vec3[bufferSize] colors;
   for(uint y = 0;y < bufferSize;y++) {
     colors[y] = vec3(0, 0, 0);

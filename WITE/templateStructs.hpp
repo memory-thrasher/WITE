@@ -61,6 +61,14 @@ namespace WITE {
     constexpr resourceUsage(udm format, vk::VertexInputRate vir) : type(resourceUsageType::eVertex), asVertex({ format, vir }) {};
     constexpr resourceUsage() : type(resourceUsageType::eNone) {};
     constexpr resourceUsage(const resourceUsage&) = default;
+    // constexpr std::strong_ordering operator<=>(const resourceUsage& r) const {
+    //   std::strong_ordering comp = type <=> r.type;
+    //   if(comp != 0) return comp;
+    //   switch(type) {
+    //   case resourceusageType::eNone: return std::strong_ordering::equal;
+    //   case resourceusageType::eDescriptor: return descriptorType <=> r.descriptorType;
+    //   }
+    // };
   };
 
   struct resourceReference {
@@ -122,6 +130,7 @@ namespace WITE {
     vk::PrimitiveTopology topology = vk::PrimitiveTopology::eTriangleList;
     vk::CullModeFlags cullMode = vk::CullModeFlagBits::eBack;
     bool windCounterClockwise = false;
+    vk::DeviceSize vertexCountOverride = 0, instanceCountOverride = 0;//0 means don't override, figure it out based on buffer size
   };
 
   struct renderPassRequirements {

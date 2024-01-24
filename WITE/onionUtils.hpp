@@ -101,22 +101,40 @@ namespace WITE {
     return NULL;
   };
 
+  constexpr bool mightWrite(resourceReference usage) {
+    return uint64_t(usage.access & (vk::AccessFlagBits2::eShaderStorageWrite | vk::AccessFlagBits2::eMemoryWrite | vk::AccessFlagBits2::eHostWrite | vk::AccessFlagBits2::eTransferWrite | vk::AccessFlagBits2::eDepthStencilAttachmentWrite | vk::AccessFlagBits2::eColorAttachmentWrite | vk::AccessFlagBits2::eShaderWrite));
+  };
+
   enum class substep_e : uint8_t { barrier0, copy, barrier1, clear, barrier2, render, barrier3, compute, barrier4, post };
 
   struct resourceAccessTime {
     size_t layerIdx = NONE_size;
     substep_e substep;
     resourceReference usage;
-    constexpr bool operator<(const resourceAccessTime& r) const {
-      return usage.frameLatency < r.usage.frameLatency || (usage.frameLatency == r.usage.frameLatency &&
-							   (layerIdx < r.layerIdx || (layerIdx == r.layerIdx &&
-										      substep < r.substep)));
+    size_t shaderIdx = 0;//for sorting only
+    uint64_t shaderId = NONE;//forwarded to timing
+    constexpr auto operator<=>(const resourceAccessTime& r) const {
+      auto comp = usage.frameLatency <=> r.usage.frameLatency;
+      if(comp != 0) return comp;
+      comp = usage.frameLatency <=> r.usage.frameLatency;
+      if(comp != 0) return comp;
+      comp = layerIdx <=> r.layerIdx;
+      if(comp != 0) return comp;
+      comp = substep <=> r.substep;
+      if(comp != 0) return comp;
+      return shaderIdx <=> r.shaderIdx;
+    };
+    constexpr bool compatibleWith(const resourceAccessTime r) {
+      //true means there need not be a barrier between them (with this coming before r)
+      return !mightWrite(usage) && !mightWrite(r.usage) && usage.frameLatency == r.usage.frameLatency;
+      //not compatible if on different frameLatency so final usage per frame can be accurate
     };
   };
 
   struct resourceBarrierTiming {//used to key a map to ask what barrier(s) should happen at a given step, so frameLatency is not a factor
     size_t layerIdx;
     substep_e substep;
+    uint64_t shaderId = NONE;
     constexpr auto operator<=>(const resourceBarrierTiming& r) const = default;
   };
 
@@ -132,6 +150,14 @@ namespace WITE {
     l.access |= r.access;
     l.id = r.id;
     l.frameLatency = r.frameLatency;
+    return l;
+  };
+
+  consteval resourceAccessTime& operator|=(resourceAccessTime&l, const resourceAccessTime& r) {
+    l.layerIdx = r.layerIdx;
+    l.substep = r.substep;
+    l.usage |= r.usage;
+    l.shaderIdx = r.shaderIdx;
     return l;
   };
 

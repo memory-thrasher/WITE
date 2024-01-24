@@ -89,41 +89,36 @@ namespace WITE {
 	    ret.push_back({ layerIdx, substep_e::clear, { substep.rr.id, {}, vk::AccessFlagBits2::eTransferWrite, substep.rr.frameLatency }});
 	}
 	//rendering:
-	constexpr size_t urrLen = std::numeric_limits<decltype(resourceBarrier::frameLatency)>::max();
 	static_assert(std::numeric_limits<decltype(resourceBarrier::frameLatency)>::min() == 0);
+	size_t shaderIdx = 1;
 	for(uint64_t substepId : layer.renders) {
 	  const auto& substep = findById(OD.RPRS, substepId);
 	  if(RM.resourceReferences.contains(substep.depth.id))
 	    ret.push_back({ layerIdx, substep_e::render, substep.depth });
 	  if(RM.resourceReferences.contains(substep.color.id))
 	    ret.push_back({ layerIdx, substep_e::render, substep.color });
-	  resourceReference urr[256];
 	  for(const graphicsShaderRequirements& gsr : substep.shaders) {
 	    for(const resourceReference& srr : gsr.targetProvidedResources)
 	      if(RM.resourceReferences.contains(srr.id))
-		urr[srr.frameLatency] |= srr;
+		ret.push_back({ layerIdx, substep_e::render, srr, shaderIdx, gsr.id });
 	    for(const resourceReference& srr : gsr.sourceProvidedResources)
 	      if(RM.resourceReferences.contains(srr.id))
-		urr[srr.frameLatency] |= srr;
+		ret.push_back({ layerIdx, substep_e::render, srr, shaderIdx, gsr.id });
+	    shaderIdx++;
 	  }
-	  for(size_t fl = 0;fl < urrLen;fl++)
-	    if(urr[fl].access)
-	      ret.push_back({ layerIdx, substep_e::render, urr[fl] });
 	}
 	//compute:
-	resourceReference urr[urrLen];
+	shaderIdx = 0;
 	for(uint64_t csrId : layer.computeShaders) {
 	  const computeShaderRequirements& csr = findById(OD.CSRS, csrId);
 	  for(const resourceReference& srr : csr.targetProvidedResources)
 	    if(RM.resourceReferences.contains(srr.id))
-	      urr[srr.frameLatency] |= srr;
+	      ret.push_back({ layerIdx, substep_e::compute, srr, shaderIdx, csr.id });
 	  for(const resourceReference& srr : csr.sourceProvidedResources)
 	    if(RM.resourceReferences.contains(srr.id))
-	      urr[srr.frameLatency] |= srr;
+	      ret.push_back({ layerIdx, substep_e::compute, srr, shaderIdx, csr.id });
+	  shaderIdx++;
 	}
-	for(size_t fl = 0;fl < urrLen;fl++)
-	  if(urr[fl].access)
-	    ret.push_back({ layerIdx, substep_e::compute, urr[fl] });
       }
       for(auto& tl : OD.TLS)
 	if(tl.presentImageResourceMapId == RM.id)
@@ -134,29 +129,38 @@ namespace WITE {
 
     static consteval std::vector<resourceBarrier> findBarriers(resourceMap RM, uint64_t layoutId) {
       auto usage = findUsages(RM, layoutId);
-      size_t afterIdx = 0, beforeIdx = usage.size()-1;
+      size_t afterIdx = 0;
       std::vector<resourceBarrier> ret;
       if(usage.size() < 2) return ret;
+      resourceAccessTime before = usage[usage.size()-1];
       while(afterIdx < usage.size()) {
 	resourceBarrier rb;
-	rb.before = usage[beforeIdx];
+	rb.before = before;
 	rb.after = usage[afterIdx];
 	rb.resourceId = RM.id;
 	rb.requirementId = RM.requirementId;
 	rb.layoutId = layoutId;
-	constexpr_assert(rb.before < rb.after || afterIdx == 0);
 	rb.timing.layerIdx = rb.after.layerIdx;
 	rb.frameLatency = rb.after.usage.frameLatency;
 	if(rb.before.layerIdx != rb.after.layerIdx) {//prefer top of layer for barriers
 	  rb.timing.substep = substep_e::barrier0;
-	} else {
-	  constexpr_assert(rb.after.substep != rb.before.substep);
-	  rb.timing.substep = (substep_e)((int)rb.after.substep - 1);//otherwise wait as long as possible
+	} else if(rb.after.substep != rb.before.substep) {//next prefer between steps
+	  rb.timing.substep = (substep_e)((int)rb.after.substep - 1);
+	} else {//otherwise wait as long as possible
+	  constexpr_assert(rb.after.substep == substep_e::render || rb.after.substep == substep_e::compute);
+	  rb.timing.substep = rb.after.substep;
+	  rb.timing.shaderId = rb.after.shaderId;
+	}
+	//having used the timing for the initial "after" value to decide when to drop the barrier, we can now absorb future usages that don't need a barrier after this one
+	afterIdx++;
+	while(afterIdx < usage.size() && rb.after.compatibleWith(usage[afterIdx])) {
+	  rb.after |= usage[afterIdx];
+	  afterIdx++;
 	}
 	ret.push_back(rb);
-	afterIdx++;
-	beforeIdx = afterIdx-1;
+	before = rb.after;
       }
+      ret[0].before = before;
       return ret;
     };
 
@@ -825,8 +829,7 @@ namespace WITE {
 	  static_assert(GSR.sourceProvidedResources.countWhereCE(findIB()) <= 1);
 	  static constexpr const resourceReference* vb = GSR.sourceProvidedResources.firstWhere(findVB());
 	  static constexpr const resourceReference* ib = GSR.sourceProvidedResources.firstWhere(findIB());
-	  static constexpr size_t vibCount = ib ? 2 : 1;
-	  static_assert(vb);
+	  static constexpr size_t vibCount = (ib ? 1 : 0) + (vb ? 1 : 0);
 	  shaderInstance& shaderInstance = ptlps.perSL[SL.id];
 	  perSourceLayoutPerShader& pslps = od.perSL[SL.id].perShader[GSR.id];
 	  if(!pslps.descriptorPool) [[unlikely]]
@@ -851,7 +854,7 @@ namespace WITE {
 		.setModule(module)
 		.setPName(GSR.modules[i].entryPoint);
 	    }
-	    static constexpr copyableArray<resourceReference, vibCount> vib = [](size_t i){ return i ? *ib : *vb; };
+	    static constexpr copyableArray<resourceReference, vibCount> vib = [](size_t i){ return i && vb ? *ib : *vb; };
 	    static constexpr auto vibs = getBindingDescriptions<vib>();
 	    static constexpr auto viad = getAttributeDescriptions<vib>();
 	    static constexpr vk::PipelineVertexInputStateCreateInfo verts { {}, vibCount, vibs.ptr(), viad.LENGTH, viad.ptr() };
@@ -881,18 +884,29 @@ namespace WITE {
 	    prepareDescriptors<SL.resources, GSR.sourceProvidedResources, SL.id>(descriptorBundle, pslps.descriptorPool, source->resources, frameMod);
 	    cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, shaderInstance.pipelineLayout, 0, 1, &descriptorBundle.descriptorSet, 0, NULL);
 	    static constexpr vk::DeviceSize zero = 0;//offsets below
-	    static constexpr resourceMap vbm = *findResourceReferencing(SL.resources, vb->id);
-	    vk::Buffer verts[2];
-	    verts[0] = source->template get<vbm.id>().frameBuffer(frame + vb->frameLatency);
-	    if constexpr(ib) {
-	      static constexpr const resourceMap* ibm = findResourceReferencing(SL.resources, ib->id);
-	      verts[1] = source->template get<ibm->id>().frameBuffer(frame + ib->frameLatency);
-	      cmd.bindVertexBuffers(0, vibCount, verts, &zero);
-	      cmd.draw(findById(OD.BRS, vbm.requirementId).size / sizeofUdm<vb->usage.asVertex.format>(), findById(OD.BRS, ibm->requirementId).size / sizeofUdm<ib->usage.asVertex.format>(), 0, 0);
+	    //for now, source must provide all vertex info
+	    vk::Buffer verts[vibCount];
+	    static_assert(vb || GSR.vertexCountOverride);//vertex data required if vertex count not given statically
+	    vk::DeviceSize vertices, instances;
+	    if constexpr(vb) {
+	      static constexpr resourceMap vbm = *findResourceReferencing(SL.resources, vb->id);
+	      verts[0] = source->template get<vbm.id>().frameBuffer(frame + vb->frameLatency);
+	      vertices = GSR.vertexCountOverride ? GSR.vertexCountOverride :
+		findById(OD.BRS, vbm.requirementId).size / sizeofUdm<vb->usage.asVertex.format>();
 	    } else {
-	      cmd.bindVertexBuffers(0, vibCount, verts, &zero);
-	      cmd.draw(findById(OD.BRS, vbm.requirementId).size / sizeofUdm<vb->usage.asVertex.format>(), 1, 0, 0);
+	      vertices = GSR.vertexCountOverride;
 	    }
+	    if constexpr(ib) {
+	      static constexpr resourceMap ibm = *findResourceReferencing(SL.resources, ib->id);
+	      verts[vibCount-1] = source->template get<ibm.id>().frameBuffer(frame + ib->frameLatency);
+	      instances = GSR.instanceCountOverride ? GSR.instanceCountOverride :
+		findById(OD.BRS, ibm.requirementId).size / sizeofUdm<ib->usage.asVertex.format>();
+	    } else {
+	      //but instances defaults to 1
+	      instances = GSR.instanceCountOverride ? GSR.instanceCountOverride : 1;
+	    }
+	    cmd.bindVertexBuffers(0, vibCount, verts, &zero);
+	    cmd.draw(vertices, instances, 0, 0);
 	    // WARN("Drew ", findById(OD.BRS, vbm.requirementId).size / sizeofUdm<vb->usage.asVertex.format>(), " from ", verts[0]);
 	    //TODO more flexibility with draw. Allow source layout to ask for multi-draw, indexed, indirect etc. Allow (dynamic) less than the whole buffer.
 	  }
@@ -901,10 +915,11 @@ namespace WITE {
       }
     };
 
-    template<targetLayout TL, layerRequirements LR, literalList<graphicsShaderRequirements> GSRS>
+    template<size_t layerIdx, targetLayout TL, layerRequirements LR, literalList<graphicsShaderRequirements> GSRS>
     inline void recordRenders(auto& target, perTargetLayout& ptl, vk::RenderPass rp, vk::CommandBuffer cmd) {
       if constexpr(GSRS.len) {
 	static constexpr graphicsShaderRequirements GSR = GSRS[0];
+	recordBarriersForTime<resourceBarrierTiming { .layerIdx = layerIdx, .substep = substep_e::render, .shaderId = GSR.id }>(cmd);
 	if constexpr(satisfies(TL.resources, GSR.targetProvidedResources)) {
 	  size_t frameMod = frame % target_t<TL.id>::maxFrameswap;
 	  auto& descriptorBundle = target.perShaderByIdByFrame[GSR.id][frameMod];
@@ -912,11 +927,11 @@ namespace WITE {
 	  prepareDescriptors<TL.resources, GSR.targetProvidedResources, TL.id>(descriptorBundle, ptlps.descriptorPool, target.resources, frameMod);
 	  recordRenders<TL, GSR, LR.sourceLayouts>(target, ptl, ptlps, descriptorBundle, rp, cmd);
 	}
-	recordRenders<TL, LR, GSRS.sub(1)>(target, ptl, rp, cmd);
+	recordRenders<layerIdx, TL, LR, GSRS.sub(1)>(target, ptl, rp, cmd);
       }
     };
 
-    template<targetLayout TL, layerRequirements LR, literalList<uint64_t> RPIDS>
+    template<size_t layerIdx, targetLayout TL, layerRequirements LR, literalList<uint64_t> RPIDS>
     inline void recordRenders(auto& target, perTargetLayout& ptl, vk::CommandBuffer cmd) {
       if constexpr(RPIDS.len) {
 	static constexpr renderPassRequirements RP = findById(OD.RPRS, RPIDS[0]);
@@ -960,29 +975,29 @@ namespace WITE {
 	  static constexpr vk::ClearValue clears[2] { RP.clearColorValue, RP.clearDepthValue };
 	  vk::RenderPassBeginInfo rpBegin(rp, fbb.fb, size,(uint32_t)RP.clearColor + (uint32_t)RP.clearDepth, RP.clearColor ? clears : clears+1);
 	  cmd.beginRenderPass(&rpBegin, vk::SubpassContents::eInline);
-	  recordRenders<TL, LR, RP.shaders>(target, ptl, rp, cmd);
+	  recordRenders<layerIdx, TL, LR, RP.shaders>(target, ptl, rp, cmd);
 	  cmd.endRenderPass();
 	}
-	recordRenders<TL, LR, RPIDS.sub(1)>(target, ptl, cmd);
+	recordRenders<layerIdx, TL, LR, RPIDS.sub(1)>(target, ptl, cmd);
       }
     };
 
-    template<targetLayout TL, layerRequirements LR>
+    template<size_t layerIdx, targetLayout TL, layerRequirements LR>
     inline void recordRenders(perTargetLayout& ptl, vk::CommandBuffer cmd) {
       //TODO spawn each of these in a parallel cmd; rework call stack signatures to hand semaphores around instead of cmd
       //^^  ONLY if there is no writable source descriptor
       for(auto& target : allTargets.template ofLayout<TL.id>()) {
-	recordRenders<TL, LR, LR.renders>(*target->get(), ptl, cmd);
+	recordRenders<layerIdx, TL, LR, LR.renders>(*target->get(), ptl, cmd);
       }
     };
 
-    template<literalList<uint64_t> TLS, layerRequirements LR>
+    template<size_t layerIdx, literalList<uint64_t> TLS, layerRequirements LR>
     inline void recordRenders(vk::CommandBuffer cmd) {
       if constexpr(TLS.len) {
 	static constexpr targetLayout TL = findById(OD.TLS, TLS[0]);
 	perTargetLayout& ptl = od.perTL[TL.id];
-	recordRenders<TL, LR>(ptl, cmd);
-	recordRenders<TLS.sub(1), LR>(cmd);
+	recordRenders<layerIdx, TL, LR>(ptl, cmd);
+	recordRenders<layerIdx, TLS.sub(1), LR>(cmd);
       };
     };
 
@@ -1124,8 +1139,9 @@ namespace WITE {
     };
 
     //unlike graphics, a compute shader can exist with target-only or source-only.
-    template<layerRequirements LR, literalList<uint64_t> CSS> inline void recordComputeDispatches(vk::CommandBuffer cmd) {
+    template<size_t layerIdx, layerRequirements LR, literalList<uint64_t> CSS> inline void recordComputeDispatches(vk::CommandBuffer cmd) {
       if constexpr(CSS.len) {
+	recordBarriersForTime<resourceBarrierTiming { .layerIdx = layerIdx, .substep = substep_e::compute, .shaderId = CSS[0] }>(cmd);
 	static constexpr computeShaderRequirements CS = findById(OD.CSRS, CSS[0]);
 	if constexpr(CS.targetProvidedResources.len == 0)
 	  recordComputeDispatches_sourceOnly<CS, LR.sourceLayouts>(cmd);
@@ -1133,7 +1149,7 @@ namespace WITE {
 	  recordComputeDispatches_targetOnly<CS, LR.targetLayouts>(cmd);
 	else
 	  recordComputeDispatches_nested<CS, LR.targetLayouts, LR.sourceLayouts>(cmd);
-	recordComputeDispatches<LR, CSS.sub(1)>(cmd);
+	recordComputeDispatches<layerIdx, LR, CSS.sub(1)>(cmd);
       }
     };
 
@@ -1146,9 +1162,9 @@ namespace WITE {
 	recordClears<LR.clears, LR>(cmd);
 	recordBarriersForTime<resourceBarrierTiming { .layerIdx = layerIdx, .substep = substep_e::barrier2 }>(cmd);
 	if constexpr(LR.renders)
-	  recordRenders<LR.targetLayouts, LR>(cmd);
+	  recordRenders<layerIdx, LR.targetLayouts, LR>(cmd);
 	recordBarriersForTime<resourceBarrierTiming { .layerIdx = layerIdx, .substep = substep_e::barrier3 }>(cmd);
-	recordComputeDispatches<LR, LR.computeShaders>(cmd);
+	recordComputeDispatches<layerIdx, LR, LR.computeShaders>(cmd);
 	recordBarriersForTime<resourceBarrierTiming { .layerIdx = layerIdx, .substep = substep_e::barrier4 }>(cmd);
 	renderFrom<layerIdx+1>(cmd);
       }

@@ -72,7 +72,7 @@ namespace WITE {
   };
 
   struct resourceReference {
-    uint64_t id;//unique among resource references
+    uint64_t id = NONE;//unique among resource references
     //stage and access are not required for all commands, in some cases it's contextually clear
     vk::ShaderStageFlags stages;
     vk::AccessFlags2 access = {};
@@ -106,6 +106,9 @@ namespace WITE {
     uint32_t size;
     vk::ShaderStageFlagBits stage;
     const char* entryPoint = "main";//NYI
+    literalList<vk::SpecializationMapEntry> specializations;
+    const void* const specializationData = NULL;
+    size_t specializationDataSize = 0;
   };
 
 #define defineShaderModules(NOM, ...) defineLiteralList(shaderModule, NOM, __VA_ARGS__)
@@ -131,6 +134,7 @@ namespace WITE {
     vk::CullModeFlags cullMode = vk::CullModeFlagBits::eBack;
     bool windCounterClockwise = false;
     vk::DeviceSize vertexCountOverride = 0, instanceCountOverride = 0;//0 means don't override, figure it out based on buffer size
+    vk::PipelineColorBlendAttachmentState blend = { false, vk::BlendFactor::eOne, vk::BlendFactor::eOne, vk::BlendOp::eAdd, vk::BlendFactor::eOne, vk::BlendFactor::eOne, vk::BlendOp::eAdd, vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA };
   };
 
   struct renderPassRequirements {

@@ -94,6 +94,7 @@ namespace WITE {
 
   //NOTE: A source/target layout is not allowed to name two resources referencing the same usage
   consteval const resourceMap* findResourceReferencing(literalList<resourceMap> RMS, uint64_t id) {
+    if(id == NONE) return NULL;
     for(const resourceMap& RM : RMS)
       for(uint64_t RR : RM.resourceReferences)
 	if(RR == id)
@@ -103,6 +104,24 @@ namespace WITE {
 
   constexpr bool mightWrite(resourceReference usage) {
     return uint64_t(usage.access & (vk::AccessFlagBits2::eShaderStorageWrite | vk::AccessFlagBits2::eMemoryWrite | vk::AccessFlagBits2::eHostWrite | vk::AccessFlagBits2::eTransferWrite | vk::AccessFlagBits2::eDepthStencilAttachmentWrite | vk::AccessFlagBits2::eColorAttachmentWrite | vk::AccessFlagBits2::eShaderWrite));
+  };
+
+  template<const shaderModule* M, uint64_t GPUID> struct shaderFactory {
+    static constexpr vk::ShaderModuleCreateInfo smci { {}, M->size, M->data };
+    static constexpr vk::SpecializationInfo si { M->specializations.len, M->specializations.data, M->specializationDataSize, M->specializationData };
+    static constexpr vk::PipelineShaderStageCreateInfo ssci { {}, M->stage, {}, M->entryPoint, &si };
+    static void create(vk::PipelineShaderStageCreateInfo* out) {
+      *out = ssci;
+      VK_ASSERT(gpu::get(GPUID).getVkDevice().createShaderModule(&smci, ALLOCCB, &out->module), "Failed to create module");
+    };
+  };
+
+  template<literalList<shaderModule> MS, uint64_t GPUID> void createModules(vk::PipelineShaderStageCreateInfo* out) {
+    if constexpr(MS.len) {
+      static constexpr shaderModule M = MS[0];
+      shaderFactory<&M, GPUID>::create(out);
+      createModules<MS.sub(1), GPUID>(out+1);
+    }
   };
 
   enum class substep_e : uint8_t { barrier0, copy, barrier1, clear, barrier2, render, barrier3, compute, barrier4, post };

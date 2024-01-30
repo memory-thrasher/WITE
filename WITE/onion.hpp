@@ -104,6 +104,7 @@ namespace WITE {
 	    for(const resourceReference& srr : gsr.sourceProvidedResources)
 	      if(RM.resourceReferences.contains(srr.id))
 		ret.push_back({ layerIdx, substep_e::render, srr, shaderIdx, gsr.id });
+	    //TODO subpass dependencies
 	    shaderIdx++;
 	  }
 	}
@@ -785,7 +786,9 @@ namespace WITE {
       }
     };
 
-    template<renderPassRequirements RP, targetLayout TL> struct renderPassInfoBundle {
+    template<renderPassRequirements, targetLayout> struct renderPassInfoBundle : std::false_type {};
+
+    template<renderPassRequirements RP, targetLayout TL> requires(RP.depth.id != NONE) struct renderPassInfoBundle<RP, TL> {
       static constexpr const resourceMap *colorRM = findResourceReferencing(TL.resources, RP.color.id),
 	*depthRM = findResourceReferencing(TL.resources, RP.depth.id);
       static constexpr imageRequirements colorIR = findById(OD.IRS, colorRM->requirementId),
@@ -802,15 +805,28 @@ namespace WITE {
       static constexpr vk::RenderPassCreateInfo rpci { {}, 2, attachments, 1, &subpass, 0 };
     };
 
+    template<renderPassRequirements RP, targetLayout TL> requires(RP.depth.id == NONE) struct renderPassInfoBundle<RP, TL> {
+      static constexpr const resourceMap *colorRM = findResourceReferencing(TL.resources, RP.color.id);
+      static constexpr imageRequirements colorIR = findById(OD.IRS, colorRM->requirementId);
+      static constexpr vk::AttachmentReference colorRef { 0, imageLayoutFor(RP.color.access) };
+      static constexpr vk::SubpassDescription subpass { {}, vk::PipelineBindPoint::eGraphics, 0, NULL, 1, &colorRef, NULL, NULL };
+      static constexpr vk::AttachmentDescription attachments[1] = {//MAYBE variable attachments when inputs are allowed
+	{ {}, colorIR.format, vk::SampleCountFlagBits::e1, RP.clearColor ? vk::AttachmentLoadOp::eClear : vk::AttachmentLoadOp::eLoad, vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare, imageLayoutFor(RP.color.access), imageLayoutFor(RP.color.access) }
+      };
+      //TODO multiview
+      //static constexpr vk::RenderPassMultiviewCreateInfo multiview {
+      static constexpr vk::RenderPassCreateInfo rpci { {}, 1, attachments, 1, &subpass, 0 };
+    };
+
     //TODO make an init function, copy the recursive structure, and premake all the pipes and stuff (after successful render)
     //MAYBE match like clusters of shaders, sources, and targets so they can share layouts and descriptor pools?
 
-    template<targetLayout TL, graphicsShaderRequirements GSR, literalList<uint64_t> SLIDS>
+    template<targetLayout TL, renderPassRequirements RP, graphicsShaderRequirements GSR, literalList<uint64_t> SLIDS>
     inline void recordRenders(auto& target, perTargetLayout& ptl, perTargetLayoutPerShader& ptlps, descriptorUpdateData_t<TL.resources>& targetDescriptors, vk::RenderPass rp, vk::CommandBuffer cmd) {
       if constexpr(SLIDS.len) {
 	static constexpr sourceLayout SL = findById(OD.SLS, SLIDS[0]);
 	if constexpr(satisfies(SL.resources, GSR.sourceProvidedResources)) {
-	  //for now (at least), only one vertex binding of each input rate type. No instance without vertex. Source only.
+	  //for now (at least), only one vertex binding of each input rate type. Source only.
 	  struct findVB {
 	    consteval bool operator()(const resourceReference& rr) {
 	      return rr.usage.type == resourceUsageType::eVertex &&
@@ -825,7 +841,7 @@ namespace WITE {
 		findResourceReferencing(SL.resources, rr.id);
 	    };
 	  };
-	  static_assert(GSR.sourceProvidedResources.countWhereCE(findVB()) == 1);
+	  static_assert(GSR.sourceProvidedResources.countWhereCE(findVB()) <= 1);
 	  static_assert(GSR.sourceProvidedResources.countWhereCE(findIB()) <= 1);
 	  static constexpr const resourceReference* vb = GSR.sourceProvidedResources.firstWhere(findVB());
 	  static constexpr const resourceReference* ib = GSR.sourceProvidedResources.firstWhere(findIB());
@@ -842,18 +858,8 @@ namespace WITE {
 	      };
 	      shaderInstance.pipelineLayout = dev->getPipelineLayout<dslcis>();
 	    }
-	    auto vkDev = dev->getVkDevice();
-	    vk::ShaderModuleCreateInfo moduleCI;
-	    vk::ShaderModule module;
 	    vk::PipelineShaderStageCreateInfo stages[GSR.modules.len];
-	    for(size_t i = 0;i < GSR.modules.len;i++) {
-	      moduleCI.setPCode(GSR.modules[i].data)
-		.setCodeSize(GSR.modules[i].size);
-	      VK_ASSERT(vkDev.createShaderModule(&moduleCI, ALLOCCB, &module), "Failed to create shader module");
-	      stages[i].setStage(GSR.modules[i].stage)
-		.setModule(module)
-		.setPName(GSR.modules[i].entryPoint);
-	    }
+	    createModules<GSR.modules, OD.GPUID>(stages);
 	    static constexpr copyableArray<resourceReference, vibCount> vib = [](size_t i){ return i && vb ? *ib : *vb; };
 	    static constexpr auto vibs = getBindingDescriptions<vib>();
 	    static constexpr auto viad = getAttributeDescriptions<vib>();
@@ -864,16 +870,14 @@ namespace WITE {
 	    static constexpr vk::PipelineViewportStateCreateInfo vp = { {}, 1, NULL, 1, NULL };
 	    static constexpr vk::PipelineRasterizationStateCreateInfo raster = { {}, false, false, vk::PolygonMode::eFill, GSR.cullMode, GSR.windCounterClockwise ? vk::FrontFace::eCounterClockwise : vk::FrontFace::eClockwise, false, 0, 0, 0, 1.0f };
 	    static constexpr vk::PipelineMultisampleStateCreateInfo multisample = { {}, vk::SampleCountFlagBits::e1, 0, 0, NULL, 0, 0 };
-	    static constexpr vk::StencilOpState stencilOp = {vk::StencilOp::eKeep, vk::StencilOp::eKeep, vk::StencilOp::eKeep,
-	      vk::CompareOp::eAlways, 0, 0, 0 };
-	    static constexpr vk::PipelineDepthStencilStateCreateInfo depth = { {}, true, true, vk::CompareOp::eLessOrEqual, false, false, stencilOp, stencilOp, false, false };//not set: depth bounds and stencil test stuff
-	    static constexpr vk::PipelineColorBlendAttachmentState blendAttachment = { 0, vk::BlendFactor::eZero, vk::BlendFactor::eZero, vk::BlendOp::eAdd, vk::BlendFactor::eZero, vk::BlendFactor::eZero, vk::BlendOp::eAdd, vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA };
-	    static constexpr vk::PipelineColorBlendStateCreateInfo blend = { {}, false, vk::LogicOp::eNoOp, 1, &blendAttachment, { 1, 1, 1, 1 } };
+	    // static constexpr vk::StencilOpState stencilOp = {vk::StencilOp::eKeep, vk::StencilOp::eKeep, vk::StencilOp::eKeep,
+	    //   vk::CompareOp::eAlways, 0, 0, 0 };
+	    static constexpr vk::PipelineDepthStencilStateCreateInfo depth = { {}, RP.depth.id != NONE, true, vk::CompareOp::eLessOrEqual };//not set: depth bounds and stencil test stuff
+	    static constexpr vk::PipelineColorBlendStateCreateInfo blend = { {}, false, vk::LogicOp::eNoOp, 1, &GSR.blend, { 1, 1, 1, 1 } };
 	    static constexpr vk::DynamicState dynamics[] = { vk::DynamicState::eScissor, vk::DynamicState::eViewport };
 	    static constexpr vk::PipelineDynamicStateCreateInfo dynamic = { {}, 2, dynamics };
 	    vk::GraphicsPipelineCreateInfo gpci { {}, GSR.modules.len, stages, &verts, &assembly, /*tesselation*/ NULL, &vp, &raster, &multisample, &depth, &blend, &dynamic, shaderInstance.pipelineLayout, rp, /*subpass idx*/ 0 };//not set: derivitive pipeline stuff
-	    VK_ASSERT(vkDev.createGraphicsPipelines(dev->getPipelineCache(), 1, &gpci, ALLOCCB, &shaderInstance.pipeline),
-		      "Failed to create graphics pipeline ", GSR.id);
+	    VK_ASSERT(dev->getVkDevice().createGraphicsPipelines(dev->getPipelineCache(), 1, &gpci, ALLOCCB, &shaderInstance.pipeline), "Failed to create graphics pipeline ", GSR.id);
 	  }
 	  cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, shaderInstance.pipeline);
 	  cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, shaderInstance.pipelineLayout, 1, 1, &targetDescriptors.descriptorSet, 0, NULL);
@@ -907,15 +911,52 @@ namespace WITE {
 	    }
 	    cmd.bindVertexBuffers(0, vibCount, verts, &zero);
 	    cmd.draw(vertices, instances, 0, 0);
-	    // WARN("Drew ", findById(OD.BRS, vbm.requirementId).size / sizeofUdm<vb->usage.asVertex.format>(), " from ", verts[0]);
+	    // WARN("Drew ", vertices, " from ", verts[0]);
 	    //TODO more flexibility with draw. Allow source layout to ask for multi-draw, indexed, indirect etc. Allow (dynamic) less than the whole buffer.
 	  }
 	}
-	recordRenders<TL, GSR, SLIDS.sub(1)>(target, ptl, ptlps, targetDescriptors, rp, cmd);
+	recordRenders<TL, RP, GSR, SLIDS.sub(1)>(target, ptl, ptlps, targetDescriptors, rp, cmd);
       }
     };
 
-    template<size_t layerIdx, targetLayout TL, layerRequirements LR, literalList<graphicsShaderRequirements> GSRS>
+    template<targetLayout TL, renderPassRequirements RP, graphicsShaderRequirements GSR>
+    inline void recordRenders_targetOnly(auto& target, perTargetLayout& ptl, perTargetLayoutPerShader& ptlps, descriptorUpdateData_t<TL.resources>& targetDescriptors, vk::RenderPass rp, vk::CommandBuffer cmd) {
+      //for now (at least), target only rendering must not supply a vertex or instance buffer, but they can be overridden
+      shaderInstance& shaderInstance = ptlps.targetOnlyShader;
+      if(!shaderInstance.pipeline) [[unlikely]] {
+	if(shaderInstance.pipelineLayout == NULL) {
+	  static constexpr vk::DescriptorSetLayoutCreateInfo dslcis[] = {
+	    descriptorPoolPool<GSR.targetProvidedResources, OD.GPUID>::dslci
+	  };
+	  shaderInstance.pipelineLayout = dev->getPipelineLayout<dslcis>();
+	}
+	vk::PipelineShaderStageCreateInfo stages[GSR.modules.len];
+	createModules<GSR.modules, OD.GPUID>(stages);
+	static constexpr vk::PipelineVertexInputStateCreateInfo verts { {}, 0, NULL, 0, NULL };
+	static constexpr vk::PipelineInputAssemblyStateCreateInfo assembly { {}, GSR.topology, false };
+	//TODO tessellation
+	//viewport and scissors are dynamic so we don't need to rebuild the pipe when the target size changes
+	static constexpr vk::PipelineViewportStateCreateInfo vp = { {}, 1, NULL, 1, NULL };
+	static constexpr vk::PipelineRasterizationStateCreateInfo raster = { {}, false, false, vk::PolygonMode::eFill, GSR.cullMode, GSR.windCounterClockwise ? vk::FrontFace::eCounterClockwise : vk::FrontFace::eClockwise, false, 0, 0, 0, 1.0f };
+	static constexpr vk::PipelineMultisampleStateCreateInfo multisample = { {}, vk::SampleCountFlagBits::e1, 0, 0, NULL, 0, 0 };
+	// static constexpr vk::StencilOpState stencilOp = {vk::StencilOp::eKeep, vk::StencilOp::eKeep, vk::StencilOp::eKeep,
+	//   vk::CompareOp::eAlways, 0, 0, 0 };
+	static constexpr vk::PipelineDepthStencilStateCreateInfo depth = { {}, RP.depth.id != NONE, true, vk::CompareOp::eLessOrEqual };//not set: depth bounds and stencil test stuff
+	static constexpr vk::PipelineColorBlendStateCreateInfo blend = { {}, false, vk::LogicOp::eNoOp, 1, &GSR.blend, { 1, 1, 1, 1 } };
+	static constexpr vk::DynamicState dynamics[] = { vk::DynamicState::eScissor, vk::DynamicState::eViewport };
+	static constexpr vk::PipelineDynamicStateCreateInfo dynamic = { {}, 2, dynamics };
+	vk::GraphicsPipelineCreateInfo gpci { {}, GSR.modules.len, stages, &verts, &assembly, /*tesselation*/ NULL, &vp, &raster, &multisample, &depth, &blend, &dynamic, shaderInstance.pipelineLayout, rp, /*subpass idx*/ 0 };//not set: derivitive pipeline stuff
+	VK_ASSERT(dev->getVkDevice().createGraphicsPipelines(dev->getPipelineCache(), 1, &gpci, ALLOCCB, &shaderInstance.pipeline), "Failed to create graphics pipeline ", GSR.id);
+      }
+      cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, shaderInstance.pipeline);
+      cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, shaderInstance.pipelineLayout, 0, 1, &targetDescriptors.descriptorSet, 0, NULL);
+      static_assert(GSR.vertexCountOverride > 0);
+      cmd.draw(GSR.vertexCountOverride, GSR.instanceCountOverride ? GSR.instanceCountOverride : 1, 0, 0);
+      // WARN("Drew ", GSR.vertexCountOverride);
+      //TODO more flexibility with draw. Allow source layout to ask for multi-draw, indexed, indirect etc. Allow (dynamic) less than the whole buffer.
+    };
+
+    template<size_t layerIdx, targetLayout TL, layerRequirements LR, renderPassRequirements RP, literalList<graphicsShaderRequirements> GSRS>
     inline void recordRenders(auto& target, perTargetLayout& ptl, vk::RenderPass rp, vk::CommandBuffer cmd) {
       if constexpr(GSRS.len) {
 	static constexpr graphicsShaderRequirements GSR = GSRS[0];
@@ -925,9 +966,12 @@ namespace WITE {
 	  auto& descriptorBundle = target.perShaderByIdByFrame[GSR.id][frameMod];
 	  perTargetLayoutPerShader& ptlps = ptl.perShader[GSR.id];
 	  prepareDescriptors<TL.resources, GSR.targetProvidedResources, TL.id>(descriptorBundle, ptlps.descriptorPool, target.resources, frameMod);
-	  recordRenders<TL, GSR, LR.sourceLayouts>(target, ptl, ptlps, descriptorBundle, rp, cmd);
+	  if constexpr(GSR.sourceProvidedResources.len)
+	    recordRenders<TL, RP, GSR, LR.sourceLayouts>(target, ptl, ptlps, descriptorBundle, rp, cmd);
+	  else
+	    recordRenders_targetOnly<TL, RP, GSR>(target, ptl, ptlps, descriptorBundle, rp, cmd);
 	}
-	recordRenders<layerIdx, TL, LR, GSRS.sub(1)>(target, ptl, rp, cmd);
+	recordRenders<layerIdx, TL, LR, RP, GSRS.sub(1)>(target, ptl, rp, cmd);
       }
     };
 
@@ -937,34 +981,43 @@ namespace WITE {
 	static constexpr renderPassRequirements RP = findById(OD.RPRS, RPIDS[0]);
 	static constexpr const resourceMap* colorRM = findResourceReferencing(TL.resources, RP.color.id),
 	  *depthRM = findResourceReferencing(TL.resources, RP.depth.id);
-	if constexpr(colorRM != NULL && depthRM != NULL) {
+	if constexpr(colorRM != NULL && (depthRM != NULL || RP.depth.id == NONE)) {
 	  vk::RenderPass& rp = ptl.rpByRequirementId[RP.id];
 	  if(!rp) [[unlikely]] {
 	    VK_ASSERT(dev->getVkDevice().createRenderPass(&renderPassInfoBundle<RP, TL>::rpci, ALLOCCB, &rp),
 		      "failed to create render pass ", TL.id, " ", RP.id);
 	  }
 	  auto& color = target.template get<colorRM->id>();
-	  auto& depth = target.template get<depthRM->id>();
 	  frameBufferBundle& fbb = target.fbByRpIdByFrame[RP.id][frame % target_t<TL.id>::maxFrameswap];
-	  bool depthOutdated = fbb.fb && fbb.lastUpdatedFrame < depth.frameUpdated(frame + RP.depth.frameLatency);
+	  bool depthOutdated;
+	  if constexpr(RP.depth.id != NONE)
+	    depthOutdated = fbb.fb && fbb.lastUpdatedFrame < target.template get<depthRM->id>().frameUpdated(frame + RP.depth.frameLatency);
+	  else
+	    depthOutdated = false;
 	  bool colorOutdated = fbb.fb && fbb.lastUpdatedFrame < color.frameUpdated(frame + RP.color.frameLatency);
 	  vk::Rect2D size = color.getSizeRect(frame + RP.color.frameLatency);
 	  if(!fbb.fb || colorOutdated || depthOutdated) [[unlikely]] {
 	    if(fbb.fb)
 	      getActiveGarbageCollector().push(fbb.fb);
-	    ASSERT_TRAP(size == depth.getSizeRect(frame + RP.depth.frameLatency), "framebuffer depth color size mismatch");
+	    if constexpr(RP.depth.id != NONE)
+	      ASSERT_TRAP(size == target.template get<depthRM->id>().getSizeRect(frame + RP.depth.frameLatency), "framebuffer depth color size mismatch");
 	    fbb.fbci.renderPass = rp;
 	    fbb.fbci.width = size.extent.width;
 	    fbb.fbci.height = size.extent.height;
 	    fbb.fbci.layers = 1;
+	    if constexpr(RP.depth.id == NONE)
+	      fbb.fbci.attachmentCount = 1;
+	    else
+	      fbb.fbci.attachmentCount = 2;
 	    if(colorOutdated)
 	      getActiveGarbageCollector().push(fbb.attachments[0]);
 	    if(depthOutdated)
 	      getActiveGarbageCollector().push(fbb.attachments[1]);
 	    if(!fbb.fb || colorOutdated)
 	      fbb.attachments[0] = color.createView(frame + RP.color.frameLatency);
-	    if(!fbb.fb || depthOutdated)
-	      fbb.attachments[1] = depth.createView(frame + RP.depth.frameLatency);
+	    if constexpr(RP.depth.id != NONE)
+	      if(!fbb.fb || depthOutdated)
+		fbb.attachments[1] = target.template get<depthRM->id>().createView(frame + RP.depth.frameLatency);
 	    VK_ASSERT(dev->getVkDevice().createFramebuffer(&fbb.fbci, ALLOCCB, &fbb.fb), "failed to create framebuffer");
 	    fbb.lastUpdatedFrame = frame;
 	  }
@@ -973,9 +1026,9 @@ namespace WITE {
 	  cmd.setViewport(0, 1, &viewport);
 	  cmd.setScissor(0, 1, &size);
 	  static constexpr vk::ClearValue clears[2] { RP.clearColorValue, RP.clearDepthValue };
-	  vk::RenderPassBeginInfo rpBegin(rp, fbb.fb, size,(uint32_t)RP.clearColor + (uint32_t)RP.clearDepth, RP.clearColor ? clears : clears+1);
+	  vk::RenderPassBeginInfo rpBegin(rp, fbb.fb, size, (uint32_t)RP.clearColor + (uint32_t)RP.clearDepth, RP.clearColor ? clears : clears+1);
 	  cmd.beginRenderPass(&rpBegin, vk::SubpassContents::eInline);
-	  recordRenders<layerIdx, TL, LR, RP.shaders>(target, ptl, rp, cmd);
+	  recordRenders<layerIdx, TL, LR, RP, RP.shaders>(target, ptl, rp, cmd);
 	  cmd.endRenderPass();
 	}
 	recordRenders<layerIdx, TL, LR, RPIDS.sub(1)>(target, ptl, cmd);
@@ -1048,18 +1101,11 @@ namespace WITE {
 	    prepareDescriptors<TL.resources, CS.targetProvidedResources, TL.id>(descriptorBundle, ptlps.descriptorPool, target->resources, frameMod);
 	    if(!ptlps.targetOnlyShader.pipeline) [[unlikely]] {
 	      ptlps.targetOnlyShader.pipelineLayout = dev->getPipelineLayout<descriptorPoolPool<CS.targetProvidedResources, OD.GPUID>::dslci>();
-	      auto vkDev = dev->getVkDevice();
-	      vk::ShaderModuleCreateInfo moduleCI;
-	      vk::ShaderModule module;
-	      vk::PipelineShaderStageCreateInfo stage;
-	      moduleCI.setPCode(CS.module->data)
-		.setCodeSize(CS.module->size);
-	      VK_ASSERT(vkDev.createShaderModule(&moduleCI, ALLOCCB, &module), "Failed to create shader module");
-	      stage.setStage(CS.module->stage)
-		.setModule(module)
-		.setPName(CS.module->entryPoint);
-	      vk::ComputePipelineCreateInfo ci { {}, stage, ptlps.targetOnlyShader.pipelineLayout };
-	      VK_ASSERT(vkDev.createComputePipelines(dev->getPipelineCache(), 1, &ci, ALLOCCB, &ptlps.targetOnlyShader.pipeline), "failed to create compute pipeline");
+	      static_assert(CS.module->stage == vk::ShaderStageFlagBits::eCompute);
+	      vk::ComputePipelineCreateInfo ci;
+	      shaderFactory<CS.module, OD.GPUID>::create(&ci.stage);
+	      ci.layout = ptlps.targetOnlyShader.pipelineLayout;
+	      VK_ASSERT(dev->getVkDevice().createComputePipelines(dev->getPipelineCache(), 1, &ci, ALLOCCB, &ptlps.targetOnlyShader.pipeline), "failed to create compute pipeline");
 	    }
 	    cmd.bindPipeline(vk::PipelineBindPoint::eCompute, ptlps.targetOnlyShader.pipeline);
 	    cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute, ptlps.targetOnlyShader.pipelineLayout, 0, 1, &descriptorBundle.descriptorSet, 0, NULL);
@@ -1089,19 +1135,11 @@ namespace WITE {
 	      };
 	      shaderInstance.pipelineLayout = dev->getPipelineLayout<dslcis>();
 	    }
-	    auto vkDev = dev->getVkDevice();
-	    vk::ShaderModuleCreateInfo moduleCI;
-	    vk::ShaderModule module;
-	    vk::PipelineShaderStageCreateInfo stage;
-	    moduleCI.setPCode(CS.module->data)
-	      .setCodeSize(CS.module->size);
-	    VK_ASSERT(vkDev.createShaderModule(&moduleCI, ALLOCCB, &module), "Failed to create shader module");
-	    stage.setStage(CS.module->stage)
-	      .setModule(module)
-	      .setPName(CS.module->entryPoint);
-	    vk::ComputePipelineCreateInfo ci { {}, stage, shaderInstance.pipelineLayout };
-	    VK_ASSERT(vkDev.createComputePipelines(dev->getPipelineCache(), 1, &ci, ALLOCCB, &shaderInstance.pipeline),
-		      "failed to create compute pipeline");
+	    static_assert(CS.module->stage == vk::ShaderStageFlagBits::eCompute);
+	    vk::ComputePipelineCreateInfo ci;
+	    shaderFactory<CS.module, OD.GPUID>::create(&ci.stage);
+	    ci.layout = shaderInstance.pipelineLayout;
+	    VK_ASSERT(dev->getVkDevice().createComputePipelines(dev->getPipelineCache(), 1, &ci, ALLOCCB, &shaderInstance.pipeline), "failed to create compute pipeline");
 	  }
 	  cmd.bindPipeline(vk::PipelineBindPoint::eCompute, shaderInstance.pipeline);
 	  cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute, shaderInstance.pipelineLayout, 1, 1, &perShader.descriptorSet, 0, NULL);

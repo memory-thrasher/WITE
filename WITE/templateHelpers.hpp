@@ -196,38 +196,40 @@ namespace WITE {
     };
   };
 
-#define defineUBReferenceAtVertex() simpleVertexReference<__LINE__>::value
+#define defineUBReferenceAt(ST) simpleUBReference<__LINE__, ST>::value
+#define defineUBReferenceAtVertex() defineUBReferenceAt(vk::ShaderStageFlagBits::eVertex)
+#define defineUBReferenceAtCompute() defineUBReferenceAt(vk::ShaderStageFlagBits::eCompute)
 
-  template<uint64_t ID> struct simpleVertexReference {
+  template<uint64_t ID, vk::ShaderStageFlagBits ST> struct simpleUBReference {
     static constexpr resourceReference value {
       .id = ID,
-      .stages = vk::ShaderStageFlagBits::eVertex,
+      .stages = ST,
       .access = vk::AccessFlagBits2::eUniformRead,
       .usage = { vk::DescriptorType::eUniformBuffer }
     };
   };
 
-#define defineUBReferenceAtCompute() simpleComputeReference<__LINE__>::value
+#define defineSBReadonlyReferenceAt(ST) simpleStorageReadReference<__LINE__, ST>::value
 
-  template<uint64_t ID> struct simpleComputeReference {
+  template<uint64_t ID, vk::ShaderStageFlagBits ST> struct simpleStorageReadReference {
     static constexpr resourceReference value {
       .id = ID,
-      .stages = vk::ShaderStageFlagBits::eCompute,
-      .access = vk::AccessFlagBits2::eUniformRead,
-      .frameLatency = 1,
-      .usage = { vk::DescriptorType::eUniformBuffer }
-    };
-  };
-
-#define defineSBReferenceAtCompute() simpleComputeStorageReference<__LINE__>::value
-
-  template<uint64_t ID> struct simpleComputeStorageReference {
-    static constexpr resourceReference value {
-      .id = ID,
-      .stages = vk::ShaderStageFlagBits::eCompute,
+      .stages = ST,
       .access = vk::AccessFlagBits2::eShaderStorageRead,
       .frameLatency = 1,
       .usage = { vk::DescriptorType::eStorageBuffer }
+    };
+  };
+
+#define defineSamplerReference() simpleSamplerReference<__LINE__>::value
+
+  template<uint64_t ID> struct simpleSamplerReference {
+    static constexpr resourceReference value {
+      .id = ID,
+      .stages = vk::ShaderStageFlagBits::eFragment,
+      .access = vk::AccessFlagBits2::eShaderSampledRead,
+      .frameLatency = 0,
+      .usage = { vk::DescriptorType::eCombinedImageSampler, { {}, vk::Filter::eNearest, vk::Filter::eNearest, vk::SamplerMipmapMode::eNearest } }
     };
   };
 

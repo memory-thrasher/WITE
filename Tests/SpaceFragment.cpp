@@ -2,9 +2,9 @@
 #include "../WITE/Thread.hpp"
 
 //include the compiled shader code which was outputted as a header in the build dir before c++ code gets compiled.
-#include "computeSpace.comp.spv.h"
-#include "computeFlare.comp.spv.h"
-#include "computeFlarePart2.comp.spv.h"
+#include "vertexWholeScreen.vert.spv.h"
+#include "fragmentSpace.frag.spv.h"
+#include "fragmentBloom.frag.spv.h"
 
 using namespace WITE;
 
@@ -75,20 +75,20 @@ constexpr bufferRequirements BR_skyboxData = defineSimpleStorageBuffer(gpuId, si
 constexpr bufferRequirements BR_cameraData = defineSimpleUniformBuffer(gpuId, sizeof(cameraData_t));
 constexpr bufferRequirements BRS_cameraData = NEW_ID(stagingRequirementsFor(BR_cameraData, 2));
 
-constexpr imageRequirements IR_standardColor = {
+constexpr imageRequirements IR_intermediateColor = {
   .deviceId = gpuId,
   .id = __LINE__,
   .format = Format::RGBA32float,//drivers are REQUIRED by vulkan to support this format for most operations (including color attachment)
-  .usage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eTransferDst,//transfer src is needed by window to present, transfer dst to clear (unless on a RP)
-  .frameswapCount = 2
+  .usage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled,
+  .frameswapCount = 1
 };
 
-constexpr imageRequirements IR_flareTempColor = {
+constexpr imageRequirements IR_finalOutput = {
   .deviceId = gpuId,
   .id = __LINE__,
   .format = Format::RGBA32float,//drivers are REQUIRED by vulkan to support this format for most operations (including color attachment)
-  .usage = vk::ImageUsageFlagBits::eStorage,
-  .frameswapCount = 2
+  .usage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferSrc,
+  .frameswapCount = 1
 };
 
 constexpr copyStep C_updateCameraData = defineCopy(),
@@ -96,22 +96,21 @@ constexpr copyStep C_updateCameraData = defineCopy(),
 	      C_updateCameraData
 	    };
 
-constexpr clearStep CL_flareTemp = defineClear(0, 0, 0, 0);
+constexpr resourceReference RR_pass1_colorAttachment = defineSimpleColorReference(),
+	    RR_pass2_colorAttachment = defineSimpleColorReference(),
+	    RR_pass3_colorAttachment = defineSimpleColorReference(),
+	    RR_pass2_sampler = defineSamplerReference(),
+	    RR_pass3_sampler = defineSamplerReference(),
+	    RR_pass1_cameraData = defineUBReferenceAt(vk::ShaderStageFlagBits::eFragment),
+	    RR_pass1_skyboxData = defineSBReadonlyReferenceAt(vk::ShaderStageFlagBits::eFragment),
+	    RRL_pass1[] = { RR_pass1_cameraData, RR_pass1_skyboxData },
+	    RRL_pass2[] = { RR_pass2_sampler },
+	    RRL_pass3[] = { RR_pass3_sampler };
 
-constexpr resourceReference RR_color = defineComputeColorReference(),
-	    RR_color_flare = defineComputeColorReference(),
-	    RR_flareTempColor = defineComputeColorReference(),
-	    RR_color_flarePart2 = defineComputeColorReference(),
-	    RR_flareTempColorPart2 = defineComputeColorReference(),
-	    RR_cameraData = defineUBReferenceAtCompute(),
-	    RR_skyboxData = defineSBReadonlyReferenceAt(vk::ShaderStageFlagBits::eCompute),
-	    RRL_flare[] = { RR_color_flare, RR_flareTempColor },
-	    RRL_flarePart2[] = { RR_color_flarePart2, RR_flareTempColorPart2 },
-	    RRL_camera[] = { RR_cameraData, RR_color, RR_skyboxData };//order here is binding idx in shader
-
-constexpr uint64_t RR_IDL_cameraData[] = { RR_cameraData.id, C_updateCameraData.dst.id },
-	    RR_IDL_color[] = { RR_color.id, RR_color_flare.id, RR_color_flarePart2.id },
-	    RR_IDL_flareTempColor[] = { CL_flareTemp.id, RR_flareTempColor.id, RR_flareTempColorPart2.id },
+constexpr uint64_t RR_IDL_cameraData[] = { RR_pass1_cameraData.id, C_updateCameraData.dst.id },
+	    RR_IDL_pass1ColorAttachment[] = { RR_pass1_colorAttachment.id, RR_pass2_sampler.id },
+	    RR_IDL_pass2ColorAttachment[] = { RR_pass2_colorAttachment.id, RR_pass3_sampler.id },
+	    RR_IDL_pass3ColorAttachment[] = { RR_pass3_colorAttachment.id },
 	    C_IDL_L1[] = { C_updateCameraData.id };
 
 constexpr resourceMap RMT_cameraData_staging = {
@@ -121,86 +120,140 @@ constexpr resourceMap RMT_cameraData_staging = {
 }, RMT_skyboxData = {
   .id = __LINE__,
   .requirementId = BR_skyboxData.id,
-  .resourceReferences = RR_skyboxData.id,
+  .resourceReferences = RR_pass1_skyboxData.id,
   .external = true
-}, RMT_color = {
+}, RMT_pass3_color = {
   .id = __LINE__,
-  .requirementId = IR_standardColor.id,
-  .resourceReferences = RR_IDL_color,
-  .resizeBehavior = { imageResizeType::eDiscard, {}, true }
-}, RMT_flareTemp = {
-  .id = __LINE__,
-  .requirementId = IR_flareTempColor.id,
-  .resourceReferences = RR_IDL_flareTempColor,
+  .requirementId = IR_finalOutput.id,
+  .resourceReferences = RR_IDL_pass3ColorAttachment,
   .resizeBehavior = { imageResizeType::eDiscard, {}, true }
 }, RMT_target[] = {
   RMT_cameraData_staging,
   RMT_skyboxData,
-  RMT_color,
-  RMT_flareTemp,
+  RMT_pass3_color,
   {
     .id = __LINE__,
     .requirementId = BR_cameraData.id,
     .resourceReferences = RR_IDL_cameraData
-  }};
+  }, {
+    .id = __LINE__,
+    .requirementId = IR_intermediateColor.id,
+    .resourceReferences = RR_IDL_pass2ColorAttachment,
+    .resizeBehavior = { imageResizeType::eDiscard, {}, true }
+  }, {
+    .id = __LINE__,
+    .requirementId = IR_intermediateColor.id,
+    .resourceReferences = RR_IDL_pass1ColorAttachment,
+    .resizeBehavior = { imageResizeType::eDiscard, {}, true }
+  }
+};
 
-constexpr targetLayout TL_standardRender {
+constexpr targetLayout TL_primary {
   .id = __LINE__,
   .resources = RMT_target, //pass by reference (with extra steps), so prior declaration is necessary
-  .presentImageResourceMapId = RMT_color.id
+  .presentImageResourceMapId = RMT_pass3_color.id
 };
 
-constexpr shaderModule spaceShaderModule { computeSpace_comp, sizeof(computeSpace_comp), vk::ShaderStageFlagBits::eCompute };
+defineShaderModules(S_spaceShaderModules,
+		    { vertexWholeScreen_vert, sizeof(vertexWholeScreen_vert), vk::ShaderStageFlagBits::eVertex },
+		    { fragmentSpace_frag, sizeof(fragmentSpace_frag), vk::ShaderStageFlagBits::eFragment });
 
-constexpr computeShaderRequirements S_space {
+constexpr graphicsShaderRequirements S_space {
   .id = __LINE__,
-  .module = &spaceShaderModule,
-  .targetProvidedResources = RRL_camera,//layout set 0 because there are no sources
-  .primaryOutputReferenceId = RR_color.id,
-  .strideX = 30,
-  .strideY = 30
+  .modules = S_spaceShaderModules,
+  .targetProvidedResources = RRL_pass1,
+  .cullMode = vk::CullModeFlagBits::eNone,
+  .vertexCountOverride = 3
 };
 
-constexpr shaderModule flareShaderModule { computeFlare_comp, sizeof(computeFlare_comp), vk::ShaderStageFlagBits::eCompute };
-
-constexpr computeShaderRequirements S_flare {
+constexpr renderPassRequirements RP_1 {
   .id = __LINE__,
-  .module = &flareShaderModule,
-  .targetProvidedResources = RRL_flare,//layout set 0 because there are no sources
-  .primaryOutputReferenceId = RR_color_flare.id,
-  .strideX = 128,
-  .strideY = 99999
+  .color = RR_pass1_colorAttachment,
+  .clearColor = true,
+  .clearColorValue = { 0.0f, 0.0f, 0.0f, 1.0f },
+  .shaders = S_space
 };
 
-constexpr shaderModule flarePart2ShaderModule { computeFlarePart2_comp, sizeof(computeFlarePart2_comp), vk::ShaderStageFlagBits::eCompute };
+constexpr int32_t fragmentBloomSpecData[2] = { 0, 1 };
 
-constexpr computeShaderRequirements S_flarePart2 {
+constexpr vk::SpecializationMapEntry fragmentBloomSpecMap0 { 0, 0, 4 },
+	    fragmentBloomSpecMap1 { 0, 4, 4 };
+
+defineShaderModules(S_bloomShaderModules,
+		    { vertexWholeScreen_vert, sizeof(vertexWholeScreen_vert), vk::ShaderStageFlagBits::eVertex },
+		    {
+		      .data = fragmentBloom_frag,
+		      .size = sizeof(fragmentBloom_frag),
+		      .stage = vk::ShaderStageFlagBits::eFragment,
+		      .specializations = fragmentBloomSpecMap0,
+		      .specializationData = (void*)fragmentBloomSpecData,
+		      .specializationDataSize = sizeof(fragmentBloomSpecData)
+		    });
+
+constexpr graphicsShaderRequirements S_bloom {
   .id = __LINE__,
-  .module = &flarePart2ShaderModule,
-  .targetProvidedResources = RRL_flarePart2,//layout set 0 because there are no sources
-  .primaryOutputReferenceId = RR_color_flare.id,
-  .strideX = 99999,
-  .strideY = 128
+  .modules = S_bloomShaderModules,
+  .targetProvidedResources = RRL_pass2,
+  .vertexCountOverride = 3
 };
 
-constexpr uint64_t IDL_computeShaders[] = {
-  S_space.id,
-  S_flare.id,
-  S_flarePart2.id,
+constexpr renderPassRequirements RP_2 {
+  .id = __LINE__,
+  .color = RR_pass2_colorAttachment,
+  .clearColor = true,
+  .clearColorValue = { 0.0f, 0.0f, 0.0f, 1.0f },
+  .shaders = S_bloom
 };
 
-constexpr computeShaderRequirements S_L_computeShaders[] { S_space, S_flare, S_flarePart2 };
+defineShaderModules(S_bloomPart2ShaderModules,
+		    { vertexWholeScreen_vert, sizeof(vertexWholeScreen_vert), vk::ShaderStageFlagBits::eVertex },
+		    {
+		      .data = fragmentBloom_frag,
+		      .size = sizeof(fragmentBloom_frag),
+		      .stage = vk::ShaderStageFlagBits::eFragment,
+		      .specializations = fragmentBloomSpecMap1,
+		      .specializationData = (void*)fragmentBloomSpecData,
+		      .specializationDataSize = sizeof(fragmentBloomSpecData)
+		    });
+
+constexpr graphicsShaderRequirements S_bloomPart2 {
+  .id = __LINE__,
+  .modules = S_bloomPart2ShaderModules,
+  .targetProvidedResources = RRL_pass3,
+  .vertexCountOverride = 3
+};
+
+constexpr renderPassRequirements RP_3 {
+  .id = __LINE__,
+  .color = RR_pass3_colorAttachment,
+  .clearColor = true,
+  .clearColorValue = { 0.0f, 0.0f, 0.0f, 1.0f },
+  .shaders = S_bloomPart2
+};
+
+constexpr renderPassRequirements allRPs[] { RP_1, RP_2, RP_3 };
 
 constexpr layerRequirements L_1 {
-  .targetLayouts = TL_standardRender.id,
-  .clears = CL_flareTemp.id,
+  .targetLayouts = TL_primary.id,
   .copies = C_IDL_L1,
-  .computeShaders = IDL_computeShaders
+  .renders = RP_1.id
 };
 
+constexpr layerRequirements L_2 {
+  .targetLayouts = TL_primary.id,
+  .renders = RP_2.id
+};
+
+constexpr layerRequirements L_3 {
+  .targetLayouts = TL_primary.id,
+  .renders = RP_3.id
+};
+
+constexpr layerRequirements allLayers[] { L_1, L_2, L_3 };
+
 constexpr imageRequirements allImageRequirements[] = {
-  IR_standardColor,
-  IR_flareTempColor
+  IR_intermediateColor,
+  IR_finalOutput
 };
 
 constexpr bufferRequirements allBufferRequirements[] = {
@@ -212,11 +265,10 @@ constexpr bufferRequirements allBufferRequirements[] = {
 constexpr onionDescriptor od = {
   .IRS = allImageRequirements,
   .BRS = allBufferRequirements,
-  .CSRS = S_L_computeShaders,
-  .CLS = CL_flareTemp,
+  .RPRS = allRPs,
   .CSS = C_all,
-  .LRS = L_1,
-  .TLS = TL_standardRender,
+  .LRS = allLayers,
+  .TLS = TL_primary,
   .GPUID = gpuId
 };
 
@@ -226,11 +278,11 @@ std::unique_ptr<onion_t> primaryOnion;
 constexpr float fov = 45.0f;
 
 int main(int argc, char** argv) {
-  gpu::init("Space test");
+  gpu::init("Space test (fragment)");
   primaryOnion = std::make_unique<onion_t>();
   buffer<BR_skyboxData> skyboxDataBuf;
   skyboxDataBuf.slowOutOfBandSet(skyboxData);
-  auto camera = primaryOnion->createTarget<TL_standardRender.id>();
+  auto camera = primaryOnion->createTarget<TL_primary.id>();
   camera->set<RMT_skyboxData.id>(&skyboxDataBuf);
   glm::vec2 size = camera->getWindow().getVecSize();
   cameraData_t cd { { 0, 0, -5, 0 }, { 0, 0, 1, 0 }, { 0, 1, 0, 0 }, { 1, 0, 0, 0 }, { size.x, size.y, glm::radians(fov)/size.y, 0 }, { 1<<10, 1<<16, 1<<20, 4 } };

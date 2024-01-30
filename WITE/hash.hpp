@@ -25,8 +25,8 @@ namespace WITE {
   consteval hash_t hash(const vk::DescriptorSetLayoutBinding& dslb);
   consteval hash_t hash(const vk::DescriptorSetLayoutCreateInfo& ci);
 
-  template<class T> requires requires(const T& t) { t.reflect(); } consteval hash_t hash(const T& t) {
-    return hash(t.reflect());
+  consteval hash_t hash(const vk::SamplerCreateInfo& s) {
+    return hash(std::tie(s.sType, s.pNext, s.flags, s.magFilter, s.minFilter, s.mipmapMode, s.addressModeU, s.addressModeV, s.addressModeW, s.mipLodBias, s.anisotropyEnable, s.maxAnisotropy, s.compareEnable, s.compareOp, s.minLod, s.maxLod, s.borderColor, s.unnormalizedCoordinates));
   };
 
   template<class T> consteval hash_t hash(const literalList<T>& ll) {

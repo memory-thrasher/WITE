@@ -22,6 +22,7 @@ fi
 COMPILER=clang++
 WORKNICE="nice -n10"
 GLCOMPILER=glslangValidator
+TESTOPTIONS="nogpuid=2 extent=7680,0,3840,2160" #skips llvme pipe on my test system, renders to right monitor
 
 #config
 if [ -z "$VK_INCLUDE" -a ! -z "$VK_SDK_PATH" ]; then
@@ -122,7 +123,7 @@ if ! [ -f "${ERRLOG}" ] || [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
 		echo running test "${TESTNAME}" >>"${LOGFILE}"
 		# md5sum $TESTNAME >>"${LOGFILE}"
 		#VK_LOADER_DEBUG=all
-		$WORKNICE time $TESTNAME 2>>"${ERRLOG}" >>"${LOGFILE}"
+		$WORKNICE time $TESTNAME $TESTOPTIONS 2>>"${ERRLOG}" >>"${LOGFILE}"
 		code=$?
 		if [ $code -ne 0 ]; then echo "Exit code: " $code >>"${ERRLOG}"; fi;
 		#test -f "${TESTNAME}.bak" && ! test -f "${TESTNAME}" && cp "${TESTNAME}.bak" "${TESTNAME}"

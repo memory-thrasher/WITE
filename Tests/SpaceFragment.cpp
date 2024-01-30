@@ -278,6 +278,7 @@ std::unique_ptr<onion_t> primaryOnion;
 constexpr float fov = 45.0f;
 
 int main(int argc, char** argv) {
+  gpu::setOptions(argc, argv);
   gpu::init("Space test (fragment)");
   primaryOnion = std::make_unique<onion_t>();
   buffer<BR_skyboxData> skyboxDataBuf;

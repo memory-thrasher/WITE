@@ -1,6 +1,8 @@
 #include <vector>
 #include <map>
 #include <bit>
+#include <cstring>
+#include <cstdlib>
 
 #include "gpu.hpp"
 #include "bitmaskIterator.hpp"
@@ -28,6 +30,7 @@ namespace WITE {
   std::unique_ptr<gpu[]> gpu::gpus;
   char gpu::appName[1024];
   bool gpu::running;
+  std::vector<std::unique_ptr<char[]>> gpu::options;
 
   gpu::gpu() : tempCmds(NULL) {};//init dummy
 
@@ -172,6 +175,25 @@ namespace WITE {
     running = false;
   };
 
+  void gpu::setOptions(int argc, char** argv) {//static
+    for(int i = 0;i < argc;i++) {
+      char* temp = new char[std::strlen(argv[i])];
+      std::strcpy(temp, argv[i]);
+      WARN("CLI option: ", temp);
+      options.emplace_back(temp);//constructs unique_pointer around char array
+    }
+  };
+
+  char* gpu::getOption(const char* key) {//static
+    int keyLen = strlen(key);
+    for(const auto& up : options) {
+      char* kvp = up.get();
+      if(strlen(kvp) > keyLen && kvp[keyLen] == '=' && strncmp(key, kvp, keyLen) == 0)
+	return kvp+keyLen+1;//if no value given, this is a 0-length string (pointer to 0x00)
+    }
+    return NULL;
+  };
+
   void gpu::init(const char* appName,
 		 std::initializer_list<const char*> appRequestedLayers,
 		 std::initializer_list<const char*> appRequestedExtensions) {//static
@@ -202,9 +224,27 @@ namespace WITE {
     vk::PhysicalDevice pds[MAX_GPUS];
     VK_ASSERT(vkInstance.enumeratePhysicalDevices(&cnt, pds), "Failed to enumerate gpus");
     gpus = std::make_unique<gpu[]>(cnt);
-    for(size_t i = 0;i < cnt;i++)
-      new(&gpus[i])gpu(i, pds[i]);
-    gpuCount = cnt;
+    gpuCount = 0;
+    char* skipGpus = getOption("nogpuid");//csv list of indexes
+    char* remaining;
+    bool skip;
+    for(long i = 0;i < cnt;i++) {
+      skip = false;
+      if(skipGpus) {
+	remaining = skipGpus;
+	while(!skip && *remaining) {
+	  long skipId = std::strtol(remaining, &remaining, 10);
+	  skip = i == skipId;
+	  if(*remaining) remaining++;//skip delim
+	}
+      }
+      if(!skip) {
+	new(&gpus[gpuCount])gpu(gpuCount, pds[i]);
+	gpuCount++;
+      } else {
+	WARN("skipped gpu ", i, " because it's on the skip list: ", skipGpus);
+      }
+    }
     if(gpuCount < 1) {
       CRASH("No gpu found.");
     }

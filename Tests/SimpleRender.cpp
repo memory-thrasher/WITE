@@ -170,6 +170,7 @@ typedef WITE::onion<od> onion_t;
 std::unique_ptr<onion_t> primaryOnion;
 
 int main(int argc, char** argv) {
+  gpu::setOptions(argc-1, argv+1);
   gpu::init("Simple render test");
   primaryOnion = std::make_unique<onion_t>();
   auto cubeMeshBuf = cubeMesh.spawnMeshBuffer();//note: unique_ptr

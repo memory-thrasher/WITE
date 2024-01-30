@@ -14,14 +14,24 @@ namespace WITE {
     return intBoxFromSdlRect(rect);
   };
 
-  intBox3D getSplashBox() {
-    auto wholeScreen = window::getScreenBounds(0);
-    auto center = wholeScreen.center();
-    uint64_t w = max(192, wholeScreen.width()/4), h = w * 108 / 192;
-    return intBox3D(center.x - w/2, center.x + w/2, center.y - h/2, center.y + h/2);
+  intBox3D getDefaultSize() {
+    char* cliExtent = gpu::getOption("extent");
+    if(cliExtent) {
+      unsigned long x = std::strtoul(cliExtent, &cliExtent, 10);
+      unsigned long y = std::strtoul(cliExtent + 1, &cliExtent, 10);
+      unsigned long w = std::strtoul(cliExtent + 1, &cliExtent, 10);
+      unsigned long h = std::strtoul(cliExtent + 1, &cliExtent, 10);
+      return intBox3D(x, w+x, y, h+y);
+    } else {
+      char* cliScreen = gpu::getOption("screen");
+      auto wholeScreen = window::getScreenBounds(cliScreen ? std::strtoul(cliScreen, NULL, 10) : 0);
+      auto center = wholeScreen.center();
+      uint64_t w = max(192, wholeScreen.width()/4), h = w * 108 / 192;
+      return intBox3D(center.x - w/2, center.x + w/2, center.y - h/2, center.y + h/2);
+    }
   };
 
-  window::window(size_t gpuIdx) : window(gpuIdx, getSplashBox()) {};
+  window::window(size_t gpuIdx) : window(gpuIdx, getDefaultSize()) {};
 
   window::window(size_t gpuIdx, intBox3D box) : gpuIdx(gpuIdx) {
     //a rendered image is always blitted to the window's swapchain image
@@ -29,6 +39,7 @@ namespace WITE {
     y = (uint32_t)box.miny;
     w = (uint32_t)box.width();
     h = (uint32_t)box.height();
+    WARN("Creating window with extent: ", x, ",", y, " ", w, "x", h);
     swapCI.setMinImageCount(3).setImageArrayLayers(1).setImageColorSpace(vk::ColorSpaceKHR::eSrgbNonlinear)
       .setImageUsage(vk::ImageUsageFlagBits::eTransferDst).setImageSharingMode(vk::SharingMode::eExclusive)
       .setPreTransform(vk::SurfaceTransformFlagBitsKHR::eIdentity).setPresentMode(vk::PresentModeKHR::eMailbox)

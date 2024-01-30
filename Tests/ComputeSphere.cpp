@@ -64,7 +64,7 @@ constexpr clearStep CL_color = defineClear(0.2f, 0.2f, 0.2f, 1.0f),
 	    CL_all[] = { CL_depth, CL_color };
 
 constexpr resourceReference RR_depth = defineComputeDepthReference(),
-	    RR_color = defineSimpleColorReference(),
+	    RR_color = defineComputeColorReference(),
 	    RR_cameraData = defineUBReferenceAtCompute(),
 	    RR_sphereData = defineUBReferenceAtCompute(),
 	    RRL_camera[] { RR_cameraData, RR_depth, RR_color };
@@ -125,7 +125,9 @@ constexpr computeShaderRequirements S_sphere {
   .module = &sphereShaderModule,
   .targetProvidedResources = RRL_camera,//target is always layout set 1
   .sourceProvidedResources = RR_sphereData,//source is always layout set 0
-  .primaryOutputReferenceId = RR_color.id
+  .primaryOutputReferenceId = RR_color.id,
+  .strideX = 32,
+  .strideY = 32
 };
 
 constexpr sourceLayout SL_simple {
@@ -190,10 +192,10 @@ int main(int argc, char** argv) {
     sd.loc[i] = { 3 * std::cos(i), 3 * std::sin(i), i, 0.5f };
   glm::vec2 size = camera->getWindow().getVecSize();
   cameraData_t cd { { 0, 0, -5, 0 }, { 0, 0, 1, 0 }, { 0, 1, 0, 0 }, { 1, 0, 0, 0 }, { size.x, size.y, glm::radians(45.0f)/size.y, 0 } };
-  for(size_t i = 0;i < 3000;i++) {
-    cd.norm.x = std::sin(i/1000.0f);
-    cd.norm.z = std::cos(i/1000.0f);
-    cd.loc = cd.norm * -5.0f + glm::vec4(0, 0, i/10.0, 0);
+  for(size_t i = 0;i < 10000;i++) {
+    cd.norm.x = std::sin(i/10000.0f);
+    cd.norm.z = std::cos(i/10000.0f);
+    cd.loc = cd.norm * -5.0f + glm::vec4(0, 0, i/100.0, 0);
     cd.right = glm::vec4(glm::cross(glm::vec3(cd.up), glm::vec3(cd.norm)), 0);
     spheres->write<RMS_sphereData.id>(sd);
     camera->write<RMT_cameraData_staging.id>(cd);

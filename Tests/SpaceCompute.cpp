@@ -79,16 +79,16 @@ constexpr imageRequirements IR_standardColor = {
   .deviceId = gpuId,
   .id = __LINE__,
   .format = Format::RGBA32float,//drivers are REQUIRED by vulkan to support this format for most operations (including color attachment)
-  .usage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eTransferDst,//transfer src is needed by window to present, transfer dst to clear (unless on a RP)
-  .frameswapCount = 2
+  .usage = vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eTransferDst,//transfer src is needed by window to present, transfer dst to clear (unless on a RP)
+  .frameswapCount = 1
 };
 
 constexpr imageRequirements IR_flareTempColor = {
   .deviceId = gpuId,
   .id = __LINE__,
   .format = Format::RGBA32float,//drivers are REQUIRED by vulkan to support this format for most operations (including color attachment)
-  .usage = vk::ImageUsageFlagBits::eStorage,
-  .frameswapCount = 2
+  .usage = vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eStorage,
+  .frameswapCount = 1
 };
 
 constexpr copyStep C_updateCameraData = defineCopy(),
@@ -99,10 +99,10 @@ constexpr copyStep C_updateCameraData = defineCopy(),
 constexpr clearStep CL_flareTemp = defineClear(0, 0, 0, 0);
 
 constexpr resourceReference RR_color = defineComputeColorReference(),
-	    RR_color_flare = defineComputeColorReference(),
+	    RR_color_flare = defineSamplerReferenceAt(vk::ShaderStageFlagBits::eCompute),
 	    RR_flareTempColor = defineComputeColorReference(),
 	    RR_color_flarePart2 = defineComputeColorReference(),
-	    RR_flareTempColorPart2 = defineComputeColorReference(),
+	    RR_flareTempColorPart2 = defineSamplerReferenceAt(vk::ShaderStageFlagBits::eCompute),
 	    RR_cameraData = defineUBReferenceAtCompute(),
 	    RR_skyboxData = defineSBReadonlyReferenceAt(vk::ShaderStageFlagBits::eCompute),
 	    RRL_flare[] = { RR_color_flare, RR_flareTempColor },

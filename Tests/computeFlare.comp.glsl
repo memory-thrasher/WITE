@@ -4,14 +4,15 @@
 
 layout(local_size_x = 128, local_size_y = 1, local_size_z = 1) in;
 
-layout(rgba8, set = 0, binding = 0) uniform image2D color;
+layout(set = 0, binding = 0) uniform sampler2D color;
 
 layout(rgba8, set = 0, binding = 1) uniform image2D temp;
 
 void main() {
-  const ivec2 size = imageSize(color);
+  const ivec2 size = textureSize(color, 0);
   const uint tid = uint(gl_GlobalInvocationID.x);//gl_LocalInvocationID.y is always 0
   const uint maxFlare = 16, bufferSize = maxFlare * 2 + 1;
+  const vec2 stride = 1.0f/size;
   vec3[bufferSize] colors;
   for(uint y = 0;y < bufferSize;y++) {
     colors[y] = vec3(0, 0, 0);
@@ -20,10 +21,10 @@ void main() {
   if(tid < size.x) {
     uint y = 0;
     for(;y < maxFlare;y++) {
-      colors[y] = imageLoad(color, ivec2(tid, y)).xyz;
+      colors[y] = texture(color, ivec2(tid, y) * stride).xyz;
     }
     for(;y < size.y + maxFlare;y++) {
-      colors[y%bufferSize] = y >= size.y ? (0.0f).xxx : imageLoad(color, ivec2(tid, y)).xyz;
+      colors[y%bufferSize] = y >= size.y ? (0.0f).xxx : texture(color, ivec2(tid, y) * stride).xyz;
       const uint targetY = y - maxFlare;
       vec3 pxl = colors[targetY%bufferSize];
       for(uint i = 1;i <= maxFlare;i++) {

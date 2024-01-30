@@ -221,12 +221,13 @@ namespace WITE {
     };
   };
 
-#define defineSamplerReference() simpleSamplerReference<__LINE__>::value
+#define defineSamplerReference() defineSamplerReferenceAt(vk::ShaderStageFlagBits::eFragment)
+#define defineSamplerReferenceAt(ST) samplerReference<__LINE__, ST>::value
 
-  template<uint64_t ID> struct simpleSamplerReference {
+  template<uint64_t ID, vk::ShaderStageFlagBits ST> struct samplerReference {
     static constexpr resourceReference value {
       .id = ID,
-      .stages = vk::ShaderStageFlagBits::eFragment,
+      .stages = ST,
       .access = vk::AccessFlagBits2::eShaderSampledRead,
       .frameLatency = 0,
       .usage = { vk::DescriptorType::eCombinedImageSampler, { {}, vk::Filter::eNearest, vk::Filter::eNearest, vk::SamplerMipmapMode::eNearest } }

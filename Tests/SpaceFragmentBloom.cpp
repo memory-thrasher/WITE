@@ -293,24 +293,13 @@ constexpr renderPassRequirements RP_3 {
 };
 
 constexpr renderPassRequirements allRPs[] { RP_1, RP_2, RP_3 };
+constexpr uint64_t RP_IDL_L_1[] = { RP_1.id, RP_2.id, RP_3.id };
 
 constexpr layerRequirements L_1 {
   .targetLayouts = TL_primary.id,
   .copies = C_IDL_L1,
-  .renders = RP_1.id
+  .renders = RP_IDL_L_1
 };
-
-constexpr layerRequirements L_2 {
-  .targetLayouts = TL_primary.id,
-  .renders = RP_2.id
-};
-
-constexpr layerRequirements L_3 {
-  .targetLayouts = TL_primary.id,
-  .renders = RP_3.id
-};
-
-constexpr layerRequirements allLayers[] { L_1, L_2, L_3 };
 
 constexpr imageRequirements allImageRequirements[] = {
   IR_intermediateColor,
@@ -328,7 +317,7 @@ constexpr onionDescriptor od = {
   .BRS = allBufferRequirements,
   .RPRS = allRPs,
   .CSS = C_all,
-  .LRS = allLayers,
+  .LRS = L_1,
   .TLS = TL_primary,
   .GPUID = gpuId
 };
@@ -336,11 +325,12 @@ constexpr onionDescriptor od = {
 typedef WITE::onion<od> onion_t;
 std::unique_ptr<onion_t> primaryOnion;
 
-constexpr float fov = 45.0f;
-
 int main(int argc, char** argv) {
   gpu::setOptions(argc, argv);
   gpu::init("Space test (fragment)");
+  auto cliFov = gpu::getOption("fov");
+  float fov = cliFov ? std::strtof(cliFov, NULL) : 45.0f;
+  ASSERT_TRAP(fov > 0 && fov < 90, "invalid fov given on cli");
   primaryOnion = std::make_unique<onion_t>();
   buffer<BR_skyboxData> skyboxDataBuf;
   skyboxDataBuf.slowOutOfBandSet(skyboxData);
@@ -349,12 +339,12 @@ int main(int argc, char** argv) {
   glm::vec2 size = camera->getWindow().getVecSize();
   cameraData_t cd { { 0, 0, -5, 0 }, { 0, 0, 1, 0 }, { 0, 1, 0, 0 }, { 1, 0, 0, 0 }, { size.x, size.y, 0, 0 }, { 1<<10, 1<<16, 1<<20, 0 }, { glm::radians(fov)/size.y, 0, 0.25f, 0 } };
   cd.geometry.y = std::tan(cd.geometry.x);
-  for(size_t i = 0;i < 10000;i++) {
+  for(size_t i = 0;i < 100000;i++) {
     // cd.norm.x = std::sin(i/10000.0f);
     // cd.norm.z = std::cos(i/10000.0f);
     cd.loc = cd.norm * -5.0f;
     cd.right = glm::vec4(glm::cross(glm::vec3(cd.up), glm::vec3(cd.norm)), 0);
-    cd.gridOrigin.x = i;
+    cd.gridOrigin.z = i;
     camera->write<RMT_cameraData_staging.id>(cd);
     primaryOnion->render();
   }

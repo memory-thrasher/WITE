@@ -130,6 +130,8 @@ namespace WITE {
     size_t layerIdx = NONE_size;
     substep_e substep;
     resourceReference usage;
+    size_t passIdx = 0;//for sorting only
+    uint64_t passId = NONE;//forwarded to timing (NONE for compute shaders)
     size_t shaderIdx = 0;//for sorting only
     uint64_t shaderId = NONE;//forwarded to timing
     constexpr auto operator<=>(const resourceAccessTime& r) const {
@@ -140,6 +142,8 @@ namespace WITE {
       comp = layerIdx <=> r.layerIdx;
       if(comp != 0) return comp;
       comp = substep <=> r.substep;
+      if(comp != 0) return comp;
+      comp = passIdx <=> r.passIdx;
       if(comp != 0) return comp;
       return shaderIdx <=> r.shaderIdx;
     };
@@ -153,6 +157,7 @@ namespace WITE {
   struct resourceBarrierTiming {//used to key a map to ask what barrier(s) should happen at a given step, so frameLatency is not a factor
     size_t layerIdx;
     substep_e substep;
+    uint64_t passId = NONE;
     uint64_t shaderId = NONE;
     constexpr auto operator<=>(const resourceBarrierTiming& r) const = default;
   };

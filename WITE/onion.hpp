@@ -90,21 +90,22 @@ namespace WITE {
 	}
 	//rendering:
 	static_assert(std::numeric_limits<decltype(resourceBarrier::frameLatency)>::min() == 0);
-	size_t shaderIdx = 1;
-	for(uint64_t substepId : layer.renders) {
-	  const auto& substep = findById(OD.RPRS, substepId);
-	  if(RM.resourceReferences.contains(substep.depth.id))
-	    ret.push_back({ layerIdx, substep_e::render, substep.depth });
-	  if(RM.resourceReferences.contains(substep.color.id))
-	    ret.push_back({ layerIdx, substep_e::render, substep.color });
-	  for(const graphicsShaderRequirements& gsr : substep.shaders) {
+	size_t shaderIdx;
+	for(uint64_t passIdx = 0;passIdx < layer.renders.len;passIdx++) {
+	  uint64_t passId = layer.renders[passIdx];
+	  shaderIdx = 1;//first shader per pass is idx 1 so 0 can mean before the first shader (for attachments)
+	  const auto& pass = findById(OD.RPRS, passId);
+	  if(RM.resourceReferences.contains(pass.depth.id))
+	    ret.push_back({ layerIdx, substep_e::render, pass.depth, passIdx, passId });
+	  if(RM.resourceReferences.contains(pass.color.id))
+	    ret.push_back({ layerIdx, substep_e::render, pass.color, passIdx, passId });
+	  for(const graphicsShaderRequirements& gsr : pass.shaders) {
 	    for(const resourceReference& srr : gsr.targetProvidedResources)
 	      if(RM.resourceReferences.contains(srr.id))
-		ret.push_back({ layerIdx, substep_e::render, srr, shaderIdx, gsr.id });
+		ret.push_back({ layerIdx, substep_e::render, srr, passIdx, passId, shaderIdx, gsr.id });
 	    for(const resourceReference& srr : gsr.sourceProvidedResources)
 	      if(RM.resourceReferences.contains(srr.id))
-		ret.push_back({ layerIdx, substep_e::render, srr, shaderIdx, gsr.id });
-	    //TODO subpass dependencies
+		ret.push_back({ layerIdx, substep_e::render, srr, passIdx, passId, shaderIdx, gsr.id });
 	    shaderIdx++;
 	  }
 	}
@@ -114,10 +115,10 @@ namespace WITE {
 	  const computeShaderRequirements& csr = findById(OD.CSRS, csrId);
 	  for(const resourceReference& srr : csr.targetProvidedResources)
 	    if(RM.resourceReferences.contains(srr.id))
-	      ret.push_back({ layerIdx, substep_e::compute, srr, shaderIdx, csr.id });
+	      ret.push_back({ layerIdx, substep_e::compute, srr, NONE, NONE, shaderIdx, csr.id });
 	  for(const resourceReference& srr : csr.sourceProvidedResources)
 	    if(RM.resourceReferences.contains(srr.id))
-	      ret.push_back({ layerIdx, substep_e::compute, srr, shaderIdx, csr.id });
+	      ret.push_back({ layerIdx, substep_e::compute, srr, NONE, NONE, shaderIdx, csr.id });
 	  shaderIdx++;
 	}
       }
@@ -147,8 +148,13 @@ namespace WITE {
 	  rb.timing.substep = substep_e::barrier0;
 	} else if(rb.after.substep != rb.before.substep) {//next prefer between steps
 	  rb.timing.substep = (substep_e)((int)rb.after.substep - 1);
+	} else if(rb.after.passId != rb.before.passId) {//barriers between render passes are also allowed
+	  constexpr_assert(rb.after.substep == substep_e::render);//only render has passes
+	  rb.timing.substep = rb.after.substep;
+	  rb.timing.passId = rb.after.passId;
+	  rb.timing.shaderId = NONE;
 	} else {//otherwise wait as long as possible
-	  constexpr_assert(rb.after.substep == substep_e::render || rb.after.substep == substep_e::compute);
+	  constexpr_assert(rb.after.substep == substep_e::compute);//mid-pass barriers not supported (would need dependencies)
 	  rb.timing.substep = rb.after.substep;
 	  rb.timing.shaderId = rb.after.shaderId;
 	}
@@ -960,7 +966,7 @@ namespace WITE {
     inline void recordRenders(auto& target, perTargetLayout& ptl, vk::RenderPass rp, vk::CommandBuffer cmd) {
       if constexpr(GSRS.len) {
 	static constexpr graphicsShaderRequirements GSR = GSRS[0];
-	recordBarriersForTime<resourceBarrierTiming { .layerIdx = layerIdx, .substep = substep_e::render, .shaderId = GSR.id }>(cmd);
+	recordBarriersForTime<resourceBarrierTiming { .layerIdx = layerIdx, .substep = substep_e::render, .passId = RP.id, .shaderId = GSR.id }>(cmd);
 	if constexpr(satisfies(TL.resources, GSR.targetProvidedResources)) {
 	  size_t frameMod = frame % target_t<TL.id>::maxFrameswap;
 	  auto& descriptorBundle = target.perShaderByIdByFrame[GSR.id][frameMod];
@@ -1027,6 +1033,7 @@ namespace WITE {
 	  cmd.setScissor(0, 1, &size);
 	  static constexpr vk::ClearValue clears[2] { RP.clearColorValue, RP.clearDepthValue };
 	  vk::RenderPassBeginInfo rpBegin(rp, fbb.fb, size, (uint32_t)RP.clearColor + (uint32_t)RP.clearDepth, RP.clearColor ? clears : clears+1);
+	  recordBarriersForTime<resourceBarrierTiming { .layerIdx = layerIdx, .substep = substep_e::render, .passId = RP.id, .shaderId = NONE }>(cmd);
 	  cmd.beginRenderPass(&rpBegin, vk::SubpassContents::eInline);
 	  recordRenders<layerIdx, TL, LR, RP, RP.shaders>(target, ptl, rp, cmd);
 	  cmd.endRenderPass();

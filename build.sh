@@ -22,7 +22,7 @@ fi
 COMPILER=clang++
 WORKNICE="nice -n10"
 GLCOMPILER=glslangValidator
-TESTOPTIONS="nogpuid=2 extent=7680,0,3840,2160" #skips llvme pipe on my test system, renders to right monitor
+TESTOPTIONS="nogpuid=2 extent=3840,0,3840,2160" #skips llvme pipe on my test system, renders to center monitor
 
 #config
 if [ -z "$VK_INCLUDE" -a ! -z "$VK_SDK_PATH" ]; then

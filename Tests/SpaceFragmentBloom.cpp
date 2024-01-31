@@ -339,7 +339,7 @@ int main(int argc, char** argv) {
   glm::vec2 size = camera->getWindow().getVecSize();
   cameraData_t cd { { 0, 0, -5, 0 }, { 0, 0, 1, 0 }, { 0, 1, 0, 0 }, { 1, 0, 0, 0 }, { size.x, size.y, 0, 0 }, { 1<<10, 1<<16, 1<<20, 0 }, { glm::radians(fov)/size.y, 0, 0.25f, 0 } };
   cd.geometry.y = std::tan(cd.geometry.x);
-  for(size_t i = 0;i < 100000;i++) {
+  for(size_t i = 0;i < 10000;i++) {
     // cd.norm.x = std::sin(i/10000.0f);
     // cd.norm.z = std::cos(i/10000.0f);
     cd.loc = cd.norm * -5.0f;

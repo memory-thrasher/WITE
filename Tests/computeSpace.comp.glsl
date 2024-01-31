@@ -12,9 +12,8 @@ layout (std140, set = 0, binding = 0) uniform target_t {
 
 layout (rgba8, set = 0, binding = 1) uniform image2D color;
 
-layout (std140, set = 0, binding = 2) readonly buffer scatterData_t {
-  uvec4 size; //x = num of planes stored in data
-  ivec4[] data;//2 data per plane, {(pi.xyz, m), (po.xyz, unused)}
+layout (std140, set = 0, binding = 2) uniform scatterData_t {
+  ivec4[48] data;//2 data per plane, {(pi.xyz, m), (po.xyz, unused)}
 } scatterData;
 
 const uint starTypes = 31;
@@ -67,7 +66,7 @@ void main() {
   uint starType = 0;
   float depth = maxRange;
   float depthTemp;
-  for(uint planeIdx = 0;planeIdx < scatterData.size.x;planeIdx++) {
+  for(uint planeIdx = 0;planeIdx < 48;planeIdx++) {
     const uint modulus = scatterData.data[planeIdx*2].w;//TODO non-power-of-2 modulus
     const ivec3 pi = scatterData.data[planeIdx*2].xyz;
     const ivec3 po = scatterData.data[planeIdx*2+1].xyz;

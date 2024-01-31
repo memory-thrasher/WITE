@@ -4,6 +4,7 @@
 //include the compiled shader code which was outputted as a header in the build dir before c++ code gets compiled.
 #include "vertexWholeScreen.vert.spv.h"
 #include "fragmentSpace.frag.spv.h"
+#include "fragmentBloom.frag.spv.h"
 
 using namespace WITE;
 
@@ -135,6 +136,14 @@ constexpr bufferRequirements BR_skyboxData = defineSimpleStorageBuffer(gpuId, si
 constexpr bufferRequirements BR_cameraData = defineSimpleUniformBuffer(gpuId, sizeof(cameraData_t));
 constexpr bufferRequirements BRS_cameraData = NEW_ID(stagingRequirementsFor(BR_cameraData, 2));
 
+constexpr imageRequirements IR_intermediateColor = {
+  .deviceId = gpuId,
+  .id = __LINE__,
+  .format = Format::RGBA32float,//drivers are REQUIRED by vulkan to support this format for most operations (including color attachment)
+  .usage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled,
+  .frameswapCount = 1
+};
+
 constexpr imageRequirements IR_finalOutput = {
   .deviceId = gpuId,
   .id = __LINE__,
@@ -149,12 +158,20 @@ constexpr copyStep C_updateCameraData = defineCopy(),
 	    };
 
 constexpr resourceReference RR_pass1_colorAttachment = defineSimpleColorReference(),
+	    RR_pass2_colorAttachment = defineSimpleColorReference(),
+	    RR_pass3_colorAttachment = defineSimpleColorReference(),
+	    RR_pass2_sampler = defineSamplerReference(),
+	    RR_pass3_sampler = defineSamplerReference(),
 	    RR_pass1_cameraData = defineUBReferenceAt(vk::ShaderStageFlagBits::eFragment),
 	    RR_pass1_skyboxData = defineSBReadonlyReferenceAt(vk::ShaderStageFlagBits::eFragment),
-	    RRL_pass1[] = { RR_pass1_cameraData, RR_pass1_skyboxData };
+	    RRL_pass1[] = { RR_pass1_cameraData, RR_pass1_skyboxData },
+	    RRL_pass2[] = { RR_pass2_sampler },
+	    RRL_pass3[] = { RR_pass3_sampler };
 
 constexpr uint64_t RR_IDL_cameraData[] = { RR_pass1_cameraData.id, C_updateCameraData.dst.id },
-	    RR_IDL_pass1ColorAttachment[] = { RR_pass1_colorAttachment.id },
+	    RR_IDL_pass1ColorAttachment[] = { RR_pass1_colorAttachment.id, RR_pass2_sampler.id },
+	    RR_IDL_pass2ColorAttachment[] = { RR_pass2_colorAttachment.id, RR_pass3_sampler.id },
+	    RR_IDL_pass3ColorAttachment[] = { RR_pass3_colorAttachment.id },
 	    C_IDL_L1[] = { C_updateCameraData.id };
 
 constexpr resourceMap RMT_cameraData_staging = {
@@ -166,26 +183,36 @@ constexpr resourceMap RMT_cameraData_staging = {
   .requirementId = BR_skyboxData.id,
   .resourceReferences = RR_pass1_skyboxData.id,
   .external = true
-}, RMT_pass1_color = {
+}, RMT_pass3_color = {
   .id = __LINE__,
   .requirementId = IR_finalOutput.id,
-  .resourceReferences = RR_IDL_pass1ColorAttachment,
+  .resourceReferences = RR_IDL_pass3ColorAttachment,
   .resizeBehavior = { imageResizeType::eDiscard, {}, true }
 }, RMT_target[] = {
   RMT_cameraData_staging,
   RMT_skyboxData,
-  RMT_pass1_color,
+  RMT_pass3_color,
   {
     .id = __LINE__,
     .requirementId = BR_cameraData.id,
     .resourceReferences = RR_IDL_cameraData
+  }, {
+    .id = __LINE__,
+    .requirementId = IR_intermediateColor.id,
+    .resourceReferences = RR_IDL_pass2ColorAttachment,
+    .resizeBehavior = { imageResizeType::eDiscard, {}, true }
+  }, {
+    .id = __LINE__,
+    .requirementId = IR_intermediateColor.id,
+    .resourceReferences = RR_IDL_pass1ColorAttachment,
+    .resizeBehavior = { imageResizeType::eDiscard, {}, true }
   }
 };
 
 constexpr targetLayout TL_primary {
   .id = __LINE__,
   .resources = RMT_target, //pass by reference (with extra steps), so prior declaration is necessary
-  .presentImageResourceMapId = RMT_pass1_color.id
+  .presentImageResourceMapId = RMT_pass3_color.id
 };
 
 defineShaderModules(S_spaceShaderModules,
@@ -208,7 +235,64 @@ constexpr renderPassRequirements RP_1 {
   .shaders = S_space
 };
 
-constexpr renderPassRequirements allRPs[] { RP_1 };
+constexpr int32_t fragmentBloomSpecData[2] = { 0, 1 };
+
+constexpr vk::SpecializationMapEntry fragmentBloomSpecMap0 { 0, 0, 4 },
+	    fragmentBloomSpecMap1 { 0, 4, 4 };
+
+defineShaderModules(S_bloomShaderModules,
+		    { vertexWholeScreen_vert, sizeof(vertexWholeScreen_vert), vk::ShaderStageFlagBits::eVertex },
+		    {
+		      .data = fragmentBloom_frag,
+		      .size = sizeof(fragmentBloom_frag),
+		      .stage = vk::ShaderStageFlagBits::eFragment,
+		      .specializations = fragmentBloomSpecMap0,
+		      .specializationData = (void*)fragmentBloomSpecData,
+		      .specializationDataSize = sizeof(fragmentBloomSpecData)
+		    });
+
+constexpr graphicsShaderRequirements S_bloom {
+  .id = __LINE__,
+  .modules = S_bloomShaderModules,
+  .targetProvidedResources = RRL_pass2,
+  .vertexCountOverride = 3
+};
+
+constexpr renderPassRequirements RP_2 {
+  .id = __LINE__,
+  .color = RR_pass2_colorAttachment,
+  .clearColor = true,
+  .clearColorValue = { 0.0f, 0.0f, 0.0f, 1.0f },
+  .shaders = S_bloom
+};
+
+defineShaderModules(S_bloomPart2ShaderModules,
+		    { vertexWholeScreen_vert, sizeof(vertexWholeScreen_vert), vk::ShaderStageFlagBits::eVertex },
+		    {
+		      .data = fragmentBloom_frag,
+		      .size = sizeof(fragmentBloom_frag),
+		      .stage = vk::ShaderStageFlagBits::eFragment,
+		      .specializations = fragmentBloomSpecMap1,
+		      .specializationData = (void*)fragmentBloomSpecData,
+		      .specializationDataSize = sizeof(fragmentBloomSpecData)
+		    });
+
+constexpr graphicsShaderRequirements S_bloomPart2 {
+  .id = __LINE__,
+  .modules = S_bloomPart2ShaderModules,
+  .targetProvidedResources = RRL_pass3,
+  .vertexCountOverride = 3
+};
+
+constexpr renderPassRequirements RP_3 {
+  .id = __LINE__,
+  .color = RR_pass3_colorAttachment,
+  .clearColor = true,
+  .clearColorValue = { 0.0f, 0.0f, 0.0f, 1.0f },
+  .shaders = S_bloomPart2
+};
+
+constexpr renderPassRequirements allRPs[] { RP_1, RP_2, RP_3 };
 
 constexpr layerRequirements L_1 {
   .targetLayouts = TL_primary.id,
@@ -216,9 +300,20 @@ constexpr layerRequirements L_1 {
   .renders = RP_1.id
 };
 
-constexpr layerRequirements allLayers[] { L_1 };
+constexpr layerRequirements L_2 {
+  .targetLayouts = TL_primary.id,
+  .renders = RP_2.id
+};
+
+constexpr layerRequirements L_3 {
+  .targetLayouts = TL_primary.id,
+  .renders = RP_3.id
+};
+
+constexpr layerRequirements allLayers[] { L_1, L_2, L_3 };
 
 constexpr imageRequirements allImageRequirements[] = {
+  IR_intermediateColor,
   IR_finalOutput
 };
 
@@ -267,24 +362,4 @@ int main(int argc, char** argv) {
   WITE::Platform::Thread::sleep(1000);//waiting for render to finish. Should have onion destructor wait the active fence instead.
   WARN("NOTE: done rendering (any validation whining after here is in cleanup)");
 }
-
-/*
-timing: for 10k frames
-original: 90s
-no bloom: 70s (bloom cost: 2ms!)
-scatter data as uniform: 75s (uniform slower than storage??)
-scatter data as const LUT: 80s (slower than uniform?)
-with only 6 planes (instead of 24): 25s (70% lower star density)
-with 12 planes: 43 (43% loss of density)
-with const iterations: 70s
-with const iterations and scatter data (inc star colors) as uniform: 68s
-with const iterations and scatter data (inc star colors) as ro storage: 70s
-const 8 iterations, ro sb scatter data: 50s
-no iteration cap, ro sb scatter data: 57s
-^ + precalculated planar normals: 58s
-render distance to 8 pixel lightyears, ro sb scatter data: 16s
-render distance to 4 pixel lightyears, ro sb scatter data: 18s
-render distance to 2 pixel lightyears, ro sb scatter data: 24s
-render distance to 4 pixel lightyears, 8 planes, lower modulus: 15s
- */
 

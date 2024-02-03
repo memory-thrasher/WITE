@@ -2,3 +2,5 @@ SpaceCompute
 ComputeSphere
 SimpleRender
 SpaceFragment
+SpaceFragmentBloom
+

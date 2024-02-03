@@ -878,7 +878,7 @@ namespace WITE {
 	    static constexpr vk::PipelineMultisampleStateCreateInfo multisample = { {}, vk::SampleCountFlagBits::e1, 0, 0, NULL, 0, 0 };
 	    // static constexpr vk::StencilOpState stencilOp = {vk::StencilOp::eKeep, vk::StencilOp::eKeep, vk::StencilOp::eKeep,
 	    //   vk::CompareOp::eAlways, 0, 0, 0 };
-	    static constexpr vk::PipelineDepthStencilStateCreateInfo depth = { {}, RP.depth.id != NONE, true, vk::CompareOp::eLessOrEqual };//not set: depth bounds and stencil test stuff
+	    static constexpr vk::PipelineDepthStencilStateCreateInfo depth = { {}, RP.depth.id != NONE, true, vk::CompareOp::eLess };//not set: depth bounds and stencil test stuff
 	    static constexpr vk::PipelineColorBlendStateCreateInfo blend = { {}, false, vk::LogicOp::eNoOp, 1, &GSR.blend, { 1, 1, 1, 1 } };
 	    static constexpr vk::DynamicState dynamics[] = { vk::DynamicState::eScissor, vk::DynamicState::eViewport };
 	    static constexpr vk::PipelineDynamicStateCreateInfo dynamic = { {}, 2, dynamics };
@@ -915,9 +915,11 @@ namespace WITE {
 	      //but instances defaults to 1
 	      instances = GSR.instanceCountOverride ? GSR.instanceCountOverride : 1;
 	    }
-	    cmd.bindVertexBuffers(0, vibCount, verts, &zero);
+	    if constexpr(vibCount) {
+	      cmd.bindVertexBuffers(0, vibCount, verts, &zero);
+	    }
 	    cmd.draw(vertices, instances, 0, 0);
-	    // WARN("Drew ", vertices, " from ", verts[0]);
+	    // WARN("Drew ", vertices, " from nested target-source");
 	    //TODO more flexibility with draw. Allow source layout to ask for multi-draw, indexed, indirect etc. Allow (dynamic) less than the whole buffer.
 	  }
 	}
@@ -947,7 +949,7 @@ namespace WITE {
 	static constexpr vk::PipelineMultisampleStateCreateInfo multisample = { {}, vk::SampleCountFlagBits::e1, 0, 0, NULL, 0, 0 };
 	// static constexpr vk::StencilOpState stencilOp = {vk::StencilOp::eKeep, vk::StencilOp::eKeep, vk::StencilOp::eKeep,
 	//   vk::CompareOp::eAlways, 0, 0, 0 };
-	static constexpr vk::PipelineDepthStencilStateCreateInfo depth = { {}, RP.depth.id != NONE, true, vk::CompareOp::eLessOrEqual };//not set: depth bounds and stencil test stuff
+	static constexpr vk::PipelineDepthStencilStateCreateInfo depth = { {}, RP.depth.id != NONE, true, vk::CompareOp::eLess };//not set: depth bounds and stencil test stuff
 	static constexpr vk::PipelineColorBlendStateCreateInfo blend = { {}, false, vk::LogicOp::eNoOp, 1, &GSR.blend, { 1, 1, 1, 1 } };
 	static constexpr vk::DynamicState dynamics[] = { vk::DynamicState::eScissor, vk::DynamicState::eViewport };
 	static constexpr vk::PipelineDynamicStateCreateInfo dynamic = { {}, 2, dynamics };
@@ -958,7 +960,7 @@ namespace WITE {
       cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, shaderInstance.pipelineLayout, 0, 1, &targetDescriptors.descriptorSet, 0, NULL);
       static_assert(GSR.vertexCountOverride > 0);
       cmd.draw(GSR.vertexCountOverride, GSR.instanceCountOverride ? GSR.instanceCountOverride : 1, 0, 0);
-      // WARN("Drew ", GSR.vertexCountOverride);
+      // WARN("Drew ", GSR.vertexCountOverride, " from target only");
       //TODO more flexibility with draw. Allow source layout to ask for multi-draw, indexed, indirect etc. Allow (dynamic) less than the whole buffer.
     };
 
@@ -1035,6 +1037,7 @@ namespace WITE {
 	  vk::RenderPassBeginInfo rpBegin(rp, fbb.fb, size, (uint32_t)RP.clearColor + (uint32_t)RP.clearDepth, RP.clearColor ? clears : clears+1);
 	  recordBarriersForTime<resourceBarrierTiming { .layerIdx = layerIdx, .substep = substep_e::render, .passId = RP.id, .shaderId = NONE }>(cmd);
 	  cmd.beginRenderPass(&rpBegin, vk::SubpassContents::eInline);
+	  // WARN("RP begin");
 	  recordRenders<layerIdx, TL, LR, RP, RP.shaders>(target, ptl, rp, cmd);
 	  cmd.endRenderPass();
 	}

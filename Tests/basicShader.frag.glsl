@@ -7,5 +7,5 @@ layout (location = 0) out vec4 outColor;
 void main() {
   const vec3 light = { 0, 2, 1 };
   vec3 peakShine = normalize(light - worldPos);
-  outColor = vec4(1, 1, 1, 1) * (dot(normalize(norm), peakShine)/2 + 0.5);
+  outColor = (dot(normalize(norm), peakShine)/2 + 0.5) * vec4(1, 0.5, 0, 1);
 }

@@ -22,18 +22,16 @@ void main() {
   const vec3 norm = camLocalNorm.x * target.right.xyz +
     camLocalNorm.y * target.up.xyz +
     camLocalNorm.z * target.norm.xyz;
-
-  const float near = 0.1f, far = 100;
-  //depth image holds normalized data, but we need to compare it, so denorm
+  const float near = 0.1f, far = 100, d = far/(far-near);
   const vec3 o = source.loc.xyz - target.loc.xyz;
   const float rayToCenter = dot(normalize(cross(cross(norm, o), norm)), o);
   if(rayToCenter <= source.loc.w) {
     //hit, now just find where
     const float dist = dot(o, norm) - sqrt(2*(source.loc.w - rayToCenter));
-    if(dist > near && dist < far) {
-      outColor = vec4((((norm.y * dist + target.loc.y - source.loc.y) / source.loc.w * 0.25f) + 0.25f).xxx, 1);
-      const float depth = pow((far / (far - near) * (dist - near) + dist) / (2*dist), 2);
-      gl_FragDepth = depth;
+    const float z = dist * dot(target.norm.xyz, camLocalNorm);
+    if(z > near && z < far) {
+      outColor = (((norm.y * dist + target.loc.y - source.loc.y) / source.loc.w * 0.25f) + 0.25f) * vec4(0, 0.5, 1, 1);
+      gl_FragDepth = pow((d*(z-near)+z)/(2*z), 2);
       return;
     }
   }
@@ -41,8 +39,7 @@ void main() {
 }
 
 /*
-reverse engineering the classic MVPC projection pattern to calculate compatible projection rays and depth for the found fragment:
-TODO can we not use the transform itself? Inverse transform would be smaller than the 5 vec4s...
+reverse engineering the classic MVPC projection pattern to calculate compatible projection rays and depth for the found fragment
 
 ar = aspect ratio
 f = far
@@ -76,12 +73,14 @@ y = -y
 z = z/2 + w/2
 w = w
 
-effective output of both in terms of input vector x, y, z, 1:
+effective output of projection*clip in terms of input vector x, y, z, 1:
 
 x = w*x/z
 y = -h*y/z
-z = ((z*d+w*d*-n)/2 + z/2)/z
+z = ((z*d+d*-n)/2 + z/2)/z = (d*(z-n)+z)/(2*z)
 w = z
+
+test cases using simple cubes, harvesting the computed depth from gl_FragCoord.z:
 
 cube:
 near: 0.1
@@ -94,8 +93,18 @@ d = 1.001
 depth = (6.9282 * 1.001 - 0.1001 + 6.9282) / (2 * 6.9282)
  = 0.9933
 
-.... 0.9933^2 = 0.9866
-where did that square come from???
+>>>>  0.9933^2 = 0.9866
+
+
+cube 2:
+center: 0,0,0
+close face z: -1
+real distance: 16
+pipeline computed depth map value: 0.9948
+computed using RE'd alg: 0.9974
+0.9974 = 0.9948^2
+
+>>> undocumented square <<<
 
 */
 

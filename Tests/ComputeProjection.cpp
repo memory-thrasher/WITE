@@ -260,12 +260,13 @@ int main(int argc, char** argv) {
   auto sphere2 = primaryOnion->createSource<SL_sphere.id>();
   auto sphere3 = primaryOnion->createSource<SL_sphere.id>();
   auto sphere4 = primaryOnion->createSource<SL_sphere.id>();
+  const float r = 1.3;
   for(size_t i = 0;i < 10000;i++) {
     camera->write<RMT_cameraData_staging.id>(cameraData);
-    sphere1->write<RMS_sphereData.id>(glm::vec4(0, 0, 0, 1.5));
-    sphere2->write<RMS_sphereData.id>(glm::vec4(9, 0, 0, 1.5));
-    sphere3->write<RMS_sphereData.id>(glm::vec4(0, 5, 0, 1.5));
-    sphere4->write<RMS_sphereData.id>(glm::vec4(-9, -5, 5, 1.5));
+    sphere1->write<RMS_sphereData.id>(glm::vec4(0, 0, 0, r));
+    sphere2->write<RMS_sphereData.id>(glm::vec4(9, 0, 0, r));
+    sphere3->write<RMS_sphereData.id>(glm::vec4(0, 5, 0, r));
+    sphere4->write<RMS_sphereData.id>(glm::vec4(-9, -5, 5, r));
     cube1->write<RMS_cubeTrans.id>(glm::dmat4(1));
     cube2->write<RMS_cubeTrans.id>(glm::dmat4(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 9, 0, 0, 1));
     cube3->write<RMS_cubeTrans.id>(glm::dmat4(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 5, 0, 1));

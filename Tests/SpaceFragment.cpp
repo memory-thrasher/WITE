@@ -253,13 +253,15 @@ int main(int argc, char** argv) {
   camera->set<RMT_skyboxData.id>(&skyboxDataBuf);
   glm::vec2 size = camera->getWindow().getVecSize();
   cameraData_t cd { { 0, 0, -5, 0 }, { 0, 0, 1, 0 }, { 0, 1, 0, 0 }, { 1, 0, 0, 0 }, { size.x, size.y, 0, 0 }, { 1<<10, 1<<16, 1<<20, 0 }, { glm::radians(fov)/size.y, 0, 0.25f, 0 } };
+  cd.size.z = glm::cot(glm::radians(fov/2));
+  cd.size.w = cd.size.z * size.y / size.x;
   cd.geometry.y = std::tan(cd.geometry.x);
   for(size_t i = 0;i < 10000;i++) {
     // cd.norm.x = std::sin(i/10000.0f);
     // cd.norm.z = std::cos(i/10000.0f);
     cd.loc = cd.norm * -5.0f;
     cd.right = glm::vec4(glm::cross(glm::vec3(cd.up), glm::vec3(cd.norm)), 0);
-    cd.gridOrigin.x = i;
+    cd.gridOrigin.z = i;
     camera->write<RMT_cameraData_staging.id>(cd);
     primaryOnion->render();
   }

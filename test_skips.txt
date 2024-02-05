@@ -3,4 +3,5 @@ ComputeSphere
 SimpleRender
 SpaceFragment
 SpaceFragmentBloom
+ComputeProjection
 

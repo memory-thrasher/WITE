@@ -15,11 +15,12 @@ void main() {
   const uint maxFlare = 4;
   // const uvec2 target = uvec2(inUV * target.size.xy + (0.5f).xx);
   const vec2 pxlStride = vec2((vertical^1)/size.x, vertical/size.y);
-  vec3 pxl = texture(inImg, inUV).xyz;
+  const vec2 uv = (inUV + 1) * 0.5f;
+  vec3 pxl = texture(inImg, uv).xyz;
   for(uint i = 1;i <= maxFlare;i++) {
     const float den = 1.0f/(i*i + 1);
-    pxl += clamp(texture(inImg, inUV + i*pxlStride).xyz - (1.0f).xxx, (0.0f).xxx, (1.0f).xxx) * den;
-    pxl += clamp(texture(inImg, inUV - i*pxlStride).xyz - (1.0f).xxx, (0.0f).xxx, (1.0f).xxx) * den;
+    pxl += clamp(texture(inImg, uv + i*pxlStride).xyz - (1.0f).xxx, (0.0f).xxx, (1.0f).xxx) * den;
+    pxl += clamp(texture(inImg, uv - i*pxlStride).xyz - (1.0f).xxx, (0.0f).xxx, (1.0f).xxx) * den;
   }
   // float mx = max(max(pxl.x, pxl.y), pxl.z);
   // if(mx > 1) pxl /= mx;

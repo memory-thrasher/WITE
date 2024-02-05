@@ -24,13 +24,10 @@ layout (location = 0) in vec2 inUV;
 layout (location = 0) out vec4 outColor;
 
 void main() {
-  const vec2 pxl = (inUV - (0.5f).xx) * target.size.xy;
-  vec2 angleFromCenter = pxl * target.geometry.x;
-  angleFromCenter.y *= -1;
-  vec3 norm = target.norm.xyz * cos(angleFromCenter.y) + target.up.xyz * sin(angleFromCenter.y);
-  // const vec3 up = cross(norm, target.right.xyz);
-  norm = norm * cos(angleFromCenter.x) + target.right.xyz * sin(angleFromCenter.x);
-  // vec3 right = cross(up, norm);
+  const vec3 camLocalNorm = normalize(vec3(inUV.xy / target.size.wz, 1));
+  const vec3 norm = camLocalNorm.x * target.right.xyz +
+    camLocalNorm.y * target.up.xyz +
+    camLocalNorm.z * target.norm.xyz;
 
   const ivec3 rayOrigin = target.gridOrigin.xyz;
   const float maxRange = 2*target.geometry.z/target.geometry.y;

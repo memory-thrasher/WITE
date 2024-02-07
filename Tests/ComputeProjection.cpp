@@ -245,14 +245,13 @@ int main(int argc, char** argv) {
   cube4->set<cubeMesh.resourceMap_v.id>(cubeMeshBuf.get());
   glm::vec2 size = camera->getWindow().getVecSize();
   cameraData_t cameraData;
-  cameraData.loc = glm::vec4(0, 0, -17, 0);
+  cameraData.loc = glm::vec4(0, 10, -10, 0);
   cameraData.transform = makeCameraProjection(fov, camera->getWindow(), 0.1f, 100.0f, glm::vec3(cameraData.loc), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
+  // cameraData.transform = glm::lookAt(glm::vec3(cameraData.loc), glm::vec3(0), glm::vec3(0, 1, 0));
   cameraData.size.x = size.x;
   cameraData.size.y = size.y;
   cameraData.size.z = glm::cot(glm::radians(fov/2));
   cameraData.size.w = cameraData.size.z * size.y / size.x;
-  // cameraData.size.z = glm::radians(fov)/size.y;
-  // cameraData.size.w = std::tan(cameraData.size.z);
   cameraData.norm = glm::normalize(-cameraData.loc);
   cameraData.right = glm::vec4(glm::normalize(glm::cross(glm::vec3(cameraData.norm.x, cameraData.norm.y, cameraData.norm.z), glm::vec3(0, 1, 0))), 0);
   cameraData.up = glm::vec4(glm::normalize(glm::cross(glm::vec3(cameraData.norm.x, cameraData.norm.y, cameraData.norm.z), glm::vec3(cameraData.right.x, cameraData.right.y, cameraData.right.z))), 0);

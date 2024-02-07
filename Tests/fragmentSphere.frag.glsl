@@ -19,19 +19,23 @@ layout(depth_any) out float gl_FragDepth;
 
 void main() {
   const vec3 camLocalNorm = normalize(vec3(inUV.xy / target.size.wz, 1));
-  const vec3 norm = camLocalNorm.x * target.right.xyz +
-    camLocalNorm.y * target.up.xyz +
-    camLocalNorm.z * target.norm.xyz;
+  const vec3 norm = (camLocalNorm.x * target.right.xyz +
+		     camLocalNorm.y * target.up.xyz +
+		     camLocalNorm.z * target.norm.xyz);
   const float near = 0.1f, far = 100, d = far/(far-near);
   const vec3 o = source.loc.xyz - target.loc.xyz;
   const float rayToCenter = dot(normalize(cross(cross(norm, o), norm)), o);
-  if(rayToCenter <= source.loc.w) {
+  const float r = source.loc.w;
+  if(rayToCenter <= r) {
     //hit, now just find where
-    const float dist = dot(o, norm) - sqrt(2*(source.loc.w - rayToCenter));
+    const float sagitta = r - rayToCenter;
+    const float dist = dot(o, norm) - sqrt(2*r*sagitta-sagitta*sagitta);
     const float z = dist * dot(target.norm.xyz, norm);
     if(z > near && z < far) {
       outColor = (((norm.y * dist + target.loc.y - source.loc.y) / source.loc.w * 0.25f) + 0.25f) * vec4(0, 0.5, 1, 1);
       gl_FragDepth = pow((d*(z-near)+z)/(2*z), 2);
+      // gl_FragDepth = (z - near) / (far - near);
+      // outColor = vec4(gl_FragDepth, dist-12, 0, 0);
       return;
     }
   }

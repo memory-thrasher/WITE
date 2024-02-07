@@ -28,7 +28,7 @@ void main() {
   if(rayToCenter <= source.loc.w) {
     //hit, now just find where
     const float dist = dot(o, norm) - sqrt(2*(source.loc.w - rayToCenter));
-    const float z = dist * dot(target.norm.xyz, camLocalNorm);
+    const float z = dist * dot(target.norm.xyz, norm);
     if(z > near && z < far) {
       outColor = (((norm.y * dist + target.loc.y - source.loc.y) / source.loc.w * 0.25f) + 0.25f) * vec4(0, 0.5, 1, 1);
       gl_FragDepth = pow((d*(z-near)+z)/(2*z), 2);

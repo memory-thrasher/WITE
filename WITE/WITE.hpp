@@ -11,5 +11,6 @@
 #include "buffer.hpp"
 #include "window.hpp"
 #include "templateHelpers.hpp"
-
+#include "winput.hpp"
+#include "shutdown.hpp"
 

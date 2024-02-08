@@ -234,30 +234,4 @@ namespace WITE {
     };
   };
 
-  inline glm::dmat4 makeCameraProjection(float fovDegrees, float width, float height, float near, float far,
-					 glm::dvec3 origin, glm::dvec3 focus, glm::dvec3 up) {
-    return glm::dmat4(1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 1) * //clip
-      glm::perspectiveFov<double>(glm::radians(fovDegrees), width, height, near, far) * //projection
-      glm::lookAt(origin, focus, up);
-  };
-
-  inline glm::dmat4 makeCameraProjection(float fovDegrees, window& w, float near, float far,
-					 glm::dvec3 origin, glm::dvec3 focus, glm::dvec3 up) {
-    auto size = w.getSize();
-    return makeCameraProjection(fovDegrees, size.width, size.height, near, far, origin, focus,  up);
-  };
-
-  inline glm::mat4 makeCameraProjection(float fovDegrees, float width, float height, float near, float far,
-					 glm::vec3 origin, glm::vec3 focus, glm::vec3 up) {
-    return glm::mat4(1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 1) * //clip
-      glm::perspectiveFov<float>(glm::radians(fovDegrees), width, height, near, far) * //projection
-      glm::lookAt(origin, focus, up);
-  };
-
-  inline glm::mat4 makeCameraProjection(float fovDegrees, window& w, float near, float far,
-					 glm::vec3 origin, glm::vec3 focus, glm::vec3 up) {
-    auto size = w.getSize();
-    return makeCameraProjection(fovDegrees, size.width, size.height, near, far, origin, focus,  up);
-  };
-
 };

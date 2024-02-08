@@ -28,10 +28,10 @@ IDL id list
  */
 
 struct cameraData_t {
-  glm::vec4 loc, norm, up, right;
-  glm::vec4 size;
   glm::ivec4 gridOrigin; //xyz is origin sector
   glm::vec4 geometry;
+  glm::vec4 clip;//x is near plane, y is far plane, z is cot(fov/2), w is z/aspect
+  glm::mat4 transform;
 };
 
 constexpr uint32_t skyboxPlaneCount = 8, starTypes = 31;
@@ -252,15 +252,13 @@ int main(int argc, char** argv) {
   auto camera = primaryOnion->createTarget<TL_primary.id>();
   camera->set<RMT_skyboxData.id>(&skyboxDataBuf);
   glm::vec2 size = camera->getWindow().getVecSize();
-  cameraData_t cd { { 0, 0, -5, 0 }, { 0, 0, 1, 0 }, { 0, 1, 0, 0 }, { 1, 0, 0, 0 }, { size.x, size.y, 0, 0 }, { 1<<10, 1<<16, 1<<20, 0 }, { glm::radians(fov)/size.y, 0, 0.25f, 0 } };
-  cd.size.z = glm::cot(glm::radians(fov/2));
-  cd.size.w = cd.size.z * size.y / size.x;
-  cd.geometry.y = std::tan(cd.geometry.x);
+  cameraData_t cd { { 1<<10, 1<<16, 1<<20, 0 }, { 0, glm::tan(glm::radians(fov)/size.y), 0.25f, 0 } };
+  cd.clip.x = 0.1f;
+  cd.clip.y = 100;
+  cd.clip.z = glm::cot(glm::radians(fov/2));
+  cd.clip.w = cd.clip.z * size.y / size.x;
+  cd.transform = glm::lookAt(glm::vec3(0), glm::vec3(0, 0, 1), glm::vec3(0, 1, 0));
   for(size_t i = 0;i < 10000;i++) {
-    // cd.norm.x = std::sin(i/10000.0f);
-    // cd.norm.z = std::cos(i/10000.0f);
-    cd.loc = cd.norm * -5.0f;
-    cd.right = glm::vec4(glm::cross(glm::vec3(cd.up), glm::vec3(cd.norm)), 0);
     cd.gridOrigin.z = i;
     camera->write<RMT_cameraData_staging.id>(cd);
     primaryOnion->render();

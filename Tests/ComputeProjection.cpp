@@ -3,7 +3,7 @@
 
 //include the compiled shader code which was outputted as a header in the build dir before c++ code gets compiled.
 #include "basicShader.frag.spv.h"
-#include "basicShaderWithCamBuffer.vert.spv.h"
+#include "basicShader.vert.spv.h"
 #include "vertexWholeScreen.vert.spv.h"
 #include "fragmentSphere.frag.spv.h"
 
@@ -53,9 +53,8 @@ struct sphereData_t {
 };
 
 struct cameraData_t {
-  glm::vec4 loc, norm, right, up;
-  glm::vec4 size;
-  glm::mat4 transform;
+  glm::vec4 clip;//(near plane, far plane, cot(fov/2), z/aspect
+  glm::mat4 transform;//world-to-camera only, perspective is handled in vert shader
 };
 
 constexpr bufferRequirements BR_sphereData = defineSimpleUniformBuffer(gpuId, sizeof(sphereData_t));
@@ -142,7 +141,7 @@ constexpr targetLayout TL_standardRender {
 };
 
 defineShaderModules(simpleShaderModules, //yes, size is in bytes even though code is an array of 32-bit ints. If shader code is stored in a file (as opposed to a header in this example), it will have to be TRAILING-zero-padded to 4-byte units.
-		    { basicShaderWithCamBuffer_vert, sizeof(basicShaderWithCamBuffer_vert), vk::ShaderStageFlagBits::eVertex },
+		    { basicShader_vert, sizeof(basicShader_vert), vk::ShaderStageFlagBits::eVertex },
 		    { basicShader_frag, sizeof(basicShader_frag), vk::ShaderStageFlagBits::eFragment });
 
 constexpr graphicsShaderRequirements S_cube {
@@ -228,7 +227,7 @@ std::unique_ptr<onion_t> primaryOnion;
 
 const float fov = 45;
 
-//4 cubes, 4 spheres (each its own source) = 1492 fps
+//4 cubes, 4 spheres (each its own source) = 1515 fps
 int main(int argc, char** argv) {
   gpu::setOptions(argc, argv);
   gpu::init("Compute projection test");
@@ -245,22 +244,17 @@ int main(int argc, char** argv) {
   cube4->set<cubeMesh.resourceMap_v.id>(cubeMeshBuf.get());
   glm::vec2 size = camera->getWindow().getVecSize();
   cameraData_t cameraData;
-  cameraData.loc = glm::vec4(0, 10, -10, 0);
-  cameraData.transform = makeCameraProjection(fov, camera->getWindow(), 0.1f, 100.0f, glm::vec3(cameraData.loc), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
-  // cameraData.transform = glm::lookAt(glm::vec3(cameraData.loc), glm::vec3(0), glm::vec3(0, 1, 0));
-  cameraData.size.x = size.x;
-  cameraData.size.y = size.y;
-  cameraData.size.z = glm::cot(glm::radians(fov/2));
-  cameraData.size.w = cameraData.size.z * size.y / size.x;
-  cameraData.norm = glm::normalize(-cameraData.loc);
-  cameraData.right = glm::vec4(glm::normalize(glm::cross(glm::vec3(cameraData.norm.x, cameraData.norm.y, cameraData.norm.z), glm::vec3(0, 1, 0))), 0);
-  cameraData.up = glm::vec4(glm::normalize(glm::cross(glm::vec3(cameraData.norm.x, cameraData.norm.y, cameraData.norm.z), glm::vec3(cameraData.right.x, cameraData.right.y, cameraData.right.z))), 0);
+  cameraData.transform = glm::lookAt(glm::vec3(0, 10, -10), glm::vec3(0), glm::vec3(0, 1, 0));
+  cameraData.clip.x = 0.1f;
+  cameraData.clip.y = 100;
+  cameraData.clip.z = glm::cot(glm::radians(fov/2));
+  cameraData.clip.w = cameraData.clip.z * size.y / size.x;
   auto sphere1 = primaryOnion->createSource<SL_sphere.id>();
   auto sphere2 = primaryOnion->createSource<SL_sphere.id>();
   auto sphere3 = primaryOnion->createSource<SL_sphere.id>();
   auto sphere4 = primaryOnion->createSource<SL_sphere.id>();
   const float r = 1.3;
-  for(size_t i = 0;i < 10000;i++) {
+  for(size_t i = 0;i < 100000;i++) {
     camera->write<RMT_cameraData_staging.id>(cameraData);
     sphere1->write<RMS_sphereData.id>(glm::vec4(0, 0, 0, r));
     sphere2->write<RMS_sphereData.id>(glm::vec4(9, 0, 0, r));

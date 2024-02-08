@@ -3,6 +3,6 @@ ComputeSphere
 SimpleRender
 SpaceFragment
 SpaceFragmentBloom
-#ComputeProjection
+ComputeProjection
 InputTest
 

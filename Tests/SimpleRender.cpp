@@ -46,8 +46,15 @@ wrap_mesh(gpuId, UDM::RGB32float, cubeMesh,
 	  {{-1, 1, 1}}, {{1, 1, 1}}, {{-1, -1, 1}},
 	  {{-1, -1, 1}}, {{1, 1, 1}}, {{1, -1, 1}});
 
+struct cameraData_t {
+  glm::vec4 clip;//(near plane, far plane, cot(fov/2), z/aspect
+  glm::mat4 transform;//world-to-camera only, perspective is handled in vert shader
+};
+
 constexpr bufferRequirements BR_singleTransform = defineSingleTransform(gpuId);
 constexpr bufferRequirements BRS_singleTransform = NEW_ID(stagingRequirementsFor(BR_singleTransform, 2));
+constexpr bufferRequirements BR_cameraData = defineSimpleUniformBuffer(gpuId, sizeof(cameraData_t));
+constexpr bufferRequirements BRS_cameraData = NEW_ID(stagingRequirementsFor(BR_cameraData, 2));
 constexpr imageRequirements IR_standardDepth = defineSimpleDepth(gpuId);
 constexpr imageRequirements IR_standardColor = defineSimpleColor(gpuId);
 
@@ -69,7 +76,7 @@ constexpr uint64_t RR_IDL_cubeTrans[] = { RR_cubeTrans.id, C_updateCubeTransform
 
 constexpr resourceMap RMT_cameraTrans_staging = {
   .id = __LINE__,
-  .requirementId = BRS_singleTransform.id,
+  .requirementId = BRS_cameraData.id,
   .resourceReferences = C_updateCameraTransforms.src.id
 }, RMT_color = {
   .id = __LINE__,
@@ -86,7 +93,7 @@ constexpr resourceMap RMT_cameraTrans_staging = {
     .resizeBehavior = { imageResizeType::eDiscard, {}, true }
   }, {
     .id = __LINE__,
-    .requirementId = BR_singleTransform.id,
+    .requirementId = BR_cameraData.id,
     .resourceReferences = RR_IDL_cameraTrans
   }};
 
@@ -151,6 +158,8 @@ constexpr imageRequirements allImageRequirements[] = {
 
 constexpr bufferRequirements allBufferRequirements[] = {
   cubeMesh.bufferRequirements_v,
+  BR_cameraData,
+  BRS_cameraData,
   BR_singleTransform,
   BRS_singleTransform
 };
@@ -169,6 +178,8 @@ constexpr onionDescriptor od = {
 typedef WITE::onion<od> onion_t;
 std::unique_ptr<onion_t> primaryOnion;
 
+const float fov = 45;
+
 int main(int argc, char** argv) {
   gpu::setOptions(argc, argv);
   gpu::init("Simple render test");
@@ -179,10 +190,17 @@ int main(int argc, char** argv) {
   cube->set<cubeMesh.resourceMap_v.id>(cubeMeshBuf.get());
   glm::dvec3 rotAxis = glm::normalize(glm::dvec3(0, 1, 0));
   glm::dmat4 model = glm::dmat4(1);//model: diagonal identity
+  glm::vec2 size = camera->getWindow().getVecSize();
+  cameraData_t cameraData;
+  cameraData.transform = glm::lookAt(glm::dvec3(-15, 13, -10), glm::dvec3(0, 0, 0), glm::dvec3(0, 1, 0));
+  cameraData.clip.x = 0.1f;
+  cameraData.clip.y = 100;
+  cameraData.clip.z = glm::cot(glm::radians(fov/2));
+  cameraData.clip.w = cameraData.clip.z * size.y / size.x;
   for(size_t i = 0;i < 10000;i++) {
     model = glm::rotate(model, glm::radians(0.01), rotAxis);
     cube->write<RMS_cubeTrans.id>(model);
-    camera->write<RMT_cameraTrans_staging.id>(makeCameraProjection(45, camera->getWindow(), 0.1f, 100.0f, glm::dvec3(-15, 13, -10), glm::dvec3(0, 0, 0), glm::dvec3(0, 1, 0)));
+    camera->write<RMT_cameraTrans_staging.id>(cameraData);
     primaryOnion->render();
   }
   WARN("NOTE: done rendering (any validation whining after here is in cleanup)");

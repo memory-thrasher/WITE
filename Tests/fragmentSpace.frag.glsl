@@ -3,10 +3,10 @@
 
 //NOTE: each element is rounded up to vec4 size (16 bytes) so do not use vec3! See https://www.khronos.org/opengl/wiki/Interface_Block_(GLSL)
 layout (std140, set = 0, binding = 0) uniform target_t {
-  vec4 loc, norm, up, right;//w component unused, needed to pad
-  vec4 size;//x, y is size of window
   ivec4 gridOrigin;
-  vec4 geometry;//x is size of a pixel in radians, y is tan(x), z is render distance in lightyears per pixel
+  vec4 geometry;
+  vec4 clip;//x is near plane, y is far plane, z is cot(fov/2), w is z/aspect
+  mat4 transform;
 } target;
 
 const uint planeCount = 8;
@@ -24,10 +24,8 @@ layout (location = 0) in vec2 inUV;
 layout (location = 0) out vec4 outColor;
 
 void main() {
-  const vec3 camLocalNorm = normalize(vec3(inUV.xy / target.size.wz, 1));
-  const vec3 norm = camLocalNorm.x * target.right.xyz +
-    camLocalNorm.y * target.up.xyz +
-    camLocalNorm.z * target.norm.xyz;
+  const vec3 camLocalNorm = normalize(vec3(inUV.xy / target.clip.wz, 1));
+  const vec3 norm = (vec4(camLocalNorm, 0) * target.transform).xyz * vec3(1, -1, -1);
 
   const ivec3 rayOrigin = target.gridOrigin.xyz;
   const float maxRange = 2*target.geometry.z/target.geometry.y;

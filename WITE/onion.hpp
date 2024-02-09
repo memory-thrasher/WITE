@@ -359,15 +359,15 @@ namespace WITE {
 	      }
 	      if(img.imageView)
 		getActiveGarbageCollector().push(img.imageView);
-	      img.imageView = res.createView(frameMod);
+	      img.imageView = res.template createView<RM>(frameMod);
 	      img.imageLayout = imageLayoutFor(RR.access);
 	    } else {
 	      w.pImageInfo = NULL;
 	      auto& buf = data.buffers[w.dstBinding];
 	      w.pBufferInfo = &buf;
 	      buf.buffer = res.frameBuffer(frameMod);
-	      buf.offset = 0;
-	      buf.range = findById(OD.BRS, RM.requirementId).size;
+	      buf.offset = RM.subresource.bufferRange.offset;
+	      buf.range = RM.subresource.bufferRange.length;
 	      // WARN("wrote buffer descriptor ", buf.buffer, " to binding ", w.dstBinding, " on set ", ds);
 	    }
 	    data.writeCount++;
@@ -893,15 +893,17 @@ namespace WITE {
 	    auto& descriptorBundle = source->perShaderByIdByFrame[GSR.id][frameMod];
 	    prepareDescriptors<SL.resources, GSR.sourceProvidedResources, SL.id>(descriptorBundle, pslps.descriptorPool, source->resources, frameMod);
 	    cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, shaderInstance.pipelineLayout, 0, 1, &descriptorBundle.descriptorSet, 0, NULL);
-	    static constexpr vk::DeviceSize zero = 0;//offsets below
 	    //for now, source must provide all vertex info
 	    vk::Buffer verts[vibCount];
+	    vk::DeviceSize offsets[2];
 	    static_assert(vb || GSR.vertexCountOverride);//vertex data required if vertex count not given statically
 	    vk::DeviceSize vertices, instances;
 	    if constexpr(vb) {
 	      static constexpr resourceMap vbm = *findResourceReferencing(SL.resources, vb->id);
 	      verts[0] = source->template get<vbm.id>().frameBuffer(frame + vb->frameLatency);
+	      offsets[0] = vbm.subresource.bufferRange.offset;
 	      vertices = GSR.vertexCountOverride ? GSR.vertexCountOverride :
+		vbm.subresource.bufferRange.length ? vbm.subresource.bufferRange.length :
 		findById(OD.BRS, vbm.requirementId).size / sizeofUdm<vb->usage.asVertex.format>();
 	    } else {
 	      vertices = GSR.vertexCountOverride;
@@ -909,14 +911,16 @@ namespace WITE {
 	    if constexpr(ib) {
 	      static constexpr resourceMap ibm = *findResourceReferencing(SL.resources, ib->id);
 	      verts[vibCount-1] = source->template get<ibm.id>().frameBuffer(frame + ib->frameLatency);
+	      offsets[vibCount-1] = ibm.subresource.bufferRange.offset;
 	      instances = GSR.instanceCountOverride ? GSR.instanceCountOverride :
+		ibm.subresource.bufferRange.length ? ibm.subresource.bufferRange.length :
 		findById(OD.BRS, ibm.requirementId).size / sizeofUdm<ib->usage.asVertex.format>();
 	    } else {
 	      //but instances defaults to 1
 	      instances = GSR.instanceCountOverride ? GSR.instanceCountOverride : 1;
 	    }
 	    if constexpr(vibCount) {
-	      cmd.bindVertexBuffers(0, vibCount, verts, &zero);
+	      cmd.bindVertexBuffers(0, vibCount, verts, offsets);
 	    }
 	    cmd.draw(vertices, instances, 0, 0);
 	    // WARN("Drew ", vertices, " from nested target-source");
@@ -1022,10 +1026,11 @@ namespace WITE {
 	    if(depthOutdated)
 	      getActiveGarbageCollector().push(fbb.attachments[1]);
 	    if(!fbb.fb || colorOutdated)
-	      fbb.attachments[0] = color.createView(frame + RP.color.frameLatency);
+	      fbb.attachments[0] = color.template createView<*colorRM>(frame + RP.color.frameLatency);
 	    if constexpr(RP.depth.id != NONE)
 	      if(!fbb.fb || depthOutdated)
-		fbb.attachments[1] = target.template get<depthRM->id>().createView(frame + RP.depth.frameLatency);
+		fbb.attachments[1] = target.template get<depthRM->id>().
+		  template createView<*depthRM>(frame + RP.depth.frameLatency);
 	    VK_ASSERT(dev->getVkDevice().createFramebuffer(&fbb.fbci, ALLOCCB, &fbb.fb), "failed to create framebuffer");
 	    fbb.lastUpdatedFrame = frame;
 	  }

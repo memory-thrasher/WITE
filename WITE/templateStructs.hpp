@@ -11,7 +11,7 @@ namespace WITE {
 
   struct imageRequirements {
     uint64_t deviceId = NONE;
-    uint64_t id = NONE;//unique among image and buffer requirements
+    uint64_t id = NONE;//unique among image, buffer, and subresource requirements
     vk::Format format = vk::Format::eUndefined;
     vk::ImageUsageFlags usage = {};//TODO calculator from AccessFlags
     uint8_t dimensions = 2, frameswapCount = 1;
@@ -22,7 +22,7 @@ namespace WITE {
 
   struct bufferRequirements {
     uint64_t deviceId = NONE;
-    uint64_t id = NONE;//unique among image and buffer requirements
+    uint64_t id = NONE;//unique among image, buffer, and subresource requirements
     vk::BufferUsageFlags usage;
     uint32_t size = 0;
     uint8_t frameswapCount = 0;
@@ -80,6 +80,20 @@ namespace WITE {
     resourceUsage usage;
   };
 
+  struct unifiedSubresource {
+    bool isDefault;
+    union {
+      vk::ImageSubresourceRange imageRange;
+      struct {
+	vk::DeviceSize offset, length;
+      } bufferRange;
+    };
+    constexpr unifiedSubresource() : isDefault(true), bufferRange({0, VK_WHOLE_SIZE}) {};
+    constexpr unifiedSubresource(vk::ImageSubresourceRange imageRange) : isDefault(false), imageRange(imageRange) {};
+    constexpr unifiedSubresource(vk::DeviceSize offset, vk::DeviceSize length) :
+      isDefault(false), bufferRange({offset, length}) {};
+  };
+
   struct resourceMap {
     uint64_t id = NONE;//unique among resource maps
     uint64_t requirementId;//FK to imageRequirement or bufferRequirement (never both!)
@@ -87,6 +101,7 @@ namespace WITE {
     uint8_t hostAccessOffset = 0;
     bool external = false;//for static or shared things like vertex buffers, must be assigned before render is called
     resizeBehavior_t resizeBehavior;
+    unifiedSubresource subresource;
   };
 
   struct targetLayout {

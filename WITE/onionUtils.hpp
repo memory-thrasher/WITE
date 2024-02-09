@@ -207,6 +207,22 @@ namespace WITE {
     };
   };
 
+  consteval vk::ImageSubresourceLayers toSubresourceLayers(const vk::ImageSubresourceRange R) {
+    return {
+      /* .aspectMask =*/ R.aspectMask,
+      /* .baseMipLevel =*/ R.baseMipLevel,
+      /* .baseArrayLayer =*/ R.baseArrayLayer,
+      /* .layerCount =*/ R.layerCount
+    };
+  };
+
+  consteval vk::ImageSubresourceRange getSubresource(const resourceMap& RM, const imageRequirements R) {
+    if(!RM.subresource.isDefault)
+      return RM.subresource.imageRange;
+    else
+      return getAllInclusiveSubresource(R);
+  };
+
   template<imageRequirements R> consteval vk::ImageMemoryBarrier2 getBarrierSimple(vk::ImageLayout oldLayout, vk::ImageLayout newLayout) {
     return { vk::PipelineStageFlagBits2::eAllCommands, vk::AccessFlagBits2::eNone, vk::PipelineStageFlagBits2::eAllCommands, vk::AccessFlagBits2::eNone, oldLayout, newLayout, 0, 0, {}, getAllInclusiveSubresource(R) };
   };

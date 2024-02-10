@@ -144,7 +144,9 @@ namespace WITE {
     };
 
     template<resourceMap RM> vk::ImageView createView(uint64_t frame) const {
-      vk::ImageViewCreateInfo ci { {}, frameImage(frame), R.isCube ? vk::ImageViewType::eCube : vk::ImageViewType(R.dimensions - 1), R.format, {}, getSubresource(RM, R) };
+      constexpr auto SR = getSubresource(RM, R);
+      static_assert(!RM.isCube || R.isCube);
+      vk::ImageViewCreateInfo ci { {}, frameImage(frame), RM.isCube ? vk::ImageViewType::eCube : vk::ImageViewType(R.dimensions - 1), R.format, {}, SR };
       vk::ImageView ret;
       VK_ASSERT(gpu::get(R.deviceId).getVkDevice().createImageView(&ci, ALLOCCB, &ret), "failed to create image view");
       return ret;

@@ -100,6 +100,7 @@ namespace WITE {
     literalList<uint64_t> resourceReferences;//FK to resourceReference
     uint8_t hostAccessOffset = 0;
     bool external = false;//for static or shared things like vertex buffers, must be assigned before render is called
+    bool isCube = false;
     resizeBehavior_t resizeBehavior;
     unifiedSubresource subresource;
   };

@@ -878,7 +878,7 @@ namespace WITE {
 	    static constexpr vk::PipelineMultisampleStateCreateInfo multisample = { {}, vk::SampleCountFlagBits::e1, 0, 0, NULL, 0, 0 };
 	    // static constexpr vk::StencilOpState stencilOp = {vk::StencilOp::eKeep, vk::StencilOp::eKeep, vk::StencilOp::eKeep,
 	    //   vk::CompareOp::eAlways, 0, 0, 0 };
-	    static constexpr vk::PipelineDepthStencilStateCreateInfo depth = { {}, RP.depth.id != NONE, true, vk::CompareOp::eLess };//not set: depth bounds and stencil test stuff
+	    static constexpr vk::PipelineDepthStencilStateCreateInfo depth = { {}, RP.depth.id != NONE, true, vk::CompareOp::eLessOrEqual };//not set: depth bounds and stencil test stuff
 	    static constexpr vk::PipelineColorBlendStateCreateInfo blend = { {}, false, vk::LogicOp::eNoOp, 1, &GSR.blend, { 1, 1, 1, 1 } };
 	    static constexpr vk::DynamicState dynamics[] = { vk::DynamicState::eScissor, vk::DynamicState::eViewport };
 	    static constexpr vk::PipelineDynamicStateCreateInfo dynamic = { {}, 2, dynamics };
@@ -953,7 +953,7 @@ namespace WITE {
 	static constexpr vk::PipelineMultisampleStateCreateInfo multisample = { {}, vk::SampleCountFlagBits::e1, 0, 0, NULL, 0, 0 };
 	// static constexpr vk::StencilOpState stencilOp = {vk::StencilOp::eKeep, vk::StencilOp::eKeep, vk::StencilOp::eKeep,
 	//   vk::CompareOp::eAlways, 0, 0, 0 };
-	static constexpr vk::PipelineDepthStencilStateCreateInfo depth = { {}, RP.depth.id != NONE, true, vk::CompareOp::eLess };//not set: depth bounds and stencil test stuff
+	static constexpr vk::PipelineDepthStencilStateCreateInfo depth = { {}, RP.depth.id != NONE, true, vk::CompareOp::eLessOrEqual };//not set: depth bounds and stencil test stuff
 	static constexpr vk::PipelineColorBlendStateCreateInfo blend = { {}, false, vk::LogicOp::eNoOp, 1, &GSR.blend, { 1, 1, 1, 1 } };
 	static constexpr vk::DynamicState dynamics[] = { vk::DynamicState::eScissor, vk::DynamicState::eViewport };
 	static constexpr vk::PipelineDynamicStateCreateInfo dynamic = { {}, 2, dynamics };

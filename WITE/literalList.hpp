@@ -183,4 +183,11 @@ namespace WITE {
     static constexpr size_t value = count_initializer_list_layers<U>::value + 1;
   };
 
+  template<class V, literalList<V> L, literalList<V> R>
+  consteval copyableArray<V, L.len+R.len> concat() {
+    return [](size_t i) {
+      return i < L.len ? L[i] : R[i - L.len];
+    };
+  };
+
 };

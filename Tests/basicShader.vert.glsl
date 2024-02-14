@@ -6,7 +6,7 @@ layout (std140, set = 1, binding = 0) uniform cambuf {
   mat4 transform;
 } target;
 layout (std140, set = 0, binding = 0) uniform rendbuf {
-  dmat4 trans;
+  mat4 trans;
 } source;
 layout (location = 0) in vec3 pos;
 layout (location = 0) out vec3 norm;

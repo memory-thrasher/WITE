@@ -28,9 +28,10 @@ namespace WITE {
 
   constexpr bool isValid(const bufferRequirements& b) {
     return b.deviceId != NONE
-      //logically should have an in and an out, some can do both
-      && (b.usage & (vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eStorageTexelBuffer | vk::BufferUsageFlagBits::eStorageBuffer))
-      && (b.usage & (vk::BufferUsageFlagBits::eTransferSrc | vk::BufferUsageFlagBits::eUniformTexelBuffer | vk::BufferUsageFlagBits::eUniformBuffer | vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eIndirectBuffer | vk::BufferUsageFlagBits::eStorageBuffer))
+      //logically should have an in and an out, some usages can do both. hostVisible can do both.
+      && (((b.usage & (vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eStorageTexelBuffer | vk::BufferUsageFlagBits::eStorageBuffer))
+	   && (b.usage & (vk::BufferUsageFlagBits::eTransferSrc | vk::BufferUsageFlagBits::eUniformTexelBuffer | vk::BufferUsageFlagBits::eUniformBuffer | vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eIndirectBuffer | vk::BufferUsageFlagBits::eStorageBuffer)))
+	  || b.hostVisible)
       && b.size
       && b.frameswapCount;
   };
@@ -56,7 +57,7 @@ namespace WITE {
   consteval bufferRequirements stagingRequirementsFor(bufferRequirements r, uint8_t fc = 2) {
     bufferRequirements ret = r;
     ret.hostVisible = true;
-    ret.usage = vk::BufferUsageFlagBits::eTransferSrc | vk::BufferUsageFlagBits::eTransferDst;
+    ret.usage = vk::BufferUsageFlagBits::eTransferSrc;
     ret.frameswapCount = fc;
     return ret;
   };

@@ -144,7 +144,8 @@ namespace WITE {
 	rb.layoutId = layoutId;
 	rb.timing.layerIdx = rb.after.layerIdx;
 	rb.frameLatency = rb.after.usage.frameLatency;
-	if(rb.before.layerIdx != rb.after.layerIdx) {//prefer top of layer for barriers
+	if(rb.before.layerIdx != rb.after.layerIdx || afterIdx == 0) {//prefer top of layer for barriers
+	  //afterIdx == 0: edge case for only having 1 layer
 	  rb.timing.substep = substep_e::barrier0;
 	} else if(rb.after.substep != rb.before.substep) {//next prefer between steps
 	  rb.timing.substep = (substep_e)((int)rb.after.substep - 1);
@@ -298,7 +299,7 @@ namespace WITE {
       };
 
       inline void init(uint64_t currentFrame, vk::CommandBuffer cmd) {
-	if constexpr(MRT::isImage) {
+	if constexpr(MRT::isImage && !RM.external) {
 	  //only images need a layout initialization, each into the layouts they will be assumed to be when first used.
 	  static_assert_show((sizeofCollection(findUsages(RM, LAYOUT_ID)) > 0), RM.id);
 	  static constexpr size_t FC = MRT::IR.frameswapCount;
@@ -404,6 +405,7 @@ namespace WITE {
 
     template<uint64_t TARGET_ID> class target_t {
     public:
+      static_assert(containsId(OD.TLS, TARGET_ID));
       static constexpr size_t TARGET_IDX = findId(OD.TLS, TARGET_ID);
       static constexpr targetLayout TL = OD.TLS[TARGET_IDX];
       static constexpr size_t maxFrameswap = frameswapLCM(TL.resources);
@@ -501,6 +503,7 @@ namespace WITE {
 
     template<uint64_t SOURCE_ID> class source_t {
     public:
+      static_assert(containsId(OD.SLS, SOURCE_ID));
       static constexpr size_t SOURCE_IDX = findId(OD.SLS, SOURCE_ID);
       static constexpr sourceLayout SOURCE_PARAMS = OD.SLS[SOURCE_IDX];
       static constexpr size_t maxFrameswap = frameswapLCM(SOURCE_PARAMS.resources);
@@ -831,6 +834,7 @@ namespace WITE {
     inline void recordRenders(auto& target, perTargetLayout& ptl, perTargetLayoutPerShader& ptlps, descriptorUpdateData_t<TL.resources>& targetDescriptors, vk::RenderPass rp, vk::CommandBuffer cmd) {
       if constexpr(SLIDS.len) {
 	static constexpr sourceLayout SL = findById(OD.SLS, SLIDS[0]);
+	// WARN("  using source ", SL.id);
 	if constexpr(satisfies(SL.resources, GSR.sourceProvidedResources)) {
 	  //for now (at least), only one vertex binding of each input rate type. Source only.
 	  struct findVB {
@@ -974,6 +978,7 @@ namespace WITE {
 	static constexpr graphicsShaderRequirements GSR = GSRS[0];
 	recordBarriersForTime<resourceBarrierTiming { .layerIdx = layerIdx, .substep = substep_e::render, .passId = RP.id, .shaderId = GSR.id }>(cmd);
 	if constexpr(satisfies(TL.resources, GSR.targetProvidedResources)) {
+	  // WARN("Begin shader ", GSR.id, " using target ", TL.id);
 	  size_t frameMod = frame % target_t<TL.id>::maxFrameswap;
 	  auto& descriptorBundle = target.perShaderByIdByFrame[GSR.id][frameMod];
 	  perTargetLayoutPerShader& ptlps = ptl.perShader[GSR.id];

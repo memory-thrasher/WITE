@@ -188,8 +188,8 @@ int main(int argc, char** argv) {
   auto camera = primaryOnion->createTarget<TL_standardRender.id>();
   auto cube = primaryOnion->createSource<SL_simple.id>();
   cube->set<cubeMesh.resourceMap_v.id>(cubeMeshBuf.get());
-  glm::dvec3 rotAxis = glm::normalize(glm::dvec3(0, 1, 0));
-  glm::dmat4 model = glm::dmat4(1);//model: diagonal identity
+  glm::vec3 rotAxis = glm::normalize(glm::dvec3(0, 1, 0));
+  glm::mat4 model = glm::mat4(1);//model: diagonal identity
   glm::vec2 size = camera->getWindow().getVecSize();
   cameraData_t cameraData;
   cameraData.transform = glm::lookAt(glm::dvec3(-15, 13, -10), glm::dvec3(0, 0, 0), glm::dvec3(0, 1, 0));
@@ -198,7 +198,7 @@ int main(int argc, char** argv) {
   cameraData.clip.z = glm::cot(glm::radians(fov/2));
   cameraData.clip.w = cameraData.clip.z * size.y / size.x;
   for(size_t i = 0;i < 10000;i++) {
-    model = glm::rotate(model, glm::radians(0.01), rotAxis);
+    model = glm::rotate(model, (float)glm::radians(0.01), rotAxis);
     cube->write<RMS_cubeTrans.id>(model);
     camera->write<RMT_cameraTrans_staging.id>(cameraData);
     primaryOnion->render();

@@ -272,10 +272,10 @@ int main(int argc, char** argv) {
     sphere2->write<RMS_sphereData.id>(glm::vec4(9, 0, 0, r));
     sphere3->write<RMS_sphereData.id>(glm::vec4(0, 5, 0, r));
     sphere4->write<RMS_sphereData.id>(glm::vec4(-9, -5, 5, r));
-    cube1->write<RMS_cubeTrans.id>(glm::dmat4(1));
-    cube2->write<RMS_cubeTrans.id>(glm::dmat4(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 9, 0, 0, 1));
-    cube3->write<RMS_cubeTrans.id>(glm::dmat4(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 5, 0, 1));
-    cube4->write<RMS_cubeTrans.id>(glm::dmat4(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -9, -5, 5, 1));
+    cube1->write<RMS_cubeTrans.id>(glm::mat4(1));
+    cube2->write<RMS_cubeTrans.id>(glm::mat4(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 9, 0, 0, 1));
+    cube3->write<RMS_cubeTrans.id>(glm::mat4(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 5, 0, 1));
+    cube4->write<RMS_cubeTrans.id>(glm::mat4(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -9, -5, 5, 1));
     primaryOnion->render();
   }
   WARN("NOTE: done rendering (any validation whining after here is in cleanup)");

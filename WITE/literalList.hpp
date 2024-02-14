@@ -22,11 +22,11 @@ namespace WITE {
     constexpr literalList() : data(NULL), len(0) {};
     constexpr literalList(const literalList<T>& o) = default;
     constexpr literalList(const T& o) : data(&o), len(1) {};
-    consteval literalList(const T* data, const size_t len) : data(data), len(len) {};
-    template<size_t LEN> consteval literalList(const copyableArray<T, LEN>& o, size_t len) : literalList((const T*)o, len) {};
-    template<size_t LEN> consteval literalList(const copyableArray<T, LEN>& o) : literalList((const T*)o, LEN) {};
-    template<size_t LEN> consteval literalList(const std::array<T, LEN>& o) : literalList(o.data(), LEN) {};
-    template<size_t LEN> consteval literalList(const T (&o)[LEN]) : literalList(o, LEN) {};
+    constexpr literalList(const T* data, const size_t len) : data(data), len(len) {};
+    template<size_t LEN> constexpr literalList(const copyableArray<T, LEN>& o, size_t len) : literalList((const T*)o, len) {};
+    template<size_t LEN> constexpr literalList(const copyableArray<T, LEN>& o) : literalList((const T*)o, LEN) {};
+    template<size_t LEN> constexpr literalList(const std::array<T, LEN>& o) : literalList(o.data(), LEN) {};
+    template<size_t LEN> constexpr literalList(const T (&o)[LEN]) : literalList(o, LEN) {};
     constexpr ~literalList() = default;
 
     constexpr inline auto begin() const { return data; };

@@ -103,6 +103,43 @@ namespace WITE {
     return NULL;
   };
 
+  struct templateStructResourceDereferencedBundle_t {
+    bool isImage, isSource;
+    resourceReference rr;
+    union {
+      targetLayout tl;
+      sourceLayout sl;
+    };
+    resourceMap rm;
+    resourceSlot rs;
+    union {
+      imageRequirements ir;
+      bufferRequirements br;
+    };
+  };
+
+  template<onionDescriptor OD>
+  consteval templateStructResourceDereferencedBundle_t dereference(const resourceReference& rr, uint64_t layoutId) {
+    templateStructResourceDereferencedBundle_t ret {
+      .rr = rr,
+    };
+    ret.isSource = containsId(OD.SLS, layoutId);
+    if(ret.isSource) {
+      ret.sl = findById(OD.SLS, layoutId);
+      ret.rm = *findResourceReferencing(ret.sl.resources, rr.id);
+    } else {
+      ret.tl = findById(OD.TLS, layoutId);
+      ret.rm = *findResourceReferencing(ret.tl.resources, rr.id);
+    }
+    ret.rs = findById(OD.RSS, ret.rm.resourceSlotId);
+    ret.isImage = containsId(OD.IRS, ret.rs.requirementId);
+    if(ret.isImage)
+      ret.ir = findById(OD.IRS, ret.rs.requirementId);
+    else
+      ret.br = findById(OD.BRS, ret.rs.requirementId);
+    return ret;
+  };
+
   constexpr bool mightWrite(resourceReference usage) {
     return uint64_t(usage.access & (vk::AccessFlagBits2::eShaderStorageWrite | vk::AccessFlagBits2::eMemoryWrite | vk::AccessFlagBits2::eHostWrite | vk::AccessFlagBits2::eTransferWrite | vk::AccessFlagBits2::eDepthStencilAttachmentWrite | vk::AccessFlagBits2::eColorAttachmentWrite | vk::AccessFlagBits2::eShaderWrite));
   };
@@ -215,13 +252,6 @@ namespace WITE {
       /* .baseArrayLayer =*/ R.baseArrayLayer,
       /* .layerCount =*/ R.layerCount
     };
-  };
-
-  consteval vk::ImageSubresourceRange getSubresource(const resourceMap& RM, const imageRequirements R) {
-    if(!RM.subresource.isDefault)
-      return RM.subresource.imageRange;
-    else
-      return getAllInclusiveSubresource(R);
   };
 
   template<imageRequirements R> consteval vk::ImageMemoryBarrier2 getBarrierSimple(vk::ImageLayout oldLayout, vk::ImageLayout newLayout) {

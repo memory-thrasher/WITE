@@ -9,6 +9,14 @@ namespace WITE {
   constexpr uint64_t NONE = std::numeric_limits<uint64_t>::max();
   constexpr size_t NONE_size = std::numeric_limits<size_t>::max();
 
+  enum class imageResizeType { eNone, eBlit, eClear, eDiscard };
+
+  struct imageResizeBehavior {
+    imageResizeType type;
+    vk::ClearValue clearValue;
+    bool trackWindow;
+  };
+
   struct imageRequirements {
     uint64_t deviceId = NONE;
     uint64_t id = NONE;//unique among image, buffer, and subresource requirements
@@ -17,6 +25,7 @@ namespace WITE {
     uint8_t dimensions = 2, frameswapCount = 1;
     bool isCube = false, hostVisible = false;
     uint32_t arrayLayers = 1, mipLevels = 1;
+    imageResizeBehavior resizeBehavior;
     //MAYBE sample count
   };
 
@@ -28,19 +37,6 @@ namespace WITE {
     uint8_t frameswapCount = 0;
     bool hostVisible = false;
     //MAYBE isTexel
-  };
-
-  enum class imageResizeType { eNone, eBlit, eClear, eDiscard };
-
-  struct imageResizeBehavior {
-    imageResizeType type;
-    vk::ClearValue clearValue;
-    bool trackWindow;
-  };
-
-  union resizeBehavior_t {
-    imageResizeBehavior image;
-    //just in case we want to do that with buffers too someday
   };
 
   enum class resourceUsageType { eNone, eDescriptor, eVertex };//none for copy and maybe others
@@ -71,15 +67,6 @@ namespace WITE {
     // };
   };
 
-  struct resourceReference {
-    uint64_t id = NONE;//unique among resource references
-    //stage and access are not required for all commands, in some cases it's contextually clear
-    vk::ShaderStageFlags stages;
-    vk::AccessFlags2 access = {};
-    uint8_t frameLatency = 0; //must be < requirement.frameswapCount. Generally 0 is the one being written this frame, 1 is the one that was written last frame.
-    resourceUsage usage;
-  };
-
   struct unifiedSubresource {
     bool isDefault;
     union {
@@ -94,23 +81,33 @@ namespace WITE {
       isDefault(false), bufferRange({offset, length}) {};
   };
 
-  struct resourceMap {
-    uint64_t id = NONE;//unique among resource maps
-    uint64_t requirementId;//FK to imageRequirement or bufferRequirement (never both!)
-    literalList<uint64_t> resourceReferences;//FK to resourceReference
-    uint8_t hostAccessOffset = 0;
-    bool external = false;//for static or shared things like vertex buffers, must be assigned before render is called
-    #error ^^ external images is breaking barrier calculation bc baseline image is not being transitioned to the layout required by the external usage. Maybe external is bad for live images.
-    bool isCube = false;
-    resizeBehavior_t resizeBehavior;
+  struct resourceReference {
+    uint64_t id = NONE;//unique among resource references
+    //stage and access are not required for all commands, in some cases it's contextually clear
+    vk::ShaderStageFlags stages;
+    vk::AccessFlags2 access = {};
+    uint8_t frameLatency = 0; //must be < requirement.frameswapCount. Generally 0 is the one being written this frame, 1 is the one that was written last frame.
+    resourceUsage usage;
+    vk::ImageViewType viewType = vk::ImageViewType::e2D;
     unifiedSubresource subresource;
+  };
+
+  struct resourceSlot {
+    uint64_t id = NONE;//unique among resource slots
+    uint64_t requirementId;//FK to imageRequirement or bufferRequirement (never both!)
+    bool external = false;//for static or shared things like vertex buffers, must be assigned before render is called
+  };
+
+  //maps one or more resourceSlots to one or more resourceReferences
+  struct resourceMap {
+    uint64_t resourceSlotId;
+    literalList<uint64_t> resourceReferences;//FK to resourceReference
   };
 
   struct targetLayout {
     uint64_t id;//unique among source and target layouts
     literalList<resourceMap> resources;
-    uint64_t presentImageResourceMapId = NONE;
-    uint8_t presentFrameLatency = 0;
+    resourceReference present;//id = NONE if not presenting
   };
 
   struct sourceLayout {
@@ -183,6 +180,7 @@ namespace WITE {
   struct onionDescriptor {
     literalList<imageRequirements> IRS;
     literalList<bufferRequirements> BRS;
+    literalList<resourceSlot> RSS;
     literalList<computeShaderRequirements> CSRS;
     literalList<renderPassRequirements> RPRS;
     literalList<clearStep> CLS;

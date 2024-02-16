@@ -64,8 +64,8 @@ namespace WITE {
       frameCiUpdated = frame;
     };
 
-    template<resizeBehavior_t RB, resourceReference RR> inline void applyPendingResize(uint64_t frame, vk::CommandBuffer cmd, garbageCollector& gc) {
-      static constexpr imageResizeBehavior B = RB.image;
+    template<resourceReference RR> inline void applyPendingResize(uint64_t frame, vk::CommandBuffer cmd, garbageCollector& gc) {
+      static constexpr imageResizeBehavior B = R.resizeBehavior;
       static constexpr vk::ImageLayout layout = imageLayoutFor(RR.access);
       size_t idx = frameImageIdx(frame);
       ASSERT_TRAP(frame >= frameImageCreated[idx], "image creation framestamp is in the future");
@@ -143,10 +143,8 @@ namespace WITE {
       return vkImage[frameImageIdx(frame)];
     };
 
-    template<resourceMap RM> vk::ImageView createView(uint64_t frame) const {
-      constexpr auto SR = getSubresource(RM, R);
-      static_assert(!RM.isCube || R.isCube);
-      vk::ImageViewCreateInfo ci { {}, frameImage(frame), RM.isCube ? vk::ImageViewType::eCube : vk::ImageViewType(R.dimensions - 1), R.format, {}, SR };
+    template<vk::ImageSubresourceRange VT, vk::ImageSubresourceRange SR> vk::ImageView createView(uint64_t frame) const {
+      vk::ImageViewCreateInfo ci { {}, frameImage(frame), VT, R.format, {}, SR };
       vk::ImageView ret;
       VK_ASSERT(gpu::get(R.deviceId).getVkDevice().createImageView(&ci, ALLOCCB, &ret), "failed to create image view");
       return ret;

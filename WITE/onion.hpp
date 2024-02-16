@@ -17,19 +17,21 @@ namespace WITE {
 
     static consteval size_t frameswapLCM(literalList<resourceMap> rms) {
       size_t ret = 1;
-      for(const resourceMap& rm : rms)
-	ret = std::lcm(ret, containsId(OD.IRS, rm.requirementId) ?
-		       findById(OD.IRS, rm.requirementId).frameswapCount :
-		       findById(OD.BRS, rm.requirementId).frameswapCount);
+      for(const resourceMap& rm : rms) {
+	resourceSlot rs = findById(OD.RSS, rm.resourceSlotId);
+	ret = std::lcm(ret, containsId(OD.IRS, rs.requirementId) ?
+		       findById(OD.IRS, rs.requirementId).frameswapCount :
+		       findById(OD.BRS, rs.requirementId).frameswapCount);
+      }
       return ret;
     };
 
     static consteval size_t frameswapLCMAll() {
       size_t ret = 1;
-      for(const auto& L : OD.TLS)
-	ret = std::lcm(ret, frameswapLCM(L.resources));
-      for(const auto& L : OD.SLS)
-	ret = std::lcm(ret, frameswapLCM(L.resources));
+      for(const auto& IR : OD.IRS)
+	ret = std::lcm(ret, IR.frameswapCount);
+      for(const auto& BR : OD.BRS)
+	ret = std::lcm(ret, BR.frameswapCount);
       return ret;
     };
 
@@ -66,6 +68,13 @@ namespace WITE {
 
     inline garbageCollector& getActiveGarbageCollector() {
       return collectors[frame % cmdFrameswapCount];
+    };
+
+    static consteval vk::ImageSubresourceRange getSubresource(const uint64_t IRID, const resourceReference& RR) {
+      if(!RR.subresource.isDefault)
+	return RR.subresource.imageRange;
+      else
+	return getAllInclusiveSubresource(findById(OD.IRS, IRID));
     };
 
     static consteval std::vector<resourceAccessTime> findUsages(resourceMap RM, uint64_t layoutId) {
@@ -123,8 +132,8 @@ namespace WITE {
 	}
       }
       for(auto& tl : OD.TLS)
-	if(tl.presentImageResourceMapId == RM.id)
-	  ret.push_back({ OD.LRS.len-1, substep_e::post, { NONE, {}, vk::AccessFlagBits2::eTransferRead, tl.presentFrameLatency, {} } });
+	if(tl.present.id != NONE && RM.resourceReferences.contains(tl.present.id))
+	  ret.push_back({ OD.LRS.len-1, substep_e::post, { NONE, {}, vk::AccessFlagBits2::eTransferRead, tl.present.frameLatency, {} } });
       std::sort(ret.begin(), ret.end());
       return ret;
     };
@@ -135,12 +144,13 @@ namespace WITE {
       std::vector<resourceBarrier> ret;
       if(usage.size() < 2) return ret;
       resourceAccessTime before = usage[usage.size()-1];
+      resourceSlot RS = findById(OD.RSS, RM.resourceSlotId);
       while(afterIdx < usage.size()) {
 	resourceBarrier rb;
 	rb.before = before;
 	rb.after = usage[afterIdx];
-	rb.resourceId = RM.id;
-	rb.requirementId = RM.requirementId;
+	rb.resourceId = RS.id;
+	rb.requirementId = RS.requirementId;
 	rb.layoutId = layoutId;
 	rb.timing.layerIdx = rb.after.layerIdx;
 	rb.frameLatency = rb.after.usage.frameLatency;
@@ -189,41 +199,42 @@ namespace WITE {
       return ret;
     };
 
-    template<resourceMap> struct mappedResourceTraits : std::false_type {};
+    template<resourceSlot> struct resourceTraits : std::false_type {};
 
-    template<resourceMap RM> requires(!RM.external && containsId(OD.IRS, RM.requirementId)) struct mappedResourceTraits<RM> {
-      static constexpr imageRequirements IR = findById(OD.IRS, RM.requirementId);
+    template<resourceSlot RS> requires(!RS.external && containsId(OD.IRS, RS.requirementId)) struct resourceTraits<RS> {
+      static constexpr imageRequirements IR = findById(OD.IRS, RS.requirementId);
       static constexpr bool isImage = true;
       typedef image<IR> type;
     };
 
-    template<resourceMap RM> requires(!RM.external && containsId(OD.BRS, RM.requirementId)) struct mappedResourceTraits<RM> {
-      static constexpr bufferRequirements BR = findById(OD.BRS, RM.requirementId);
+    template<resourceSlot RS> requires(!RS.external && containsId(OD.BRS, RS.requirementId)) struct resourceTraits<RS> {
+      static constexpr bufferRequirements BR = findById(OD.BRS, RS.requirementId);
       static constexpr bool isImage = false;
       typedef buffer<BR> type;
     };
 
-    template<resourceMap RM> requires(RM.external && containsId(OD.IRS, RM.requirementId)) struct mappedResourceTraits<RM> {
-      static constexpr imageRequirements IR = findById(OD.IRS, RM.requirementId);
+    template<resourceSlot RS> requires(RS.external && containsId(OD.IRS, RS.requirementId)) struct resourceTraits<RS> {
+      static constexpr imageRequirements IR = findById(OD.IRS, RS.requirementId);
       static constexpr bool isImage = true;
       typedef image<IR>* type;
     };
 
-    template<resourceMap RM> requires(RM.external && containsId(OD.BRS, RM.requirementId)) struct mappedResourceTraits<RM> {
-      static constexpr bufferRequirements BR = findById(OD.BRS, RM.requirementId);
+    template<resourceSlot RS> requires(RS.external && containsId(OD.BRS, RS.requirementId)) struct resourceTraits<RS> {
+      static constexpr bufferRequirements BR = findById(OD.BRS, RS.requirementId);
       static constexpr bool isImage = false;
       typedef buffer<BR>* type;
     };
 
     template<uint64_t LAYOUT_ID, literalList<resourceMap> RMS> struct mappedResourceTuple {
       static constexpr resourceMap RM = RMS[0];
-      typedef mappedResourceTraits<RM> MRT;
-      MRT::type data;
+      static constexpr resourceSlot RS = findById(OD.RSS, RM.resourceSlotId);
+      typedef resourceTraits<RS> RT;
+      RT::type data;
       mappedResourceTuple<LAYOUT_ID, RMS.sub(1)> rest;
 
       template<size_t IDX> inline auto& at() {
 	if constexpr(IDX == 0) {
-	  if constexpr(RM.external) {
+	  if constexpr(RS.external) {
 	    return *data;
 	  } else {
 	    return data;
@@ -233,9 +244,21 @@ namespace WITE {
 	}
       };
 
+      template<resourceReference RR> inline auto& at() {
+	if constexpr(RM.resourceReferences.contains(RR.id)) {
+	  if constexpr(RS.external) {
+	    return *data;
+	  } else {
+	    return data;
+	  }
+	} else {
+	  return rest.template at<RR>();//compiler-time error if no RM in RMS links to RR
+	}
+      };
+
       template<size_t IDX> inline void set(auto* t) {
 	if constexpr(IDX == 0) {
-	  static_assert(RM.external);
+	  static_assert(RS.external);
 	  data = t;
 	} else {
 	  rest.template set<IDX-1>(t);
@@ -251,23 +274,23 @@ namespace WITE {
       };
 
       template<uint64_t FS> inline void preRender(uint64_t frame, vk::CommandBuffer cmd, garbageCollector& gc) {
-	if constexpr(MRT::isImage) {
-	  static constexpr resourceReference RR = findFinalUsagePerFrame<RM, MRT::IR, LAYOUT_ID>()[FS].usage;
-	  at<0>().template applyPendingResize<RM.resizeBehavior, RR>(frame + RR.frameLatency, cmd, gc);
-	  if constexpr(FS < MRT::IR.frameswapCount-1)
+	if constexpr(RT::isImage) {
+	  static constexpr resourceReference RR = findFinalUsagePerFrame<RS, RT::IR, LAYOUT_ID>()[FS].usage;
+	  at<0>().template applyPendingResize<RT::IR.resizeBehavior, RR>(frame + RR.frameLatency, cmd, gc);
+	  if constexpr(FS < RT::IR.frameswapCount-1)
 	    preRender<FS+1>(frame, cmd, gc);
 	}
       }
 
       inline void preRender(uint64_t frame, vk::CommandBuffer cmd, garbageCollector& gc) {
-	if constexpr(MRT::isImage)
+	if constexpr(RT::isImage)
 	  preRender<0>(frame, cmd, gc);
 	if constexpr(RMS.len > 1)
 	  rest.preRender(frame, cmd, gc);
       };
 
       inline void trackWindowSize(uint64_t frame, vk::Extent3D& wSize) {
-	if constexpr(MRT::isImage && RM.resizeBehavior.image.trackWindow) {
+	if constexpr(RT::isImage && RT::IR.resizeBehavior.image.trackWindow) {
 	  auto& img = at<0>();
 	  auto imgSize = img.getSizeExtent(frame);
 	  if(wSize != imgSize)
@@ -279,9 +302,9 @@ namespace WITE {
 
       inline static consteval auto initBaselineBarriers() {
 	//consteval lambdas are finicky, need to be wrapped in a consteval function
-	if constexpr(MRT::isImage) {
-	  constexpr auto finalUsagePerFrame = findFinalUsagePerFrame<RM, MRT::IR, LAYOUT_ID>();
-	  return copyableArray<vk::ImageMemoryBarrier2, MRT::IR.frameswapCount>([&](size_t i) consteval {
+	if constexpr(RT::isImage) {
+	  constexpr auto finalUsagePerFrame = findFinalUsagePerFrame<RS, RT::IR, LAYOUT_ID>();
+	  return copyableArray<vk::ImageMemoryBarrier2, RT::IR.frameswapCount>([&](size_t i) consteval {
 	    return vk::ImageMemoryBarrier2 {
 	      vk::PipelineStageFlagBits2::eNone,
 	      vk::AccessFlagBits2::eNone,
@@ -290,7 +313,7 @@ namespace WITE {
 	      vk::ImageLayout::eUndefined,
 	      imageLayoutFor(finalUsagePerFrame[i].usage.access),
 	      {}, {}, {},
-	      getAllInclusiveSubresource(MRT::IR)
+	      getAllInclusiveSubresource(RT::IR)
 	    };
 	  });
 	} else {
@@ -299,10 +322,9 @@ namespace WITE {
       };
 
       inline void init(uint64_t currentFrame, vk::CommandBuffer cmd) {
-	if constexpr(MRT::isImage && !RM.external) {
+	if constexpr(RT::isImage && !RS.external) {
 	  //only images need a layout initialization, each into the layouts they will be assumed to be when first used.
-	  static_assert_show((sizeofCollection(findUsages(RM, LAYOUT_ID)) > 0), RM.id);
-	  static constexpr size_t FC = MRT::IR.frameswapCount;
+	  static constexpr size_t FC = RT::IR.frameswapCount;
 	  static constexpr auto baseline = initBaselineBarriers();
 	  copyableArray<vk::ImageMemoryBarrier2, FC> barriers = baseline;
 	  for(int64_t i = 0;i < FC;i++) {
@@ -340,9 +362,9 @@ namespace WITE {
       if constexpr(RRS.len) {
 	static constexpr resourceReference RR = RRS[0];
 	static constexpr resourceMap RM = *findResourceReferencing(RMS, RR.id);
-	static constexpr size_t RMX = findId(RMS, RM.id);
+	static constexpr resourceSlot RS = findById(OD.RSS, RM.resourceSlotId);
 	if constexpr(RR.usage.type == resourceUsageType::eDescriptor) {
-	  auto& res = rm.template at<RMX>();
+	  auto& res = rm.template at<RR>();
 	  if(frameLastUpdated == NONE || frameLastUpdated < res.frameUpdated(frameMod)) {
 	    auto& w = data.writes[data.writeCount];
 	    w.dstSet = ds;
@@ -350,7 +372,7 @@ namespace WITE {
 	    w.dstArrayElement = 0;
 	    w.descriptorCount = 1;
 	    w.descriptorType = RR.usage.asDescriptor.descriptorType;
-	    if constexpr(containsId(OD.IRS, RM.requirementId)) {
+	    if constexpr(containsId(OD.IRS, RS.requirementId)) {
 	      w.pBufferInfo = NULL;
 	      auto& img = data.images[w.dstBinding];
 	      w.pImageInfo = &img;
@@ -360,15 +382,15 @@ namespace WITE {
 	      }
 	      if(img.imageView)
 		getActiveGarbageCollector().push(img.imageView);
-	      img.imageView = res.template createView<RM>(frameMod);
+	      img.imageView = res.template createView<RR.viewType, getSubresource(RS.requirementId, RR)>(frameMod);
 	      img.imageLayout = imageLayoutFor(RR.access);
 	    } else {
 	      w.pImageInfo = NULL;
 	      auto& buf = data.buffers[w.dstBinding];
 	      w.pBufferInfo = &buf;
 	      buf.buffer = res.frameBuffer(frameMod);
-	      buf.offset = RM.subresource.bufferRange.offset;
-	      buf.range = RM.subresource.bufferRange.length;
+	      buf.offset = RR.subresource.bufferRange.offset;
+	      buf.range = RR.subresource.bufferRange.length;
 	      // WARN("wrote buffer descriptor ", buf.buffer, " to binding ", w.dstBinding, " on set ", ds);
 	    }
 	    data.writeCount++;
@@ -409,7 +431,7 @@ namespace WITE {
       static constexpr size_t TARGET_IDX = findId(OD.TLS, TARGET_ID);
       static constexpr targetLayout TL = OD.TLS[TARGET_IDX];
       static constexpr size_t maxFrameswap = frameswapLCM(TL.resources);
-      static constexpr bool hasWindow = TL.presentImageResourceMapId != NONE;
+      static constexpr bool hasWindow = TL.present.id != NONE;
       static constexpr bool needsPostrender = hasWindow;
 
     private:
@@ -429,6 +451,7 @@ namespace WITE {
 
       inline auto& getWindow() { return presentWindow; };
 
+#error resourceMapId no longer exists, need new way to identify resources externally
       template<uint64_t resourceMapId> auto& get() {
 	return resources.template at<findId(TL.resources, resourceMapId)>();
       };
@@ -800,8 +823,10 @@ namespace WITE {
     template<renderPassRequirements RP, targetLayout TL> requires(RP.depth.id != NONE) struct renderPassInfoBundle<RP, TL> {
       static constexpr const resourceMap *colorRM = findResourceReferencing(TL.resources, RP.color.id),
 	*depthRM = findResourceReferencing(TL.resources, RP.depth.id);
-      static constexpr imageRequirements colorIR = findById(OD.IRS, colorRM->requirementId),
-	depthIR = findById(OD.IRS, depthRM->requirementId);
+      static constexpr const resourceSlot colorRS = findById(OD.RSS, colorRM->resourceSlotId),
+	depthRS = findById(OD.RSS, depthRM->resourceSlotId);
+      static constexpr imageRequirements colorIR = findById(OD.IRS, colorRS.requirementId),
+	depthIR = findById(OD.IRS, depthRS.requirementId);
       static constexpr vk::AttachmentReference colorRef { 0, imageLayoutFor(RP.color.access) },
 	depthRef { 1, imageLayoutFor(RP.depth.access) };
       static constexpr vk::SubpassDescription subpass { {}, vk::PipelineBindPoint::eGraphics, 0, NULL, 1, &colorRef, NULL, &depthRef };
@@ -816,7 +841,8 @@ namespace WITE {
 
     template<renderPassRequirements RP, targetLayout TL> requires(RP.depth.id == NONE) struct renderPassInfoBundle<RP, TL> {
       static constexpr const resourceMap *colorRM = findResourceReferencing(TL.resources, RP.color.id);
-      static constexpr imageRequirements colorIR = findById(OD.IRS, colorRM->requirementId);
+      static constexpr const resourceSlot colorRS = findById(OD.RSS, colorRM->resourceSlotId);
+      static constexpr imageRequirements colorIR = findById(OD.IRS, colorRS.requirementId);
       static constexpr vk::AttachmentReference colorRef { 0, imageLayoutFor(RP.color.access) };
       static constexpr vk::SubpassDescription subpass { {}, vk::PipelineBindPoint::eGraphics, 0, NULL, 1, &colorRef, NULL, NULL };
       static constexpr vk::AttachmentDescription attachments[1] = {//MAYBE variable attachments when inputs are allowed

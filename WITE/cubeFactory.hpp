@@ -197,7 +197,20 @@ namespace WITE {
 	o->freeTarget(target5);
       };
 
-#error TODO set location (updates all 6 transforms) and TD
+      void updateTargetData(const glm::vec3& location, const TD& td) {
+	targetData_t data {
+	  {//note: glm consturctors are column-major-order
+	    {{ 0, 0, 1, 0,  0,-1, 0, 0, -1, 0, 0, 0,  location.z,-location.y,-location.x, 1 }},//+x
+	    {{ 0, 0, 1, 0,  0,-1, 0, 0,  1, 0, 0, 0,  location.z,-location.y, location.x, 1 }},//-x
+	    {{ 1, 0, 0, 0,  0, 0, 1, 0,  0, 1, 0, 0,  location.x, location.z, location.y, 1 }},//+y
+	    {{ 1, 0, 0, 0,  0, 0, 1, 0,  0,-1, 0, 0,  location.x, location.z,-location.y, 1 }},//-y
+	    {{ 1, 0, 0, 0,  0,-1, 0, 0,  0, 0, 1, 0,  location.x,-location.y, location.z, 1 }},//+z
+	    {{-1, 0, 0, 0,  0,-1, 0, 0,  0, 0, 1, 0, -location.x,-location.y, location.z, 1 }},//-z
+	  },
+	  td
+	};
+	source->template write<RMS_targetData_staging.id>(data);
+      };
 
     };
 

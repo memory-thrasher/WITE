@@ -379,10 +379,17 @@ int main(int argc, char** argv) {
   cd.clip.w = cd.clip.z * size.y / size.x;
   glm::mat4 cameraTransform = glm::lookAt(glm::vec3(0), glm::vec3(0, 0, 1), glm::vec3(0, 1, 0));
   reflectiveObject ro;
+  cameraData_t rocd;
+  rocd.gridOrigin = cd.gridOrigin;
+  rocd.geometry = { 0, glm::pi<float>()/2/256, 0.25f, 0 };
+  rocd.clip = { 0.1, 100, 1, 1 };
+  glm::mat4 rosd = glm::mat4(1);
   cf_reflectiveObject::create(*primaryOnion, &ro);
   for(size_t i = 0;i < 10000;i++) {
     camera->write<RMT_finalOutput_cameraData_staging.id>(cd);
     camera->write<RMT_finalOutput_transform_staging.id>(cameraTransform);
+    ro.updateTargetData(glm::vec3(rosd[3]), rocd);
+    ro.source->write<RMS_reflectiveObject_transform_staging.id>(rosd);
     primaryOnion->render();
   }
   WARN("sleeping...");

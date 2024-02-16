@@ -72,7 +72,7 @@ namespace WITE {
       if(frameCiUpdated <= frameImageCreated[idx])
 	return;
       if constexpr(B.type == imageResizeType::eNone) {
-	WARN("Resize is pending but ignored because resize behavior is None");
+	WARN("Resize is pending but ignored because resize behavior is None. frame size updated: ", frameCiUpdated, "; frame image created: ", frameImageCreated[idx]);
 	return;
       } else {
 	gpu& dev = gpu::get(R.deviceId);

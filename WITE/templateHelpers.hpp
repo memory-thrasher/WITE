@@ -22,7 +22,7 @@ namespace WITE {
       .frameswapCount = 1,
     };
 
-    static constexpr resourceReference resourceReference_v = {
+    static constexpr resourceConsumer resourceConsumer_v = {
       .id = ID+1,
       .stages = vk::ShaderStageFlagBits::eVertex,
       .access = vk::AccessFlagBits2::eVertexAttributeRead,
@@ -32,7 +32,7 @@ namespace WITE {
     static constexpr resourceMap resourceMap_v = {
       .id = ID+2,
       .requirementId = bufferRequirements_v.id,
-      .resourceReferences = resourceReference_v.id,
+      .resourceConsumers = resourceConsumer_v.id,
       .external = true
     };
 
@@ -156,7 +156,7 @@ namespace WITE {
 #define defineSimpleDepthReference() simpleDepthReference<__LINE__>::value
 
   template<uint64_t ID> struct simpleDepthReference {
-    static constexpr resourceReference value {
+    static constexpr resourceConsumer value {
       .id = ID,
       .stages = vk::ShaderStageFlagBits::eFragment,
       .access = vk::AccessFlagBits2::eDepthStencilAttachmentWrite | vk::AccessFlagBits2::eDepthStencilAttachmentRead,
@@ -167,7 +167,7 @@ namespace WITE {
 #define defineComputeDepthReference() computeDepthReference<__LINE__>::value
 
   template<uint64_t ID> struct computeDepthReference {
-    static constexpr resourceReference value {
+    static constexpr resourceConsumer value {
       .id = ID,
       .stages = vk::ShaderStageFlagBits::eCompute,
       .access = vk::AccessFlagBits2::eShaderStorageWrite | vk::AccessFlagBits2::eShaderStorageRead,
@@ -178,7 +178,7 @@ namespace WITE {
 #define defineSimpleColorReference() simpleColorReference<__LINE__>::value
 
   template<uint64_t ID> struct simpleColorReference {
-    static constexpr resourceReference value {
+    static constexpr resourceConsumer value {
       .id = ID,
       .stages = vk::ShaderStageFlagBits::eFragment,
       .access = vk::AccessFlagBits2::eColorAttachmentWrite
@@ -188,7 +188,7 @@ namespace WITE {
 #define defineComputeColorReference() computeColorReference<__LINE__>::value
 
   template<uint64_t ID> struct computeColorReference {
-    static constexpr resourceReference value {
+    static constexpr resourceConsumer value {
       .id = ID,
       .stages = vk::ShaderStageFlagBits::eCompute,
       .access = vk::AccessFlagBits2::eShaderStorageWrite,
@@ -201,7 +201,7 @@ namespace WITE {
 #define defineUBReferenceAtCompute() defineUBReferenceAt(vk::ShaderStageFlagBits::eCompute)
 
   template<uint64_t ID, vk::ShaderStageFlagBits ST> struct simpleUBReference {
-    static constexpr resourceReference value {
+    static constexpr resourceConsumer value {
       .id = ID,
       .stages = ST,
       .access = vk::AccessFlagBits2::eUniformRead,
@@ -212,7 +212,7 @@ namespace WITE {
 #define defineSBReadonlyReferenceAt(ST) simpleStorageReadReference<__LINE__, ST>::value
 
   template<uint64_t ID, vk::ShaderStageFlagBits ST> struct simpleStorageReadReference {
-    static constexpr resourceReference value {
+    static constexpr resourceConsumer value {
       .id = ID,
       .stages = ST,
       .access = vk::AccessFlagBits2::eShaderStorageRead,
@@ -225,7 +225,7 @@ namespace WITE {
 #define defineSamplerReferenceAt(ST) samplerReference<__LINE__, ST>::value
 
   template<uint64_t ID, vk::ShaderStageFlagBits ST> struct samplerReference {
-    static constexpr resourceReference value {
+    static constexpr resourceConsumer value {
       .id = ID,
       .stages = ST,
       .access = vk::AccessFlagBits2::eShaderSampledRead,

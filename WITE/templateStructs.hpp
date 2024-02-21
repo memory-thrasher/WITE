@@ -9,14 +9,6 @@ namespace WITE {
   constexpr uint64_t NONE = std::numeric_limits<uint64_t>::max();
   constexpr size_t NONE_size = std::numeric_limits<size_t>::max();
 
-  enum class imageResizeType { eNone, eBlit, eClear, eDiscard };
-
-  struct imageResizeBehavior {
-    imageResizeType type;
-    vk::ClearValue clearValue;
-    bool trackWindow;
-  };
-
   struct imageRequirements {
     uint64_t deviceId = NONE;
     uint64_t id = NONE;//unique among image, buffer, and subresource requirements
@@ -25,7 +17,6 @@ namespace WITE {
     uint8_t dimensions = 2, frameswapCount = 1;
     bool isCube = false, hostVisible = false;
     uint32_t arrayLayers = 1, mipLevels = 1;
-    imageResizeBehavior resizeBehavior;
     //MAYBE sample count
   };
 
@@ -39,7 +30,7 @@ namespace WITE {
     //MAYBE isTexel
   };
 
-  enum class resourceUsageType { eNone, eDescriptor, eVertex };//none for copy and maybe others
+  enum class resourceUsageType { eOther, eDescriptor, eVertex };//other for copy and maybe others
 
   struct resourceUsage {
     resourceUsageType type;
@@ -57,62 +48,78 @@ namespace WITE {
     constexpr resourceUsage(udm format, vk::VertexInputRate vir) : type(resourceUsageType::eVertex), asVertex({ format, vir }) {};
     constexpr resourceUsage() : type(resourceUsageType::eNone) {};
     constexpr resourceUsage(const resourceUsage&) = default;
-    // constexpr std::strong_ordering operator<=>(const resourceUsage& r) const {
-    //   std::strong_ordering comp = type <=> r.type;
-    //   if(comp != 0) return comp;
-    //   switch(type) {
-    //   case resourceusageType::eNone: return std::strong_ordering::equal;
-    //   case resourceusageType::eDescriptor: return descriptorType <=> r.descriptorType;
-    //   }
-    // };
+  };
+
+  struct resourceConsumer {
+    uint64_t id = NONE;//unique among copyStep.src/dst, resourceConsumer.id, clearStep.id
+    //stage and access are not required for all commands, in some cases it's contextually clear
+    vk::ShaderStageFlags stages;
+    vk::AccessFlags2 access = {};
+    resourceUsage usage;
   };
 
   struct unifiedSubresource {
     bool isDefault;
     union {
-      vk::ImageSubresourceRange imageRange;
+      struct {
+	vk::ImageSubresourceRange range;
+	vk::ImageViewType viewType;
+      } image;
       struct {
 	vk::DeviceSize offset, length;
       } bufferRange;
     };
     constexpr unifiedSubresource() : isDefault(true), bufferRange({0, VK_WHOLE_SIZE}) {};
-    constexpr unifiedSubresource(vk::ImageSubresourceRange imageRange) : isDefault(false), imageRange(imageRange) {};
+    constexpr unifiedSubresource(vk::ImageSubresourceRange imageRange, vk::ImageViewType viewType = vk::ImageViewType::e2D) :
+      isDefault(false), range(imageRange), viewType(viewType) {};
     constexpr unifiedSubresource(vk::DeviceSize offset, vk::DeviceSize length) :
       isDefault(false), bufferRange({offset, length}) {};
   };
 
   struct resourceReference {
-    uint64_t id = NONE;//unique among resource references
-    //stage and access are not required for all commands, in some cases it's contextually clear
-    vk::ShaderStageFlags stages;
-    vk::AccessFlags2 access = {};
-    uint8_t frameLatency = 0; //must be < requirement.frameswapCount. Generally 0 is the one being written this frame, 1 is the one that was written last frame.
-    resourceUsage usage;
-    vk::ImageViewType viewType = vk::ImageViewType::e2D;
+    uint64_t resourceConsumerId;//FK to exactly one of: copyStep.src/dst, resourceConsumer.id, clearStep.id
+    uint64_t resourceSlotId;
     unifiedSubresource subresource;
+    uint8_t frameLatency = 0; //must be < requirement.frameswapCount. Generally 0 is the one being written this frame, 1 is the one that was written last frame.
+  };
+
+  enum class imageResizeType { eNone, eBlit, eClear, eDiscard };
+
+  struct imageResizeBehavior {
+    imageResizeType type;
+    vk::ClearValue clearValue;
+    bool trackWindow;
+  };
+
+  union resizeBehavior_t {
+    imageResizeBehavior image;
+    //MAYBE buffer version if needed
   };
 
   struct resourceSlot {
     uint64_t id = NONE;//unique among resource slots
     uint64_t requirementId;//FK to imageRequirement or bufferRequirement (never both!)
+    uint64_t objectLayoutId;
     bool external = false;//for static or shared things like vertex buffers, must be assigned before render is called
-  };
-
-  //maps one or more resourceSlots to one or more resourceReferences
-  struct resourceMap {
-    uint64_t resourceSlotId;
-    literalList<uint64_t> resourceReferences;//FK to resourceReference
+    resizeBehavior_t resizeBehavior;
   };
 
   struct targetLayout {
     uint64_t id;//unique among source and target layouts
-    literalList<resourceMap> resources;
-    resourceReference present;//id = NONE if not presenting
+    uint64_t objectLayoutId;
+    literalList<resourceReference> resources;
+    resourceReference present;//consumerId ignored, resource slot to present, slot id = NONE if not presenting
+    bool selfRender = false;//controls whether sources belonging to the same object (not layout!) are rendered to this target
   };
 
   struct sourceLayout {
     uint64_t id;//unique among source and target layouts
-    literalList<resourceMap> resources;
+    uint64_t objectLayoutId;
+    literalList<resourceReference> resources;
+  };
+
+  struct objectLayout {
+    uint64_t id;
   };
 
   struct shaderModule {
@@ -130,8 +137,8 @@ namespace WITE {
   struct computeShaderRequirements {
     uint64_t id;//unique among shaders
     const shaderModule* module;//must be ptr or this struct becomes unusable in template args
-    literalList<resourceReference> targetProvidedResources;
-    literalList<resourceReference> sourceProvidedResources;
+    literalList<resourceConsumer> targetProvidedResources;
+    literalList<resourceConsumer> sourceProvidedResources;
     uint64_t primaryOutputReferenceId = NONE;
     //TODO more flexible stride. Need a square option: workgroupX = max(image.xy / strideX)
     //callback that takes resource size and returns workgroup size
@@ -142,8 +149,8 @@ namespace WITE {
   struct graphicsShaderRequirements {
     uint64_t id;//unique among shaders
     literalList<shaderModule> modules;
-    literalList<resourceReference> targetProvidedResources;//idx of this within usage.type = binding id
-    literalList<resourceReference> sourceProvidedResources;
+    literalList<resourceConsumer> targetProvidedResources;//idx of this within usage.type = binding id
+    literalList<resourceConsumer> sourceProvidedResources;
     vk::PrimitiveTopology topology = vk::PrimitiveTopology::eTriangleList;
     vk::CullModeFlags cullMode = vk::CullModeFlagBits::eBack;
     bool windCounterClockwise = false;
@@ -153,7 +160,7 @@ namespace WITE {
 
   struct renderPassRequirements {
     uint64_t id;//unique among render passes
-    resourceReference depth, color; //MAYBE input attachment
+    resourceConsumer depth, color; //MAYBE input attachment
     bool clearDepth = false, clearColor = false;
     vk::ClearColorValue clearColorValue;
     vk::ClearDepthStencilValue clearDepthValue = { 1.0f, 0 };
@@ -162,19 +169,18 @@ namespace WITE {
 
   struct copyStep {
     uint64_t id;
-    resourceReference src, dst;
+    uint64_t src, dst;//unique among copyStep.src/dst, resourceConsumer.id, clearStep.id
     vk::Filter filter = vk::Filter::eNearest;//only meaningful for image-to-image
   };
 
   struct clearStep {
-    uint64_t id;
-    resourceReference rr;
+    uint64_t id;//unique among copyStep.src/dst, resourceConsumer.id, clearStep.id
     vk::ClearValue clearValue;
   };
 
   //NOTE: barriers are NOT allowed between executions of individual copies or shaders of the same type. Barriers are allowed between types of executions. Barrier between copy and render is allowed, barrier between shader 1 and 2 of the same RP is not.
   struct layerRequirements {
-    literalList<uint64_t> sourceLayouts, targetLayouts, clears, copies, renders, computeShaders;
+    literalList<uint64_t> clears, copies, renders, computeShaders;
   };
 
   struct onionDescriptor {
@@ -186,6 +192,7 @@ namespace WITE {
     literalList<clearStep> CLS;
     literalList<copyStep> CSS;
     literalList<layerRequirements> LRS;
+    literalList<objectLayout> RSS;
     literalList<targetLayout> TLS;
     literalList<sourceLayout> SLS;
     uint64_t GPUID;

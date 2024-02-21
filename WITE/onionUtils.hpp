@@ -93,19 +93,9 @@ namespace WITE {
     return l[0];
   };
 
-  //NOTE: A source/target layout is not allowed to name two resources referencing the same usage
-  consteval const resourceMap* findResourceReferencing(literalList<resourceMap> RMS, uint64_t id) {
-    if(id == NONE) return NULL;
-    for(const resourceMap& RM : RMS)
-      for(uint64_t RR : RM.resourceReferences)
-	if(RR == id)
-	  return &RM;
-    return NULL;
-  };
-
   struct templateStructResourceDereferencedBundle_t {
     bool isImage, isSource;
-    resourceReference rr;
+    resourceConsumer rr;
     union {
       targetLayout tl;
       sourceLayout sl;
@@ -119,7 +109,7 @@ namespace WITE {
   };
 
   template<onionDescriptor OD>
-  consteval templateStructResourceDereferencedBundle_t dereference(const resourceReference& rr, uint64_t layoutId) {
+  consteval templateStructResourceDereferencedBundle_t dereference(const resourceConsumer& rr, uint64_t layoutId) {
     templateStructResourceDereferencedBundle_t ret {
       .rr = rr,
     };
@@ -140,7 +130,7 @@ namespace WITE {
     return ret;
   };
 
-  constexpr bool mightWrite(resourceReference usage) {
+  constexpr bool mightWrite(resourceConsumer usage) {
     return uint64_t(usage.access & (vk::AccessFlagBits2::eShaderStorageWrite | vk::AccessFlagBits2::eMemoryWrite | vk::AccessFlagBits2::eHostWrite | vk::AccessFlagBits2::eTransferWrite | vk::AccessFlagBits2::eDepthStencilAttachmentWrite | vk::AccessFlagBits2::eColorAttachmentWrite | vk::AccessFlagBits2::eShaderWrite));
   };
 
@@ -167,15 +157,14 @@ namespace WITE {
   struct resourceAccessTime {
     size_t layerIdx = NONE_size;
     substep_e substep;
-    resourceReference usage;
+    resourceConsumer usage;
+    uint8_t frameLatency;
     size_t passIdx = 0;//for sorting only
     uint64_t passId = NONE;//forwarded to timing (NONE for compute shaders)
     size_t shaderIdx = 0;//for sorting only
     uint64_t shaderId = NONE;//forwarded to timing
     constexpr auto operator<=>(const resourceAccessTime& r) const {
-      auto comp = usage.frameLatency <=> r.usage.frameLatency;
-      if(comp != 0) return comp;
-      comp = usage.frameLatency <=> r.usage.frameLatency;
+      auto comp = frameLatency <=> r.frameLatency;
       if(comp != 0) return comp;
       comp = layerIdx <=> r.layerIdx;
       if(comp != 0) return comp;
@@ -187,7 +176,8 @@ namespace WITE {
     };
     constexpr bool compatibleWith(const resourceAccessTime r) {
       //true means there need not be a barrier between them (with this coming before r)
-      return !mightWrite(usage) && !mightWrite(r.usage) && usage.frameLatency == r.usage.frameLatency;
+      return !mightWrite(usage) && !mightWrite(r.usage) && frameLatency == r.frameLatency;
+      //MAYBE should the layout for the given usage impact this?
       //not compatible if on different frameLatency so final usage per frame can be accurate
     };
   };
@@ -204,14 +194,13 @@ namespace WITE {
     resourceBarrierTiming timing;
     uint8_t frameLatency = 0;
     resourceAccessTime before, after;
-    uint64_t layoutId, resourceId, requirementId = NONE;
+    uint64_t objectLayoutId, resourceSlotId, requirementId = NONE;
   };
 
-  consteval resourceReference& operator|=(resourceReference& l, const resourceReference& r) {
+  consteval resourceConsumer& operator|=(resourceConsumer& l, const resourceConsumer& r) {
     l.stages |= r.stages;
     l.access |= r.access;
     l.id = r.id;
-    l.frameLatency = r.frameLatency;
     return l;
   };
 
@@ -219,6 +208,7 @@ namespace WITE {
     l.layerIdx = r.layerIdx;
     l.substep = r.substep;
     l.usage |= r.usage;
+    l.frameLatency = r.frameLatency;
     l.shaderIdx = r.shaderIdx;
     return l;
   };
@@ -308,7 +298,7 @@ namespace WITE {
     return ret;
   };
 
-  template<literalList<resourceReference> RRS, uint32_t binding = 0> consteval auto getBindingDescriptions() {
+  template<literalList<resourceConsumer> RRS, uint32_t binding = 0> consteval auto getBindingDescriptions() {
     if constexpr(RRS.len) {
       constexpr auto RR = RRS[0];
       constexpr copyableArray<vk::VertexInputBindingDescription, 1> ret = {{ binding, sizeofUdm<RR.usage.asVertex.format>(), RR.usage.asVertex.rate }};
@@ -326,10 +316,10 @@ namespace WITE {
     }
   };
 
-  template<literalList<resourceReference> RRS, uint32_t binding = 0, uint32_t locationOffset = 0>
+  template<literalList<resourceConsumer> RRS, uint32_t binding = 0, uint32_t locationOffset = 0>
   consteval auto getAttributeDescriptions() {
     if constexpr(RRS.len) {
-      constexpr resourceReference RR = RRS[0];
+      constexpr resourceConsumer RR = RRS[0];
       copyableArray<vk::VertexInputAttributeDescription, RR.usage.asVertex.format.len> ret;
       getAttributeDescriptions<RR.usage.asVertex.format, binding, 0, locationOffset>(ret.ptr());
       return concatArray(ret, getAttributeDescriptions<RRS.sub(1), binding+1, locationOffset+RR.usage.asVertex.format.len>());

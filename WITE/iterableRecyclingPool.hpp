@@ -48,6 +48,8 @@ namespace WITE {
     inline auto begin() const { return allocated.cbegin(); };
     inline auto end() const { return allocated.cend(); };
 
+    inline size_t size() const { return allocated.size(); };
+
   };
 
 };

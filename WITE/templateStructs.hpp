@@ -160,7 +160,7 @@ namespace WITE {
 
   struct renderPassRequirements {
     uint64_t id;//unique among render passes
-    resourceConsumer depth, color; //MAYBE input attachment
+    uint64_t depth, color; //MAYBE input attachment(s)  //ids for consumers that get generated with standard options
     bool clearDepth = false, clearColor = false;
     vk::ClearColorValue clearColorValue;
     vk::ClearDepthStencilValue clearDepthValue = { 1.0f, 0 };

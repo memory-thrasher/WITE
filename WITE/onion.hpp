@@ -113,6 +113,14 @@ namespace WITE {
       return { OL.windowConsumerId, {}, vk::AccessFlagBits2::eTransferWrite, {} };
     };
 
+    consteval resourceConsumer consumerForColorAttachment(uint64_t id) {
+      return { id, vk::ShaderStageFlagBits::eFragment, vk::AccessFlagBits2::eColorAttachmentWrite };
+    };
+
+    consteval resourceConsumer consumerForDepthAttachment(uint64_t id) {
+      return { id, vk::ShaderStageFlagBits::eFragment, vk::AccessFlagBits2::eDepthStencilAttachmentWrite };
+    };
+
     static consteval std::vector<resourceAccessTime> findUsages(uint64_t resourceSlotId) {
       std::vector<resourceAccessTime> ret;
       tempMap<uint64_t, resourceReference> referencesByConsumerId;
@@ -148,10 +156,10 @@ namespace WITE {
 	  uint64_t passId = layer.renders[passIdx];
 	  shaderIdx = 1;//first shader per pass is idx 1 so 0 can mean "before the first shader" (for attachments)
 	  const auto& pass = findById(OD.RPRS, passId);
-	  if(referencesByConsumerId.contains(pass.depth.id))
-	    ret.push_back({ layerIdx, substep_e::render, pass.depth, referencesByConsumerId[pass.depth.id].frameLatency, passIdx, passId });
-	  if(referencesByConsumerId.contains(pass.color.id))
-	    ret.push_back({ layerIdx, substep_e::render, pass.color, referencesByConsumerId[pass.color.id].frameLatency, passIdx, passId });
+	  if(referencesByConsumerId.contains(pass.depth))
+	    ret.push_back({ layerIdx, substep_e::render, consumerForDepthAttachment(pass.depth), referencesByConsumerId[pass.depth.id].frameLatency, passIdx, passId });
+	  if(referencesByConsumerId.contains(pass.color))
+	    ret.push_back({ layerIdx, substep_e::render, consumerForColorAttachment(pass.color), referencesByConsumerId[pass.color.id].frameLatency, passIdx, passId });
 	  for(const graphicsShaderRequirements& gsr : pass.shaders) {
 	    for(const resourceConsumer& srr : gsr.targetProvidedResources)
 	      if(referencesByConsumerId.contains(srr.id))
@@ -657,6 +665,20 @@ namespace WITE {
 	return presentWindow;
       };
 
+      template<uint64_t resourceSlotId> auto& get() {
+	return resources.template at<resourceSlotId>();
+      };
+
+      template<uint64_t resourceSlotId> void write(auto t, size_t hostAccessOffset = 0) {
+	scopeLock lock(&o->mutex);
+	get<resourceSlotId>().set(o->frame + hostAccessOffset, t);
+      };
+
+      template<uint64_t resourceSlotId> void set(auto* t) {
+	scopeLock lock(&o->mutex);
+	resources.template set<resourceSlotId>(t);
+      };
+
       inline void preRender(vk::CommandBuffer cmd) {
 	if constexpr(hasWindow) {
 	  auto windowExt = presentWindow.getSize3D();
@@ -840,15 +862,16 @@ namespace WITE {
 	return findById(OD.TLS, layoutId);
     };
 
-#error TODO finish refactor
     template<literalList<resourceBarrier> RBS> inline void recordBarriers(vk::CommandBuffer cmd) {
       if constexpr(RBS.len) {
-	constexpr size_t barrierBatchSize = 16;
+	constexpr size_t barrierBatchSize = 256;
 	constexpr resourceBarrier RB = RBS[0];
 	constexpr bool isImage = containsId(OD.IRS, RB.requirementId);
 	vk::DependencyInfo DI;
 	if constexpr(isImage) {
-	  constexpr copyableArray<vk::ImageMemoryBarrier2, barrierBatchSize> baseline(vk::ImageMemoryBarrier2 {
+	  //NOTE: This function is under the onion mutex.
+	  //the only field that ever changes is the image handle itself, so save this for future reuse.
+	  static copyableArray<vk::ImageMemoryBarrier2, barrierBatchSize> barriers(vk::ImageMemoryBarrier2 {
 	      toPipelineStage2(RB.before),
 	      RB.before.usage.access,
 	      toPipelineStage2(RB.after),
@@ -858,7 +881,6 @@ namespace WITE {
 	      {}, {}, {},
 	      getAllInclusiveSubresource(findById(OD.IRS, RB.requirementId))
 	    });
-	  copyableArray<vk::ImageMemoryBarrier2, barrierBatchSize> barriers = baseline;//TODO limit initial copy if fewer batchSize barriers will actually be used. Then also increase batch size
 	  DI.pImageMemoryBarriers = barriers.ptr();
 	  DI.imageMemoryBarrierCount = barrierBatchSize;
 	  size_t mbIdx = 0;
@@ -877,14 +899,13 @@ namespace WITE {
 	    cmd.pipelineBarrier2(&DI);
 	  }
 	} else {
-	  constexpr copyableArray<vk::BufferMemoryBarrier2, barrierBatchSize> baseline(vk::BufferMemoryBarrier2 {
+	  static copyableArray<vk::BufferMemoryBarrier2, barrierBatchSize> barriers(vk::BufferMemoryBarrier2 {
 	      toPipelineStage2(RB.before),
 	      RB.before.usage.access,
 	      toPipelineStage2(RB.after),
 	      RB.after.usage.access,
 	      {}, {}, {}, 0, VK_WHOLE_SIZE
 	    });
-	  copyableArray<vk::BufferMemoryBarrier2, barrierBatchSize> barriers = baseline;
 	  DI.pBufferMemoryBarriers = barriers.ptr();
 	  DI.bufferMemoryBarrierCount = barrierBatchSize;
 	  size_t mbIdx = 0;
@@ -912,24 +933,26 @@ namespace WITE {
 
     template<copyStep CS, literalList<uint64_t> XLS> inline void recordCopies(vk::CommandBuffer cmd) {
       if constexpr(XLS.len) {
-	static constexpr auto XL = findLayoutById<XLS[0]>();
-	static constexpr const resourceMap * SRM = findResourceReferencing(XL.resources, CS.src.id),
-	  *DRM = findResourceReferencing(XL.resources, CS.dst.id);
-	if constexpr(SRM && DRM) {
-	  static constexpr bool srcIsImage = containsId(OD.IRS, SRM->requirementId),
-	    dstIsImage = containsId(OD.IRS, DRM->requirementId);
+	static constexpr auto XL = findLayoutById<XLS[0]>();//could be targetLayout or sourceLayout
+	static constexpr const resourceReference *SRR = findResourceReferenceToConsumer(XL.resources, CS.src.id),
+	  *DRR = findResourceReferencing(XL.resources, CS.dst.id);
+	if constexpr(SRR && DRR) {//skip copy if they're not both represented
+	  static constexpr resourceSlot SRS = findById(OD.RSS, SRR->resourceSlotId),
+	    DRS = findById(OD.RSS, DRR->resourceSlotId);
+	  static constexpr bool srcIsImage = containsId(OD.IRS, SRS->requirementId),
+	    dstIsImage = containsId(OD.IRS, DRS->requirementId);
 	  static_assert(!(srcIsImage ^ dstIsImage));//NYI buffer to/from image (why would you do that?)
 	  if constexpr(srcIsImage && dstIsImage) {
 	    //always blit, no way to know at compile time if they're the same size
 	    //TODO resolve if different sample counts
 	    std::array<vk::Offset3D, 2> srcBounds, dstBounds;
-	    vk::ImageBlit blitInfo(getAllInclusiveSubresourceLayers(findById(OD.IRS, SRM->requirementId)),
+	    vk::ImageBlit blitInfo(getAllInclusiveSubresourceLayers(findById(OD.IRS, SRS->requirementId)),
 				   srcBounds,
-				   getAllInclusiveSubresourceLayers(findById(OD.IRS, DRM->requirementId)),
+				   getAllInclusiveSubresourceLayers(findById(OD.IRS, DRS->requirementId)),
 				   dstBounds);
 	    for(auto& cluster : getAllOfLayout<XL.id>()) {
-	      auto& src = cluster->get()->template get<SRM->id>();
-	      auto& dst = cluster->get()->template get<DRM->id>();
+	      auto& src = cluster->get()->template get<SRS->id>();
+	      auto& dst = cluster->get()->template get<DRS->id>();
 	      blitInfo.srcOffsets = src.getSize(CS.src.frameLatency + frame);
 	      blitInfo.dstOffsets = dst.getSize(CS.dst.frameLatency + frame);
 	      cmd.blitImage(src.frameImage(CS.src.frameLatency + frame),
@@ -939,12 +962,12 @@ namespace WITE {
 			    1, &blitInfo, CS.filter);
 	    }
 	  } else {//buffer to buffer
-	    static constexpr bufferRequirements SBR = findById(OD.BRS, SRM->requirementId),
-	      TBR = findById(OD.BRS, DRM->requirementId);
+	    static constexpr bufferRequirements SBR = findById(OD.BRS, SRS->requirementId),
+	      TBR = findById(OD.BRS, DRS->requirementId);
 	    static constexpr vk::BufferCopy copyInfo(0, 0, min(SBR.size, TBR.size));
 	    for(auto& cluster : getAllOfLayout<XL.id>()) {
-	      auto& src = cluster->get()->template get<SRM->id>();
-	      auto& dst = cluster->get()->template get<DRM->id>();
+	      auto& src = cluster->get()->template get<SRS->id>();
+	      auto& dst = cluster->get()->template get<DRS->id>();
 	      cmd.copyBuffer(src.frameBuffer(CS.src.frameLatency + frame),
 			     dst.frameBuffer(CS.dst.frameLatency + frame),
 			     1, &copyInfo);
@@ -967,14 +990,15 @@ namespace WITE {
 
     template<clearStep CS, literalList<uint64_t> XLS> inline void recordClears(vk::CommandBuffer cmd) {
       if constexpr(XLS.len) {
-	static constexpr auto XL = findLayoutById<XLS[0]>();
-	static constexpr const resourceMap * RM = findResourceReferencing(XL.resources, CS.rr.id);
-	if constexpr(RM) {
-	  static_assert(containsId(OD.IRS, RM->requirementId));
-	  static constexpr imageRequirements IR = findById(OD.IRS, RM->requirementId);
+	static constexpr auto XL = findLayoutById<XLS[0]>();//source or target layout
+	static constexpr const resourceReference* RR = findResourceReferenceToConsumer(XL.resources, CS.rr.id);
+	if constexpr(RR) {
+	  static constexpr resourceSlot RS = findById(OD.RSS, RR->resourceSlotId);
+	  static_assert(containsId(OD.IRS, RS->requirementId));
+	  static constexpr imageRequirements IR = findById(OD.IRS, RS->requirementId);
 	  static constexpr vk::ImageSubresourceRange SR = getAllInclusiveSubresource(IR);
 	  for(auto& cluster : getAllOfLayout<XL.id>()) {
-	    auto img = cluster->get()->template get<RM->id>().frameImage(CS.rr.frameLatency + frame);
+	    auto img = cluster->get()->template get<RS->id>().frameImage(CS.rr.frameLatency + frame);
 	    if constexpr(isDepth(IR)) {
 	      cmd.clearDepthStencilImage(img, vk::ImageLayout::eTransferDstOptimal, &CS.clearValue.depthStencil, 1, &SR);
 	    } else {
@@ -997,19 +1021,21 @@ namespace WITE {
 
     template<renderPassRequirements, targetLayout> struct renderPassInfoBundle : std::false_type {};
 
-    template<renderPassRequirements RP, targetLayout TL> requires(RP.depth.id != NONE) struct renderPassInfoBundle<RP, TL> {
-      static constexpr const resourceMap *colorRM = findResourceReferencing(TL.resources, RP.color.id),
-	*depthRM = findResourceReferencing(TL.resources, RP.depth.id);
-      static constexpr const resourceSlot colorRS = findById(OD.RSS, colorRM->resourceSlotId),
-	depthRS = findById(OD.RSS, depthRM->resourceSlotId);
+    template<renderPassRequirements RP, targetLayout TL> requires(RP.depth != NONE) struct renderPassInfoBundle<RP, TL> {
+      static constexpr resourceConsumer colorRC = consumerForColorAttachment(RP.color),
+	depthRC = consumerForDepthAttachment(RP.depth);
+      static constexpr const resourceReference colorRR = findResourceReferenceToConsumer(TL.resource, colorRC.id),
+	depthRR = findResourceReferenceToConsumer(TL.resources, colorRC.id);
+      static constexpr const resourceSlot colorRS = findById(OD.RSS, colorRR.resourceSlotId),
+	depthRS = findById(OD.RSS, depthRR.resourceSlotId);
       static constexpr imageRequirements colorIR = findById(OD.IRS, colorRS.requirementId),
 	depthIR = findById(OD.IRS, depthRS.requirementId);
-      static constexpr vk::AttachmentReference colorRef { 0, imageLayoutFor(RP.color.access) },
-	depthRef { 1, imageLayoutFor(RP.depth.access) };
+      static constexpr vk::AttachmentReference colorRef { 0, imageLayoutFor(colorRC.access) },
+	depthRef { 1, imageLayoutFor(depthRC.access) };
       static constexpr vk::SubpassDescription subpass { {}, vk::PipelineBindPoint::eGraphics, 0, NULL, 1, &colorRef, NULL, &depthRef };
       static constexpr vk::AttachmentDescription attachments[2] = {//MAYBE variable attachments when inputs are allowed
-	{ {}, colorIR.format, vk::SampleCountFlagBits::e1, RP.clearColor ? vk::AttachmentLoadOp::eClear : vk::AttachmentLoadOp::eLoad, vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare, imageLayoutFor(RP.color.access), imageLayoutFor(RP.color.access) },
-	{ {}, depthIR.format, vk::SampleCountFlagBits::e1, RP.clearDepth ? vk::AttachmentLoadOp::eClear : vk::AttachmentLoadOp::eLoad, vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eLoad, vk::AttachmentStoreOp::eStore, imageLayoutFor(RP.depth.access), imageLayoutFor(RP.depth.access) }
+	{ {}, colorIR.format, vk::SampleCountFlagBits::e1, RP.clearColor ? vk::AttachmentLoadOp::eClear : vk::AttachmentLoadOp::eLoad, vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare, imageLayoutFor(RP.color.access), colorRef.layout },
+	{ {}, depthIR.format, vk::SampleCountFlagBits::e1, RP.clearDepth ? vk::AttachmentLoadOp::eClear : vk::AttachmentLoadOp::eLoad, vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eLoad, vk::AttachmentStoreOp::eStore, imageLayoutFor(RP.depth.access), depthRef.layout }
       };
       //TODO multiview
       //static constexpr vk::RenderPassMultiviewCreateInfo multiview {
@@ -1017,22 +1043,23 @@ namespace WITE {
     };
 
     template<renderPassRequirements RP, targetLayout TL> requires(RP.depth.id == NONE) struct renderPassInfoBundle<RP, TL> {
-      static constexpr const resourceMap *colorRM = findResourceReferencing(TL.resources, RP.color.id);
-      static constexpr const resourceSlot colorRS = findById(OD.RSS, colorRM->resourceSlotId);
+      static constexpr resourceConsumer colorRC = consumerForColorAttachment(RP.color);
+      static constexpr const resourceReference colorRR = findResourceReferenceToConsumer(TL.resource, colorRC.id);
+      static constexpr const resourceSlot colorRS = findById(OD.RSS, colorRR.resourceSlotId);
       static constexpr imageRequirements colorIR = findById(OD.IRS, colorRS.requirementId);
-      static constexpr vk::AttachmentReference colorRef { 0, imageLayoutFor(RP.color.access) };
+      static constexpr vk::AttachmentReference colorRef { 0, imageLayoutFor(colorRC.access) };
       static constexpr vk::SubpassDescription subpass { {}, vk::PipelineBindPoint::eGraphics, 0, NULL, 1, &colorRef, NULL, NULL };
       static constexpr vk::AttachmentDescription attachments[1] = {//MAYBE variable attachments when inputs are allowed
-	{ {}, colorIR.format, vk::SampleCountFlagBits::e1, RP.clearColor ? vk::AttachmentLoadOp::eClear : vk::AttachmentLoadOp::eLoad, vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare, imageLayoutFor(RP.color.access), imageLayoutFor(RP.color.access) }
+	{ {}, colorIR.format, vk::SampleCountFlagBits::e1, RP.clearColor ? vk::AttachmentLoadOp::eClear : vk::AttachmentLoadOp::eLoad, vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare, imageLayoutFor(RP.color.access), colorRef.layout }
       };
       //TODO multiview
       //static constexpr vk::RenderPassMultiviewCreateInfo multiview {
       static constexpr vk::RenderPassCreateInfo rpci { {}, 1, attachments, 1, &subpass, 0 };
     };
 
-    //TODO make an init function, copy the recursive structure, and premake all the pipes and stuff (after successful render)
     //MAYBE match like clusters of shaders, sources, and targets so they can share layouts and descriptor pools?
 
+#error TODO finish refactor
     template<targetLayout TL, renderPassRequirements RP, graphicsShaderRequirements GSR, literalList<uint64_t> SLIDS>
     inline void recordRenders(auto& target, perTargetLayout& ptl, perTargetLayoutPerShader& ptlps, descriptorUpdateData_t<TL.resources>& targetDescriptors, vk::RenderPass rp, vk::CommandBuffer cmd) {
       if constexpr(SLIDS.len) {

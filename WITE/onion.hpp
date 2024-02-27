@@ -91,15 +91,6 @@ namespace WITE {
     };
 
     //NOTE: A source/target layout is not allowed to name two resources referencing the same usage
-    consteval const resourceSlot* findResourceReferencing(literalList<resourceSlot> RSS, uint64_t consId) {
-      if(id == NONE) return NULL;
-      for(const resourceSlot& RS : RSS)
-	if(resourceSlotConsumedBy(RS.id, consId))
-	  return &RS;
-      return NULL;
-    };
-
-    //NOTE: A source/target layout is not allowed to name two resources referencing the same usage
     consteval const resourceReference* findResourceReferenceToSlot(literalList<resourceReference> RRS, uint64_t slotId) {
       if(id == NONE) return NULL;
       for(const resourceReference& RS : RRS)
@@ -108,33 +99,47 @@ namespace WITE {
       return NULL;
     };
 
+    //NOTE: A source/target layout is not allowed to name two resources referencing the same usage
+    consteval const resourceReference* findResourceReferenceToConsumer(literalList<resourceReference> RRS, uint64_t consumerId) {
+      if(id == NONE) return NULL;
+      for(const resourceReference& RS : RRS)
+	if(RS.resourceConsumerId == consumerId)
+	  return &RS;
+      return NULL;
+    };
+
+    consteval resourceConsumer consumerForWindowForObject(uint64_t objectLayoutId) {
+      objectLayout OL = findById(OD.OLS, objectLayoutId);
+      return { OL.windowConsumerId, {}, vk::AccessFlagBits2::eTransferWrite, {} };
+    };
+
     static consteval std::vector<resourceAccessTime> findUsages(uint64_t resourceSlotId) {
       std::vector<resourceAccessTime> ret;
-      tempMap<uint64_t, resourceReference> allConsumers;
+      tempMap<uint64_t, resourceReference> referencesByConsumerId;
       const resourceSlot RS = findById(OD.RSS, resourceSlotId);
       for(const targetLayout& tl : OD.TLS)
 	for(const resourceReference& rr : tl.resources)
 	  if(rr.resourceSlotId == resourceSlotId)
-	    allConsumers[rr.resourceConsumerId] = rr;
+	    referencesByConsumerId[rr.resourceConsumerId] = rr;
       for(const targetLayout& sl : OD.SLS)
 	for(const resourceReference& rr : sl.resources)
 	  if(rr.resourceSlotId == resourceSlotId)
-	    allConsumers[rr.resourceConsumerId] = rr;
+	    referencesByConsumerId[rr.resourceConsumerId] = rr;
       for(size_t layerIdx = 0;layerIdx < OD.LRS.len;layerIdx++) {
 	const layerRequirements& layer = OD.LRS[layerIdx];
 	//copy:
 	for(uint64_t substepId : layer.copies) {
 	  const auto& substep = findById(OD.CSS, substepId);
-	  if(allConsumers.contains(substep.src))
-	    ret.push_back({ layerIdx, substep_e::copy, { substep.src, {}, vk::AccessFlagBits2::eTransferRead }, allConsumers[substep.src].frameLatency });
-	  if(allConsumers.contains(substep.dst))
-	    ret.push_back({ layerIdx, substep_e::copy, { substep.dst, {}, vk::AccessFlagBits2::eTransferWrite }, allConsumers[substep.dst].frameLatency });
+	  if(referencesByConsumerId.contains(substep.src))
+	    ret.push_back({ layerIdx, substep_e::copy, { substep.src, {}, vk::AccessFlagBits2::eTransferRead }, referencesByConsumerId[substep.src].frameLatency });
+	  if(referencesByConsumerId.contains(substep.dst))
+	    ret.push_back({ layerIdx, substep_e::copy, { substep.dst, {}, vk::AccessFlagBits2::eTransferWrite }, referencesByConsumerId[substep.dst].frameLatency });
 	}
 	//clear:
 	for(uint64_t substepId : layer.clears) {
 	  const auto& substep = findById(OD.CLS, substepId);
-	  if(allConsumers.contains(substep.id))
-	    ret.push_back({ layerIdx, substep_e::clear, { substep.id, {}, vk::AccessFlagBits2::eTransferWrite }, allConsumers[substep.id].frameLatency });
+	  if(referencesByConsumerId.contains(substep.id))
+	    ret.push_back({ layerIdx, substep_e::clear, { substep.id, {}, vk::AccessFlagBits2::eTransferWrite }, referencesByConsumerId[substep.id].frameLatency });
 	}
 	//rendering:
 	static_assert(std::numeric_limits<decltype(resourceBarrier::frameLatency)>::min() == 0);
@@ -143,17 +148,17 @@ namespace WITE {
 	  uint64_t passId = layer.renders[passIdx];
 	  shaderIdx = 1;//first shader per pass is idx 1 so 0 can mean "before the first shader" (for attachments)
 	  const auto& pass = findById(OD.RPRS, passId);
-	  if(allConsumers.contains(pass.depth.id))
-	    ret.push_back({ layerIdx, substep_e::render, pass.depth, allConsumers[pass.depth.id].frameLatency, passIdx, passId });
-	  if(allConsumers.contains(pass.color.id))
-	    ret.push_back({ layerIdx, substep_e::render, pass.color, allConsumers[pass.color.id].frameLatency, passIdx, passId });
+	  if(referencesByConsumerId.contains(pass.depth.id))
+	    ret.push_back({ layerIdx, substep_e::render, pass.depth, referencesByConsumerId[pass.depth.id].frameLatency, passIdx, passId });
+	  if(referencesByConsumerId.contains(pass.color.id))
+	    ret.push_back({ layerIdx, substep_e::render, pass.color, referencesByConsumerId[pass.color.id].frameLatency, passIdx, passId });
 	  for(const graphicsShaderRequirements& gsr : pass.shaders) {
 	    for(const resourceConsumer& srr : gsr.targetProvidedResources)
-	      if(allConsumers.contains(srr.id))
-		ret.push_back({ layerIdx, substep_e::render, srr, allConsumers[srr.id].frameLatency, passIdx, passId, shaderIdx, gsr.id });
+	      if(referencesByConsumerId.contains(srr.id))
+		ret.push_back({ layerIdx, substep_e::render, srr, referencesByConsumerId[srr.id].frameLatency, passIdx, passId, shaderIdx, gsr.id });
 	    for(const resourceConsumer& srr : gsr.sourceProvidedResources)
-	      if(allConsumers.contains(srr.id))
-		ret.push_back({ layerIdx, substep_e::render, srr, allConsumers[srr.id].frameLatency, passIdx, passId, shaderIdx, gsr.id });
+	      if(referencesByConsumerId.contains(srr.id))
+		ret.push_back({ layerIdx, substep_e::render, srr, referencesByConsumerId[srr.id].frameLatency, passIdx, passId, shaderIdx, gsr.id });
 	    shaderIdx++;
 	  }
 	}
@@ -162,17 +167,17 @@ namespace WITE {
 	for(uint64_t csrId : layer.computeShaders) {
 	  const computeShaderRequirements& csr = findById(OD.CSRS, csrId);
 	  for(const resourceConsumer& srr : csr.targetProvidedResources)
-	    if(allConsumers.contains(srr.id))
-	      ret.push_back({ layerIdx, substep_e::compute, srr, allConsumers[srr.id].frameLatency, NONE, NONE, shaderIdx, csr.id });
+	    if(referencesByConsumerId.contains(srr.id))
+	      ret.push_back({ layerIdx, substep_e::compute, srr, referencesByConsumerId[srr.id].frameLatency, NONE, NONE, shaderIdx, csr.id });
 	  for(const resourceConsumer& srr : csr.sourceProvidedResources)
-	    if(allConsumers.contains(srr.id))
-	      ret.push_back({ layerIdx, substep_e::compute, srr, allConsumers[srr.id].frameLatency, NONE, NONE, shaderIdx, csr.id });
+	    if(referencesByConsumerId.contains(srr.id))
+	      ret.push_back({ layerIdx, substep_e::compute, srr, referencesByConsumerId[srr.id].frameLatency, NONE, NONE, shaderIdx, csr.id });
 	  shaderIdx++;
 	}
       }
-      for(auto& tl : OD.TLS)
-	if(tl.present.id != NONE && allConsumers.contains(tl.present.id))
-	  ret.push_back({ OD.LRS.len-1, substep_e::post, { NONE, {}, vk::AccessFlagBits2::eTransferRead }, tl.present.frameLatency });
+      for(auto& ol : OD.OLS)
+	if(referencesByConsumerId.contains(ol.windowConsumerId))
+	  ret.push_back({ OD.LRS.len-1, substep_e::post, { NONE, {}, vk::AccessFlagBits2::eTransferRead }, referencesByConsumerId[ol.windowConsumerId].frameLatency });
       std::sort(ret.begin(), ret.end());
       return ret;
     };
@@ -327,18 +332,6 @@ namespace WITE {
 	}
       };
 
-      template<resourceConsumer RR> inline auto& forConsumer() {
-	if constexpr(resourceSlotConsumedBy(RS.id, RR.id)) {
-	  if constexpr(RS.external) {
-	    return *data;
-	  } else {
-	    return data;
-	  }
-	} else {
-	  return rest.template forConsumer<RR>();//compiler-time error if no RS in RSS links to RR
-	}
-      };
-
       template<size_t RSID = RS.id> inline void set(auto* t) {
 	if constexpr(RSID == RS.id) {
 	  static_assert(RS.external);
@@ -431,29 +424,24 @@ namespace WITE {
       static constexpr size_t TARGET_IDX = findId(OD.TLS, TARGET_ID);
       static constexpr targetLayout TL = OD.TLS[TARGET_IDX];
       static constexpr size_t maxFrameswap = frameswapLCM(TL.resources);
-      static constexpr bool hasWindow = TL.present.id != NONE;
-      static constexpr bool needsPostrender = hasWindow;
-      static constexpr auto allObjectResourceSlots = getResourceSlots();
+      static constexpr auto allObjectResourceSlots = getResourceSlots<TL.objectLayoutId>();
 
     private:
       onion<OD>* o;
       mappedResourceTuple<allObjectResourceSlots>* allObjectResources;
       std::map<uint64_t, frameBufferBundle[maxFrameswap]> fbByRpIdByFrame;
       std::map<uint64_t, descriptorUpdateData_t<TL.resources>[maxFrameswap]> perShaderByIdByFrame;
-      std::conditional_t<hasWindow, window, size_t> presentWindow;//size_t so the gpu idx has somewhere to go. Aren't I clever.
 
       target_t(const target_t&) = delete;
       target_t() = delete;
-      target_t(onion<OD>* o): o(o), presentWindow(OD.GPUID) {};//NOTE window can be resized later
+      target_t(onion<OD>* o): o(o) {};//NOTE window can be resized later
 
       friend onion;
 
     public:
 
-      inline auto& getWindow() { return presentWindow; };
-
       template<uint64_t resourceSlotId> auto& get() {
-	static_assert(findResourceReferenceToSlot(TL.resources, resourceSlotId));//sanity check that this layout has a link to the resource being requested (because the resource tuple is shared between all sources and targets of the same object)
+	static_assert(findResourceReferenceToSlot(TL.resources, resourceSlotId));//sanity check that this layout uses that slot
 	return allObjectResources.template at<resourceSlotId>();
       };
 
@@ -463,31 +451,9 @@ namespace WITE {
       };
 
       template<uint64_t resourceSlotId> void set(auto* t) {
-	static_assert(findResourceReferenceToSlot(TL.resources, resourceSlotId));//sanity check that this layout has a link to the resource being requested (because the resource tuple is shared between all sources and targets of the same object)
+	static_assert(findResourceReferenceToSlot(TL.resources, resourceSlotId));//sanity check that this layout uses that slot
 	scopeLock lock(&o->mutex);
 	allObjectResources.template set<resourceSlotId>(t);
-      };
-
-      inline void preRender(vk::CommandBuffer cmd) {
-	if constexpr(hasWindow) {
-	  auto windowExt = presentWindow.getSize3D();
-	  #error TODO vvv filter to this layout... OR apply at the object level?
-#error MAYBE move window stuff to object layout? (one window per object seems reasonable, or can be a collection)
-	  allObjectResources.trackWindowSize(o->frame, windowExt);
-	  presentWindow.acquire();
-	}
-	allObjectResources.preRender(o->frame, cmd, o->getActiveGarbageCollector());
-      };
-
-      inline void postRender(vk::SemaphoreSubmitInfo& renderWaitSem) {
-	if constexpr(hasWindow) {
-	  auto& img = get<TL.presentImageResourceSlotId>();
-	  static constexpr resourceSlot RM = findById(TL.resources, TL.presentImageResourceSlotId);
-	  static constexpr vk::ImageLayout layout = imageLayoutFor(findFinalUsagePerFrame<RM, findById(OD.IRS, RM.requirementId), TARGET_ID>()[TL.presentFrameLatency].usage.access);
-	  static_assert(layout == vk::ImageLayout::eGeneral || layout == vk::ImageLayout::eTransferSrcOptimal);
-	  auto f = o->frame + TL.presentFrameLatency;
-	  presentWindow.present(img.frameImage(f), layout, img.getSizeOffset(f), renderWaitSem);
-	}
       };
 
     };
@@ -528,13 +494,14 @@ namespace WITE {
     public:
       static_assert(containsId(OD.SLS, SOURCE_ID));
       static constexpr size_t SOURCE_IDX = findId(OD.SLS, SOURCE_ID);
-      static constexpr sourceLayout SOURCE_PARAMS = OD.SLS[SOURCE_IDX];
-      static constexpr size_t maxFrameswap = frameswapLCM(SOURCE_PARAMS.resources);
+      static constexpr sourceLayout SL = OD.SLS[SOURCE_IDX];
+      static constexpr size_t maxFrameswap = frameswapLCM(SL.resources);
+      static constexpr auto allObjectResourceSlots = getResourceSlots<SL.objectLayoutId>();
 
     private:
       onion<OD>* o;
-      mappedResourceTuple<SOURCE_ID, SOURCE_PARAMS.resources> resources;
-      std::map<uint64_t, descriptorUpdateData_t<SOURCE_PARAMS.resources>[maxFrameswap]> perShaderByIdByFrame;
+      mappedResourceTuple<allObjectResourceSlots>* allObjectResources;
+      std::map<uint64_t, descriptorUpdateData_t<SL.resources>[maxFrameswap]> perShaderByIdByFrame;
 
       source_t(const source_t&) = delete;
       source_t() = delete;
@@ -545,21 +512,19 @@ namespace WITE {
     public:
 
       template<uint64_t resourceSlotId> auto& get() {
-	return resources.template at<findId(SOURCE_PARAMS.resources, resourceSlotId)>();
+	static_assert(findResourceReferenceToSlot(SL.resources, resourceSlotId));//sanity check that this layout uses that slot
+	return allObjectResources.template at<resourceSlotId>();
       };
 
-      template<uint64_t resourceSlotId> void write(auto t) {
+      template<uint64_t resourceSlotId> void write(auto t, size_t hostAccessOffset = 0) {
 	scopeLock lock(&o->mutex);
-	get<resourceSlotId>().set(o->frame + findById(SOURCE_PARAMS.resources, resourceSlotId).hostAccessOffset, t);
+	get<resourceSlotId>().set(o->frame + hostAccessOffset, t);
       };
 
       template<uint64_t resourceSlotId> void set(auto* t) {
+	static_assert(findResourceReferenceToSlot(SL.resources, resourceSlotId));//sanity check that this layout uses that slot
 	scopeLock lock(&o->mutex);
-	resources.template set<findId(SOURCE_PARAMS.resources, resourceSlotId)>(t);
-      };
-
-      void reinit(uint64_t frame, vk::CommandBuffer cmd) {
-	resources.init(frame, cmd);
+	allObjectResources.template set<resourceSlotId>(t);
       };
 
     };
@@ -612,21 +577,133 @@ namespace WITE {
       allSources.template ofLayout<sourceId>().free(d);
     };
 
+    template<literalList<sourceLayout> SLS> struct sourcePointerTuple {
+      static constexpr uint64_t SID = SLS[0].id;
+      typedef source_t<SID> T;
+      T* data;
+      sourcePointerTuple<SLS.sub(1)> rest;
+
+      void createAll(onion<OD>* o, mappedResourceTuple<T::allObjectResourceSlots>* resources) {
+	data = o->createSource<SID>();
+	data->allObjectResources = resources;
+	if constexpr(SLS.len > 1)
+	  rest.createAll(o, resources);
+      };
+
+      void freeAll(onion<OD>* o) {
+	data = o->freeSource<SID>();
+	if constexpr(SLS.len > 1)
+	  rest.freeAll(o);
+      };
+
+      template<uint64_t ID> auto* get() {
+	if constexpr(SID == ID)
+	  return data;
+	else
+	  return rest.get<ID>();
+      };
+
+    };
+
+    template<literalList<sourceLayout> SLS> requires(SLS.len == 0) struct sourcePointerTuple<SLS> : std::false_type {};
+
+    template<literalList<targetLayout> TLS> struct targetPointerTuple {
+      static constexpr uint64_t TID = TLS[0].id;
+      typedef target_t<TID> T;
+      T* data;
+      targetPointerTuple<TLS.sub(1)> rest;
+
+      void createAll(onion<OD>* o, mappedRetargetTuple<T::allObjectResourceslots>* resources) {
+	data = o->createTarget<TID>();
+	data->allObjectResources = resources;
+	if constexpr(TLS.len > 1)
+	  rest.createAll(o, resources);
+      };
+
+      void freeAll(onion<OD>* o) {
+	data = o->freeTarget<TID>();
+	if constexpr(TLS.len > 1)
+	  rest.freeAll(o);
+      };
+
+      template<uint64_t ID> auto* get() {
+	if constexpr(TID == ID)
+	  return data;
+	else
+	  return rest.get<ID>();
+      };
+
+    };
+
+    template<literalList<targetLayout> SLS> requires(SLS.len == 0) struct targetPointerTuple<SLS> : std::false_type {};
+
     template<uint64_t objectLayoutId>
-    struct object {
+    struct object_t {
       static constexpr auto RSS = getResourceSlots<objectLayoutId>();
       static constexpr auto SLS = getSourceLayouts<objectLayoutId>();
       static constexpr auto TLS = getTargetLayouts<objectLayoutId>();
-      //TODO collection of resources
-      //TODO collections of sources and tuples
+      static constexpr objectLayout OL = findById(OD.OLS, objectLayoutId);
+      static constexpr bool hasWindow = OL.windowConsumerId != NONE;
+
+      mappedResourceTuple<RSS> resources;
+      targetPointerTuple<TLS> targets;
+      sourcePointerTuple<SLS> sources;
+      std::conditional_t<hasWindow, window, size_t> presentWindow = { OD.GPUID };
+      onion<OD>* owner;
+
+      object_t(onion<OD>* o) : owner(o) {};
+
+      inline auto& getWindow() {
+	return presentWindow;
+      };
+
+      inline void preRender(vk::CommandBuffer cmd) {
+	if constexpr(hasWindow) {
+	  auto windowExt = presentWindow.getSize3D();
+	  resources.trackWindowSize(o->frame, windowExt);
+	  presentWindow.acquire();
+	}
+	resources.preRender(o->frame, cmd, o->getActiveGarbageCollector());
+      };
+
+      inline void postRender(vk::SemaphoreSubmitInfo& renderWaitSem) {
+	if constexpr(hasWindow) {
+	  auto& img = get<TL.presentImageResourceSlotId>();
+	  static constexpr resourceSlot RM = findById(TL.resources, TL.presentImageResourceSlotId);
+	  static constexpr vk::ImageLayout layout = imageLayoutFor(findFinalUsagePerFrame<RM, findById(OD.IRS, RM.requirementId), TARGET_ID>()[TL.presentFrameLatency].usage.access);
+	  static_assert(layout == vk::ImageLayout::eGeneral || layout == vk::ImageLayout::eTransferSrcOptimal);
+	  auto f = o->frame + TL.presentFrameLatency;
+	  presentWindow.present(img.frameImage(f), layout, img.getSizeOffset(f), renderWaitSem);
+	}
+      };
+
+      void reinit(uint64_t frame, vk::CommandBuffer cmd) {
+	resources.init(frame, cmd);
+	targets.createAll(owner, &resources);
+	sources.createAll(owner, &resources);
+      };
+
+      void free() {
+	targets.freeAll(owner);
+	sources.freeAll(owner);
+      };
+
     };
 
-    //TODO tuple-like collection of list-like collections of objects
-
-    template<uint64_t objectLayoutId>
-    auto getAllObjects() {
-      //TODO
+    template<size_t IDX = 0> struct objectCollectionTuple {
+      iterableRecyclingPool<std::unique_ptr<object_t<OD.OLS[IDX].id>>> data;
+      objectCollectionTuple<IDX+1> rest;
+      template<size_t OID, uint64_t OIDX = findId(OD.OLS, OID)> auto& ofLayout() {
+	if constexpr(IDX == OIDX)
+	  return data;
+	else
+	  return rest.template ofLayout<OID, OIDX>();
+      };
     };
+
+    template<size_t IDX> requires(IDX == OD.OLS.len) struct objectCollectionTuple<IDX> : std::false_type {};
+
+    objectCollectionTuple<> allObjects;
 
     template<size_t CNT> struct descriptorUpdateData_t {
       vk::WriteDescriptorSet writes[CNT];
@@ -641,17 +718,17 @@ namespace WITE {
       };
     };
 
-    #error TODO finish refactor
-    template<literalList<resourceSlot> RSS, literalList<resourceConsumer> RCS, uint64_t LAYOUT_ID>
-    inline void fillWrites(descriptorUpdateData_t<RMS>& data, mappedResourceTuple<LAYOUT_ID, RMS>& rm, vk::DescriptorSet ds,
+    template<literalList<resourceSlot> RSS,
+	     literalList<resourceReference> RRS,
+	     literalList<resourceConsumer> RCS, uint64_t RCIDX = 0>
+    inline void fillWrites(descriptorUpdateData_t<RCS.len>& data, mappedResourceTuple<RSS>& rm, vk::DescriptorSet ds,
 			   uint64_t frameMod, uint64_t frameLastUpdated) {
-      static_assert(RRS.len <= RMS.len);//because RMS.len is the size of data.writes.  MAYBE need more if multiple RR per RM
-      if constexpr(RRS.len) {
-	static constexpr resourceConsumer RR = RRS[0];
-	static constexpr resourceMap RM = *findResourceReferencing(RMS, RR.id);
-	static constexpr resourceSlot RS = findById(OD.RSS, RM.resourceSlotId);
-	if constexpr(RR.usage.type == resourceUsageType::eDescriptor) {
-	  auto& res = rm.template forConsumer<RR>();
+      if constexpr(RCIDX < RCS.len) {
+	static constexpr resourceConsumer RC = RRS[RCIDX];
+	static constexpr resourceReference RR = *findReferenceToConsumer(RRS, RC.id);
+	static constexpr resourceSlot RS = findById(RSS, RR.resourceSlotId);
+	if constexpr(RC.usage.type == resourceUsageType::eDescriptor) {
+	  auto& res = rm.template at<RS.id>();
 	  if(frameLastUpdated == NONE || frameLastUpdated < res.frameUpdated(frameMod)) {
 	    auto& w = data.writes[data.writeCount];
 	    w.dstSet = ds;
@@ -669,7 +746,8 @@ namespace WITE {
 	      }
 	      if(img.imageView)
 		getActiveGarbageCollector().push(img.imageView);
-	      img.imageView = res.template createView<RR.viewType, getSubresource(RS.requirementId, RR)>(frameMod);
+	      img.imageView = res.template createView<RR.subresource.image.viewType,
+						      getSubresource(RS.requirementId, RR)>(frameMod);
 	      img.imageLayout = imageLayoutFor(RR.access);
 	    } else {
 	      w.pImageInfo = NULL;
@@ -685,36 +763,36 @@ namespace WITE {
 	    data.skipCount++;
 	  }
 	}
-	fillWrites<RMS, RRS.sub(1)>(data, rm, ds, frameMod, frameLastUpdated);
+	fillWrites<RRS, RCS, RCIDX+1>(data, rm, ds, frameMod, frameLastUpdated);
       }
     };
 
-    template<literalList<resourceMap> RMS, literalList<resourceConsumer> RRS, uint64_t LAYOUT_ID>
-    inline void prepareDescriptors(descriptorUpdateData_t<RMS>& descriptorBundle,
+    template<literalList<resourceSlot> RSS,
+	     literalList<resourceReference> RRS,
+	     literalList<resourceConsumer> RCS>
+    inline void prepareDescriptors(descriptorUpdateData_t<RCS.len>& descriptorBundle,
 				   std::unique_ptr<descriptorPoolPoolBase>& dpp,
-				   mappedResourceTuple<LAYOUT_ID, RMS>& resources,
+				   mappedResourceTuple<RSS>& resources,
 				   size_t frameMod) {
       if(!descriptorBundle.descriptorSet) [[unlikely]] {
 	if(!dpp) [[unlikely]]
 	  dpp.reset(new descriptorPoolPool<RRS, OD.GPUID>());
 	descriptorBundle.descriptorSet = dpp->allocate();
 	descriptorBundle.reset();
-	fillWrites<RMS, RRS>(descriptorBundle, resources, descriptorBundle.descriptorSet, frameMod, NONE);
-	dev->getVkDevice().updateDescriptorSets(descriptorBundle.writeCount,
-						descriptorBundle.writes, 0, NULL);
+	fillWrites<RSS, RRS, RCS>(descriptorBundle, resources, descriptorBundle.descriptorSet, frameMod, NONE);
+	dev->getVkDevice().updateDescriptorSets(descriptorBundle.writeCount, descriptorBundle.writes, 0, NULL);
 	descriptorBundle.frameLastUpdated = frame;
       } else if(descriptorBundle.frameLastUpdated < resources.frameLastUpdated(frame)) [[unlikely]] {
 	descriptorBundle.reset();
-	fillWrites<RMS, RRS>(descriptorBundle, resources, descriptorBundle.descriptorSet, frameMod, descriptorBundle.frameLastUpdated);
-	dev->getVkDevice().updateDescriptorSets(descriptorBundle.writeCount,
-						descriptorBundle.writes, 0, NULL);
+	fillWrites<RSS, RRS, RCS>(descriptorBundle, resources, descriptorBundle.descriptorSet, frameMod, descriptorBundle.frameLastUpdated);
+	dev->getVkDevice().updateDescriptorSets(descriptorBundle.writeCount, descriptorBundle.writes, 0, NULL);
 	descriptorBundle.frameLastUpdated = frame;
       }
     };
 
-    static consteval bool satisfies(literalList<resourceMap> resources, literalList<resourceConsumer> references) {
-      for(resourceConsumer rr : references)
-	if(!findResourceReferencing(resources, rr.id))
+    static consteval bool satisfies(literalList<resourceReference> resources, literalList<resourceConsumer> references) {
+      for(resourceConsumer rc : references)
+	if(!findResourceReferenceToConsumer(resources, rc.id))
 	  return false;
       return true;
     };
@@ -762,6 +840,7 @@ namespace WITE {
 	return findById(OD.TLS, layoutId);
     };
 
+#error TODO finish refactor
     template<literalList<resourceBarrier> RBS> inline void recordBarriers(vk::CommandBuffer cmd) {
       if constexpr(RBS.len) {
 	constexpr size_t barrierBatchSize = 16;
@@ -783,7 +862,7 @@ namespace WITE {
 	  DI.pImageMemoryBarriers = barriers.ptr();
 	  DI.imageMemoryBarrierCount = barrierBatchSize;
 	  size_t mbIdx = 0;
-	  for(auto& cluster : getAllObjects<RB.objectLayoutId>()) {
+	  for(auto& cluster : allObjects.ofLayout<RB.objectLayoutId>()) {
 	    auto& img = cluster->get()->template get<RB.resourceSlotId>();
 	    barriers[mbIdx].image = img.frameImage(RB.frameLatency + frame);
 	    WITE_DEBUG_IB(barriers[mbIdx], cmd);
@@ -809,7 +888,7 @@ namespace WITE {
 	  DI.pBufferMemoryBarriers = barriers.ptr();
 	  DI.bufferMemoryBarrierCount = barrierBatchSize;
 	  size_t mbIdx = 0;
-	  for(auto& cluster : getAllObjects<RB.objectLayoutId>()) {
+	  for(auto& cluster : allObjects.ofLayout<RB.objectLayoutId>()) {
 	    barriers[mbIdx].buffer = cluster->get()->template get<RB.resourceSlotId>().frameBuffer(RB.frameLatency + frame);
 	    mbIdx++;
 	    if(mbIdx == barrierBatchSize) [[unlikely]] {
@@ -1016,7 +1095,7 @@ namespace WITE {
 	  cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, shaderInstance.pipeline);
 	  cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, shaderInstance.pipelineLayout, 1, 1, &targetDescriptors.descriptorSet, 0, NULL);
 	  for(auto& sourceUPP : allSources.template ofLayout<SL.id>()) {
-	    auto* source = sourceUPP->get();
+	    source_t<SL.id>* source = sourceUPP->get();
 	    size_t frameMod = frame % source_t<SL.id>::maxFrameswap;
 	    auto& descriptorBundle = source->perShaderByIdByFrame[GSR.id][frameMod];
 	    prepareDescriptors<SL.resources, GSR.sourceProvidedResources, SL.id>(descriptorBundle, pslps.descriptorPool, source->resources, frameMod);
@@ -1238,7 +1317,7 @@ namespace WITE {
 	static constexpr targetLayout TL = findById(OD.TLS, TLS[0]);
 	if constexpr(satisfies(TL.resources, CS.targetProvidedResources)) {
 	  for(auto& targetUPP : allTargets.template ofLayout<TL.id>()) {
-	    auto* target = targetUPP->get();
+	    target_t<TL.id>* target = targetUPP->get();
 	    perTargetLayoutPerShader& ptlps = od.perTL[TL.id].perShader[CS.id];
 	    size_t frameMod = frame % target_t<TL.id>::maxFrameswap;
 	    auto& descriptorBundle = target->perShaderByIdByFrame[CS.id][frameMod];
@@ -1288,7 +1367,7 @@ namespace WITE {
 	  cmd.bindPipeline(vk::PipelineBindPoint::eCompute, shaderInstance.pipeline);
 	  cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute, shaderInstance.pipelineLayout, 1, 1, &perShader.descriptorSet, 0, NULL);
 	  for(auto& sourceUPP : allSources.template ofLayout<SL.id>()) {
-	    auto* source = sourceUPP->get();
+	    source_t<SL.id>* source = sourceUPP->get();
 	    size_t frameMod = frame % source_t<SL.id>::maxFrameswap;
 	    auto& descriptorBundle = source->perShaderByIdByFrame[CS.id][frameMod];
 	    prepareDescriptors<SL.resources, CS.sourceProvidedResources, SL.id>(descriptorBundle, pslps.descriptorPool, source->resources, frameMod);
@@ -1308,7 +1387,7 @@ namespace WITE {
 	static constexpr targetLayout TL = findById(OD.TLS, TLS[0]);
 	if constexpr(satisfies(TL.resources, CS.targetProvidedResources)) {
 	  for(auto& targetUPP : allTargets.template ofLayout<TL.id>()) {
-	    auto* target = targetUPP->get();
+	    target_t<TL.id>* target = targetUPP->get();
 	    perTargetLayoutPerShader& ptlps = od.perTL[TL.id].perShader[CS.id];
 	    size_t frameMod = frame % target_t<TL.id>::maxFrameswap;
 	    auto& descriptorBundle = target->perShaderByIdByFrame[CS.id][frameMod];
@@ -1352,25 +1431,25 @@ namespace WITE {
       }
     };
 
-    template<literalList<targetLayout> TLS> inline void doPrerender(vk::CommandBuffer cmd) {
-      if constexpr(TLS.len) {
-	constexpr targetLayout TL = TLS[0];
-	for(auto& target : allTargets.template ofLayout<TL.id>()) {
-	  target->get()->preRender(cmd);
+    template<literalList<objectLayout> OLS> inline void doPrerender(vk::CommandBuffer cmd) {
+      if constexpr(OLS.len) {
+	constexpr objectLayout OL = OLS[0];
+	for(auto& object : allObjects.template ofLayout<OL.id>()) {
+	  object->get()->preRender(cmd);
 	}
-	doPrerender<TLS.sub(1)>(cmd);
+	doPrerender<OLS.sub(1)>(cmd);
       }
     };
 
-    template<literalList<targetLayout> TLS> inline void doPostrender(vk::SemaphoreSubmitInfo& renderWaitSem) {
-      if constexpr(TLS.len) {
-	constexpr targetLayout TL = TLS[0];
-	if constexpr(target_t<TL.id>::needsPostrender) {
-	  for(auto& target : allTargets.template ofLayout<TL.id>()) {
-	    target->get()->postRender(renderWaitSem);
+    template<literalList<objectLayout> OLS> inline void doPostrender(vk::SemaphoreSubmitInfo& renderWaitSem) {
+      if constexpr(OLS.len) {
+	constexpr objectLayout OL = OLS[0];
+	if constexpr(object_t<OL.id>::needsPostrender) {
+	  for(auto& object : allObjects.template ofLayout<OL.id>()) {
+	    object->get()->postRender(renderWaitSem);
 	  }
 	}
-	doPostrender<TLS.sub(1)>(renderWaitSem);
+	doPostrender<OLS.sub(1)>(renderWaitSem);
       }
     };
 
@@ -1402,7 +1481,7 @@ namespace WITE {
       vk::CommandBuffer cmd = primaryCmds[frame % cmdFrameswapCount];
       vk::CommandBufferBeginInfo begin { vk::CommandBufferUsageFlagBits::eOneTimeSubmit };//TODO remove thsi flag when caching is implemented
       VK_ASSERT(cmd.begin(&begin), "failed to begin a command buffer");
-      doPrerender<OD.TLS>(cmd);
+      doPrerender<OD.OLS>(cmd);
       renderFrom<0>(cmd);
       cmd.end();
       size_t fenceIdx = frame % cmdFrameswapCount;

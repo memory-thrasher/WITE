@@ -108,7 +108,6 @@ namespace WITE {
     uint64_t id;//unique among source and target layouts
     uint64_t objectLayoutId;
     literalList<resourceReference> resources;
-    resourceReference present;//consumerId ignored, resource slot to present, slot id = NONE if not presenting
     bool selfRender = false;//controls whether sources belonging to the same object (not layout!) are rendered to this target
   };
 
@@ -120,6 +119,7 @@ namespace WITE {
 
   struct objectLayout {
     uint64_t id;
+    uint64_t windowConsumerId = NONE;//a resourceConsumer instance will be created with this id. Can only be consumed by references belonging to a targetLayout that is part of this objectLayout
   };
 
   struct shaderModule {
@@ -192,7 +192,7 @@ namespace WITE {
     literalList<clearStep> CLS;
     literalList<copyStep> CSS;
     literalList<layerRequirements> LRS;
-    literalList<objectLayout> RSS;
+    literalList<objectLayout> OLS;
     literalList<targetLayout> TLS;
     literalList<sourceLayout> SLS;
     uint64_t GPUID;

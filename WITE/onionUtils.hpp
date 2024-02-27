@@ -93,42 +93,42 @@ namespace WITE {
     return l[0];
   };
 
-  struct templateStructResourceDereferencedBundle_t {
-    bool isImage, isSource;
-    resourceConsumer rr;
-    union {
-      targetLayout tl;
-      sourceLayout sl;
-    };
-    resourceMap rm;
-    resourceSlot rs;
-    union {
-      imageRequirements ir;
-      bufferRequirements br;
-    };
-  };
+  // struct templateStructResourceDereferencedBundle_t {
+  //   bool isImage, isSource;
+  //   resourceConsumer rr;
+  //   union {
+  //     targetLayout tl;
+  //     sourceLayout sl;
+  //   };
+  //   resourceMap rm;
+  //   resourceSlot rs;
+  //   union {
+  //     imageRequirements ir;
+  //     bufferRequirements br;
+  //   };
+  // };
 
-  template<onionDescriptor OD>
-  consteval templateStructResourceDereferencedBundle_t dereference(const resourceConsumer& rr, uint64_t layoutId) {
-    templateStructResourceDereferencedBundle_t ret {
-      .rr = rr,
-    };
-    ret.isSource = containsId(OD.SLS, layoutId);
-    if(ret.isSource) {
-      ret.sl = findById(OD.SLS, layoutId);
-      ret.rm = *findResourceReferencing(ret.sl.resources, rr.id);
-    } else {
-      ret.tl = findById(OD.TLS, layoutId);
-      ret.rm = *findResourceReferencing(ret.tl.resources, rr.id);
-    }
-    ret.rs = findById(OD.RSS, ret.rm.resourceSlotId);
-    ret.isImage = containsId(OD.IRS, ret.rs.requirementId);
-    if(ret.isImage)
-      ret.ir = findById(OD.IRS, ret.rs.requirementId);
-    else
-      ret.br = findById(OD.BRS, ret.rs.requirementId);
-    return ret;
-  };
+  // template<onionDescriptor OD>
+  // consteval templateStructResourceDereferencedBundle_t dereference(const resourceConsumer& rr, uint64_t layoutId) {
+  //   templateStructResourceDereferencedBundle_t ret {
+  //     .rr = rr,
+  //   };
+  //   ret.isSource = containsId(OD.SLS, layoutId);
+  //   if(ret.isSource) {
+  //     ret.sl = findById(OD.SLS, layoutId);
+  //     ret.rm = *findResourceReferencing(ret.sl.resources, rr.id);
+  //   } else {
+  //     ret.tl = findById(OD.TLS, layoutId);
+  //     ret.rm = *findResourceReferencing(ret.tl.resources, rr.id);
+  //   }
+  //   ret.rs = findById(OD.RSS, ret.rm.resourceSlotId);
+  //   ret.isImage = containsId(OD.IRS, ret.rs.requirementId);
+  //   if(ret.isImage)
+  //     ret.ir = findById(OD.IRS, ret.rs.requirementId);
+  //   else
+  //     ret.br = findById(OD.BRS, ret.rs.requirementId);
+  //   return ret;
+  // };
 
   constexpr bool mightWrite(resourceConsumer usage) {
     return uint64_t(usage.access & (vk::AccessFlagBits2::eShaderStorageWrite | vk::AccessFlagBits2::eMemoryWrite | vk::AccessFlagBits2::eHostWrite | vk::AccessFlagBits2::eTransferWrite | vk::AccessFlagBits2::eDepthStencilAttachmentWrite | vk::AccessFlagBits2::eColorAttachmentWrite | vk::AccessFlagBits2::eShaderWrite));

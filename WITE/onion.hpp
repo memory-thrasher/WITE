@@ -1059,9 +1059,8 @@ namespace WITE {
 
     //MAYBE match like clusters of shaders, sources, and targets so they can share layouts and descriptor pools?
 
-#error TODO finish refactor
-    template<targetLayout TL, renderPassRequirements RP, graphicsShaderRequirements GSR, literalList<uint64_t> SLIDS>
-    inline void recordRenders(auto& target, perTargetLayout& ptl, perTargetLayoutPerShader& ptlps, descriptorUpdateData_t<TL.resources>& targetDescriptors, vk::RenderPass rp, vk::CommandBuffer cmd) {
+    template<renderPassRequirements RP, graphicsShaderRequirements GSR, literalList<uint64_t> SLIDS>
+    inline void recordRenders(auto& target, perTargetLayout& ptl, perTargetLayoutPerShader& ptlps, descriptorUpdateData_t<GSR.targetProvidedResources.len>& targetDescriptors, vk::RenderPass rp, vk::CommandBuffer cmd) {
       if constexpr(SLIDS.len) {
 	static constexpr sourceLayout SL = findById(OD.SLS, SLIDS[0]);
 	// WARN("  using source ", SL.id);
@@ -1071,14 +1070,14 @@ namespace WITE {
 	    consteval bool operator()(const resourceConsumer& rr) {
 	      return rr.usage.type == resourceUsageType::eVertex &&
 		rr.usage.asVertex.rate == vk::VertexInputRate::eVertex &&
-		findResourceReferencing(SL.resources, rr.id);
+		findResourceReferenceForConsumer(SL.resources, rr.id);
 	    };
 	  };
 	  struct findIB {
 	    consteval bool operator()(const resourceConsumer& rr) {
 	      return rr.usage.type == resourceUsageType::eVertex &&
 		rr.usage.asVertex.rate == vk::VertexInputRate::eInstance &&
-		findResourceReferencing(SL.resources, rr.id);
+		findResourceReferenceForConsumer(SL.resources, rr.id);
 	    };
 	  };
 	  static_assert(GSR.sourceProvidedResources.countWhereCE(findVB()) <= 1);
@@ -1110,8 +1109,7 @@ namespace WITE {
 	    static constexpr vk::PipelineViewportStateCreateInfo vp = { {}, 1, NULL, 1, NULL };
 	    static constexpr vk::PipelineRasterizationStateCreateInfo raster = { {}, false, false, vk::PolygonMode::eFill, GSR.cullMode, GSR.windCounterClockwise ? vk::FrontFace::eCounterClockwise : vk::FrontFace::eClockwise, false, 0, 0, 0, 1.0f };
 	    static constexpr vk::PipelineMultisampleStateCreateInfo multisample = { {}, vk::SampleCountFlagBits::e1, 0, 0, NULL, 0, 0 };
-	    // static constexpr vk::StencilOpState stencilOp = {vk::StencilOp::eKeep, vk::StencilOp::eKeep, vk::StencilOp::eKeep,
-	    //   vk::CompareOp::eAlways, 0, 0, 0 };
+	    // static constexpr vk::StencilOpState stencilOp = {vk::StencilOp::eKeep, vk::StencilOp::eKeep, vk::StencilOp::eKeep, vk::CompareOp::eAlways, 0, 0, 0 };
 	    static constexpr vk::PipelineDepthStencilStateCreateInfo depth = { {}, RP.depth.id != NONE, true, vk::CompareOp::eLessOrEqual };//not set: depth bounds and stencil test stuff
 	    static constexpr vk::PipelineColorBlendStateCreateInfo blend = { {}, false, vk::LogicOp::eNoOp, 1, &GSR.blend, { 1, 1, 1, 1 } };
 	    static constexpr vk::DynamicState dynamics[] = { vk::DynamicState::eScissor, vk::DynamicState::eViewport };
@@ -1125,7 +1123,8 @@ namespace WITE {
 	    source_t<SL.id>* source = sourceUPP->get();
 	    size_t frameMod = frame % source_t<SL.id>::maxFrameswap;
 	    auto& descriptorBundle = source->perShaderByIdByFrame[GSR.id][frameMod];
-	    prepareDescriptors<SL.resources, GSR.sourceProvidedResources, SL.id>(descriptorBundle, pslps.descriptorPool, source->resources, frameMod);
+	    prepareDescriptors<object_t<SL.objectLayoutId>::RSS, SL.resources, GSR.sourceProvidedResources>
+	      (descriptorBundle, pslps.descriptorPool, source->resources, frameMod);
 	    cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, shaderInstance.pipelineLayout, 0, 1, &descriptorBundle.descriptorSet, 0, NULL);
 	    //for now, source must provide all vertex info
 	    vk::Buffer verts[vibCount];
@@ -1133,21 +1132,21 @@ namespace WITE {
 	    static_assert(vb || GSR.vertexCountOverride);//vertex data required if vertex count not given statically
 	    vk::DeviceSize vertices, instances;
 	    if constexpr(vb) {
-	      static constexpr resourceMap vbm = *findResourceReferencing(SL.resources, vb->id);
-	      verts[0] = source->template get<vbm.id>().frameBuffer(frame + vb->frameLatency);
-	      offsets[0] = vbm.subresource.bufferRange.offset;
+	      static constexpr resourceReference vbm = *findResourceReferenceForConsumer(SL.resources, vb->id); //compiler-time error: dereferencing null if the source did not provide a reference to the vertex buffer used by the shader
+	      verts[0] = source->template get<vbm.resourceSlotId>().frameBuffer(frame + vbm.frameLatency);
+	      offsets[0] = vb->subresource.bufferRange.offset;
 	      vertices = GSR.vertexCountOverride ? GSR.vertexCountOverride :
-		vbm.subresource.bufferRange.length ? vbm.subresource.bufferRange.length :
+		vb->subresource.bufferRange.length ? vb->subresource.bufferRange.length :
 		findById(OD.BRS, vbm.requirementId).size / sizeofUdm<vb->usage.asVertex.format>();
 	    } else {
 	      vertices = GSR.vertexCountOverride;
 	    }
 	    if constexpr(ib) {
-	      static constexpr resourceMap ibm = *findResourceReferencing(SL.resources, ib->id);
-	      verts[vibCount-1] = source->template get<ibm.id>().frameBuffer(frame + ib->frameLatency);
-	      offsets[vibCount-1] = ibm.subresource.bufferRange.offset;
+	      static constexpr resourceMap ibm = *findResourceReferenceForConsumer(SL.resources, ib->id); //compiler-time error: dereferencing null if the source did not provide a reference to the instance buffer used by the shader
+	      verts[vibCount-1] = source->template get<ibm.resourceSlotId>().frameBuffer(frame + ib->frameLatency);
+	      offsets[vibCount-1] = ib->subresource.bufferRange.offset;
 	      instances = GSR.instanceCountOverride ? GSR.instanceCountOverride :
-		ibm.subresource.bufferRange.length ? ibm.subresource.bufferRange.length :
+		ib->subresource.bufferRange.length ? ib->subresource.bufferRange.length :
 		findById(OD.BRS, ibm.requirementId).size / sizeofUdm<ib->usage.asVertex.format>();
 	    } else {
 	      //but instances defaults to 1
@@ -1161,13 +1160,13 @@ namespace WITE {
 	    //TODO more flexibility with draw. Allow source layout to ask for multi-draw, indexed, indirect etc. Allow (dynamic) less than the whole buffer.
 	  }
 	}
-	recordRenders<TL, RP, GSR, SLIDS.sub(1)>(target, ptl, ptlps, targetDescriptors, rp, cmd);
+	recordRenders<RP, GSR, SLIDS.sub(1)>(target, ptl, ptlps, targetDescriptors, rp, cmd);
       }
     };
 
-    template<targetLayout TL, renderPassRequirements RP, graphicsShaderRequirements GSR>
-    inline void recordRenders_targetOnly(auto& target, perTargetLayout& ptl, perTargetLayoutPerShader& ptlps, descriptorUpdateData_t<TL.resources>& targetDescriptors, vk::RenderPass rp, vk::CommandBuffer cmd) {
-      //for now (at least), target only rendering must not supply a vertex or instance buffer, but they can be overridden
+    template<renderPassRequirements RP, graphicsShaderRequirements GSR>
+    inline void recordRenders_targetOnly(auto& target, perTargetLayout& ptl, perTargetLayoutPerShader& ptlps, descriptorUpdateData_t<GSR.targetProvidedResources.len>& targetDescriptors, vk::RenderPass rp, vk::CommandBuffer cmd) {
+      //for now, target only rendering must not supply a vertex or instance buffer, so vert count must come from an override
       shaderInstance& shaderInstance = ptlps.targetOnlyShader;
       if(!shaderInstance.pipeline) [[unlikely]] {
 	if(shaderInstance.pipelineLayout == NULL) {
@@ -1212,16 +1211,18 @@ namespace WITE {
 	  size_t frameMod = frame % target_t<TL.id>::maxFrameswap;
 	  auto& descriptorBundle = target.perShaderByIdByFrame[GSR.id][frameMod];
 	  perTargetLayoutPerShader& ptlps = ptl.perShader[GSR.id];
-	  prepareDescriptors<TL.resources, GSR.targetProvidedResources, TL.id>(descriptorBundle, ptlps.descriptorPool, target.resources, frameMod);
+	  prepareDescriptors<object_t<TL.objectLayoutId>::RSS, TL.resources, GSR.targetProvidedResources>
+	    (descriptorBundle, ptlps.descriptorPool, target.resources, frameMod);
 	  if constexpr(GSR.sourceProvidedResources.len)
-	    recordRenders<TL, RP, GSR, LR.sourceLayouts>(target, ptl, ptlps, descriptorBundle, rp, cmd);
+	    recordRenders<RP, GSR, LR.sourceLayouts>(target, ptl, ptlps, descriptorBundle, rp, cmd);
 	  else
-	    recordRenders_targetOnly<TL, RP, GSR>(target, ptl, ptlps, descriptorBundle, rp, cmd);
+	    recordRenders_targetOnly<RP, GSR>(target, ptl, ptlps, descriptorBundle, rp, cmd);
 	}
 	recordRenders<layerIdx, TL, LR, RP, GSRS.sub(1)>(target, ptl, rp, cmd);
       }
     };
 
+#error TODO finish refactor
     template<size_t layerIdx, targetLayout TL, layerRequirements LR, literalList<uint64_t> RPIDS>
     inline void recordRenders(auto& target, perTargetLayout& ptl, vk::CommandBuffer cmd) {
       if constexpr(RPIDS.len) {

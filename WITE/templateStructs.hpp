@@ -178,7 +178,6 @@ namespace WITE {
     vk::ClearValue clearValue;
   };
 
-  //NOTE: barriers are NOT allowed between executions of individual copies or shaders of the same type. Barriers are allowed between types of executions. Barrier between copy and render is allowed, barrier between shader 1 and 2 of the same RP is not.
   struct layerRequirements {
     literalList<uint64_t> clears, copies, renders, computeShaders;
   };

@@ -1059,10 +1059,10 @@ namespace WITE {
 
     //MAYBE match like clusters of shaders, sources, and targets so they can share layouts and descriptor pools?
 
-    template<renderPassRequirements RP, graphicsShaderRequirements GSR, literalList<uint64_t> SLIDS>
+    template<renderPassRequirements RP, graphicsShaderRequirements GSR, literalList<sourceLayout> SLS>
     inline void recordRenders(auto& target, perTargetLayout& ptl, perTargetLayoutPerShader& ptlps, descriptorUpdateData_t<GSR.targetProvidedResources.len>& targetDescriptors, vk::RenderPass rp, vk::CommandBuffer cmd) {
-      if constexpr(SLIDS.len) {
-	static constexpr sourceLayout SL = findById(OD.SLS, SLIDS[0]);
+      if constexpr(SLS.len) {
+	static constexpr sourceLayout SL = SLS[0];
 	// WARN("  using source ", SL.id);
 	if constexpr(satisfies(SL.resources, GSR.sourceProvidedResources)) {
 	  //for now (at least), only one vertex binding of each input rate type. Source only.
@@ -1160,7 +1160,7 @@ namespace WITE {
 	    //TODO more flexibility with draw. Allow source layout to ask for multi-draw, indexed, indirect etc. Allow (dynamic) less than the whole buffer.
 	  }
 	}
-	recordRenders<RP, GSR, SLIDS.sub(1)>(target, ptl, ptlps, targetDescriptors, rp, cmd);
+	recordRenders<RP, GSR, SLS.sub(1)>(target, ptl, ptlps, targetDescriptors, rp, cmd);
       }
     };
 
@@ -1201,7 +1201,7 @@ namespace WITE {
       //TODO more flexibility with draw. Allow source layout to ask for multi-draw, indexed, indirect etc. Allow (dynamic) less than the whole buffer.
     };
 
-    template<size_t layerIdx, targetLayout TL, layerRequirements LR, renderPassRequirements RP, literalList<graphicsShaderRequirements> GSRS>
+    template<size_t layerIdx, targetLayout TL, renderPassRequirements RP, literalList<graphicsShaderRequirements> GSRS>
     inline void recordRenders(auto& target, perTargetLayout& ptl, vk::RenderPass rp, vk::CommandBuffer cmd) {
       if constexpr(GSRS.len) {
 	static constexpr graphicsShaderRequirements GSR = GSRS[0];
@@ -1214,46 +1214,46 @@ namespace WITE {
 	  prepareDescriptors<object_t<TL.objectLayoutId>::RSS, TL.resources, GSR.targetProvidedResources>
 	    (descriptorBundle, ptlps.descriptorPool, target.resources, frameMod);
 	  if constexpr(GSR.sourceProvidedResources.len)
-	    recordRenders<RP, GSR, LR.sourceLayouts>(target, ptl, ptlps, descriptorBundle, rp, cmd);
+	    recordRenders<RP, GSR, OD.SLS>(target, ptl, ptlps, descriptorBundle, rp, cmd);
 	  else
 	    recordRenders_targetOnly<RP, GSR>(target, ptl, ptlps, descriptorBundle, rp, cmd);
 	}
-	recordRenders<layerIdx, TL, LR, RP, GSRS.sub(1)>(target, ptl, rp, cmd);
+	recordRenders<layerIdx, TL, RP, GSRS.sub(1)>(target, ptl, rp, cmd);
       }
     };
 
-#error TODO finish refactor
-    template<size_t layerIdx, targetLayout TL, layerRequirements LR, literalList<uint64_t> RPIDS>
+    template<size_t layerIdx, targetLayout TL, literalList<uint64_t> RPIDS>
     inline void recordRenders(auto& target, perTargetLayout& ptl, vk::CommandBuffer cmd) {
       if constexpr(RPIDS.len) {
 	static constexpr renderPassRequirements RP = findById(OD.RPRS, RPIDS[0]);
-	static constexpr const resourceMap* colorRM = findResourceReferencing(TL.resources, RP.color.id),
-	  *depthRM = findResourceReferencing(TL.resources, RP.depth.id);
-	if constexpr(colorRM != NULL && (depthRM != NULL || RP.depth.id == NONE)) {
+	static constexpr const resourceReference* colorRR = findResourceReferenceForConsumer(TL.resources, RP.color),
+	  *depthRR = findResourceReferenceForConsumer(TL.resources, RP.depth);
+	if constexpr(colorRR != NULL && (depthRR != NULL || RP.depth == NONE)) {
 	  vk::RenderPass& rp = ptl.rpByRequirementId[RP.id];
 	  if(!rp) [[unlikely]] {
 	    VK_ASSERT(dev->getVkDevice().createRenderPass(&renderPassInfoBundle<RP, TL>::rpci, ALLOCCB, &rp),
 		      "failed to create render pass ", TL.id, " ", RP.id);
 	  }
-	  auto& color = target.template get<colorRM->id>();
+	  auto& color = target.template get<colorRR->resourceSlotId>();
+	  static constexpr resourceSlot colorRS = findById(OD.RSS, colorRS.id);
 	  frameBufferBundle& fbb = target.fbByRpIdByFrame[RP.id][frame % target_t<TL.id>::maxFrameswap];
 	  bool depthOutdated;
 	  if constexpr(RP.depth.id != NONE)
-	    depthOutdated = fbb.fb && fbb.lastUpdatedFrame < target.template get<depthRM->id>().frameUpdated(frame + RP.depth.frameLatency);
+	    depthOutdated = fbb.fb && fbb.lastUpdatedFrame < target.template get<depthRR->resourceSlotId>().frameUpdated(frame + depthRR->frameLatency);
 	  else
 	    depthOutdated = false;
-	  bool colorOutdated = fbb.fb && fbb.lastUpdatedFrame < color.frameUpdated(frame + RP.color.frameLatency);
-	  vk::Rect2D size = color.getSizeRect(frame + RP.color.frameLatency);
+	  bool colorOutdated = fbb.fb && fbb.lastUpdatedFrame < color.frameUpdated(frame + colorRR->frameLatency);
+	  vk::Rect2D size = color.getSizeRect(frame + colorRR->frameLatency);
 	  if(!fbb.fb || colorOutdated || depthOutdated) [[unlikely]] {
 	    if(fbb.fb)
 	      getActiveGarbageCollector().push(fbb.fb);
-	    if constexpr(RP.depth.id != NONE)
-	      ASSERT_TRAP(size == target.template get<depthRM->id>().getSizeRect(frame + RP.depth.frameLatency), "framebuffer depth color size mismatch");
+	    if constexpr(RP.depth != NONE)
+	      ASSERT_TRAP(size == target.template get<depthRR->resourceSlotId>().getSizeRect(frame + depthRR->frameLatency), "framebuffer depth color size mismatch");
 	    fbb.fbci.renderPass = rp;
 	    fbb.fbci.width = size.extent.width;
 	    fbb.fbci.height = size.extent.height;
 	    fbb.fbci.layers = 1;
-	    if constexpr(RP.depth.id == NONE)
+	    if constexpr(RP.depth == NONE)
 	      fbb.fbci.attachmentCount = 1;
 	    else
 	      fbb.fbci.attachmentCount = 2;
@@ -1262,15 +1262,19 @@ namespace WITE {
 	    if(depthOutdated)
 	      getActiveGarbageCollector().push(fbb.attachments[1]);
 	    if(!fbb.fb || colorOutdated)
-	      fbb.attachments[0] = color.template createView<*colorRM>(frame + RP.color.frameLatency);
-	    if constexpr(RP.depth.id != NONE)
+	      fbb.attachments[0] = color.template createView<colorRR->subresource.image.viewType,
+							     getSubresource(colorRS.requirementId, *colorRR)>
+		(frame + colorRR->frameLatency);
+	    if constexpr(RP.depth != NONE)
 	      if(!fbb.fb || depthOutdated)
-		fbb.attachments[1] = target.template get<depthRM->id>().
-		  template createView<*depthRM>(frame + RP.depth.frameLatency);
+		fbb.attachments[1] = target.template get<depthRR->resourceSlotId>().
+		  template createView<depthRR->subresource.image.viewType,
+				      getSubresource(findById(OD.RSS, depthRR->resourceSlotId).requirementId, *depthRR)>
+		  (frame + depthRR->frameLatency);
 	    VK_ASSERT(dev->getVkDevice().createFramebuffer(&fbb.fbci, ALLOCCB, &fbb.fb), "failed to create framebuffer");
 	    fbb.lastUpdatedFrame = frame;
 	  }
-	  //TODO multiview for cubes... how?
+	  //MAYBE multiview
 	  vk::Viewport viewport = { 0, 0, (float)size.extent.width, (float)size.extent.height, 0.0f, 1.0f };
 	  cmd.setViewport(0, 1, &viewport);
 	  cmd.setScissor(0, 1, &size);
@@ -1279,10 +1283,10 @@ namespace WITE {
 	  recordBarriersForTime<resourceBarrierTiming { .layerIdx = layerIdx, .substep = substep_e::render, .passId = RP.id, .shaderId = NONE }>(cmd);
 	  cmd.beginRenderPass(&rpBegin, vk::SubpassContents::eInline);
 	  // WARN("RP begin");
-	  recordRenders<layerIdx, TL, LR, RP, RP.shaders>(target, ptl, rp, cmd);
+	  recordRenders<layerIdx, TL, RP, RP.shaders>(target, ptl, rp, cmd);
 	  cmd.endRenderPass();
 	}
-	recordRenders<layerIdx, TL, LR, RPIDS.sub(1)>(target, ptl, cmd);
+	recordRenders<layerIdx, TL, RPIDS.sub(1)>(target, ptl, cmd);
       }
     };
 
@@ -1291,7 +1295,7 @@ namespace WITE {
       //TODO spawn each of these in a parallel cmd; rework call stack signatures to hand semaphores around instead of cmd
       //^^  ONLY if there is no writable source descriptor
       for(auto& target : allTargets.template ofLayout<TL.id>()) {
-	recordRenders<layerIdx, TL, LR, LR.renders>(*target->get(), ptl, cmd);
+	recordRenders<layerIdx, TL, LR.renders>(*target->get(), ptl, cmd);
       }
     };
 
@@ -1299,36 +1303,36 @@ namespace WITE {
     inline void recordRenders(vk::CommandBuffer cmd) {
       if constexpr(TLS.len) {
 	static constexpr targetLayout TL = findById(OD.TLS, TLS[0]);
-	perTargetLayout& ptl = od.perTL[TL.id];
-	recordRenders<layerIdx, TL, LR>(ptl, cmd);
+	recordRenders<layerIdx, TL, LR>(od.perTL[TL.id], cmd);
 	recordRenders<layerIdx, TLS.sub(1), LR>(cmd);
       };
     };
 
-    template<uint64_t RRID, uint64_t TLID, uint64_t SLID>
-    static consteval resourceMap resolveReference() {
-      const resourceMap* RM;
+    template<uint64_t RCID, uint64_t TLID, uint64_t SLID>
+    static consteval resourceReference resolveReference() {
+      const resourceReference* RR;
       if constexpr(TLID != NONE)
-	RM = findResourceReferencing(findById(OD.TLS, TLID).resources, RRID);
+	RR = findResourceReferenceForConsumer(findById(OD.TLS, TLID).resources, RCID);
       if constexpr(SLID != NONE)
-	if(RM == NULL)
-	  RM = findResourceReferencing(findById(OD.SLS, SLID).resources, RRID);
-      return *RM;
+	if(RR == NULL)
+	  RR = findResourceReferenceForConsumer(findById(OD.SLS, SLID).resources, RCID);
+      return *RR;//error bc null if neither layout provides it
     };
 
     template<computeShaderRequirements CS, uint64_t TID, uint64_t SID> static inline void getWorkgroupSize(vk::Extent3D& workgroupSize, target_t<TID>* target, source_t<SID>* source, uint64_t frameMod) {
-      static constexpr resourceMap primaryOutputRM = resolveReference<CS.primaryOutputReferenceId, TID, SID>();
-      if constexpr(containsId(OD.IRS, primaryOutputRM.requirementId)) {
+      static constexpr resourceReference primaryOutputRR = resolveReference<CS.primaryOutputReferenceId, TID, SID>();
+      static constexpr resourceSlot primaryOutputRS = findById(OD.RSS, primaryOutputRR.resourceSlotId);
+      if constexpr(containsId(OD.IRS, primaryOutputRR.requirementId)) {
 	vk::Extent3D imageSize;
-	if constexpr(TID != NONE && containsId(findById(OD.TLS, TID).resources, primaryOutputRM.id))
-	  imageSize = target->template get<primaryOutputRM.id>().getSizeExtent(frameMod);
+	if constexpr(TID != NONE && containsId(findById(OD.TLS, TID).resources, primaryOutputRR.id))
+	  imageSize = target->template get<primaryOutputRR.resourceSlotId>().getSizeExtent(frameMod);
 	else
-	  imageSize = source->template get<primaryOutputRM.id>().getSizeExtent(frameMod);
+	  imageSize = source->template get<primaryOutputRR.resourceSlotId>().getSizeExtent(frameMod);
 	workgroupSize.width = (imageSize.width - 1) / CS.strideX + 1;
 	workgroupSize.height = (imageSize.height - 1) / CS.strideY + 1;
 	workgroupSize.depth = (imageSize.depth - 1) / CS.strideZ + 1;
       } else {
-	workgroupSize.width = (findById(OD.BRS, primaryOutputRM.requirementId).size - 1) / CS.strideX + 1;
+	workgroupSize.width = (findById(OD.BRS, primaryOutputRS.requirementId).size - 1) / CS.strideX + 1;
 	workgroupSize.height = 1;
 	workgroupSize.depth = 1;
       }
@@ -1339,6 +1343,7 @@ namespace WITE {
       asm("int3");//NYI
     };
 
+#error TODO finish refactor
     template<computeShaderRequirements CS, literalList<uint64_t> TLS>
     inline void recordComputeDispatches_targetOnly(vk::CommandBuffer cmd) {
       if constexpr(TLS.len) {

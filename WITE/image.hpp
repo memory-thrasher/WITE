@@ -143,7 +143,7 @@ namespace WITE {
       return vkImage[frameImageIdx(frame)];
     };
 
-    template<vk::ImageSubresourceRange VT, vk::ImageSubresourceRange SR> vk::ImageView createView(uint64_t frame) const {
+    template<vk::ImageViewType VT, vk::ImageSubresourceRange SR> vk::ImageView createView(uint64_t frame) const {
       vk::ImageViewCreateInfo ci { {}, frameImage(frame), VT, R.format, {}, SR };
       vk::ImageView ret;
       VK_ASSERT(gpu::get(R.deviceId).getVkDevice().createImageView(&ci, ALLOCCB, &ret), "failed to create image view");

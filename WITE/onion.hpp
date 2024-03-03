@@ -1124,7 +1124,7 @@ namespace WITE {
 	    size_t frameMod = frame % source_t<SL.id>::maxFrameswap;
 	    auto& descriptorBundle = source->perShaderByIdByFrame[GSR.id][frameMod];
 	    prepareDescriptors<object_t<SL.objectLayoutId>::RSS, SL.resources, GSR.sourceProvidedResources>
-	      (descriptorBundle, pslps.descriptorPool, source->resources, frameMod);
+	      (descriptorBundle, pslps.descriptorPool, *source->allObjectResources, frameMod);
 	    cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, shaderInstance.pipelineLayout, 0, 1, &descriptorBundle.descriptorSet, 0, NULL);
 	    //for now, source must provide all vertex info
 	    vk::Buffer verts[vibCount];
@@ -1212,7 +1212,7 @@ namespace WITE {
 	  auto& descriptorBundle = target.perShaderByIdByFrame[GSR.id][frameMod];
 	  perTargetLayoutPerShader& ptlps = ptl.perShader[GSR.id];
 	  prepareDescriptors<object_t<TL.objectLayoutId>::RSS, TL.resources, GSR.targetProvidedResources>
-	    (descriptorBundle, ptlps.descriptorPool, target.resources, frameMod);
+	    (descriptorBundle, ptlps.descriptorPool, *target.allObjectResources, frameMod);
 	  if constexpr(GSR.sourceProvidedResources.len)
 	    recordRenders<RP, GSR, OD.SLS>(target, ptl, ptlps, descriptorBundle, rp, cmd);
 	  else
@@ -1343,7 +1343,6 @@ namespace WITE {
       asm("int3");//NYI
     };
 
-#error TODO finish refactor
     template<computeShaderRequirements CS, literalList<uint64_t> TLS>
     inline void recordComputeDispatches_targetOnly(vk::CommandBuffer cmd) {
       if constexpr(TLS.len) {
@@ -1354,7 +1353,8 @@ namespace WITE {
 	    perTargetLayoutPerShader& ptlps = od.perTL[TL.id].perShader[CS.id];
 	    size_t frameMod = frame % target_t<TL.id>::maxFrameswap;
 	    auto& descriptorBundle = target->perShaderByIdByFrame[CS.id][frameMod];
-	    prepareDescriptors<TL.resources, CS.targetProvidedResources, TL.id>(descriptorBundle, ptlps.descriptorPool, target->resources, frameMod);
+	    prepareDescriptors<object_t<TL.objectLayoutId>::RSS, TL.resources, CS.targetProvidedResources>
+	      (descriptorBundle, ptlps.descriptorPool, *target->allObjectResources, frameMod);
 	    if(!ptlps.targetOnlyShader.pipeline) [[unlikely]] {
 	      ptlps.targetOnlyShader.pipelineLayout = dev->getPipelineLayout<descriptorPoolPool<CS.targetProvidedResources, OD.GPUID>::dslci>();
 	      static_assert(CS.module->stage == vk::ShaderStageFlagBits::eCompute);
@@ -1374,6 +1374,7 @@ namespace WITE {
       }
     };
 
+#error TODO finish refactor
     template<computeShaderRequirements CS, targetLayout TL, literalList<uint64_t> SLS>
     inline void recordComputeDispatches_nested(target_t<TL.id>* target, perTargetLayoutPerShader& ptlps, descriptorUpdateData_t<TL.resources>& perShader, vk::CommandBuffer cmd) {
       if constexpr(SLS.len) {

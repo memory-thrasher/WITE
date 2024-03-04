@@ -13,6 +13,7 @@ namespace WITE {
   template<size_t gpuId, udm U, size_t C, uint64_t ID, bool instance = false> struct meshWrapper {
 
     static constexpr uint64_t id = ID;
+    static constexpr uint64_t objectLayoutID = ID + 1000;//use if resourceSlot_v and resourceReference_v are used
 
     static constexpr bufferRequirements bufferRequirements_v {
       .deviceId = gpuId,
@@ -26,14 +27,20 @@ namespace WITE {
       .id = ID+1,
       .stages = vk::ShaderStageFlagBits::eVertex,
       .access = vk::AccessFlagBits2::eVertexAttributeRead,
-      .usage = { U, instance ? vk::VertexInputRate::eInstance : vk::VertexInputRate::eVertex }
+      .usage = { U, instance ? vk::VertexInputRate::eInstance : vk::VertexInputRate::eVertex },
     };
 
-    static constexpr resourceMap resourceMap_v = {
+    static constexpr resourceSlot resourceSlot_v = {
       .id = ID+2,
       .requirementId = bufferRequirements_v.id,
-      .resourceConsumers = resourceConsumer_v.id,
-      .external = true
+      .objectLayoutId = objectLayoutID,
+      .external = true,
+    };
+
+    static constexpr resourceReference resourceReference_v = {
+      .id = ID+3,
+      .resourceConsumerId = resourceConsumer_v.id,
+      .resourceSlotId = resourceSlot_v.id,
     };
 
     typedef buffer<bufferRequirements_v> buffer_t;

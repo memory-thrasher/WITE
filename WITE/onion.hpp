@@ -323,7 +323,7 @@ namespace WITE {
     };
 
     template<literalList<resourceSlot> RSS> struct mappedResourceTuple {
-      static constexpr resourceMap RS = RSS[0];
+      static constexpr resourceSlot RS = RSS[0];
       typedef resourceTraits<RS> RT;
       RT::type data;
       mappedResourceTuple<RMS.sub(1)> rest;
@@ -777,7 +777,7 @@ namespace WITE {
 	      w.pBufferInfo = &buf;
 	      buf.buffer = res.frameBuffer(frameMod);
 	      buf.offset = RR.subresource.bufferRange.offset;
-	      buf.range = RR.subresource.bufferRange.length;
+	      buf.range = RR.subresource.bufferRange.length ? RR.subresource.bufferRange.length : VK_WHOLE_SIZE;
 	      // WARN("wrote buffer descriptor ", buf.buffer, " to binding ", w.dstBinding, " on set ", ds);
 	    }
 	    data.writeCount++;
@@ -1121,6 +1121,9 @@ namespace WITE {
 	  cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, shaderInstance.pipelineLayout, 1, 1, &targetDescriptors.descriptorSet, 0, NULL);
 	  for(auto& sourceUPP : allSources.template ofLayout<SL.id>()) {
 	    source_t<SL.id>* source = sourceUPP->get();
+	    if constexpr(!TL.selfRender && SL.objectLayoutId == TL.objectLayoutId)
+	      if(source->objectId == target.objectId) [[unlikely]]
+		continue;
 	    size_t frameMod = frame % source_t<SL.id>::maxFrameswap;
 	    auto& descriptorBundle = source->perShaderByIdByFrame[GSR.id][frameMod];
 	    prepareDescriptors<object_t<SL.objectLayoutId>::RSS, SL.resources, GSR.sourceProvidedResources>
@@ -1374,9 +1377,8 @@ namespace WITE {
       }
     };
 
-#error TODO finish refactor
     template<computeShaderRequirements CS, targetLayout TL, literalList<uint64_t> SLS>
-    inline void recordComputeDispatches_nested(target_t<TL.id>* target, perTargetLayoutPerShader& ptlps, descriptorUpdateData_t<TL.resources>& perShader, vk::CommandBuffer cmd) {
+    inline void recordComputeDispatches_nested(target_t<TL.id>* target, perTargetLayoutPerShader& ptlps, descriptorUpdateData_t<CS.targetProvidedResources.len>& perShader, vk::CommandBuffer cmd) {
       if constexpr(SLS.len) {
 	static constexpr sourceLayout SL = findById(OD.SLS, SLS[0]);
 	if constexpr(satisfies(SL.resources, CS.sourceProvidedResources)) {
@@ -1402,9 +1404,13 @@ namespace WITE {
 	  cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute, shaderInstance.pipelineLayout, 1, 1, &perShader.descriptorSet, 0, NULL);
 	  for(auto& sourceUPP : allSources.template ofLayout<SL.id>()) {
 	    source_t<SL.id>* source = sourceUPP->get();
+	    if constexpr(!TL.selfRender && SL.objectLayoutId == TL.objectLayoutId)
+	      if(source->objectId == target->objectId) [[unlikely]]
+		continue;
 	    size_t frameMod = frame % source_t<SL.id>::maxFrameswap;
 	    auto& descriptorBundle = source->perShaderByIdByFrame[CS.id][frameMod];
-	    prepareDescriptors<SL.resources, CS.sourceProvidedResources, SL.id>(descriptorBundle, pslps.descriptorPool, source->resources, frameMod);
+	    prepareDescriptors<object_t<SL.objectLayoutId>::RSS, SL.resources, CS.sourceProvidedResources>
+	      (descriptorBundle, pslps.descriptorPool, source->resources, frameMod);
 	    cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute, shaderInstance.pipelineLayout, 0, 1, &descriptorBundle.descriptorSet, 0, NULL);
 	    vk::Extent3D workgroupSize;
 	    getWorkgroupSize<CS, TL.id, SL.id>(workgroupSize, target, source, frameMod);
@@ -1425,7 +1431,8 @@ namespace WITE {
 	    perTargetLayoutPerShader& ptlps = od.perTL[TL.id].perShader[CS.id];
 	    size_t frameMod = frame % target_t<TL.id>::maxFrameswap;
 	    auto& descriptorBundle = target->perShaderByIdByFrame[CS.id][frameMod];
-	    prepareDescriptors<TL.resources, CS.targetProvidedResources, TL.id>(descriptorBundle, ptlps.descriptorPool, target->resources, frameMod);
+	    prepareDescriptors<object_t<TL.objectLayoutId>::RSS, TL.resources, CS.targetProvidedResources>
+	      (descriptorBundle, ptlps.descriptorPool, target->resources, frameMod);
 	    recordComputeDispatches_nested<CS, TL, SLS>(target, ptlps, descriptorBundle, cmd);
 	  }
 	}
@@ -1433,8 +1440,8 @@ namespace WITE {
       }
     };
 
-    //unlike graphics, a compute shader can exist with target-only or source-only.
-    template<size_t layerIdx, layerRequirements LR, literalList<uint64_t> CSS> inline void recordComputeDispatches(vk::CommandBuffer cmd) {
+    template<size_t layerIdx, layerRequirements LR, literalList<uint64_t> CSS>
+    inline void recordComputeDispatches(vk::CommandBuffer cmd) {
       if constexpr(CSS.len) {
 	recordBarriersForTime<resourceBarrierTiming { .layerIdx = layerIdx, .substep = substep_e::compute, .shaderId = CSS[0] }>(cmd);
 	static constexpr computeShaderRequirements CS = findById(OD.CSRS, CSS[0]);
@@ -1487,6 +1494,7 @@ namespace WITE {
       }
     };
 
+#error TODO finish refactor
     void waitForFrame(uint64_t frame, uint64_t timeoutNS = 10000000000) {//default = 10 seconds
       if(frame < this->frame - cmdFrameswapCount) {
 #ifdef WITE_DEBUG_FENCES

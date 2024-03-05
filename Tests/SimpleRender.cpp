@@ -12,21 +12,38 @@ constexpr uint64_t gpuId = 0;
 /*
 prefix acronyms:
 BR buffer requirements
-BRS buffer requirements - staging
 IR image requirements
+RS resource slot
+RC resource consumer
 RR resource reference
-RRL resource reference list
-RMT resource map target
-RMS resource map source
 TL target layout
 SL source layout
+OL object layout
 S shader
+SM shader module
 RP render pass
-C copy step
+CP copy step
+CL clear step
 L layer
-IDL id list
+*_L *list
+*_ID *id
+*_S *staging
+
+BR/IR_dataDescription
+RC_consumerName_usageDescription
+RS_objectName_dataDescription
+RR_L_object_layout
+SL/TL_objectName_layerDescription
+S_shaderName
+SM_L_shaderName
+L/RP_id
+CL/CP_dataDescription
+
  */
 
+//this sample orders like objects together to save lines. Larger works would probably order elements by shader.
+
+//cube data just to show how a general mesh would be imported, in practice a cube should have a computed mesh
 wrap_mesh(gpuId, UDM::RGB32float, cubeMesh,
           {{-1, -1, -1}}, {{-1, 1, 1}}, {{-1, -1, 1}},
 	  {{-1, 1, 1}}, {{-1, -1, -1}}, {{-1, 1, -1}},
@@ -46,117 +63,21 @@ wrap_mesh(gpuId, UDM::RGB32float, cubeMesh,
 	  {{-1, 1, 1}}, {{1, 1, 1}}, {{-1, -1, 1}},
 	  {{-1, -1, 1}}, {{1, 1, 1}}, {{1, -1, 1}});
 
-struct cameraData_t {
+struct cameraData_t = {
   glm::vec4 clip;//(near plane, far plane, cot(fov/2), z/aspect
   glm::mat4 transform;//world-to-camera only, perspective is handled in vert shader
 };
 
+//first, the types of resources we have (vk{Buffer/Image}CreateInfo are created from these structs)
 constexpr bufferRequirements BR_singleTransform = defineSingleTransform(gpuId);
-constexpr bufferRequirements BRS_singleTransform = NEW_ID(stagingRequirementsFor(BR_singleTransform, 2));
+constexpr bufferRequirements BR_S_singleTransform = NEW_ID(stagingRequirementsFor(BR_singleTransform, 2));
 constexpr bufferRequirements BR_cameraData = defineSimpleUniformBuffer(gpuId, sizeof(cameraData_t));
-constexpr bufferRequirements BRS_cameraData = NEW_ID(stagingRequirementsFor(BR_cameraData, 2));
+constexpr bufferRequirements BR_S_cameraData = NEW_ID(stagingRequirementsFor(BR_cameraData, 2));
 constexpr imageRequirements IR_standardDepth = defineSimpleDepth(gpuId);
 constexpr imageRequirements IR_standardColor = defineSimpleColor(gpuId);
 
-constexpr copyStep C_updateCubeTransforms = defineCopy(),
-	    C_updateCameraTransforms = defineCopy(),
-	    C_all[] = {
-	      C_updateCubeTransforms, C_updateCameraTransforms
-	    };
-
-constexpr resourceReference RR_depth = defineSimpleDepthReference(),
-	    RR_color = defineSimpleColorReference(),
-	    RR_cameraTrans = defineUBReferenceAtVertex(),
-	    RR_cubeTrans = defineUBReferenceAtVertex(),
-	    RRL_simpleSource[] = { RR_cubeTrans, cubeMesh.resourceReference_v };
-
-constexpr uint64_t RR_IDL_cubeTrans[] = { RR_cubeTrans.id, C_updateCubeTransforms.dst.id },
-  RR_IDL_cameraTrans[] = { RR_cameraTrans.id, C_updateCameraTransforms.dst.id },
-  C_IDL_L1[] = { C_updateCameraTransforms.id, C_updateCubeTransforms.id };
-
-constexpr resourceMap RMT_cameraTrans_staging = {
-  .id = __LINE__,
-  .requirementId = BRS_cameraData.id,
-  .resourceReferences = C_updateCameraTransforms.src.id
-}, RMT_color = {
-  .id = __LINE__,
-  .requirementId = IR_standardColor.id,
-  .resourceReferences = RR_color.id,
-  .resizeBehavior = { imageResizeType::eDiscard, {}, true }
-}, RMT_target[] = {
-  RMT_cameraTrans_staging,
-  RMT_color,
-  {//depth map, does not need it's own name because it's not linked externally.
-    .id = __LINE__,
-    .requirementId = IR_standardDepth.id,
-    .resourceReferences = RR_depth.id,
-    .resizeBehavior = { imageResizeType::eDiscard, {}, true }
-  }, {
-    .id = __LINE__,
-    .requirementId = BR_cameraData.id,
-    .resourceReferences = RR_IDL_cameraTrans
-  }};
-
-constexpr resourceMap RMS_cubeTrans = {
-  .id = __LINE__,
-  .requirementId = BRS_singleTransform.id,
-  .resourceReferences = C_updateCubeTransforms.src.id
-}, RMS_cube[] = {
-  {
-    .id = __LINE__,
-    .requirementId = BR_singleTransform.id,
-    .resourceReferences = RR_IDL_cubeTrans
-  },
-  RMS_cubeTrans,
-  cubeMesh.resourceMap_v
-};
-
-constexpr targetLayout TL_standardRender {
-  .id = __LINE__,
-  .resources = RMT_target, //pass by reference (with extra steps), so prior declaration is necessary
-  .presentImageResourceMapId = RMT_color.id
-};
-
-defineShaderModules(simpleShaderModules, //yes, size is in bytes even though code is an array of 32-bit ints. If shader code is stored in a file (as opposed to a header in this example), it will have to be TRAILING-zero-padded to 4-byte units.
-		    { basicShader_vert, sizeof(basicShader_vert), vk::ShaderStageFlagBits::eVertex },
-		    { basicShader_frag, sizeof(basicShader_frag), vk::ShaderStageFlagBits::eFragment });
-
-constexpr graphicsShaderRequirements S_simple {
-  .id = __LINE__,
-  .modules = simpleShaderModules,
-  .targetProvidedResources = RR_cameraTrans,//target is always layout set 1
-  .sourceProvidedResources = RRL_simpleSource,//source is always layout set 0
-  .cullMode = vk::CullModeFlagBits::eBack
-};
-
-constexpr renderPassRequirements RP_simple {
-  .id = __LINE__,
-  .depth = RR_depth,
-  .color = RR_color,
-  .clearDepth = true,
-  .clearColor = true,
-  .clearColorValue = { 0.1f, 0.1f, 0.1f, 1.0f },
-  .shaders = S_simple//takes a literalList of shaders, normally there'd be much more than one
-};
-
-constexpr sourceLayout SL_simple {
-  .id = __LINE__,
-  .resources = RMS_cube
-};
-
-constexpr layerRequirements L_1 {
-  .sourceLayouts = SL_simple.id,
-  .targetLayouts = TL_standardRender.id,
-  .copies = C_IDL_L1,
-  .renders = RP_simple.id
-};
-
-constexpr imageRequirements allImageRequirements[] = {
-  IR_standardDepth,
-  IR_standardColor
-};
-
-constexpr bufferRequirements allBufferRequirements[] = {
+//we'll need lists of them all later
+constexpr bufferRequirements BR_L_all[] = {
   cubeMesh.bufferRequirements_v,
   BR_cameraData,
   BRS_cameraData,
@@ -164,15 +85,159 @@ constexpr bufferRequirements allBufferRequirements[] = {
   BRS_singleTransform
 };
 
+constexpr imageRequirements IR_L_all[] = {
+  IR_standardDepth,
+  IR_standardColor
+};
+
+//next, each time a resource is used (consumed), we need a consumer object
+//some consumers are created automatically from ids we provide, and macros exist that use the line number as the id
+
+//copy between source and target are not supported, so one copy step can be reused by multiple layouts, but only one for each
+constexpr copyStep CP_transform = defineCopy(),
+	    CP_L_all[] = {
+	      CP_transform,
+	    };
+
+constexpr resourceConsumer RC_S_simple_cameraTrans = defineUBConsumer(Vertex),
+	    RC_S_simple_modelTrans = defineUBConsumer(Vertex),
+	    RC_L_S_simple_source[] = {
+	      //order here defines 'binding' layout qualifier in shader
+	      RC_S_simple_modelTrans,
+	      cubeMesh.resourceConsumer_v,//defined for convenience by the mesh wrapper
+	    };
+
+constexpr uint64_t RC_ID_RP_1_depth = __LINE__,
+	    RC_ID_RP_1_color = __LINE__,
+	    RC_ID_present_color = __LINE__;
+
+//now slots, which define what resources are created for each type of object, note the reference to the buffer/image requirements
+constexpr resourceSlot RS_camera_cameraData_staging = {
+  .id = __LINE__,
+  .requirementId = BR_S_cameraData.id,
+}, RS_camera_cameraData = {
+  .id = __LINE__,
+  .requirementId = BR_cameraData.id,
+}, RS_camera_color = {
+  .id = __LINE__,
+  .requirementId = IR_standardColor.id,
+  .resizeBehavior = resize_trackWindow_discard,
+}, RS_camera_depth = {
+  .id = __LINE__,
+  .requirementId = IR_standardDepth.id,
+  .resizeBehavior = resize_trackWindow_discard,
+}, RS_L_camera[] = {
+  RS_camera_cameraData_staging,
+  RS_camera_cameraData,
+  RS_camera_color,
+  RS_camera_depth,
+  //
+}, RS_cube_trans_staging = {
+  .id = __LINE__,
+  .requirementId = BRS_singleTransform.id,
+}, RS_cube_trans = {
+  .id = __LINE__,
+  .requirementId = BR_singleTransform.id,
+}, RS_L_cube[] = {
+  RS_cube_trans_staging,
+  RS_cube_trans,
+  cubeMesh.resourceSlot_v,
+  //
+}, RS_L_all[] = {
+  RS_camera_cameraData_staging,
+  RS_camera_cameraData,
+  RS_camera_color,
+  RS_camera_depth,
+  //
+  RS_cube_trans_staging,
+  RS_cube_trans,
+  cubeMesh.resourceSlot_v,
+};
+
+//now tie each slot to one or more consumers
+constexpr resourceReference RR_L_camera[] = {
+  { .resourceConsumerId = CP_transform.src, .resourceSlotId = RS_camera_cameraData_staging.id },
+  { .resourceConsumerId = CP_transform.dst, .resourceSlotId = RS_camera_cameraData.id },
+  { .resourceConsumerId = RC_S_simple_cameraTrans.id, .resourceSlotId = RS_camera_cameraData.id },
+  { .resourceConsumerId = RC_ID_RP_1_color, .resourceSlotId = RS_camera_color.id },
+  { .resourceConsumerId = RC_ID_present_color, .resourceSlotId = RS_camera_color.id },
+  { .resourceConsumerId = RC_ID_RP_1_depth, .resourceSlotId = RS_camera_depth.id },
+}, RR_L_cube[] = {
+  { .resourceConsumerId = CP_transform.src, .resourceSlotId = RS_cube_trans_staging.id },
+  { .resourceConsumerId = CP_transform.dst, .resourceSlotId = RS_cube_trans.id },
+  { .resourceConsumerId = RC_S_simple_modelTrans.id, .resourceSlotId = RS_cube_trans.id },
+  { .resourceConsumerId = cubeMesh.resourceConsumer_v, .resourceSlotId = cubeMesh.resourceSlot_v.id },
+};
+
+//now set up the object structures (two objects: camera and cube)
+constexpr objectLayout OL_camera = {
+  .id = __LINE__,
+  .windowConsumerId = RC_ID_present_color,//this implicitly creates a window that presents the image here by RR
+}, OL_cube = {
+  .id = __LINE__,
+}, OL_L_all[] = {
+  OL_camera,
+  OL_cube,
+};
+
+constexpr targetLayout TL_camera = {
+  .id = __LINE__,
+  .objectLayoutId = OL_camera.id,
+  .resources = RR_L_camera, //pass by reference (with extra steps), so prior declaration is necessary
+};
+
+constexpr sourceLayout SL_cube = {
+  .id = __LINE__,
+  .objectLayoutId = OL_cube.id,
+  .resources = RR_L_cube,
+};
+
+//now prep shader code
+defineShaderModules(SM_L_simple,
+		    //yes, size is in bytes even though code is an array of 32-bit ints. If shader code is stored in a file (as opposed to a header in this example), it will have to be trailing-whitespace-padded to 4-byte units. (it's code as text)
+		    { basicShader_vert, sizeof(basicShader_vert), vk::ShaderStageFlagBits::eVertex },
+		    { basicShader_frag, sizeof(basicShader_frag), vk::ShaderStageFlagBits::eFragment });
+
+//link shader to consumers
+constexpr graphicsShaderRequirements S_simple {
+  .id = __LINE__,
+  .modules = SM_L_simple,
+  .targetProvidedResources = RC_S_simple_cameraTrans,//target is always layout set 1
+  .sourceProvidedResources = RC_L_S_simple,//source is always layout set 0
+};
+
+//create render pass
+constexpr renderPassRequirements RP_1 {
+  .id = __LINE__,
+  .depth = RC_ID_RP_1_depth,
+  .color = RC_ID_RP_1_color,
+  .clearDepth = true,
+  .clearColor = true,
+  //default depth clear is to 1.0f, could be set here
+  .clearColorValue = { 0.1f, 0.1f, 0.1f, 1.0f },
+  .shaders = S_simple//takes a literalList of shaders, normally there'd be much more than one
+};
+
+//next a layer, which would usually have many more things. Use as few layers as possible
+constexpr layerRequirements L_1 {
+  .sourceLayouts = SL_cube.id,
+  .targetLayouts = TL_camera.id,
+  .copies = CP_transform.id,
+  .renders = RP_1.id,
+};
+
+//finally shove it all into the onion soup
 constexpr onionDescriptor od = {
-  .IRS = allImageRequirements,
-  .BRS = allBufferRequirements,
-  .RPRS = RP_simple,
-  .CSS = C_all,
+  .IRS = IR_L_all,
+  .BRS = BR_L_all,
+  .RSS = RS_L_all,
+  .RPRS = RP_1,
+  .CSS = CP_L_all,
   .LRS = L_1,
-  .TLS = TL_standardRender,
-  .SLS = SL_simple,
-  .GPUID = gpuId
+  .OLS = OL_L_all,
+  .TLS = TL_camera,
+  .SLS = SL_cube,
+  .GPUID = gpuId,
 };
 
 typedef WITE::onion<od> onion_t;

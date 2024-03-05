@@ -439,6 +439,7 @@ namespace WITE {
       mappedResourceTuple<allObjectResourceSlots>* allObjectResources;
       std::map<uint64_t, frameBufferBundle[maxFrameswap]> fbByRpIdByFrame;
       std::map<uint64_t, descriptorUpdateData_t<TL.resources>[maxFrameswap]> perShaderByIdByFrame;
+      uint64_t objectId;
 
       target_t(const target_t&) = delete;
       target_t() = delete;
@@ -482,14 +483,9 @@ namespace WITE {
     targetCollectionTuple<> allTargets;
 
     template<uint64_t targetId> target_t<targetId>* createTarget() {
-      scopeLock lock(&mutex);
       std::unique_ptr<target_t<targetId>>* ret = allTargets.template ofLayout<targetId>().allocate();
       if(!*ret) [[unlikely]]
 	ret->reset(new target_t<targetId>(this));
-      auto cmd = dev->getTempCmd();
-      ret->get()->reinit(frame, cmd.cmd);
-      cmd.submit();
-      cmd.waitFor();
       return ret->get();
     };
 
@@ -510,6 +506,7 @@ namespace WITE {
       onion<OD>* o;
       mappedResourceTuple<allObjectResourceSlots>* allObjectResources;
       std::map<uint64_t, descriptorUpdateData_t<SL.resources>[maxFrameswap]> perShaderByIdByFrame;
+      uint64_t objectId;
 
       source_t(const source_t&) = delete;
       source_t() = delete;
@@ -557,10 +554,6 @@ namespace WITE {
       std::unique_ptr<source_t<sourceId>>* ret = allSources.template ofLayout<sourceId>().allocate();
       if(!*ret) [[unlikely]]
 	ret->reset(new source_t<sourceId>(this));
-      auto cmd = dev->getTempCmd();
-      ret->get()->reinit(frame, cmd.cmd);
-      cmd.submit();
-      cmd.waitFor();
       return ret->get();
     };
 
@@ -591,9 +584,10 @@ namespace WITE {
       T* data;
       sourcePointerTuple<SLS.sub(1)> rest;
 
-      void createAll(onion<OD>* o, mappedResourceTuple<T::allObjectResourceSlots>* resources) {
+      void createAll(onion<OD>* o, mappedResourceTuple<T::allObjectResourceSlots>* resources, uint64_t objectId) {
 	data = o->createSource<SID>();
 	data->allObjectResources = resources;
+	data->objectId = objectId;
 	if constexpr(SLS.len > 1)
 	  rest.createAll(o, resources);
       };
@@ -621,9 +615,10 @@ namespace WITE {
       T* data;
       targetPointerTuple<TLS.sub(1)> rest;
 
-      void createAll(onion<OD>* o, mappedRetargetTuple<T::allObjectResourceslots>* resources) {
+      void createAll(onion<OD>* o, mappedRetargetTuple<T::allObjectResourceslots>* resources, uint64_t objectId) {
 	data = o->createTarget<TID>();
 	data->allObjectResources = resources;
+	data->objectId = objectId;
 	if constexpr(TLS.len > 1)
 	  rest.createAll(o, resources);
       };
@@ -653,6 +648,7 @@ namespace WITE {
       static constexpr objectLayout OL = findById(OD.OLS, objectLayoutId);
       static constexpr bool hasWindow = OL.windowConsumerId != NONE;
 
+      uint64_t objectId;
       mappedResourceTuple<RSS> resources;
       targetPointerTuple<TLS> targets;
       sourcePointerTuple<SLS> sources;
@@ -701,8 +697,9 @@ namespace WITE {
 
       void reinit(uint64_t frame, vk::CommandBuffer cmd) {
 	resources.init(frame, cmd);
-	targets.createAll(owner, &resources);
-	sources.createAll(owner, &resources);
+	objectId = od.objectIdSeed++;
+	targets.createAll(owner, &resources, objectId);
+	sources.createAll(owner, &resources, objectId);
       };
 
       void free() {
@@ -726,6 +723,24 @@ namespace WITE {
     template<size_t IDX> requires(IDX == OD.OLS.len) struct objectCollectionTuple<IDX> : std::false_type {};
 
     objectCollectionTuple<> allObjects;
+
+    template<uint64_t objectLayoutId> object_t<objectLayoutId>* create() {
+      scopeLock lock(&mutex);
+      std::unique_ptr<target_t<objectLayoutId>>* ret = allObjects.template ofLayout<objectLayoutId>().allocate();
+      if(!*ret) [[unlikely]]
+	ret->reset(new object_t<objectLayoutId>(this));
+      auto cmd = dev->getTempCmd();
+      ret->get()->reinit(frame, cmd.cmd);
+      cmd.submit();
+      cmd.waitFor();
+      return ret->get();
+    };
+
+    template<uint64_t objectLayoutId> void destroy(object_t<objectLayoutId>* d) {
+      d.free();
+      allObjects.template ofLayout<objectLayoutId>().free(d);
+#error TODO need a ptr to the UP to free ^^... maybe make it not be a UP
+    };
 
     template<size_t CNT> struct descriptorUpdateData_t {
       vk::WriteDescriptorSet writes[CNT];

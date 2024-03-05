@@ -331,6 +331,7 @@ namespace WITE {
     static std::map<hash_t, onionStaticData> allOnionData;
     std::map<uint64_t, perTargetLayout> perTL;
     std::map<uint64_t, perSourceLayout> perSL;
+    uint64_t objectIdSeed = 0;
   };
 
 }

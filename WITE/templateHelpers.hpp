@@ -13,7 +13,6 @@ namespace WITE {
   template<size_t gpuId, udm U, size_t C, uint64_t ID, bool instance = false> struct meshWrapper {
 
     static constexpr uint64_t id = ID;
-    static constexpr uint64_t objectLayoutID = ID + 1000;//use if resourceSlot_v and resourceReference_v are used
 
     static constexpr bufferRequirements bufferRequirements_v {
       .deviceId = gpuId,
@@ -28,19 +27,6 @@ namespace WITE {
       .stages = vk::ShaderStageFlagBits::eVertex,
       .access = vk::AccessFlagBits2::eVertexAttributeRead,
       .usage = { U, instance ? vk::VertexInputRate::eInstance : vk::VertexInputRate::eVertex },
-    };
-
-    static constexpr resourceSlot resourceSlot_v = {
-      .id = ID+2,
-      .requirementId = bufferRequirements_v.id,
-      .objectLayoutId = objectLayoutID,
-      .external = true,
-    };
-
-    static constexpr resourceReference resourceReference_v = {
-      .id = ID+3,
-      .resourceConsumerId = resourceConsumer_v.id,
-      .resourceSlotId = resourceSlot_v.id,
     };
 
     typedef buffer<bufferRequirements_v> buffer_t;
@@ -61,8 +47,9 @@ namespace WITE {
 
   };
 
-#define defineSimpleUniformBuffer(gpuId, size) simpleUB<gpuId, __LINE__, size>::value
+  constexpr resizeBehavior resize_trackWindow_discard { imageResizeType::eDiscard, {}, true };
 
+#define defineSimpleUniformBuffer(gpuId, size) simpleUB<gpuId, __LINE__, size>::value
   template<size_t GPUID, uint64_t ID, uint32_t size> struct simpleUB {
     static constexpr bufferRequirements value {
       .deviceId = GPUID,
@@ -74,7 +61,6 @@ namespace WITE {
   };
 
 #define defineSimpleStorageBuffer(gpuId, size) simpleSB<gpuId, __LINE__, size>::value
-
   template<size_t GPUID, uint64_t ID, uint32_t size> struct simpleSB {
     static constexpr bufferRequirements value {
       .deviceId = GPUID,
@@ -86,7 +72,6 @@ namespace WITE {
   };
 
 #define defineSingleTransform(gpuId) singleTransform<gpuId, __LINE__>::value
-
   template<size_t GPUID, uint64_t ID> struct singleTransform {
     static constexpr bufferRequirements value {
       .deviceId = GPUID,
@@ -98,7 +83,6 @@ namespace WITE {
   };
 
 #define defineComputeDepth(gpuId) computeDepth<gpuId, __LINE__>::value
-
   template<size_t GPUID, uint64_t ID> struct computeDepth {
     static constexpr imageRequirements value {
       .deviceId = GPUID,
@@ -111,7 +95,6 @@ namespace WITE {
   };
 
 #define defineSimpleDepth(gpuId) simpleDepth<gpuId, __LINE__>::value
-
   template<size_t GPUID, uint64_t ID> struct simpleDepth {
     static constexpr imageRequirements value {
       .deviceId = GPUID,
@@ -123,7 +106,6 @@ namespace WITE {
   };
 
 #define defineSimpleColor(gpuId) simpleColor<gpuId, __LINE__>::value
-
   template<size_t GPUID, uint64_t ID> struct simpleColor {
     static constexpr imageRequirements value {
       .deviceId = GPUID,
@@ -139,17 +121,13 @@ namespace WITE {
   template<uint64_t ID> struct simpleCopy {
     static constexpr copyStep value {
       .id = ID,
-      .src = {
-	.id = ID+1
-      },
-      .dst = {
-	.id = ID+2
-      },
+      .src = ID+1,
+      .dst = ID+2,
     };
   };
 
 #define defineClear(...) simpleClear<vk::ClearValue {{ __VA_ARGS__ }}, __LINE__ * 1000000>::value
-  //yeah there's not much to this, just a crosswalk
+  //not much to this, either
   template<vk::ClearValue CV, uint64_t ID> struct simpleClear {
     static constexpr clearStep value {
       .id = ID,
@@ -160,54 +138,8 @@ namespace WITE {
     };
   };
 
-#define defineSimpleDepthReference() simpleDepthReference<__LINE__>::value
-
-  template<uint64_t ID> struct simpleDepthReference {
-    static constexpr resourceConsumer value {
-      .id = ID,
-      .stages = vk::ShaderStageFlagBits::eFragment,
-      .access = vk::AccessFlagBits2::eDepthStencilAttachmentWrite | vk::AccessFlagBits2::eDepthStencilAttachmentRead,
-      .usage = { vk::DescriptorType::eStorageImage }
-    };
-  };
-
-#define defineComputeDepthReference() computeDepthReference<__LINE__>::value
-
-  template<uint64_t ID> struct computeDepthReference {
-    static constexpr resourceConsumer value {
-      .id = ID,
-      .stages = vk::ShaderStageFlagBits::eCompute,
-      .access = vk::AccessFlagBits2::eShaderStorageWrite | vk::AccessFlagBits2::eShaderStorageRead,
-      .usage = { vk::DescriptorType::eStorageImage }
-    };
-  };
-
-#define defineSimpleColorReference() simpleColorReference<__LINE__>::value
-
-  template<uint64_t ID> struct simpleColorReference {
-    static constexpr resourceConsumer value {
-      .id = ID,
-      .stages = vk::ShaderStageFlagBits::eFragment,
-      .access = vk::AccessFlagBits2::eColorAttachmentWrite
-    };
-  };
-
-#define defineComputeColorReference() computeColorReference<__LINE__>::value
-
-  template<uint64_t ID> struct computeColorReference {
-    static constexpr resourceConsumer value {
-      .id = ID,
-      .stages = vk::ShaderStageFlagBits::eCompute,
-      .access = vk::AccessFlagBits2::eShaderStorageWrite,
-      .usage = { vk::DescriptorType::eStorageImage }
-    };
-  };
-
-#define defineUBReferenceAt(ST) simpleUBReference<__LINE__, ST>::value
-#define defineUBReferenceAtVertex() defineUBReferenceAt(vk::ShaderStageFlagBits::eVertex)
-#define defineUBReferenceAtCompute() defineUBReferenceAt(vk::ShaderStageFlagBits::eCompute)
-
-  template<uint64_t ID, vk::ShaderStageFlagBits ST> struct simpleUBReference {
+#define defineUBConsumer(ST) simpleUBConsumer<__LINE__, vk::ShaderStageFlagBits::e ##ST>::value
+  template<uint64_t ID, vk::ShaderStageFlagBits ST> struct simpleUBConsumer {
     static constexpr resourceConsumer value {
       .id = ID,
       .stages = ST,
@@ -216,9 +148,8 @@ namespace WITE {
     };
   };
 
-#define defineSBReadonlyReferenceAt(ST) simpleStorageReadReference<__LINE__, ST>::value
-
-  template<uint64_t ID, vk::ShaderStageFlagBits ST> struct simpleStorageReadReference {
+#define defineSBReadonlyConsumer(ST) simpleStorageReadConsumer<__LINE__, vk::ShaderStageFlagBits::e ##ST>::value
+  template<uint64_t ID, vk::ShaderStageFlagBits ST> struct simpleStorageReadConsumer {
     static constexpr resourceConsumer value {
       .id = ID,
       .stages = ST,
@@ -228,10 +159,8 @@ namespace WITE {
     };
   };
 
-#define defineSamplerReference() defineSamplerReferenceAt(vk::ShaderStageFlagBits::eFragment)
-#define defineSamplerReferenceAt(ST) samplerReference<__LINE__, ST>::value
-
-  template<uint64_t ID, vk::ShaderStageFlagBits ST> struct samplerReference {
+#define defineSamplerConsumerAt(ST) samplerConsumer<__LINE__, vk::ShaderStageFlagBits::e ##ST>::value
+  template<uint64_t ID, vk::ShaderStageFlagBits ST> struct samplerConsumer {
     static constexpr resourceConsumer value {
       .id = ID,
       .stages = ST,

@@ -79,8 +79,8 @@ namespace WITE {
   struct resourceReference {
     uint64_t resourceConsumerId;//FK to exactly one of: copyStep.src/dst, resourceConsumer.id, clearStep.id
     uint64_t resourceSlotId;
-    unifiedSubresource subresource;
     uint8_t frameLatency = 0; //must be < requirement.frameswapCount. Generally 0 is the one being written this frame, 1 is the one that was written last frame.
+    unifiedSubresource subresource;
   };
 
   enum class imageResizeType { eNone, eBlit, eClear, eDiscard };
@@ -196,67 +196,6 @@ namespace WITE {
     literalList<sourceLayout> SLS;
     uint64_t GPUID;
   };
-
-  /*
-note: this is missing some stuff but you get the idea:
-onion
-  >= 0 image requirements
-  >= 0 buffer requirements
-  compute shader
-    >=0 source resource references
-    >=0 target resource references
-    (no linkage, cannot attach)
-    1 command buffer
-  >= 0 render pass
-    1 shader target linkage
-      target resource reference for each of
-        1 depthStencil
-        1 color
-    >= 1 shader
-      >= 1 shader module
-      >= 0 target resource references
-        for resources not in linkage (like projection transforms)
-      >= 0 source resource references
-    1 command buffer
-  >= 0 copy command
-    src resource reference
-    dst resource reference
-      must be same layout owner (source or target) as src id
-    1 of: image/image, image/buffer, buffer/image, buffer/buffer
-      dynamic by resource reference?
-    subrange?
-    1 command buffer
-  >= 1 layer
-    >= 0 source layout ids
-    >= 0 target layout ids
-    all steps executed in the order they appear
-    depending on which layouts are provided, one of:
-      perSource
-        >= 0 copy command ids
-          cannot have per-target resources
-        >= 0 compute shader ids
-          cannot have per-target resources
-      perSourcePerTarget
-        >= 0 copy command ids
-        >= 0 render pass ids
-        >= 0 compute shader ids
-      perTarget
-        >= 0 copy command ids
-          cannot have per-source resources
-        >= 0 render pass ids
-          requires target resource
-          cannot have per-source resources
-          example: hud overlay
-        >= 0 compute shader ids
-          cannot have per-source resources
-  >= 0 target layouts
-    >= 1 resource map
-      >= 1 resource reference id
-  >= 0 source layouts
-    >= 1 resource map
-      see target layout
-
-   */
 
 }
 

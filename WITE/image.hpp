@@ -64,14 +64,14 @@ namespace WITE {
       frameCiUpdated = frame;
     };
 
-    template<resourceReference RR> inline void applyPendingResize(uint64_t frame, vk::CommandBuffer cmd, garbageCollector& gc) {
-      static constexpr imageResizeBehavior B = R.resizeBehavior;
-      static constexpr vk::ImageLayout layout = imageLayoutFor(RR.access);
+    template<resizeBehavior_t B, vk::AccessFlags2 A>
+    inline void applyPendingResize(uint64_t frame, vk::CommandBuffer cmd, garbageCollector& gc) {
+      static constexpr vk::ImageLayout layout = imageLayoutFor(A);
       size_t idx = frameImageIdx(frame);
       ASSERT_TRAP(frame >= frameImageCreated[idx], "image creation framestamp is in the future");
       if(frameCiUpdated <= frameImageCreated[idx])
 	return;
-      if constexpr(B.type == imageResizeType::eNone) {
+      if constexpr(B.image.type == imageResizeType::eNone) {
 	WARN("Resize is pending but ignored because resize behavior is None. frame size updated: ", frameCiUpdated, "; frame image created: ", frameImageCreated[idx]);
 	return;
       } else {
@@ -91,9 +91,9 @@ namespace WITE {
 	vk::ImageMemoryBarrier2 phase2 = newToOut;
 	vk::DependencyInfo di;
 	static constexpr vk::ImageSubresourceRange SR = getAllInclusiveSubresource(R);
-	if constexpr(B.type == imageResizeType::eBlit || B.type == imageResizeType::eClear) {
+	if constexpr(B.image.type == imageResizeType::eBlit || B.image.type == imageResizeType::eClear) {
 	  static_assert(R.usage & vk::ImageUsageFlagBits::eTransferDst);//need transfer dst to blit or clear
-	  static constexpr uint32_t phase1Count = B.type == imageResizeType::eBlit ? 2 : 1;
+	  static constexpr uint32_t phase1Count = B.image.type == imageResizeType::eBlit ? 2 : 1;
 	  vk::ImageMemoryBarrier2 phase1[phase1Count] = { newToDst, oldToSrc };
 	  phase1[0].image = vkImage[idx];
 	  if constexpr(phase1Count > 1)
@@ -102,15 +102,15 @@ namespace WITE {
 	  di.pImageMemoryBarriers = phase1;
 	  di.imageMemoryBarrierCount = phase1Count;
 	  cmd.pipelineBarrier2(&di);
-	  if constexpr(B.type == imageResizeType::eBlit) {
+	  if constexpr(B.image.type == imageResizeType::eBlit) {
 	    static_assert(R.usage & vk::ImageUsageFlagBits::eTransferSrc);//need transfer src to blit
 	    vk::ImageBlit region { SR, { { 0, 0 }, oldExtent }, SR, { { 0, 0 }, ci.extent } };
 	    cmd.blitImage(oldImage, vk::ImageLayout::eTransferSrcOptimal, vkImage[idx], vk::ImageLayout::eTransferDstOptimal, 1, &region, vk::Filter::eLinear);
-	  } else if constexpr(B.type == imageResizeType::eClear) {
+	  } else if constexpr(B.image.type == imageResizeType::eClear) {
 	    if constexpr(R.usage & vk::ImageUsageFlagBits::eDepthStencilAttachment) {
-	      cmd.clearDepthStencilImage(vkImage[idx], vk::ImageLayout::eTransferDstOptimal, B.clearValue.depthStencil, 1, &SR);
+	      cmd.clearDepthStencilImage(vkImage[idx], vk::ImageLayout::eTransferDstOptimal, B.image.clearValue.depthStencil, 1, &SR);
 	    } else {
-	      cmd.clearColorImage(vkImage[idx], vk::ImageLayout::eTransferDstOptimal, B.clearValue.color, 1, &SR);
+	      cmd.clearColorImage(vkImage[idx], vk::ImageLayout::eTransferDstOptimal, B.image.clearValue.color, 1, &SR);
 	    }
 	  }
 	} else {

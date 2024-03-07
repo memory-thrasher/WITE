@@ -8,30 +8,30 @@
 
 namespace WITE {
 
-  template<class T> class iterableRecyclingPool {
+  template<class T, class... Args> class iterableRecyclingPool {
   private:
     static_assert(std::is_default_constructible<T>::value);
     std::deque<T> store;
     std::stack<T*> available;
     std::vector<T*> allocated;
+    std::tuple<Args...> args;
   public:
 
-    iterableRecyclingPool(size_t initialSize) :
-      store(initialSize)
+    iterableRecyclingPool(Args... args, size_t initialSize = 0) :
+      store(initialSize),
+      args(std::forward<Args>(args)...)
     {
       for(size_t i = 0;i < initialSize;i++)
 	available.push(&store[i]);
     };
 
-    iterableRecyclingPool() : iterableRecyclingPool(0) {};
-
     T* allocate() {
       T* ret;
-      if(available.size()) {
+      if(available.size()) [[likely]] {
 	ret = available.top();
 	available.pop();
       } else {
-	ret = &store.emplace_back();
+	ret = &store.emplace_back(std::forward<Args>(args)...);
       }
       allocated.push_back(ret);
       return ret;

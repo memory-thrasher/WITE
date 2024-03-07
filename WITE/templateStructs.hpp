@@ -46,7 +46,7 @@ namespace WITE {
     };
     constexpr resourceUsage(vk::DescriptorType dt, vk::SamplerCreateInfo sci = {}) : type(resourceUsageType::eDescriptor), asDescriptor({ dt, sci }) {};
     constexpr resourceUsage(udm format, vk::VertexInputRate vir) : type(resourceUsageType::eVertex), asVertex({ format, vir }) {};
-    constexpr resourceUsage() : type(resourceUsageType::eNone) {};
+    constexpr resourceUsage() : type(resourceUsageType::eOther) {};
     constexpr resourceUsage(const resourceUsage&) = default;
   };
 
@@ -71,7 +71,7 @@ namespace WITE {
     };
     constexpr unifiedSubresource() : isDefault(true), bufferRange({0, VK_WHOLE_SIZE}) {};
     constexpr unifiedSubresource(vk::ImageSubresourceRange imageRange, vk::ImageViewType viewType = vk::ImageViewType::e2D) :
-      isDefault(false), range(imageRange), viewType(viewType) {};
+      isDefault(false), image({imageRange, viewType}) {};
     constexpr unifiedSubresource(vk::DeviceSize offset, vk::DeviceSize length) :
       isDefault(false), bufferRange({offset, length}) {};
   };

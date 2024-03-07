@@ -249,8 +249,8 @@ int main(int argc, char** argv) {
   gpu::setOptions(argc, argv);
   gpu::init("Simple render test");
   primaryOnion = std::make_unique<onion_t>();
-  auto cubeMeshBuf = cubeMesh.spawnMeshBuffer();//note: unique_ptr
-  auto camera = primaryOnion->createTarget<TL_standardRender.id>();
+  auto cubeMeshBuf = cubeMesh.spawnMeshBuffer();//note: pointer, managed by onion
+  auto camera = primaryOnion->create<TL_standardRender.id>();
   auto cube = primaryOnion->createSource<SL_simple.id>();
   cube->set<cubeMesh.resourceMap_v.id>(cubeMeshBuf.get());
   glm::vec3 rotAxis = glm::normalize(glm::dvec3(0, 1, 0));

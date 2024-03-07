@@ -37,11 +37,11 @@ namespace WITE {
   };
 
   consteval hash_t hash(const onionDescriptor& od) {
-    return hash(std::tie(od.IRS, od.BRS, od.CSRS, od.RPRS, od.CSS, od.LRS, od.TLS, od.SLS, od.GPUID));
+    return hash(std::tie(od.IRS, od.BRS, od.RSS, od.CSRS, od.RPRS, od.CLS, od.CSS, od.LRS, od.OLS, od.TLS, od.SLS, od.GPUID));
   };
 
   consteval hash_t hash(const layerRequirements& lr) {
-    return hash(std::tie(lr.sourceLayouts, lr.targetLayouts, lr.copies, lr.renders, lr.computeShaders));
+    return hash(std::tie(lr.clears, lr.copies, lr.renders, lr.computeShaders));
   };
 
   template<class T> consteval hash_t hash(const vk::Flags<T> t) {

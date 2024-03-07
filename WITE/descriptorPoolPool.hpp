@@ -18,24 +18,24 @@ namespace WITE {
     virtual void free(vk::DescriptorSet f) = 0;
   };
 
-  template<literalList<resourceReference> allRRS, uint64_t GPUID>
+  template<literalList<resourceConsumer> allRCS, uint64_t GPUID>
   struct descriptorPoolPool : public descriptorPoolPoolBase {
 
     struct isDescriptor {
-      constexpr bool operator()(resourceReference rr) {
-	return rr.usage.type == resourceUsageType::eDescriptor;
+      constexpr bool operator()(resourceConsumer rc) {
+	return rc.usage.type == resourceUsageType::eDescriptor;
       };
     };
-    static constexpr auto RRS = where<resourceReference, allRRS, isDescriptor>();
+    static constexpr auto RCS = where<resourceConsumer, allRCS, isDescriptor>();
     static constexpr uint32_t batchSize = 256;
-    static constexpr copyableArray<vk::DescriptorSetLayoutBinding, RRS.LENGTH> bindings = [](size_t i) {
-      return vk::DescriptorSetLayoutBinding { uint32_t(i), RRS[i].usage.asDescriptor.descriptorType, 1, RRS[i].stages };
+    static constexpr copyableArray<vk::DescriptorSetLayoutBinding, RCS.LENGTH> bindings = [](size_t i) {
+      return vk::DescriptorSetLayoutBinding { uint32_t(i), RCS[i].usage.asDescriptor.descriptorType, 1, RCS[i].stages };
     };
-    static constexpr vk::DescriptorSetLayoutCreateInfo dslci { {}, RRS.LENGTH, bindings.ptr() };
-    static constexpr copyableArray<vk::DescriptorPoolSize, RRS.LENGTH> poolSizes = [](size_t i) {
-      return vk::DescriptorPoolSize { RRS[i].usage.asDescriptor.descriptorType, 1 };
+    static constexpr vk::DescriptorSetLayoutCreateInfo dslci { {}, RCS.LENGTH, bindings.ptr() };
+    static constexpr copyableArray<vk::DescriptorPoolSize, RCS.LENGTH> poolSizes = [](size_t i) {
+      return vk::DescriptorPoolSize { RCS[i].usage.asDescriptor.descriptorType, 1 };
     };
-    static constexpr vk::DescriptorPoolCreateInfo dpci { {}, batchSize, RRS.LENGTH, poolSizes.ptr() };
+    static constexpr vk::DescriptorPoolCreateInfo dpci { {}, batchSize, RCS.LENGTH, poolSizes.ptr() };
 
   private:
     gpu& dev;

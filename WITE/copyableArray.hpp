@@ -28,6 +28,7 @@ namespace WITE {
     };//makes an instance for each call to operator with the same arguments
 
     static constexpr size_t LENGTH = LEN;
+    static constexpr size_t len = LENGTH;//for drop-in replacement of literalList
 
     alignas(T) std::array<T, LEN> data;
 

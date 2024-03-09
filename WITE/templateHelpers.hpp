@@ -47,7 +47,7 @@ namespace WITE {
 
   };
 
-  constexpr resizeBehavior resize_trackWindow_discard { imageResizeType::eDiscard, {}, true };
+  constexpr resizeBehavior_t resize_trackWindow_discard { imageResizeType::eDiscard, {}, true };
 
 #define defineSimpleUniformBuffer(gpuId, size) simpleUB<gpuId, __LINE__, size>::value
   template<size_t GPUID, uint64_t ID, uint32_t size> struct simpleUB {
@@ -126,14 +126,11 @@ namespace WITE {
     };
   };
 
-#define defineClear(...) simpleClear<vk::ClearValue {{ __VA_ARGS__ }}, __LINE__ * 1000000>::value
+#define defineClear(...) simpleClear<vk::ClearValue {{ __VA_ARGS__ }}, __LINE__>::value
   //not much to this, either
   template<vk::ClearValue CV, uint64_t ID> struct simpleClear {
     static constexpr clearStep value {
       .id = ID,
-      .rr = {
-	.id = ID+1
-      },
       .clearValue = CV,
     };
   };
@@ -154,7 +151,6 @@ namespace WITE {
       .id = ID,
       .stages = ST,
       .access = vk::AccessFlagBits2::eShaderStorageRead,
-      .frameLatency = 1,
       .usage = { vk::DescriptorType::eStorageBuffer }
     };
   };
@@ -165,7 +161,6 @@ namespace WITE {
       .id = ID,
       .stages = ST,
       .access = vk::AccessFlagBits2::eShaderSampledRead,
-      .frameLatency = 0,
       .usage = { vk::DescriptorType::eCombinedImageSampler, { {}, vk::Filter::eNearest, vk::Filter::eNearest, vk::SamplerMipmapMode::eNearest } }
     };
   };

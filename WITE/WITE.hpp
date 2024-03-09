@@ -11,7 +11,7 @@
 #include "buffer.hpp"
 #include "window.hpp"
 #include "templateHelpers.hpp"
-#include "cubeFactory.hpp"
+//#include "cubeFactory.hpp"
 #include "winput.hpp"
 #include "shutdown.hpp"
 

@@ -139,7 +139,7 @@ namespace WITE {
     const shaderModule* module;//must be ptr or this struct becomes unusable in template args
     literalList<resourceConsumer> targetProvidedResources;
     literalList<resourceConsumer> sourceProvidedResources;
-    uint64_t primaryOutputReferenceId = NONE;
+    uint64_t primaryOutputSlotId = NONE;
     //TODO more flexible stride. Need a square option: workgroupX = max(image.xy / strideX)
     //callback that takes resource size and returns workgroup size
     uint32_t strideX = 1, strideY = 1, strideZ = 1;//should probably be a multiple of local_size in shader

@@ -1168,21 +1168,23 @@ namespace WITE {
 	    vk::DeviceSize vertices, instances;
 	    if constexpr(vb) {
 	      static constexpr resourceReference vbm = *findResourceReferenceToConsumer(SL.resources, vb->id); //compiler-time error: dereferencing null if the source did not provide a reference to the vertex buffer used by the shader
+	      static constexpr resourceSlot vbs = findById(OD.RSS, vbm.resourceSlotId);
 	      verts[0] = source->template get<vbm.resourceSlotId>().frameBuffer(frame + vbm.frameLatency);
-	      offsets[0] = vb->subresource.bufferRange.offset;
+	      offsets[0] = vbm.subresource.bufferRange.offset;
 	      vertices = GSR.vertexCountOverride ? GSR.vertexCountOverride :
-		vb->subresource.bufferRange.length ? vb->subresource.bufferRange.length :
-		findById(OD.BRS, vbm.requirementId).size / sizeofUdm<vb->usage.asVertex.format>();
+		vbm.subresource.bufferRange.length ? vbm.subresource.bufferRange.length :
+		findById(OD.BRS, vbs.requirementId).size / sizeofUdm<vb->usage.asVertex.format>();
 	    } else {
 	      vertices = GSR.vertexCountOverride;
 	    }
 	    if constexpr(ib) {
-	      static constexpr resourceMap ibm = *findResourceReferenceToConsumer(SL.resources, ib->id); //compiler-time error: dereferencing null if the source did not provide a reference to the instance buffer used by the shader
-	      verts[vibCount-1] = source->template get<ibm.resourceSlotId>().frameBuffer(frame + ib->frameLatency);
-	      offsets[vibCount-1] = ib->subresource.bufferRange.offset;
+	      static constexpr resourceReference ibm = *findResourceReferenceToConsumer(SL.resources, ib->id); //compiler-time error: dereferencing null if the source did not provide a reference to the instance buffer used by the shader
+	      static constexpr resourceSlot ibs = findById(OD.RSS, ibm.resourceSlotId);
+	      verts[vibCount-1] = source->template get<ibm.resourceSlotId>().frameBuffer(frame + ibm.frameLatency);
+	      offsets[vibCount-1] = ibm.subresource.bufferRange.offset;
 	      instances = GSR.instanceCountOverride ? GSR.instanceCountOverride :
-		ib->subresource.bufferRange.length ? ib->subresource.bufferRange.length :
-		findById(OD.BRS, ibm.requirementId).size / sizeofUdm<ib->usage.asVertex.format>();
+		ibm.subresource.bufferRange.length ? ibm.subresource.bufferRange.length :
+		findById(OD.BRS, ibs.requirementId).size / sizeofUdm<ib->usage.asVertex.format>();
 	    } else {
 	      //but instances defaults to 1
 	      instances = GSR.instanceCountOverride ? GSR.instanceCountOverride : 1;
@@ -1221,7 +1223,7 @@ namespace WITE {
 	static constexpr vk::PipelineMultisampleStateCreateInfo multisample = { {}, vk::SampleCountFlagBits::e1, 0, 0, NULL, 0, 0 };
 	// static constexpr vk::StencilOpState stencilOp = {vk::StencilOp::eKeep, vk::StencilOp::eKeep, vk::StencilOp::eKeep,
 	//   vk::CompareOp::eAlways, 0, 0, 0 };
-	static constexpr vk::PipelineDepthStencilStateCreateInfo depth = { {}, RP.depth.id != NONE, true, vk::CompareOp::eLessOrEqual };//not set: depth bounds and stencil test stuff
+	static constexpr vk::PipelineDepthStencilStateCreateInfo depth = { {}, RP.depth != NONE, true, vk::CompareOp::eLessOrEqual };//not set: depth bounds and stencil test stuff
 	static constexpr vk::PipelineColorBlendStateCreateInfo blend = { {}, false, vk::LogicOp::eNoOp, 1, &GSR.blend, { 1, 1, 1, 1 } };
 	static constexpr vk::DynamicState dynamics[] = { vk::DynamicState::eScissor, vk::DynamicState::eViewport };
 	static constexpr vk::PipelineDynamicStateCreateInfo dynamic = { {}, 2, dynamics };
@@ -1270,10 +1272,10 @@ namespace WITE {
 		      "failed to create render pass ", TL.id, " ", RP.id);
 	  }
 	  auto& color = target.template get<colorRR->resourceSlotId>();
-	  static constexpr resourceSlot colorRS = findById(OD.RSS, colorRS.id);
+	  static constexpr resourceSlot colorRS = findById(OD.RSS, colorRR->resourceSlotId);
 	  frameBufferBundle& fbb = target.fbByRpIdByFrame[RP.id][frame % target_t<TL.id>::maxFrameswap];
 	  bool depthOutdated;
-	  if constexpr(RP.depth.id != NONE)
+	  if constexpr(RP.depth != NONE)
 	    depthOutdated = fbb.fb && fbb.lastUpdatedFrame < target.template get<depthRR->resourceSlotId>().frameUpdated(frame + depthRR->frameLatency);
 	  else
 	    depthOutdated = false;
@@ -1343,31 +1345,35 @@ namespace WITE {
       };
     };
 
-    template<uint64_t RCID, uint64_t TLID, uint64_t SLID>
-    static consteval resourceReference resolveReference() {
-      const resourceReference* RR;
-      if constexpr(TLID != NONE)
-	RR = findResourceReferenceToConsumer(findById(OD.TLS, TLID).resources, RCID);
-      if constexpr(SLID != NONE)
-	if(RR == NULL)
-	  RR = findResourceReferenceToConsumer(findById(OD.SLS, SLID).resources, RCID);
-      return *RR;//error bc null if neither layout provides it
-    };
+    // template<uint64_t RCID, uint64_t TLID, uint64_t SLID>
+    // static consteval resourceReference resolveReference() {
+    //   const resourceReference* RR;
+    //   if constexpr(TLID != NONE)
+    // 	RR = findResourceReferenceToConsumer(findById(OD.TLS, TLID).resources, RCID);
+    //   if constexpr(SLID != NONE)
+    // 	if(RR == NULL)
+    // 	  RR = findResourceReferenceToConsumer(findById(OD.SLS, SLID).resources, RCID);
+    //   return *RR;//error bc null if neither layout provides it
+    // };
 
     template<computeShaderRequirements CS, uint64_t TID, uint64_t SID> static inline void getWorkgroupSize(vk::Extent3D& workgroupSize, target_t<TID>* target, source_t<SID>* source, uint64_t frameMod) {
-      static constexpr resourceReference primaryOutputRR = resolveReference<CS.primaryOutputReferenceId, TID, SID>();
-      static constexpr resourceSlot primaryOutputRS = findById(OD.RSS, primaryOutputRR.resourceSlotId);
-      if constexpr(containsId(OD.IRS, primaryOutputRR.requirementId)) {
+      static constexpr resourceSlot RS = findById(OD.RSS, CS.primaryOutputSlotId);
+      static constexpr targetLayout TL = TID != NONE ? findById(OD.TLS, TID) : targetLayout();
+      static constexpr sourceLayout SL = SID != NONE ? findById(OD.SLS, TID) : sourceLayout();
+      static constexpr const resourceReference* TRR = findResourceReferenceToConsumer(TL.resources, RS.id);
+      static constexpr const resourceReference* SRR = findResourceReferenceToConsumer(SL.resources, RS.id);
+      static_assert(TRR || SRR);
+      if constexpr(containsId(OD.IRS, RS.requirementId)) {//is image
 	vk::Extent3D imageSize;
-	if constexpr(TID != NONE && containsId(findById(OD.TLS, TID).resources, primaryOutputRR.id))
-	  imageSize = target->template get<primaryOutputRR.resourceSlotId>().getSizeExtent(frameMod);
+	if constexpr(TRR)
+	  imageSize = target->template get<RS.id>().getSizeExtent(frameMod);
 	else
-	  imageSize = source->template get<primaryOutputRR.resourceSlotId>().getSizeExtent(frameMod);
+	  imageSize = source->template get<RS.id>().getSizeExtent(frameMod);
 	workgroupSize.width = (imageSize.width - 1) / CS.strideX + 1;
 	workgroupSize.height = (imageSize.height - 1) / CS.strideY + 1;
 	workgroupSize.depth = (imageSize.depth - 1) / CS.strideZ + 1;
       } else {
-	workgroupSize.width = (findById(OD.BRS, primaryOutputRS.requirementId).size - 1) / CS.strideX + 1;
+	workgroupSize.width = (findById(OD.BRS, RS.requirementId).size - 1) / CS.strideX + 1;
 	workgroupSize.height = 1;
 	workgroupSize.depth = 1;
       }
@@ -1475,11 +1481,11 @@ namespace WITE {
 	recordBarriersForTime<resourceBarrierTiming { .layerIdx = layerIdx, .substep = substep_e::compute, .shaderId = CSS[0] }>(cmd);
 	static constexpr computeShaderRequirements CS = findById(OD.CSRS, CSS[0]);
 	if constexpr(CS.targetProvidedResources.len == 0)
-	  recordComputeDispatches_sourceOnly<CS, LR.sourceLayouts>(cmd);
+	  recordComputeDispatches_sourceOnly<CS, OD.SLS>(cmd);
 	else if constexpr(CS.sourceProvidedResources.len == 0)
-	  recordComputeDispatches_targetOnly<CS, LR.targetLayouts>(cmd);
+	  recordComputeDispatches_targetOnly<CS, OD.TLS>(cmd);
 	else
-	  recordComputeDispatches_nested<CS, LR.targetLayouts, LR.sourceLayouts>(cmd);
+	  recordComputeDispatches_nested<CS, OD.TLS, OD.SLS>(cmd);
 	recordComputeDispatches<layerIdx, LR, CSS.sub(1)>(cmd);
       }
     };
@@ -1493,7 +1499,7 @@ namespace WITE {
 	recordClears<LR.clears, LR>(cmd);
 	recordBarriersForTime<resourceBarrierTiming { .layerIdx = layerIdx, .substep = substep_e::barrier2 }>(cmd);
 	if constexpr(LR.renders)
-	  recordRenders<layerIdx, LR.targetLayouts, LR>(cmd);
+	  recordRenders<layerIdx, OD.TLS, LR>(cmd);
 	recordBarriersForTime<resourceBarrierTiming { .layerIdx = layerIdx, .substep = substep_e::barrier3 }>(cmd);
 	recordComputeDispatches<layerIdx, LR, LR.computeShaders>(cmd);
 	recordBarriersForTime<resourceBarrierTiming { .layerIdx = layerIdx, .substep = substep_e::barrier4 }>(cmd);

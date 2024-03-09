@@ -38,6 +38,10 @@ namespace WITE {
 
     static constexpr size_t cmdFrameswapCount = max(3, frameswapLCMAll());
 
+    static constexpr auto allTargetIds = map<targetLayout, uint64_t, OD.TLS>([](const targetLayout& l){ return l.id; });
+    static constexpr auto allSourceIds = map<sourceLayout, uint64_t, OD.SLS>([](const sourceLayout& l){ return l.id; });
+    static constexpr auto allLayoutIds = concat(allTargetIds, allSourceIds);
+
     uint64_t frame = 1;//can't signal a timeline semaphore with 0
     syncLock mutex;
     vk::CommandPool cmdPool;
@@ -73,7 +77,7 @@ namespace WITE {
 
     static consteval vk::ImageSubresourceRange getSubresource(const uint64_t IRID, const resourceReference& RR) {
       if(!RR.subresource.isDefault)
-	return RR.subresource.imageRange;
+	return RR.subresource.image.range;
       else
 	return getAllInclusiveSubresource(findById(OD.IRS, IRID));
     };
@@ -83,7 +87,7 @@ namespace WITE {
 	for(const resourceReference& rr : tl.resources)
 	  if(rr.resourceSlotId == rsId && rr.resourceConsumerId == consId)
 	    return true;
-      for(const targetLayout& sl : OD.SLS)
+      for(const sourceLayout& sl : OD.SLS)
 	for(const resourceReference& rr : sl.resources)
 	  if(rr.resourceSlotId == rsId && rr.resourceConsumerId == consId)
 	    return true;
@@ -92,7 +96,7 @@ namespace WITE {
 
     //NOTE: A source/target layout is not allowed to name two resources referencing the same usage
     static consteval const resourceReference* findResourceReferenceToSlot(literalList<resourceReference> RRS, uint64_t slotId) {
-      if(id == NONE) return NULL;
+      if(slotId == NONE) return NULL;
       for(const resourceReference& RS : RRS)
 	if(RS.resourceSlotId == slotId)
 	  return &RS;
@@ -101,7 +105,7 @@ namespace WITE {
 
     //NOTE: A source/target layout is not allowed to name two resources referencing the same usage
     static consteval const resourceReference* findResourceReferenceToConsumer(literalList<resourceReference> RRS, uint64_t consumerId) {
-      if(id == NONE) return NULL;
+      if(consumerId == NONE) return NULL;
       for(const resourceReference& RS : RRS)
 	if(RS.resourceConsumerId == consumerId)
 	  return &RS;
@@ -124,12 +128,12 @@ namespace WITE {
     static consteval std::vector<resourceAccessTime> findUsages(uint64_t resourceSlotId) {
       std::vector<resourceAccessTime> ret;
       tempMap<uint64_t, resourceReference> referencesByConsumerId;
-      const resourceSlot RS = findById(OD.RSS, resourceSlotId);
+      // const resourceSlot RS = findById(OD.RSS, resourceSlotId);
       for(const targetLayout& tl : OD.TLS)
 	for(const resourceReference& rr : tl.resources)
 	  if(rr.resourceSlotId == resourceSlotId)
 	    referencesByConsumerId[rr.resourceConsumerId] = rr;
-      for(const targetLayout& sl : OD.SLS)
+      for(const sourceLayout& sl : OD.SLS)
 	for(const resourceReference& rr : sl.resources)
 	  if(rr.resourceSlotId == resourceSlotId)
 	    referencesByConsumerId[rr.resourceConsumerId] = rr;
@@ -157,9 +161,9 @@ namespace WITE {
 	  shaderIdx = 1;//first shader per pass is idx 1 so 0 can mean "before the first shader" (for attachments)
 	  const auto& pass = findById(OD.RPRS, passId);
 	  if(referencesByConsumerId.contains(pass.depth))
-	    ret.push_back({ layerIdx, substep_e::render, consumerForDepthAttachment(pass.depth), referencesByConsumerId[pass.depth.id].frameLatency, passIdx, passId });
+	    ret.push_back({ layerIdx, substep_e::render, consumerForDepthAttachment(pass.depth), referencesByConsumerId[pass.depth].frameLatency, passIdx, passId });
 	  if(referencesByConsumerId.contains(pass.color))
-	    ret.push_back({ layerIdx, substep_e::render, consumerForColorAttachment(pass.color), referencesByConsumerId[pass.color.id].frameLatency, passIdx, passId });
+	    ret.push_back({ layerIdx, substep_e::render, consumerForColorAttachment(pass.color), referencesByConsumerId[pass.color].frameLatency, passIdx, passId });
 	  for(const graphicsShaderRequirements& gsr : pass.shaders) {
 	    for(const resourceConsumer& srr : gsr.targetProvidedResources)
 	      if(referencesByConsumerId.contains(srr.id))
@@ -205,7 +209,7 @@ namespace WITE {
 	rb.requirementId = RS.requirementId;
 	rb.objectLayoutId = RS.objectLayoutId;
 	rb.timing.layerIdx = rb.after.layerIdx;
-	rb.frameLatency = rb.after.usage.frameLatency;
+	rb.frameLatency = rb.after.frameLatency;
 	if(rb.before.layerIdx != rb.after.layerIdx || afterIdx == 0) {//prefer top of layer for barriers
 	  //afterIdx == 0: edge case for only having 1 layer
 	  rb.timing.substep = substep_e::barrier0;
@@ -252,8 +256,32 @@ namespace WITE {
     };
 
     template<uint64_t objectLayoutId>
+    static consteval auto getResourceReferences_v() {
+      std::vector<resourceReference> ret;
+      for(const targetLayout& tl : OD.TLS)
+	if(tl.objectLayoutId == objectLayoutId)
+	  for(const resourceReference& rr : tl.resources)
+	    ret.push_back(rr);
+      for(const sourceLayout& sl : OD.SLS)
+	if(sl.objectLayoutId == objectLayoutId)
+	  for(const resourceReference& rr : sl.resources)
+	    ret.push_back(rr);
+      return ret;
+    };
+
+    template<uint64_t objectLayoutId>
+    static consteval auto getResourceReferences_c() {
+      return getResourceReferences_v<objectLayoutId>().size();
+    };
+
+    template<uint64_t objectLayoutId>
+    static consteval copyableArray<resourceReference, getResourceReferences_c<objectLayoutId>()> getResourceReferences() {
+      return getResourceReferences_v<objectLayoutId>();
+    };
+
+    template<uint64_t objectLayoutId>
     static consteval auto getResourceSlots_v() {
-      return OD.RSS.where([](const resourceSlot& rs)->bool{ return RSS.objectLayoutId == objectLayoutId; });
+      return OD.RSS.where([](const resourceSlot& rs)->bool{ return rs.objectLayoutId == objectLayoutId; });
     };
 
     template<uint64_t objectLayoutId>
@@ -268,7 +296,7 @@ namespace WITE {
 
     template<uint64_t objectLayoutId>
     static consteval auto getSourceLayouts_v() {
-      return OD.SLS.where([](const sourceLayout& rs)->bool{ return RSS.objectLayoutId == objectLayoutId; });
+      return OD.SLS.where([](const sourceLayout& rs)->bool{ return rs.objectLayoutId == objectLayoutId; });
     };
 
     template<uint64_t objectLayoutId>
@@ -283,7 +311,7 @@ namespace WITE {
 
     template<uint64_t objectLayoutId>
     static consteval auto getTargetLayouts_v() {
-      return OD.TLS.where([](const targetLayout& rs)->bool{ return RSS.objectLayoutId == objectLayoutId; });
+      return OD.TLS.where([](const targetLayout& rs)->bool{ return rs.objectLayoutId == objectLayoutId; });
     };
 
     template<uint64_t objectLayoutId>
@@ -351,7 +379,7 @@ namespace WITE {
 
       inline uint64_t frameLastUpdated(uint64_t currentFrame) {
 	uint64_t ret = at().frameUpdated(currentFrame);
-	if constexpr(RMS.len > 1) {
+	if constexpr(RSS.len > 1) {
 	  ret = max(ret, rest.frameLastUpdated(currentFrame));
 	}
 	return ret;
@@ -359,8 +387,8 @@ namespace WITE {
 
       template<uint64_t FS> inline void preRender(uint64_t frame, vk::CommandBuffer cmd, garbageCollector& gc) {
 	if constexpr(RT::isImage) {
-	  static constexpr resourceConsumer RR = findFinalUsagePerFrame<RS, RT::IR, LAYOUT_ID>()[FS].usage;
-	  at().template applyPendingResize<RT::IR.resizeBehavior, RR.access>(frame + RR.frameLatency, cmd, gc);
+	  static constexpr resourceConsumer RC = findFinalUsagePerFrame<RS, RT::IR>()[FS].usage;
+	  at().template applyPendingResize<RT::IR.resizeBehavior, RC.access>(frame + FS, cmd, gc);
 	  if constexpr(FS < RT::IR.frameswapCount-1)
 	    preRender<FS+1>(frame, cmd, gc);
 	}
@@ -369,7 +397,7 @@ namespace WITE {
       inline void preRender(uint64_t frame, vk::CommandBuffer cmd, garbageCollector& gc) {
 	if constexpr(RT::isImage)
 	  preRender<0>(frame, cmd, gc);
-	if constexpr(RMS.len > 1)
+	if constexpr(RSS.len > 1)
 	  rest.preRender(frame, cmd, gc);
       };
 
@@ -380,14 +408,14 @@ namespace WITE {
 	  if(wSize != imgSize)
 	    img.resize(frame, wSize);
 	}
-	if constexpr(RMS.len > 1)
+	if constexpr(RSS.len > 1)
 	  rest.trackWindowSize(frame, wSize);
       };
 
       inline static consteval auto initBaselineBarriers() {
 	//consteval lambdas are finicky, need to be wrapped in a consteval function
 	if constexpr(RT::isImage) {
-	  constexpr auto finalUsagePerFrame = findFinalUsagePerFrame<RS, RT::IR, LAYOUT_ID>();
+	  constexpr auto finalUsagePerFrame = findFinalUsagePerFrame<RS, RT::IR>();
 	  return copyableArray<vk::ImageMemoryBarrier2, RT::IR.frameswapCount>([&](size_t i) consteval {
 	    return vk::ImageMemoryBarrier2 {
 	      vk::PipelineStageFlagBits2::eNone,
@@ -418,7 +446,7 @@ namespace WITE {
 	  vk::DependencyInfo di { {}, 0, NULL, 0, NULL, FC, barriers.ptr() };
 	  cmd.pipelineBarrier2(&di);
 	}
-	if constexpr(RMS.len > 1)
+	if constexpr(RSS.len > 1)
 	  rest.init(currentFrame, cmd);
       };
 
@@ -464,7 +492,7 @@ namespace WITE {
 
       template<uint64_t resourceSlotId> auto& get() {
 	static_assert(findResourceReferenceToSlot(TL.resources, resourceSlotId));//sanity check that this layout uses that slot
-	return allObjectResources.template at<resourceSlotId>();
+	return allObjectResources->template at<resourceSlotId>();
       };
 
       template<uint64_t resourceSlotId> void write(auto t, size_t hostAccessOffset = 0) {
@@ -475,7 +503,7 @@ namespace WITE {
       template<uint64_t resourceSlotId> void set(auto* t) {
 	static_assert(findResourceReferenceToSlot(TL.resources, resourceSlotId));//sanity check that this layout uses that slot
 	scopeLock lock(&o->mutex);
-	allObjectResources.template set<resourceSlotId>(t);
+	allObjectResources->template set<resourceSlotId>(t);
       };
 
     };
@@ -533,7 +561,7 @@ namespace WITE {
 
       template<uint64_t resourceSlotId> auto& get() {
 	static_assert(findResourceReferenceToSlot(SL.resources, resourceSlotId));//sanity check that this layout uses that slot
-	return allObjectResources.template at<resourceSlotId>();
+	return allObjectResources->template at<resourceSlotId>();
       };
 
       template<uint64_t resourceSlotId> void write(auto t, size_t hostAccessOffset = 0) {
@@ -544,7 +572,7 @@ namespace WITE {
       template<uint64_t resourceSlotId> void set(auto* t) {
 	static_assert(findResourceReferenceToSlot(SL.resources, resourceSlotId));//sanity check that this layout uses that slot
 	scopeLock lock(&o->mutex);
-	allObjectResources.template set<resourceSlotId>(t);
+	allObjectResources->template set<resourceSlotId>(t);
       };
 
     };
@@ -604,7 +632,7 @@ namespace WITE {
 	if constexpr(SID == ID)
 	  return data;
 	else
-	  return rest.get<ID>();
+	  return rest.template get<ID>();
       };
 
     };
@@ -635,7 +663,7 @@ namespace WITE {
 	if constexpr(TID == ID)
 	  return data;
 	else
-	  return rest.get<ID>();
+	  return rest.template get<ID>();
       };
 
     };
@@ -647,8 +675,12 @@ namespace WITE {
       static constexpr auto RSS = getResourceSlots<objectLayoutId>();
       static constexpr auto SLS = getSourceLayouts<objectLayoutId>();
       static constexpr auto TLS = getTargetLayouts<objectLayoutId>();
+      static constexpr auto allRRS = getResourceReferences<objectLayoutId>();
       static constexpr objectLayout OL = findById(OD.OLS, objectLayoutId);
       static constexpr bool hasWindow = OL.windowConsumerId != NONE;
+      static constexpr resourceConsumer windowRC = consumerForWindowForObject(objectLayoutId);
+      static constexpr resourceReference windowRR = findResourceReferenceToConsumer(allRRS, windowRC.id);
+      static constexpr resourceSlot windowRS = findById(RSS, windowRR.resourceSlotId);
 
       uint64_t objectId;
       mappedResourceTuple<RSS> resources;
@@ -668,38 +700,37 @@ namespace WITE {
       };
 
       template<uint64_t resourceSlotId> void write(auto t, size_t hostAccessOffset = 0) {
-	scopeLock lock(&o->mutex);
-	get<resourceSlotId>().set(o->frame + hostAccessOffset, t);
+	scopeLock lock(&owner->mutex);
+	get<resourceSlotId>().set(owner->frame + hostAccessOffset, t);
       };
 
       template<uint64_t resourceSlotId> void set(auto* t) {
-	scopeLock lock(&o->mutex);
+	scopeLock lock(&owner->mutex);
 	resources.template set<resourceSlotId>(t);
       };
 
       inline void preRender(vk::CommandBuffer cmd) {
 	if constexpr(hasWindow) {
 	  auto windowExt = presentWindow.getSize3D();
-	  resources.trackWindowSize(o->frame, windowExt);
+	  resources.trackWindowSize(owner->frame, windowExt);
 	  presentWindow.acquire();
 	}
-	resources.preRender(o->frame, cmd, o->getActiveGarbageCollector());
+	resources.preRender(owner->frame, cmd, owner->getActiveGarbageCollector());
       };
 
       inline void postRender(vk::SemaphoreSubmitInfo& renderWaitSem) {
 	if constexpr(hasWindow) {
-	  auto& img = get<TL.presentImageResourceSlotId>();
-	  static constexpr resourceSlot RM = findById(TL.resources, TL.presentImageResourceSlotId);
-	  static constexpr vk::ImageLayout layout = imageLayoutFor(findFinalUsagePerFrame<RM, findById(OD.IRS, RM.requirementId), TARGET_ID>()[TL.presentFrameLatency].usage.access);
+	  auto& img = get<windowRS.id>();
+	  static constexpr vk::ImageLayout layout = imageLayoutFor(windowRC.access);
 	  static_assert(layout == vk::ImageLayout::eGeneral || layout == vk::ImageLayout::eTransferSrcOptimal);
-	  auto f = o->frame + TL.presentFrameLatency;
+	  auto f = owner->frame + windowRR.frameLatency;
 	  presentWindow.present(img.frameImage(f), layout, img.getSizeOffset(f), renderWaitSem);
 	}
       };
 
       void reinit(uint64_t frame, vk::CommandBuffer cmd) {
 	resources.init(frame, cmd);
-	objectId = od.objectIdSeed++;
+	objectId = owner->od.objectIdSeed++;
 	targets.createAll(owner, &resources, objectId);
 	sources.createAll(owner, &resources, objectId);
       };
@@ -746,7 +777,7 @@ namespace WITE {
 
     template<uint64_t objectLayoutId> void destroy(object_t<objectLayoutId>* d) {
       scopeLock lock(&mutex);
-      d.free();
+      d->free();
       allObjects.template ofLayout<objectLayoutId>().free(d);
     };
 
@@ -756,8 +787,8 @@ namespace WITE {
     inline void fillWrites(descriptorUpdateData_t<RCS.len>& data, mappedResourceTuple<RSS>& rm, vk::DescriptorSet ds,
 			   uint64_t frameMod, uint64_t frameLastUpdated) {
       if constexpr(RCIDX < RCS.len) {
-	static constexpr resourceConsumer RC = RRS[RCIDX];
-	static constexpr resourceReference RR = *findReferenceToConsumer(RRS, RC.id);
+	static constexpr resourceConsumer RC = RCS[RCIDX];
+	static constexpr resourceReference RR = *findResourceReferenceToConsumer(RRS, RC.id);
 	static constexpr resourceSlot RS = findById(RSS, RR.resourceSlotId);
 	if constexpr(RC.usage.type == resourceUsageType::eDescriptor) {
 	  auto& res = rm.template at<RS.id>();
@@ -767,20 +798,20 @@ namespace WITE {
 	    w.dstBinding = data.writeCount + data.skipCount;
 	    w.dstArrayElement = 0;
 	    w.descriptorCount = 1;
-	    w.descriptorType = RR.usage.asDescriptor.descriptorType;
+	    w.descriptorType = RC.usage.asDescriptor.descriptorType;
 	    if constexpr(containsId(OD.IRS, RS.requirementId)) {
 	      w.pBufferInfo = NULL;
 	      auto& img = data.images[w.dstBinding];
 	      w.pImageInfo = &img;
-	      if constexpr(RR.usage.asDescriptor.descriptorType == vk::DescriptorType::eCombinedImageSampler ||
-			   RR.usage.asDescriptor.descriptorType == vk::DescriptorType::eSampler) {
-		img.sampler = dev->getSampler<RR.usage.asDescriptor.sampler>();
+	      if constexpr(RC.usage.asDescriptor.descriptorType == vk::DescriptorType::eCombinedImageSampler ||
+			   RC.usage.asDescriptor.descriptorType == vk::DescriptorType::eSampler) {
+		img.sampler = dev->getSampler<RC.usage.asDescriptor.sampler>();
 	      }
 	      if(img.imageView)
 		getActiveGarbageCollector().push(img.imageView);
 	      img.imageView = res.template createView<RR.subresource.image.viewType,
 						      getSubresource(RS.requirementId, RR)>(frameMod);
-	      img.imageLayout = imageLayoutFor(RR.access);
+	      img.imageLayout = imageLayoutFor(RC.access);
 	    } else {
 	      w.pImageInfo = NULL;
 	      auto& buf = data.buffers[w.dstBinding];
@@ -808,7 +839,7 @@ namespace WITE {
 				   size_t frameMod) {
       if(!descriptorBundle.descriptorSet) [[unlikely]] {
 	if(!dpp) [[unlikely]]
-	  dpp.reset(new descriptorPoolPool<RRS, OD.GPUID>());
+	  dpp.reset(new descriptorPoolPool<RCS, OD.GPUID>());
 	descriptorBundle.descriptorSet = dpp->allocate();
 	descriptorBundle.reset();
 	fillWrites<RSS, RRS, RCS>(descriptorBundle, resources, descriptorBundle.descriptorSet, frameMod, NONE);
@@ -831,12 +862,8 @@ namespace WITE {
 
     static consteval std::vector<resourceBarrier> allBarriers() {
       std::vector<resourceBarrier> allBarriers;
-      for(sourceLayout SL : OD.SLS)
-	for(resourceMap RM : SL.resources)
-	  concat(allBarriers, findBarriers(RM, SL.id));
-      for(targetLayout TL : OD.TLS)
-	for(resourceMap RM : TL.resources)
-	  concat(allBarriers, findBarriers(RM, TL.id));
+      for(const resourceSlot& RS : OD.RSS)
+	concat(allBarriers, findBarriers(RS.id));
       return allBarriers;
     };
 
@@ -894,7 +921,7 @@ namespace WITE {
 	  DI.pImageMemoryBarriers = barriers.ptr();
 	  DI.imageMemoryBarrierCount = barrierBatchSize;
 	  size_t mbIdx = 0;
-	  for(object_t<RB.objectLayoutId>* : allObjects.ofLayout<RB.objectLayoutId>()) {
+	  for(object_t<RB.objectLayoutId>* cluster : allObjects.template ofLayout<RB.objectLayoutId>()) {
 	    auto& img = cluster->template get<RB.resourceSlotId>();
 	    barriers[mbIdx].image = img.frameImage(RB.frameLatency + frame);
 	    WITE_DEBUG_IB(barriers[mbIdx], cmd);
@@ -919,7 +946,7 @@ namespace WITE {
 	  DI.pBufferMemoryBarriers = barriers.ptr();
 	  DI.bufferMemoryBarrierCount = barrierBatchSize;
 	  size_t mbIdx = 0;
-	  for(object_t<RB.objectLayoutId>* cluster : allObjects.ofLayout<RB.objectLayoutId>()) {
+	  for(object_t<RB.objectLayoutId>* cluster : allObjects.template ofLayout<RB.objectLayoutId>()) {
 	    barriers[mbIdx].buffer = cluster->template get<RB.resourceSlotId>().frameBuffer(RB.frameLatency + frame);
 	    mbIdx++;
 	    if(mbIdx == barrierBatchSize) [[unlikely]] {
@@ -944,42 +971,40 @@ namespace WITE {
     template<copyStep CS, literalList<uint64_t> XLS> inline void recordCopies(vk::CommandBuffer cmd) {
       if constexpr(XLS.len) {
 	static constexpr auto XL = findLayoutById<XLS[0]>();//could be targetLayout or sourceLayout
-	static constexpr const resourceReference *SRR = findResourceReferenceToConsumer(XL.resources, CS.src.id),
-	  *DRR = findResourceReferencing(XL.resources, CS.dst.id);
+	static constexpr const resourceReference *SRR = findResourceReferenceToConsumer(XL.resources, CS.src),
+	  *DRR = findResourceReferencing(XL.resources, CS.dst);
 	if constexpr(SRR && DRR) {//skip copy if they're not both represented
 	  static constexpr resourceSlot SRS = findById(OD.RSS, SRR->resourceSlotId),
 	    DRS = findById(OD.RSS, DRR->resourceSlotId);
-	  static constexpr bool srcIsImage = containsId(OD.IRS, SRS->requirementId),
-	    dstIsImage = containsId(OD.IRS, DRS->requirementId);
+	  static constexpr bool srcIsImage = containsId(OD.IRS, SRS.requirementId),
+	    dstIsImage = containsId(OD.IRS, DRS.requirementId);
 	  static_assert(!(srcIsImage ^ dstIsImage));//NYI buffer to/from image (why would you do that?)
 	  if constexpr(srcIsImage && dstIsImage) {
 	    //always blit, no way to know at compile time if they're the same size
 	    //TODO resolve if different sample counts
 	    std::array<vk::Offset3D, 2> srcBounds, dstBounds;
-	    vk::ImageBlit blitInfo(getAllInclusiveSubresourceLayers(findById(OD.IRS, SRS->requirementId)),
-				   srcBounds,
-				   getAllInclusiveSubresourceLayers(findById(OD.IRS, DRS->requirementId)),
-				   dstBounds);
+	    vk::ImageBlit blitInfo(getAllInclusiveSubresourceLayers(findById(OD.IRS, SRS.requirementId)), srcBounds,
+				   getAllInclusiveSubresourceLayers(findById(OD.IRS, DRS.requirementId)), dstBounds);
 	    for(auto* cluster : getAllOfLayout<XL.id>()) {
-	      auto& src = cluster->template get<SRS->id>();
-	      auto& dst = cluster->template get<DRS->id>();
-	      blitInfo.srcOffsets = src.getSize(CS.src.frameLatency + frame);
-	      blitInfo.dstOffsets = dst.getSize(CS.dst.frameLatency + frame);
-	      cmd.blitImage(src.frameImage(CS.src.frameLatency + frame),
+	      auto& src = cluster->template get<SRS.id>();
+	      auto& dst = cluster->template get<DRS.id>();
+	      blitInfo.srcOffsets = src.getSize(SRR->frameLatency + frame);
+	      blitInfo.dstOffsets = dst.getSize(DRR->frameLatency + frame);
+	      cmd.blitImage(src.frameImage(SRR->frameLatency + frame),
 			    imageLayoutFor(vk::AccessFlagBits2::eTransferRead),
-			    dst.frameImage(CS.dst.frameLatency + frame),
+			    dst.frameImage(DRR->frameLatency + frame),
 			    imageLayoutFor(vk::AccessFlagBits2::eTransferWrite),
 			    1, &blitInfo, CS.filter);
 	    }
 	  } else {//buffer to buffer
-	    static constexpr bufferRequirements SBR = findById(OD.BRS, SRS->requirementId),
-	      TBR = findById(OD.BRS, DRS->requirementId);
+	    static constexpr bufferRequirements SBR = findById(OD.BRS, SRS.requirementId),
+	      TBR = findById(OD.BRS, DRS.requirementId);
 	    static constexpr vk::BufferCopy copyInfo(0, 0, min(SBR.size, TBR.size));
 	    for(auto* cluster : getAllOfLayout<XL.id>()) {
-	      auto& src = cluster->template get<SRS->id>();
-	      auto& dst = cluster->template get<DRS->id>();
-	      cmd.copyBuffer(src.frameBuffer(CS.src.frameLatency + frame),
-			     dst.frameBuffer(CS.dst.frameLatency + frame),
+	      auto& src = cluster->template get<SRS.id>();
+	      auto& dst = cluster->template get<DRS.id>();
+	      cmd.copyBuffer(src.frameBuffer(SRR->frameLatency + frame),
+			     dst.frameBuffer(DRR->frameLatency + frame),
 			     1, &copyInfo);
 	      // WARN("copied buffer ", src.frameBuffer(CS.src.frameLatency + frame), " to ", dst.frameBuffer(CS.dst.frameLatency + frame));
 	    }
@@ -992,8 +1017,7 @@ namespace WITE {
     template<literalList<uint64_t> CSIDS, layerRequirements LR> inline void recordCopies(vk::CommandBuffer cmd) {
       if constexpr(CSIDS.len) {
 	static constexpr copyStep CS = findById(OD.CSS, CSIDS[0]);
-	recordCopies<CS, LR.targetLayouts>(cmd);
-	recordCopies<CS, LR.sourceLayouts>(cmd);
+	recordCopies<CS, allLayoutIds>(cmd);
 	recordCopies<CSIDS.sub(1), LR>(cmd);
       }
     };
@@ -1001,14 +1025,14 @@ namespace WITE {
     template<clearStep CS, literalList<uint64_t> XLS> inline void recordClears(vk::CommandBuffer cmd) {
       if constexpr(XLS.len) {
 	static constexpr auto XL = findLayoutById<XLS[0]>();//source or target layout
-	static constexpr const resourceReference* RR = findResourceReferenceToConsumer(XL.resources, CS.rr.id);
+	static constexpr const resourceReference* RR = findResourceReferenceToConsumer(XL.resources, CS.id);
 	if constexpr(RR) {
 	  static constexpr resourceSlot RS = findById(OD.RSS, RR->resourceSlotId);
-	  static_assert(containsId(OD.IRS, RS->requirementId));
-	  static constexpr imageRequirements IR = findById(OD.IRS, RS->requirementId);
+	  static_assert(containsId(OD.IRS, RS.requirementId));
+	  static constexpr imageRequirements IR = findById(OD.IRS, RS.requirementId);
 	  static constexpr vk::ImageSubresourceRange SR = getAllInclusiveSubresource(IR);
 	  for(auto& cluster : getAllOfLayout<XL.id>()) {
-	    auto img = cluster->template get<RS->id>().frameImage(CS.rr.frameLatency + frame);
+	    auto img = cluster->template get<RS.id>().frameImage(RR->frameLatency + frame);
 	    if constexpr(isDepth(IR)) {
 	      cmd.clearDepthStencilImage(img, vk::ImageLayout::eTransferDstOptimal, &CS.clearValue.depthStencil, 1, &SR);
 	    } else {
@@ -1023,8 +1047,7 @@ namespace WITE {
     template<literalList<uint64_t> CLIDS, layerRequirements LR> inline void recordClears(vk::CommandBuffer cmd) {
       if constexpr(CLIDS.len) {
 	static constexpr clearStep CS = findById(OD.CLS, CLIDS[0]);
-	recordClears<CS, LR.targetLayouts>(cmd);
-	recordClears<CS, LR.sourceLayouts>(cmd);
+	recordClears<CS, allLayoutIds>(cmd);
 	recordClears<CLIDS.sub(1), LR>(cmd);
       }
     };
@@ -1034,8 +1057,8 @@ namespace WITE {
     template<renderPassRequirements RP, targetLayout TL> requires(RP.depth != NONE) struct renderPassInfoBundle<RP, TL> {
       static constexpr resourceConsumer colorRC = consumerForColorAttachment(RP.color),
 	depthRC = consumerForDepthAttachment(RP.depth);
-      static constexpr const resourceReference colorRR = findResourceReferenceToConsumer(TL.resources, colorRC.id),
-	depthRR = findResourceReferenceToConsumer(TL.resources, colorRC.id);
+      static constexpr const resourceReference colorRR = *findResourceReferenceToConsumer(TL.resources, colorRC.id),
+	depthRR = *findResourceReferenceToConsumer(TL.resources, colorRC.id);
       static constexpr const resourceSlot colorRS = findById(OD.RSS, colorRR.resourceSlotId),
 	depthRS = findById(OD.RSS, depthRR.resourceSlotId);
       static constexpr imageRequirements colorIR = findById(OD.IRS, colorRS.requirementId),
@@ -1044,23 +1067,23 @@ namespace WITE {
 	depthRef { 1, imageLayoutFor(depthRC.access) };
       static constexpr vk::SubpassDescription subpass { {}, vk::PipelineBindPoint::eGraphics, 0, NULL, 1, &colorRef, NULL, &depthRef };
       static constexpr vk::AttachmentDescription attachments[2] = {//MAYBE variable attachments when inputs are allowed
-	{ {}, colorIR.format, vk::SampleCountFlagBits::e1, RP.clearColor ? vk::AttachmentLoadOp::eClear : vk::AttachmentLoadOp::eLoad, vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare, imageLayoutFor(RP.color.access), colorRef.layout },
-	{ {}, depthIR.format, vk::SampleCountFlagBits::e1, RP.clearDepth ? vk::AttachmentLoadOp::eClear : vk::AttachmentLoadOp::eLoad, vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eLoad, vk::AttachmentStoreOp::eStore, imageLayoutFor(RP.depth.access), depthRef.layout }
+	{ {}, colorIR.format, vk::SampleCountFlagBits::e1, RP.clearColor ? vk::AttachmentLoadOp::eClear : vk::AttachmentLoadOp::eLoad, vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare, imageLayoutFor(colorRC.access), colorRef.layout },
+	{ {}, depthIR.format, vk::SampleCountFlagBits::e1, RP.clearDepth ? vk::AttachmentLoadOp::eClear : vk::AttachmentLoadOp::eLoad, vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eLoad, vk::AttachmentStoreOp::eStore, imageLayoutFor(depthRC.access), depthRef.layout }
       };
       //TODO multiview
       //static constexpr vk::RenderPassMultiviewCreateInfo multiview {
       static constexpr vk::RenderPassCreateInfo rpci { {}, 2, attachments, 1, &subpass, 0 };
     };
 
-    template<renderPassRequirements RP, targetLayout TL> requires(RP.depth.id == NONE) struct renderPassInfoBundle<RP, TL> {
+    template<renderPassRequirements RP, targetLayout TL> requires(RP.depth == NONE) struct renderPassInfoBundle<RP, TL> {
       static constexpr resourceConsumer colorRC = consumerForColorAttachment(RP.color);
-      static constexpr const resourceReference colorRR = findResourceReferenceToConsumer(TL.resource, colorRC.id);
+      static constexpr const resourceReference colorRR = *findResourceReferenceToConsumer(TL.resources, colorRC.id);
       static constexpr const resourceSlot colorRS = findById(OD.RSS, colorRR.resourceSlotId);
       static constexpr imageRequirements colorIR = findById(OD.IRS, colorRS.requirementId);
       static constexpr vk::AttachmentReference colorRef { 0, imageLayoutFor(colorRC.access) };
       static constexpr vk::SubpassDescription subpass { {}, vk::PipelineBindPoint::eGraphics, 0, NULL, 1, &colorRef, NULL, NULL };
       static constexpr vk::AttachmentDescription attachments[1] = {//MAYBE variable attachments when inputs are allowed
-	{ {}, colorIR.format, vk::SampleCountFlagBits::e1, RP.clearColor ? vk::AttachmentLoadOp::eClear : vk::AttachmentLoadOp::eLoad, vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare, imageLayoutFor(RP.color.access), colorRef.layout }
+	{ {}, colorIR.format, vk::SampleCountFlagBits::e1, RP.clearColor ? vk::AttachmentLoadOp::eClear : vk::AttachmentLoadOp::eLoad, vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare, imageLayoutFor(colorRC.access), colorRef.layout }
       };
       //TODO multiview
       //static constexpr vk::RenderPassMultiviewCreateInfo multiview {
@@ -1069,7 +1092,7 @@ namespace WITE {
 
     //MAYBE match like clusters of shaders, sources, and targets so they can share layouts and descriptor pools?
 
-    template<renderPassRequirements RP, graphicsShaderRequirements GSR, literalList<sourceLayout> SLS>
+    template<targetLayout TL, renderPassRequirements RP, graphicsShaderRequirements GSR, literalList<sourceLayout> SLS>
     inline void recordRenders(auto& target, perTargetLayout& ptl, perTargetLayoutPerShader& ptlps, descriptorUpdateData_t<GSR.targetProvidedResources.len>& targetDescriptors, vk::RenderPass rp, vk::CommandBuffer cmd) {
       if constexpr(SLS.len) {
 	static constexpr sourceLayout SL = SLS[0];
@@ -1080,14 +1103,14 @@ namespace WITE {
 	    consteval bool operator()(const resourceConsumer& rr) {
 	      return rr.usage.type == resourceUsageType::eVertex &&
 		rr.usage.asVertex.rate == vk::VertexInputRate::eVertex &&
-		findResourceReferenceForConsumer(SL.resources, rr.id);
+		findResourceReferenceToConsumer(SL.resources, rr.id);
 	    };
 	  };
 	  struct findIB {
 	    consteval bool operator()(const resourceConsumer& rr) {
 	      return rr.usage.type == resourceUsageType::eVertex &&
 		rr.usage.asVertex.rate == vk::VertexInputRate::eInstance &&
-		findResourceReferenceForConsumer(SL.resources, rr.id);
+		findResourceReferenceToConsumer(SL.resources, rr.id);
 	    };
 	  };
 	  static_assert(GSR.sourceProvidedResources.countWhereCE(findVB()) <= 1);
@@ -1120,7 +1143,7 @@ namespace WITE {
 	    static constexpr vk::PipelineRasterizationStateCreateInfo raster = { {}, false, false, vk::PolygonMode::eFill, GSR.cullMode, GSR.windCounterClockwise ? vk::FrontFace::eCounterClockwise : vk::FrontFace::eClockwise, false, 0, 0, 0, 1.0f };
 	    static constexpr vk::PipelineMultisampleStateCreateInfo multisample = { {}, vk::SampleCountFlagBits::e1, 0, 0, NULL, 0, 0 };
 	    // static constexpr vk::StencilOpState stencilOp = {vk::StencilOp::eKeep, vk::StencilOp::eKeep, vk::StencilOp::eKeep, vk::CompareOp::eAlways, 0, 0, 0 };
-	    static constexpr vk::PipelineDepthStencilStateCreateInfo depth = { {}, RP.depth.id != NONE, true, vk::CompareOp::eLessOrEqual };//not set: depth bounds and stencil test stuff
+	    static constexpr vk::PipelineDepthStencilStateCreateInfo depth = { {}, RP.depth != NONE, true, vk::CompareOp::eLessOrEqual };//not set: depth bounds and stencil test stuff
 	    static constexpr vk::PipelineColorBlendStateCreateInfo blend = { {}, false, vk::LogicOp::eNoOp, 1, &GSR.blend, { 1, 1, 1, 1 } };
 	    static constexpr vk::DynamicState dynamics[] = { vk::DynamicState::eScissor, vk::DynamicState::eViewport };
 	    static constexpr vk::PipelineDynamicStateCreateInfo dynamic = { {}, 2, dynamics };
@@ -1144,7 +1167,7 @@ namespace WITE {
 	    static_assert(vb || GSR.vertexCountOverride);//vertex data required if vertex count not given statically
 	    vk::DeviceSize vertices, instances;
 	    if constexpr(vb) {
-	      static constexpr resourceReference vbm = *findResourceReferenceForConsumer(SL.resources, vb->id); //compiler-time error: dereferencing null if the source did not provide a reference to the vertex buffer used by the shader
+	      static constexpr resourceReference vbm = *findResourceReferenceToConsumer(SL.resources, vb->id); //compiler-time error: dereferencing null if the source did not provide a reference to the vertex buffer used by the shader
 	      verts[0] = source->template get<vbm.resourceSlotId>().frameBuffer(frame + vbm.frameLatency);
 	      offsets[0] = vb->subresource.bufferRange.offset;
 	      vertices = GSR.vertexCountOverride ? GSR.vertexCountOverride :
@@ -1154,7 +1177,7 @@ namespace WITE {
 	      vertices = GSR.vertexCountOverride;
 	    }
 	    if constexpr(ib) {
-	      static constexpr resourceMap ibm = *findResourceReferenceForConsumer(SL.resources, ib->id); //compiler-time error: dereferencing null if the source did not provide a reference to the instance buffer used by the shader
+	      static constexpr resourceMap ibm = *findResourceReferenceToConsumer(SL.resources, ib->id); //compiler-time error: dereferencing null if the source did not provide a reference to the instance buffer used by the shader
 	      verts[vibCount-1] = source->template get<ibm.resourceSlotId>().frameBuffer(frame + ib->frameLatency);
 	      offsets[vibCount-1] = ib->subresource.bufferRange.offset;
 	      instances = GSR.instanceCountOverride ? GSR.instanceCountOverride :
@@ -1172,7 +1195,7 @@ namespace WITE {
 	    //TODO more flexibility with draw. Allow source layout to ask for multi-draw, indexed, indirect etc. Allow (dynamic) less than the whole buffer.
 	  }
 	}
-	recordRenders<RP, GSR, SLS.sub(1)>(target, ptl, ptlps, targetDescriptors, rp, cmd);
+	recordRenders<TL, RP, GSR, SLS.sub(1)>(target, ptl, ptlps, targetDescriptors, rp, cmd);
       }
     };
 
@@ -1226,7 +1249,7 @@ namespace WITE {
 	  prepareDescriptors<object_t<TL.objectLayoutId>::RSS, TL.resources, GSR.targetProvidedResources>
 	    (descriptorBundle, ptlps.descriptorPool, *target.allObjectResources, frameMod);
 	  if constexpr(GSR.sourceProvidedResources.len)
-	    recordRenders<RP, GSR, OD.SLS>(target, ptl, ptlps, descriptorBundle, rp, cmd);
+	    recordRenders<TL, RP, GSR, OD.SLS>(target, ptl, ptlps, descriptorBundle, rp, cmd);
 	  else
 	    recordRenders_targetOnly<RP, GSR>(target, ptl, ptlps, descriptorBundle, rp, cmd);
 	}
@@ -1238,8 +1261,8 @@ namespace WITE {
     inline void recordRenders(auto& target, perTargetLayout& ptl, vk::CommandBuffer cmd) {
       if constexpr(RPIDS.len) {
 	static constexpr renderPassRequirements RP = findById(OD.RPRS, RPIDS[0]);
-	static constexpr const resourceReference* colorRR = findResourceReferenceForConsumer(TL.resources, RP.color),
-	  *depthRR = findResourceReferenceForConsumer(TL.resources, RP.depth);
+	static constexpr const resourceReference* colorRR = findResourceReferenceToConsumer(TL.resources, RP.color),
+	  *depthRR = findResourceReferenceToConsumer(TL.resources, RP.depth);
 	if constexpr(colorRR != NULL && (depthRR != NULL || RP.depth == NONE)) {
 	  vk::RenderPass& rp = ptl.rpByRequirementId[RP.id];
 	  if(!rp) [[unlikely]] {
@@ -1324,10 +1347,10 @@ namespace WITE {
     static consteval resourceReference resolveReference() {
       const resourceReference* RR;
       if constexpr(TLID != NONE)
-	RR = findResourceReferenceForConsumer(findById(OD.TLS, TLID).resources, RCID);
+	RR = findResourceReferenceToConsumer(findById(OD.TLS, TLID).resources, RCID);
       if constexpr(SLID != NONE)
 	if(RR == NULL)
-	  RR = findResourceReferenceForConsumer(findById(OD.SLS, SLID).resources, RCID);
+	  RR = findResourceReferenceToConsumer(findById(OD.SLS, SLID).resources, RCID);
       return *RR;//error bc null if neither layout provides it
     };
 

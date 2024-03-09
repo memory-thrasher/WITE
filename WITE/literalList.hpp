@@ -80,6 +80,10 @@ namespace WITE {
     return { LL.where(P()) };
   };
 
+  template<class T, class U, literalList<T> L, class P> consteval copyableArray<U, L.len> map(P p) {
+    return [p](size_t i)->U { return p(L[i]); };
+  };
+
   template<class T, literalList<T> L, size_t... I> consteval std::array<T, L.len> toStdArray() {
     return {{ L[I]... }};
   };

@@ -51,7 +51,7 @@ namespace WITE {
   };
 
   struct resourceConsumer {
-    uint64_t id = NONE;//unique among copyStep.src/dst, resourceConsumer.id, clearStep.id
+    uint64_t id = NONE;//unique among copyStep.src/dst, resourceConsumer.id, clearStep.id, objectLayout.windowConsumerId, renderPassRequirements.depth/color
     //stage and access are not required for all commands, in some cases it's contextually clear
     vk::ShaderStageFlags stages;
     vk::AccessFlags2 access = {};
@@ -119,7 +119,7 @@ namespace WITE {
 
   struct objectLayout {
     uint64_t id;
-    uint64_t windowConsumerId = NONE;//a resourceConsumer instance will be created with this id. Can only be consumed by references belonging to a targetLayout that is part of this objectLayout
+    uint64_t windowConsumerId = NONE;//unique among copyStep.src/dst, resourceConsumer.id, clearStep.id, objectLayout.windowConsumerId, renderPassRequirements.depth/color. A resourceConsumer instance will be created with this id. Can only be consumed by references belonging to a targetLayout that is part of this objectLayout
   };
 
   struct shaderModule {
@@ -160,6 +160,7 @@ namespace WITE {
 
   struct renderPassRequirements {
     uint64_t id;//unique among render passes
+    //unique among copyStep.src/dst, resourceConsumer.id, clearStep.id, objectLayout.windowConsumerId, renderPassRequirements.depth/color
     uint64_t depth, color; //MAYBE input attachment(s)  //ids for consumers that get generated with standard options
     bool clearDepth = false, clearColor = false;
     vk::ClearColorValue clearColorValue;
@@ -169,12 +170,12 @@ namespace WITE {
 
   struct copyStep {
     uint64_t id;
-    uint64_t src, dst;//unique among copyStep.src/dst, resourceConsumer.id, clearStep.id
+    uint64_t src, dst;//unique among copyStep.src/dst, resourceConsumer.id, clearStep.id, objectLayout.windowConsumerId, renderPassRequirements.depth/color
     vk::Filter filter = vk::Filter::eNearest;//only meaningful for image-to-image
   };
 
   struct clearStep {
-    uint64_t id;//unique among copyStep.src/dst, resourceConsumer.id, clearStep.id
+    uint64_t id;//unique among copyStep.src/dst, resourceConsumer.id, clearStep.id, objectLayout.windowConsumerId, renderPassRequirements.depth/color
     vk::ClearValue clearValue;
   };
 

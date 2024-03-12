@@ -141,7 +141,15 @@ namespace WITE {
 	  if(containsId(RP.shaders, id))
 	    return findById(RP.shaders, id);
 	constexprAssertFailed();
+	return graphicsShaderRequirements();//impossible but compiler whines if not here
       }
+    };
+
+    static consteval bool satisfies(literalList<resourceReference> resources, literalList<resourceConsumer> consumers) {
+      for(resourceConsumer rc : consumers)
+	if(!findResourceReferenceToConsumer(resources, rc.id))
+	  return false;
+      return true;
     };
 
     static consteval std::vector<resourceAccessTime> findUsages(uint64_t resourceSlotId) {
@@ -475,6 +483,29 @@ namespace WITE {
     template<uint64_t objectLayoutId, size_t idx> requires(getResourceSlots_c<objectLayoutId>() == idx)
       struct mappedResourceTuple<objectLayoutId, idx> : std::false_type {};
 
+    template<literalList<resourceReference> resources>
+    static consteval auto allShadersSatisfiedBy_v() {
+      std::vector<uint64_t> ret;
+      for(const auto& S : OD.CSRS)
+	if(satisfies(resources, S.sourceProvidedResources) || satisfies(resources, S.targetProvidedResources))
+	  ret.push_back(S.id);
+      for(const auto& RP : OD.RPRS)
+	for(const auto& S : RP.shaders)
+	  if(satisfies(resources, S.sourceProvidedResources) || satisfies(resources, S.targetProvidedResources))
+	    ret.push_back(S.id);
+      return ret;
+    };
+
+    template<literalList<resourceReference> resources>
+    static consteval size_t allShadersSatisfiedBy_c() {
+      return allShadersSatisfiedBy_v<resources>().size();
+    };
+
+    template<literalList<resourceReference> resources>
+    static consteval copyableArray<uint64_t, allShadersSatisfiedBy_c<resources>()> allShadersSatisfiedBy() {
+      return allShadersSatisfiedBy_v<resources>();
+    };
+
     template<size_t CNT> struct descriptorUpdateData_t {
       vk::WriteDescriptorSet writes[CNT];
       vk::DescriptorImageInfo images[CNT];//has gaps, index matches descriptor index, holds image view for future cleanup
@@ -489,10 +520,22 @@ namespace WITE {
     };
 
     //only shaders have descriptors
-    template<literalList<uint64_t> shaders> struct descriptorTuple {
+    template<literalList<uint64_t> shaders, bool forSource> struct descriptorTuple {
       static constexpr auto S = findShader<shaders[0]>();
-      #error TODO finish.
+      static constexpr size_t descriptorCount = calculateDescriptorCount(forSource ? S.sourceProvidedResources : S.targetProvidedResources);
+      descriptorUpdateData_t<descriptorCount> data;
+      descriptorTuple<shaders.sub(1), forSource> rest;
+      template<size_t shaderId> auto& get() {
+	if constexpr(shaderId == S.id) {
+	  return data;
+	} else {
+	  return rest.template get<shaderId>();
+	}
+      };
     };
+
+    template<literalList<uint64_t> shaders, bool forSource> requires(shaders.len == 0)
+      struct descriptorTuple<shaders, forSource> : std::false_type {};
 
     template<uint64_t TARGET_ID> class target_t {
     public:
@@ -502,13 +545,13 @@ namespace WITE {
       static_assert(containsId(OD.OLS, TL.objectLayoutId), "target layout reference missing object layout");
       static_assert(TL.resources.len > 0, "layouts must include at least one resource");
       static constexpr size_t maxFrameswap = frameswapLCM(TL.resources);
-      static constexpr size_t descriptorCount = calculateDescriptorCount<TL.resources, TL.objectLayoutId>();
+      static constexpr auto shaders = allShadersSatisfiedBy<TL.resources>();
 
     private:
       onion<OD>* o;
       mappedResourceTuple<TL.objectLayoutId>* allObjectResources;
       std::map<uint64_t, frameBufferBundle[maxFrameswap]> fbByRpIdByFrame;
-      std::map<uint64_t, descriptorUpdateData_t<descriptorCount>[maxFrameswap]> perShaderByIdByFrame;
+      descriptorTuple<shaders, false> perShaderByIdByFrame[maxFrameswap];
       uint64_t objectId;
 
       target_t(const target_t&) = delete;
@@ -575,11 +618,12 @@ namespace WITE {
       static_assert(containsId(OD.OLS, SL.objectLayoutId), "source layout reference missing object layout");
       static constexpr size_t maxFrameswap = frameswapLCM(SL.resources);
       static constexpr auto allObjectResourceSlots = getResourceSlots<SL.objectLayoutId>();
+      static constexpr auto shaders = allShadersSatisfiedBy<SL.resources>();
 
     private:
       onion<OD>* o;
       mappedResourceTuple<SL.objectLayoutId>* allObjectResources;
-      std::map<uint64_t, descriptorUpdateData_t<allObjectResourceSlots.len>[maxFrameswap]> perShaderByIdByFrame;
+      descriptorTuple<shaders, true> perShaderByIdByFrame[maxFrameswap];
       uint64_t objectId;
 
       source_t(const source_t&) = delete;
@@ -884,13 +928,6 @@ namespace WITE {
 	dev->getVkDevice().updateDescriptorSets(descriptorBundle.writeCount, descriptorBundle.writes, 0, NULL);
 	descriptorBundle.frameLastUpdated = frame;
       }
-    };
-
-    static consteval bool satisfies(literalList<resourceReference> resources, literalList<resourceConsumer> references) {
-      for(resourceConsumer rc : references)
-	if(!findResourceReferenceToConsumer(resources, rc.id))
-	  return false;
-      return true;
     };
 
     static consteval std::vector<resourceBarrier> allBarriers() {

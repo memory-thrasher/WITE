@@ -63,7 +63,7 @@ wrap_mesh(gpuId, UDM::RGB32float, cubeMesh,
 	  {{-1, 1, 1}}, {{1, 1, 1}}, {{-1, -1, 1}},
 	  {{-1, -1, 1}}, {{1, 1, 1}}, {{1, -1, 1}});
 
-struct cameraData_t = {
+struct cameraData_t {
   glm::vec4 clip;//(near plane, far plane, cot(fov/2), z/aspect
   glm::mat4 transform;//world-to-camera only, perspective is handled in vert shader
 };
@@ -80,9 +80,9 @@ constexpr imageRequirements IR_standardColor = defineSimpleColor(gpuId);
 constexpr bufferRequirements BR_L_all[] = {
   cubeMesh.bufferRequirements_v,
   BR_cameraData,
-  BRS_cameraData,
+  BR_S_cameraData,
   BR_singleTransform,
-  BRS_singleTransform
+  BR_S_singleTransform
 };
 
 constexpr imageRequirements IR_L_all[] = {
@@ -111,20 +111,35 @@ constexpr uint64_t RC_ID_RP_1_depth = __LINE__,
 	    RC_ID_RP_1_color = __LINE__,
 	    RC_ID_present_color = __LINE__;
 
+//now set up the object structures (two objects: camera and cube)
+constexpr objectLayout OL_camera = {
+  .id = __LINE__,
+  .windowConsumerId = RC_ID_present_color,//this implicitly creates a window that presents the image here by RR
+}, OL_cube = {
+  .id = __LINE__,
+}, OL_L_all[] = {
+  OL_camera,
+  OL_cube,
+};
+
 //now slots, which define what resources are created for each type of object, note the reference to the buffer/image requirements
 constexpr resourceSlot RS_camera_cameraData_staging = {
   .id = __LINE__,
   .requirementId = BR_S_cameraData.id,
+  .objectLayoutId = OL_camera.id,
 }, RS_camera_cameraData = {
   .id = __LINE__,
   .requirementId = BR_cameraData.id,
+  .objectLayoutId = OL_camera.id,
 }, RS_camera_color = {
   .id = __LINE__,
   .requirementId = IR_standardColor.id,
+  .objectLayoutId = OL_camera.id,
   .resizeBehavior = resize_trackWindow_discard,
 }, RS_camera_depth = {
   .id = __LINE__,
   .requirementId = IR_standardDepth.id,
+  .objectLayoutId = OL_camera.id,
   .resizeBehavior = resize_trackWindow_discard,
 }, RS_L_camera[] = {
   RS_camera_cameraData_staging,
@@ -134,14 +149,20 @@ constexpr resourceSlot RS_camera_cameraData_staging = {
   //
 }, RS_cube_trans_staging = {
   .id = __LINE__,
-  .requirementId = BRS_singleTransform.id,
+  .requirementId = BR_S_singleTransform.id,
+  .objectLayoutId = OL_cube.id,
 }, RS_cube_trans = {
   .id = __LINE__,
   .requirementId = BR_singleTransform.id,
+  .objectLayoutId = OL_cube.id,
+}, RS_cube_mesh = {
+  .id = __LINE__,
+  .requirementId = cubeMesh.bufferRequirements_v.id,
+  .objectLayoutId = OL_cube.id,
 }, RS_L_cube[] = {
   RS_cube_trans_staging,
   RS_cube_trans,
-  cubeMesh.resourceSlot_v,
+  RS_cube_mesh,
   //
 }, RS_L_all[] = {
   RS_camera_cameraData_staging,
@@ -151,7 +172,7 @@ constexpr resourceSlot RS_camera_cameraData_staging = {
   //
   RS_cube_trans_staging,
   RS_cube_trans,
-  cubeMesh.resourceSlot_v,
+  RS_cube_mesh,
 };
 
 //now tie each slot to one or more consumers
@@ -166,18 +187,7 @@ constexpr resourceReference RR_L_camera[] = {
   { .resourceConsumerId = CP_transform.src, .resourceSlotId = RS_cube_trans_staging.id },
   { .resourceConsumerId = CP_transform.dst, .resourceSlotId = RS_cube_trans.id },
   { .resourceConsumerId = RC_S_simple_modelTrans.id, .resourceSlotId = RS_cube_trans.id },
-  { .resourceConsumerId = cubeMesh.resourceConsumer_v, .resourceSlotId = cubeMesh.resourceSlot_v.id },
-};
-
-//now set up the object structures (two objects: camera and cube)
-constexpr objectLayout OL_camera = {
-  .id = __LINE__,
-  .windowConsumerId = RC_ID_present_color,//this implicitly creates a window that presents the image here by RR
-}, OL_cube = {
-  .id = __LINE__,
-}, OL_L_all[] = {
-  OL_camera,
-  OL_cube,
+  { .resourceConsumerId = cubeMesh.resourceConsumer_v.id, .resourceSlotId = RS_cube_mesh.id },
 };
 
 constexpr targetLayout TL_camera = {
@@ -203,7 +213,7 @@ constexpr graphicsShaderRequirements S_simple {
   .id = __LINE__,
   .modules = SM_L_simple,
   .targetProvidedResources = RC_S_simple_cameraTrans,//target is always layout set 1
-  .sourceProvidedResources = RC_L_S_simple,//source is always layout set 0
+  .sourceProvidedResources = RC_L_S_simple_source,//source is always layout set 0
 };
 
 //create render pass
@@ -220,8 +230,6 @@ constexpr renderPassRequirements RP_1 {
 
 //next a layer, which would usually have many more things. Use as few layers as possible
 constexpr layerRequirements L_1 {
-  .sourceLayouts = SL_cube.id,
-  .targetLayouts = TL_camera.id,
   .copies = CP_transform.id,
   .renders = RP_1.id,
 };
@@ -250,9 +258,9 @@ int main(int argc, char** argv) {
   gpu::init("Simple render test");
   primaryOnion = std::make_unique<onion_t>();
   auto cubeMeshBuf = cubeMesh.spawnMeshBuffer();//note: pointer, managed by onion
-  auto camera = primaryOnion->create<TL_standardRender.id>();
-  auto cube = primaryOnion->createSource<SL_simple.id>();
-  cube->set<cubeMesh.resourceMap_v.id>(cubeMeshBuf.get());
+  auto camera = primaryOnion->create<OL_camera.id>();
+  auto cube = primaryOnion->create<OL_cube.id>();
+  cube->set<RS_cube_mesh.id>(cubeMeshBuf.get());
   glm::vec3 rotAxis = glm::normalize(glm::dvec3(0, 1, 0));
   glm::mat4 model = glm::mat4(1);//model: diagonal identity
   glm::vec2 size = camera->getWindow().getVecSize();
@@ -264,8 +272,8 @@ int main(int argc, char** argv) {
   cameraData.clip.w = cameraData.clip.z * size.y / size.x;
   for(size_t i = 0;i < 10000;i++) {
     model = glm::rotate(model, (float)glm::radians(0.01), rotAxis);
-    cube->write<RMS_cubeTrans.id>(model);
-    camera->write<RMT_cameraTrans_staging.id>(cameraData);
+    cube->write<RS_cube_trans_staging.id>(model);
+    camera->write<RS_camera_cameraData_staging.id>(cameraData);
     primaryOnion->render();
   }
   WARN("NOTE: done rendering (any validation whining after here is in cleanup)");

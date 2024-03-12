@@ -40,7 +40,7 @@ namespace WITE {
 
     static constexpr auto allTargetIds = map<targetLayout, uint64_t, OD.TLS>([](const targetLayout& l){ return l.id; });
     static constexpr auto allSourceIds = map<sourceLayout, uint64_t, OD.SLS>([](const sourceLayout& l){ return l.id; });
-    static constexpr auto allLayoutIds = concat(allTargetIds, allSourceIds);
+    static constexpr auto allLayoutIds = concat<uint64_t, allTargetIds, allSourceIds>();
 
     uint64_t frame = 1;//can't signal a timeline semaphore with 0
     syncLock mutex;
@@ -123,6 +123,25 @@ namespace WITE {
 
     static consteval resourceConsumer consumerForDepthAttachment(uint64_t id) {
       return { id, vk::ShaderStageFlagBits::eFragment, vk::AccessFlagBits2::eDepthStencilAttachmentWrite };
+    };
+
+    static consteval size_t calculateDescriptorCount(literalList<resourceConsumer> resources) {
+      size_t ret = 0;
+      for(const auto& rc : resources)
+	if(rc.usage.type == resourceUsageType::eDescriptor)
+	  ret++;
+      return ret;
+    };
+
+    template<uint64_t id> static consteval auto findShader() {
+      if constexpr(containsId(OD.CSRS, id)) {
+	return findById(OD.CSRS, id);
+      } else {
+	for(const auto& RP : OD.RPRS)
+	  if(containsId(RP.shaders, id))
+	    return findById(RP.shaders, id);
+	constexprAssertFailed();
+      }
     };
 
     static consteval std::vector<resourceAccessTime> findUsages(uint64_t resourceSlotId) {
@@ -350,11 +369,12 @@ namespace WITE {
       typedef buffer<BR>* type;
     };
 
-    template<literalList<resourceSlot> RSS> struct mappedResourceTuple {
-      static constexpr resourceSlot RS = RSS[0];
+    template<uint64_t objectLayoutId, size_t idx = 0> struct mappedResourceTuple {
+      static constexpr auto RSS = getResourceSlots<objectLayoutId>();
+      static constexpr resourceSlot RS = RSS[idx];
       typedef resourceTraits<RS> RT;
       RT::type data;
-      mappedResourceTuple<RSS.sub(1)> rest;
+      mappedResourceTuple<objectLayoutId, idx+1> rest;
 
       template<size_t RSID = RS.id> inline auto& at() {
 	if constexpr(RSID == RS.id) {
@@ -452,7 +472,8 @@ namespace WITE {
 
     };
 
-    template<literalList<resourceSlot> RM> requires(RM.len == 0) struct mappedResourceTuple<RM> : std::false_type {};
+    template<uint64_t objectLayoutId, size_t idx> requires(getResourceSlots_c<objectLayoutId>() == idx)
+      struct mappedResourceTuple<objectLayoutId, idx> : std::false_type {};
 
     template<size_t CNT> struct descriptorUpdateData_t {
       vk::WriteDescriptorSet writes[CNT];
@@ -467,28 +488,36 @@ namespace WITE {
       };
     };
 
+    //only shaders have descriptors
+    template<literalList<uint64_t> shaders> struct descriptorTuple {
+      static constexpr auto S = findShader<shaders[0]>();
+      #error TODO finish.
+    };
+
     template<uint64_t TARGET_ID> class target_t {
     public:
       static_assert(containsId(OD.TLS, TARGET_ID));
       static constexpr size_t TARGET_IDX = findId(OD.TLS, TARGET_ID);
       static constexpr targetLayout TL = OD.TLS[TARGET_IDX];
+      static_assert(containsId(OD.OLS, TL.objectLayoutId), "target layout reference missing object layout");
+      static_assert(TL.resources.len > 0, "layouts must include at least one resource");
       static constexpr size_t maxFrameswap = frameswapLCM(TL.resources);
-      static constexpr auto allObjectResourceSlots = getResourceSlots<TL.objectLayoutId>();
+      static constexpr size_t descriptorCount = calculateDescriptorCount<TL.resources, TL.objectLayoutId>();
 
     private:
       onion<OD>* o;
-      mappedResourceTuple<allObjectResourceSlots>* allObjectResources;
+      mappedResourceTuple<TL.objectLayoutId>* allObjectResources;
       std::map<uint64_t, frameBufferBundle[maxFrameswap]> fbByRpIdByFrame;
-      std::map<uint64_t, descriptorUpdateData_t<allObjectResourceSlots.len>[maxFrameswap]> perShaderByIdByFrame;
+      std::map<uint64_t, descriptorUpdateData_t<descriptorCount>[maxFrameswap]> perShaderByIdByFrame;
       uint64_t objectId;
 
       target_t(const target_t&) = delete;
       target_t() = delete;
-      explicit target_t(onion<OD>* o): o(o) {};
 
       friend onion;
 
     public:
+      explicit target_t(onion<OD>* o): o(o) {};
 
       template<uint64_t resourceSlotId> auto& get() {
 	static_assert(findResourceReferenceToSlot(TL.resources, resourceSlotId));//sanity check that this layout uses that slot
@@ -539,15 +568,17 @@ namespace WITE {
 
     template<uint64_t SOURCE_ID> class source_t {
     public:
-      static_assert(containsId(OD.SLS, SOURCE_ID));
+      static_assert(containsId(OD.SLS, SOURCE_ID), "source layout id not present in onion data");
       static constexpr size_t SOURCE_IDX = findId(OD.SLS, SOURCE_ID);
       static constexpr sourceLayout SL = OD.SLS[SOURCE_IDX];
+      static_assert(SL.resources.len > 0, "layouts must include at least one resource");
+      static_assert(containsId(OD.OLS, SL.objectLayoutId), "source layout reference missing object layout");
       static constexpr size_t maxFrameswap = frameswapLCM(SL.resources);
       static constexpr auto allObjectResourceSlots = getResourceSlots<SL.objectLayoutId>();
 
     private:
       onion<OD>* o;
-      mappedResourceTuple<allObjectResourceSlots>* allObjectResources;
+      mappedResourceTuple<SL.objectLayoutId>* allObjectResources;
       std::map<uint64_t, descriptorUpdateData_t<allObjectResourceSlots.len>[maxFrameswap]> perShaderByIdByFrame;
       uint64_t objectId;
 
@@ -614,7 +645,7 @@ namespace WITE {
       T* data;
       sourcePointerTuple<SLS.sub(1)> rest;
 
-      void createAll(onion<OD>* o, mappedResourceTuple<T::allObjectResourceSlots>* resources, uint64_t objectId) {
+      void createAll(onion<OD>* o, mappedResourceTuple<SLS[0].objectLayoutId>* resources, uint64_t objectId) {
 	data = o->createSource<SID>();
 	data->allObjectResources = resources;
 	data->objectId = objectId;
@@ -645,7 +676,7 @@ namespace WITE {
       T* data;
       targetPointerTuple<TLS.sub(1)> rest;
 
-      void createAll(onion<OD>* o, mappedResourceTuple<T::allObjectResourceslots>* resources, uint64_t objectId) {
+      void createAll(onion<OD>* o, mappedResourceTuple<TLS[0].objectLayoutId>* resources, uint64_t objectId) {
 	data = o->createTarget<TID>();
 	data->allObjectResources = resources;
 	data->objectId = objectId;
@@ -672,7 +703,9 @@ namespace WITE {
 
     template<uint64_t objectLayoutId>
     struct object_t {
+      static_assert(containsId(OD.OLS, objectLayoutId), "object layout id not present in onion data");
       static constexpr auto RSS = getResourceSlots<objectLayoutId>();
+      static_assert(RSS.len > 0, "objects must include at least one resource");
       static constexpr auto SLS = getSourceLayouts<objectLayoutId>();
       static constexpr auto TLS = getTargetLayouts<objectLayoutId>();
       static constexpr auto allRRS = getResourceReferences<objectLayoutId>();
@@ -683,7 +716,7 @@ namespace WITE {
       static constexpr resourceSlot windowRS = findById(RSS, windowRR.resourceSlotId);
 
       uint64_t objectId;
-      mappedResourceTuple<RSS> resources;
+      mappedResourceTuple<objectLayoutId> resources;
       targetPointerTuple<TLS> targets;
       sourcePointerTuple<SLS> sources;
       std::conditional_t<hasWindow, window, size_t> presentWindow = { OD.GPUID };
@@ -767,7 +800,7 @@ namespace WITE {
 
     template<uint64_t objectLayoutId> object_t<objectLayoutId>* create() {
       scopeLock lock(&mutex);
-      target_t<objectLayoutId>* ret = allObjects.template ofLayout<objectLayoutId>().allocate();
+      object_t<objectLayoutId>* ret = allObjects.template ofLayout<objectLayoutId>().allocate();
       auto cmd = dev->getTempCmd();
       ret->reinit(frame, cmd.cmd);
       cmd.submit();

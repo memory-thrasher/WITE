@@ -10,20 +10,15 @@ namespace WITE {
 
   template<class T, class... Args> class iterableRecyclingPool {
   private:
-    static_assert(std::is_default_constructible<T>::value);
     std::deque<T> store;
     std::stack<T*> available;
     std::vector<T*> allocated;
-    std::tuple<Args...> args;
+    const std::tuple<Args...> args;
   public:
 
-    iterableRecyclingPool(Args... args, size_t initialSize = 0) :
-      store(initialSize),
+    iterableRecyclingPool(Args... args) :
       args(std::forward<Args>(args)...)
-    {
-      for(size_t i = 0;i < initialSize;i++)
-	available.push(&store[i]);
-    };
+    {};
 
     T* allocate() {
       T* ret;
@@ -31,7 +26,9 @@ namespace WITE {
 	ret = available.top();
 	available.pop();
       } else {
-	ret = &store.emplace_back(std::forward<Args>(args)...);
+	typedef decltype(store) S;
+	static constexpr T&(S::*emplaceMbrFn)(Args&&...) = &S::template emplace_back<Args...>;
+	ret = &std::apply(emplaceMbrFn, std::tuple_cat(std::tie(store), args));
       }
       allocated.push_back(ret);
       return ret;

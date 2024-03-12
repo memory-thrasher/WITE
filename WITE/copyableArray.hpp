@@ -82,7 +82,7 @@ namespace WITE {
   };
 
   template<typename T> struct copyableArray<T, 0> {
-    static constexpr size_t LENGTH = 0;
+    static constexpr size_t LENGTH = 0, len = 0;
     template<typename... A> constexpr copyableArray(A... args) {};//accept literally anything to initialize an empty array
     constexpr inline explicit operator const T*() const { return NULL; };
     constexpr T* begin() const { return NULL; };

@@ -13,7 +13,7 @@ namespace WITE {
     std::deque<T> store;
     std::stack<T*> available;
     std::vector<T*> allocated;
-    const std::tuple<Args...> args;
+    std::tuple<Args...> args;
   public:
 
     iterableRecyclingPool(Args... args) :

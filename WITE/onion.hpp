@@ -407,7 +407,7 @@ namespace WITE {
 
       inline uint64_t frameLastUpdated(uint64_t currentFrame) {
 	uint64_t ret = at().frameUpdated(currentFrame);
-	if constexpr(RSS.len > 1) {
+	if constexpr(idx < RSS.len - 1) {
 	  ret = max(ret, rest.frameLastUpdated(currentFrame));
 	}
 	return ret;
@@ -425,7 +425,7 @@ namespace WITE {
       inline void preRender(uint64_t frame, vk::CommandBuffer cmd, garbageCollector& gc) {
 	if constexpr(RT::isImage)
 	  preRender<0>(frame, cmd, gc);
-	if constexpr(RSS.len > 1)
+	if constexpr(idx < RSS.len - 1)
 	  rest.preRender(frame, cmd, gc);
       };
 
@@ -436,7 +436,7 @@ namespace WITE {
 	  if(wSize != imgSize)
 	    img.resize(frame, wSize);
 	}
-	if constexpr(RSS.len > 1)
+	if constexpr(idx < RSS.len - 1)
 	  rest.trackWindowSize(frame, wSize);
       };
 
@@ -474,7 +474,7 @@ namespace WITE {
 	  vk::DependencyInfo di { {}, 0, NULL, 0, NULL, FC, barriers.ptr() };
 	  cmd.pipelineBarrier2(&di);
 	}
-	if constexpr(RSS.len > 1)
+	if constexpr(idx < RSS.len - 1)
 	  rest.init(currentFrame, cmd);
       };
 
@@ -628,11 +628,11 @@ namespace WITE {
 
       source_t(const source_t&) = delete;
       source_t() = delete;
-      explicit source_t(onion<OD>* o): o(o) {};
 
       friend onion;
 
     public:
+      explicit source_t(onion<OD>* o): o(o) {};
 
       template<uint64_t resourceSlotId> auto& get() {
 	static_assert(findResourceReferenceToSlot(SL.resources, resourceSlotId));//sanity check that this layout uses that slot

@@ -77,10 +77,10 @@ namespace WITE {
   };
 
   struct resourceReference {
-    uint64_t resourceConsumerId;//FK to exactly one of: copyStep.src/dst, resourceConsumer.id, clearStep.id
-    uint64_t resourceSlotId;
+    uint64_t resourceConsumerId = 0;//FK to exactly one of: copyStep.src/dst, resourceConsumer.id, clearStep.id
+    uint64_t resourceSlotId = 0;
     uint8_t frameLatency = 0; //must be < requirement.frameswapCount. Generally 0 is the one being written this frame, 1 is the one that was written last frame.
-    unifiedSubresource subresource;
+    unifiedSubresource subresource = {};
   };
 
   enum class imageResizeType { eNone, eBlit, eClear, eDiscard };

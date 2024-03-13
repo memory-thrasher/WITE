@@ -443,7 +443,7 @@ namespace WITE {
       inline static consteval auto initBaselineBarriers() {
 	//consteval lambdas are finicky, need to be wrapped in a consteval function
 	if constexpr(RT::isImage) {
-	  constexpr auto finalUsagePerFrame = findFinalUsagePerFrame<RS, RT::IR>();
+	  constexpr auto finalUsagePerFrame = findFinalUsagePerFrame<RS.id, RT::IR>();
 	  return copyableArray<vk::ImageMemoryBarrier2, RT::IR.frameswapCount>([&](size_t i) consteval {
 	    return vk::ImageMemoryBarrier2 {
 	      vk::PipelineStageFlagBits2::eNone,
@@ -808,8 +808,10 @@ namespace WITE {
       void reinit(uint64_t frame, vk::CommandBuffer cmd) {
 	resources.init(frame, cmd);
 	objectId = owner->od.objectIdSeed++;
-	targets.createAll(owner, &resources, objectId);
-	sources.createAll(owner, &resources, objectId);
+	if constexpr(TLS.len)
+	  targets.createAll(owner, &resources, objectId);
+	if constexpr(SLS.len)
+	  sources.createAll(owner, &resources, objectId);
       };
 
       void free() {

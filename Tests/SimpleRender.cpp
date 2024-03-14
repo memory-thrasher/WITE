@@ -141,13 +141,7 @@ constexpr resourceSlot RS_camera_cameraData_staging = {
   .requirementId = IR_standardDepth.id,
   .objectLayoutId = OL_camera.id,
   .resizeBehavior = resize_trackWindow_discard,
-}, RS_L_camera[] = {
-  RS_camera_cameraData_staging,
-  RS_camera_cameraData,
-  RS_camera_color,
-  RS_camera_depth,
-  //
-}, RS_cube_trans_staging = {
+}, RS_cube_trans_staging = {//begin cube
   .id = __LINE__,
   .requirementId = BR_S_singleTransform.id,
   .objectLayoutId = OL_cube.id,
@@ -159,11 +153,7 @@ constexpr resourceSlot RS_camera_cameraData_staging = {
   .id = __LINE__,
   .requirementId = cubeMesh.bufferRequirements_v.id,
   .objectLayoutId = OL_cube.id,
-}, RS_L_cube[] = {
-  RS_cube_trans_staging,
-  RS_cube_trans,
-  RS_cube_mesh,
-  //
+  .external = true,
 }, RS_L_all[] = {
   RS_camera_cameraData_staging,
   RS_camera_cameraData,

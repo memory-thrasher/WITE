@@ -60,20 +60,14 @@ namespace WITE {
 
   struct unifiedSubresource {
     bool isDefault;
-    union {
-      struct {
-	vk::ImageSubresourceRange range;
-	vk::ImageViewType viewType;
-      } image;
-      struct {
-	vk::DeviceSize offset, length;
-      } bufferRange;
-    };
-    constexpr unifiedSubresource() : isDefault(true), bufferRange({0, VK_WHOLE_SIZE}) {};
+    vk::ImageSubresourceRange range;//image only
+    vk::ImageViewType viewType = vk::ImageViewType::e2D;//image only
+    vk::DeviceSize offset = 0, length = VK_WHOLE_SIZE;//buffer only
+    constexpr unifiedSubresource() : isDefault(true) {};
     constexpr unifiedSubresource(vk::ImageSubresourceRange imageRange, vk::ImageViewType viewType = vk::ImageViewType::e2D) :
-      isDefault(false), image({imageRange, viewType}) {};
+      isDefault(false), range(imageRange), viewType(viewType) {};
     constexpr unifiedSubresource(vk::DeviceSize offset, vk::DeviceSize length) :
-      isDefault(false), bufferRange({offset, length}) {};
+      isDefault(false), offset(offset), length(length) {};
   };
 
   struct resourceReference {

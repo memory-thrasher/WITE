@@ -8,16 +8,16 @@
 #include <signal.h>
 
 #ifdef DO_PROFILE
-#define PROFILEME ::WITE::Util::Profiler UNIQUENAME(wite_function_profiler) (::WITE::Util::Profiler::hash(__FILE__, __func__, __LINE__, ""), __FILE__, __func__, __LINE__, "")
-#define PROFILEME_MSG(MSG) ::WITE::Util::Profiler UNIQUENAME(wite_function_profiler) (::WITE::Util::Profiler::hash(__FILE__, __func__, __LINE__, MSG), __FILE__, __func__, __LINE__, MSG)
+#define PROFILEME ::WITE::profiler UNIQUENAME(wite_function_profiler) (::WITE::profiler::hash(__FILE__, __func__, __LINE__, ""), __FILE__, __func__, __LINE__, "")
+#define PROFILEME_MSG(MSG) ::WITE::profiler UNIQUENAME(wite_function_profiler) (::WITE::profiler::hash(__FILE__, __func__, __LINE__, MSG), __FILE__, __func__, __LINE__, MSG)
 #else
 #define PROFILEME
 #define PROFILEME_MSG
 #endif
 
-namespace WITE::Util {
+namespace WITE {
 
-  class Profiler {
+  class profiler {
   private:
     typedef uint64_t hash_t;
     struct ProfileData {
@@ -51,8 +51,8 @@ namespace WITE::Util {
 
     static void printProfileData();
 
-    Profiler(hash_t hash, const char* filename, const char* funcname, uint64_t linenum, const char* message);//hash is split off so it can be constexpr
-    ~Profiler();
+    profiler(hash_t hash, const char* filename, const char* funcname, uint64_t linenum, const char* message);//hash is split off so it can be constexpr
+    ~profiler();
 
   };
 

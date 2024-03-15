@@ -260,12 +260,13 @@ int main(int argc, char** argv) {
   cameraData.clip.y = 100;
   cameraData.clip.z = glm::cot(glm::radians(fov/2));
   cameraData.clip.w = cameraData.clip.z * size.y / size.x;
-  for(size_t i = 0;i < 10000;i++) {
+  for(size_t i = 0;i < 10;i++) {
     model = glm::rotate(model, (float)glm::radians(0.01), rotAxis);
     cube->write<RS_cube_trans_staging.id>(model);
     camera->write<RS_camera_cameraData_staging.id>(cameraData);
     primaryOnion->render();
   }
+  WITE::profiler::printProfileData();
   WARN("NOTE: done rendering (any validation whining after here is in cleanup)");
   // Platform::Thread::sleep(500);
 }

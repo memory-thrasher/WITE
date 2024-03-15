@@ -11,6 +11,7 @@
 #include "iterableRecyclingPool.hpp"
 #include "descriptorPoolPool.hpp"
 #include "tempMap.hpp"
+#include "profiler.hpp"
 
 namespace WITE {
 
@@ -53,11 +54,13 @@ namespace WITE {
     onionStaticData& od;
 
     static onionStaticData& getOd() {
+      PROFILEME;
       scopeLock lock(&onionStaticData::allDataMutex);
       return onionStaticData::allOnionData[hash(OD)];
     };
 
     onion() : od(getOd()) {
+      PROFILEME;
       dev = &gpu::get(OD.GPUID);//note: this has a modulo op so GPUID does not need be < num of gpus on the system
       const vk::CommandPoolCreateInfo poolCI(vk::CommandPoolCreateFlagBits::eResetCommandBuffer, dev->getQueueFam());
       VK_ASSERT(dev->getVkDevice().createCommandPool(&poolCI, ALLOCCB, &cmdPool), "failed to allocate command pool");
@@ -72,6 +75,7 @@ namespace WITE {
     };
 
     inline garbageCollector& getActiveGarbageCollector() {
+      PROFILEME;
       return collectors[frame % cmdFrameswapCount];
     };
 
@@ -385,6 +389,7 @@ namespace WITE {
       mappedResourceTuple<objectLayoutId, idx+1> rest;
 
       template<size_t RSID = RS.id> inline auto& at() {
+	PROFILEME;
 	if constexpr(RSID == RS.id) {
 	  if constexpr(RS.external) {
 	    return *data;
@@ -397,6 +402,7 @@ namespace WITE {
       };
 
       template<size_t RSID = RS.id> inline void set(auto* t) {
+	PROFILEME;
 	if constexpr(RSID == RS.id) {
 	  static_assert(RS.external);
 	  data = t;
@@ -406,6 +412,7 @@ namespace WITE {
       };
 
       inline uint64_t frameLastUpdated(uint64_t currentFrame) {
+	PROFILEME;
 	uint64_t ret = at().frameUpdated(currentFrame);
 	if constexpr(idx < RSS.len - 1) {
 	  ret = max(ret, rest.frameLastUpdated(currentFrame));
@@ -414,6 +421,7 @@ namespace WITE {
       };
 
       template<uint64_t FS> inline void preRender(uint64_t frame, vk::CommandBuffer cmd, garbageCollector& gc) {
+	PROFILEME;
 	if constexpr(RT::isImage) {
 	  static constexpr resourceConsumer RC = findFinalUsagePerFrame<RS.id, RT::IR>()[FS].usage;
 	  at().template applyPendingResize<RS.resizeBehavior, RC.access>(frame + FS, cmd, gc);
@@ -423,6 +431,7 @@ namespace WITE {
       }
 
       inline void preRender(uint64_t frame, vk::CommandBuffer cmd, garbageCollector& gc) {
+	PROFILEME;
 	if constexpr(RT::isImage)
 	  preRender<0>(frame, cmd, gc);
 	if constexpr(idx < RSS.len - 1)
@@ -430,6 +439,7 @@ namespace WITE {
       };
 
       inline void trackWindowSize(uint64_t frame, vk::Extent3D& wSize) {
+	PROFILEME;
 	if constexpr(RT::isImage && RS.resizeBehavior.image.trackWindow) {
 	  auto& img = at();
 	  auto imgSize = img.getSizeExtent(frame);
@@ -462,6 +472,7 @@ namespace WITE {
       };
 
       inline void init(uint64_t currentFrame, vk::CommandBuffer cmd) {
+	PROFILEME;
 	if constexpr(RT::isImage && !RS.external) {
 	  //only images need a layout initialization, each into the layouts they will be assumed to be when first used.
 	  static constexpr size_t FC = RT::IR.frameswapCount;
@@ -526,6 +537,7 @@ namespace WITE {
       descriptorUpdateData_t<descriptorCount> data;
       descriptorTuple<shaders.sub(1), forSource> rest;
       template<size_t shaderId> auto& get() {
+	PROFILEME;
 	if constexpr(shaderId == S.id) {
 	  return data;
 	} else {
@@ -564,16 +576,19 @@ namespace WITE {
       explicit target_t(onion<OD>* o): o(o) {};
 
       template<uint64_t resourceSlotId> auto& get() {
+	PROFILEME;
 	static_assert(findResourceReferenceToSlot(TL.resources, resourceSlotId));//sanity check that this layout uses that slot
 	return allObjectResources->template at<resourceSlotId>();
       };
 
       template<uint64_t resourceSlotId> void write(auto t, size_t hostAccessOffset = 0) {
+	PROFILEME;
 	scopeLock lock(&o->mutex);
 	get<resourceSlotId>().set(o->frame + hostAccessOffset, t);
       };
 
       template<uint64_t resourceSlotId> void set(auto* t) {
+	PROFILEME;
 	static_assert(findResourceReferenceToSlot(TL.resources, resourceSlotId));//sanity check that this layout uses that slot
 	scopeLock lock(&o->mutex);
 	allObjectResources->template set<resourceSlotId>(t);
@@ -588,6 +603,7 @@ namespace WITE {
       targetCollectionTuple(onion<OD>* o) : data(o), rest(o) {};
 
       template<size_t TID, uint64_t TIDX = findId(OD.TLS, TID)> auto& ofLayout() {
+	PROFILEME;
 	if constexpr(IDX == TIDX)
 	  return data;
 	else
@@ -603,10 +619,12 @@ namespace WITE {
     targetCollectionTuple<> allTargets { this };
 
     template<uint64_t targetId> target_t<targetId>* createTarget() {
+      PROFILEME;
       return allTargets.template ofLayout<targetId>().allocate();
     };
 
     template<uint64_t targetId> void freeTarget(target_t<targetId>* d) {
+      PROFILEME;
       allTargets.template ofLayout<targetId>().free(d);
     };
 
@@ -636,16 +654,19 @@ namespace WITE {
       explicit source_t(onion<OD>* o): o(o) {};
 
       template<uint64_t resourceSlotId> auto& get() {
+	PROFILEME;
 	static_assert(findResourceReferenceToSlot(SL.resources, resourceSlotId));//sanity check that this layout uses that slot
 	return allObjectResources->template at<resourceSlotId>();
       };
 
       template<uint64_t resourceSlotId> void write(auto t, size_t hostAccessOffset = 0) {
+	PROFILEME;
 	scopeLock lock(&o->mutex);
 	get<resourceSlotId>().set(o->frame + hostAccessOffset, t);
       };
 
       template<uint64_t resourceSlotId> void set(auto* t) {
+	PROFILEME;
 	static_assert(findResourceReferenceToSlot(SL.resources, resourceSlotId));//sanity check that this layout uses that slot
 	scopeLock lock(&o->mutex);
 	allObjectResources->template set<resourceSlotId>(t);
@@ -660,6 +681,7 @@ namespace WITE {
       sourceCollectionTuple(onion<OD>* o) : data(o), rest(o) {};
 
       template<size_t TID, uint64_t TIDX = findId(OD.SLS, TID)> auto& ofLayout() {
+	PROFILEME;
 	if constexpr(IDX == TIDX)
 	  return data;
 	else
@@ -677,10 +699,12 @@ namespace WITE {
     sourceCollectionTuple<> allSources { this };
 
     template<uint64_t sourceId> source_t<sourceId>* createSource() {
+      PROFILEME;
       return allSources.template ofLayout<sourceId>().allocate();
     };
 
     template<uint64_t sourceId> void freeSource(source_t<sourceId>* d) {
+      PROFILEME;
       allSources.template ofLayout<sourceId>().free(d);
     };
 
@@ -691,6 +715,7 @@ namespace WITE {
       sourcePointerTuple<SLS.sub(1)> rest;
 
       void createAll(onion<OD>* o, mappedResourceTuple<SLS[0].objectLayoutId>* resources, uint64_t objectId) {
+	PROFILEME;
 	data = o->createSource<SID>();
 	data->allObjectResources = resources;
 	data->objectId = objectId;
@@ -699,12 +724,14 @@ namespace WITE {
       };
 
       void freeAll(onion<OD>* o) {
+	PROFILEME;
 	data = o->freeSource<SID>();
 	if constexpr(SLS.len > 1)
 	  rest.freeAll(o);
       };
 
       template<uint64_t ID> auto* get() {
+	PROFILEME;
 	if constexpr(SID == ID)
 	  return data;
 	else
@@ -722,6 +749,7 @@ namespace WITE {
       targetPointerTuple<TLS.sub(1)> rest;
 
       void createAll(onion<OD>* o, mappedResourceTuple<TLS[0].objectLayoutId>* resources, uint64_t objectId) {
+	PROFILEME;
 	data = o->createTarget<TID>();
 	data->allObjectResources = resources;
 	data->objectId = objectId;
@@ -730,12 +758,14 @@ namespace WITE {
       };
 
       void freeAll(onion<OD>* o) {
+	PROFILEME;
 	data = o->freeTarget<TID>();
 	if constexpr(TLS.len > 1)
 	  rest.freeAll(o);
       };
 
       template<uint64_t ID> auto* get() {
+	PROFILEME;
 	if constexpr(TID == ID)
 	  return data;
 	else
@@ -767,24 +797,29 @@ namespace WITE {
       explicit object_t(onion<OD>* o) : owner(o) {};
 
       inline auto& getWindow() {
+	PROFILEME;
 	return presentWindow;
       };
 
       template<uint64_t resourceSlotId> auto& get() {
+	PROFILEME;
 	return resources.template at<resourceSlotId>();
       };
 
       template<uint64_t resourceSlotId> void write(auto t, size_t hostAccessOffset = 0) {
+	PROFILEME;
 	scopeLock lock(&owner->mutex);
 	get<resourceSlotId>().set(owner->frame + hostAccessOffset, t);
       };
 
       template<uint64_t resourceSlotId> void set(auto* t) {
+	PROFILEME;
 	scopeLock lock(&owner->mutex);
 	resources.template set<resourceSlotId>(t);
       };
 
       inline void preRender(vk::CommandBuffer cmd) {
+	PROFILEME;
 	if constexpr(hasWindow) {
 	  auto windowExt = presentWindow.getSize3D();
 	  resources.trackWindowSize(owner->frame, windowExt);
@@ -794,6 +829,7 @@ namespace WITE {
       };
 
       inline void postRender(vk::SemaphoreSubmitInfo& renderWaitSem) {
+	PROFILEME;
 	if constexpr(hasWindow) {
 	  static constexpr resourceConsumer windowRC = consumerForWindowForObject(objectLayoutId);
 	  static constexpr resourceReference windowRR = *findResourceReferenceToConsumer(allRRS, windowRC.id);
@@ -807,6 +843,7 @@ namespace WITE {
       };
 
       void reinit(uint64_t frame, vk::CommandBuffer cmd) {
+	PROFILEME;
 	resources.init(frame, cmd);
 	objectId = owner->od.objectIdSeed++;
 	if constexpr(TLS.len)
@@ -816,6 +853,7 @@ namespace WITE {
       };
 
       void free() {
+	PROFILEME;
 	targets.freeAll(owner);
 	sources.freeAll(owner);
       };
@@ -829,6 +867,7 @@ namespace WITE {
       objectCollectionTuple(onion<OD>* o) : data(o), rest(o) {};
 
       template<size_t OID, uint64_t OIDX = findId(OD.OLS, OID)> auto& ofLayout() {
+	PROFILEME;
 	if constexpr(IDX == OIDX)
 	  return data;
 	else
@@ -846,6 +885,7 @@ namespace WITE {
     objectCollectionTuple<> allObjects { this };
 
     template<uint64_t objectLayoutId> object_t<objectLayoutId>* create() {
+      PROFILEME;
       scopeLock lock(&mutex);
       object_t<objectLayoutId>* ret = allObjects.template ofLayout<objectLayoutId>().allocate();
       auto cmd = dev->getTempCmd();
@@ -856,6 +896,7 @@ namespace WITE {
     };
 
     template<uint64_t objectLayoutId> void destroy(object_t<objectLayoutId>* d) {
+      PROFILEME;
       scopeLock lock(&mutex);
       d->free();
       allObjects.template ofLayout<objectLayoutId>().free(d);
@@ -868,6 +909,7 @@ namespace WITE {
 	     uint64_t RCIDX = 0>
     inline void fillWrites(descriptorUpdateData_t<descriptors>& data, mappedResourceTuple<objectId>& rm, vk::DescriptorSet ds,
 			   uint64_t frameMod, uint64_t frameLastUpdated) {
+      PROFILEME;
       if constexpr(RCIDX < RCS.len) {
 	static constexpr resourceConsumer RC = RCS[RCIDX];
 	static constexpr resourceReference RR = *findResourceReferenceToConsumer(RRS, RC.id);
@@ -920,6 +962,7 @@ namespace WITE {
 				   std::unique_ptr<descriptorPoolPoolBase>& dpp,
 				   mappedResourceTuple<objectId>& resources,
 				   size_t frameMod) {
+      PROFILEME;
       if(!descriptorBundle.descriptorSet) [[unlikely]] {
 	if(!dpp) [[unlikely]]
 	  dpp.reset(new descriptorPoolPool<RCS, OD.GPUID>());
@@ -962,6 +1005,7 @@ namespace WITE {
     };
 
     template<uint64_t layoutId> inline auto& getAllOfLayout() {
+      PROFILEME;
       if constexpr(containsId(OD.SLS, layoutId))
 	return allSources.template ofLayout<layoutId>();
       else
@@ -976,6 +1020,7 @@ namespace WITE {
     };
 
     template<literalList<resourceBarrier> RBS> inline void recordBarriers(vk::CommandBuffer cmd) {
+      PROFILEME;
       if constexpr(RBS.len) {
 	constexpr size_t barrierBatchSize = 256;
 	constexpr resourceBarrier RB = RBS[0];
@@ -1040,11 +1085,13 @@ namespace WITE {
     };
 
     template<resourceBarrierTiming BT> inline void recordBarriersForTime(vk::CommandBuffer cmd) {
+      PROFILEME;
       static constexpr auto BTS = barriersForTime<BT>();
       recordBarriers<BTS>(cmd);
     };
 
     template<copyStep CS, literalList<uint64_t> XLS> inline void recordCopies(vk::CommandBuffer cmd) {
+      PROFILEME;
       if constexpr(XLS.len) {
 	static constexpr auto XL = findLayoutById<XLS[0]>();//could be targetLayout or sourceLayout
 	static constexpr const resourceReference *SRR = findResourceReferenceToConsumer(XL.resources, CS.src),
@@ -1091,6 +1138,7 @@ namespace WITE {
     };
 
     template<literalList<uint64_t> CSIDS, layerRequirements LR> inline void recordCopies(vk::CommandBuffer cmd) {
+      PROFILEME;
       if constexpr(CSIDS.len) {
 	static constexpr copyStep CS = findById(OD.CSS, CSIDS[0]);
 	recordCopies<CS, allLayoutIds>(cmd);
@@ -1099,6 +1147,7 @@ namespace WITE {
     };
 
     template<clearStep CS, literalList<uint64_t> XLS> inline void recordClears(vk::CommandBuffer cmd) {
+      PROFILEME;
       if constexpr(XLS.len) {
 	static constexpr auto XL = findLayoutById<XLS[0]>();//source or target layout
 	static constexpr const resourceReference* RR = findResourceReferenceToConsumer(XL.resources, CS.id);
@@ -1121,6 +1170,7 @@ namespace WITE {
     };
 
     template<literalList<uint64_t> CLIDS, layerRequirements LR> inline void recordClears(vk::CommandBuffer cmd) {
+      PROFILEME;
       if constexpr(CLIDS.len) {
 	static constexpr clearStep CS = findById(OD.CLS, CLIDS[0]);
 	recordClears<CS, allLayoutIds>(cmd);
@@ -1134,7 +1184,7 @@ namespace WITE {
       static constexpr resourceConsumer colorRC = consumerForColorAttachment(RP.color),
 	depthRC = consumerForDepthAttachment(RP.depth);
       static constexpr const resourceReference colorRR = *findResourceReferenceToConsumer(TL.resources, colorRC.id),
-	depthRR = *findResourceReferenceToConsumer(TL.resources, colorRC.id);
+	depthRR = *findResourceReferenceToConsumer(TL.resources, depthRC.id);
       static constexpr const resourceSlot colorRS = findById(OD.RSS, colorRR.resourceSlotId),
 	depthRS = findById(OD.RSS, depthRR.resourceSlotId);
       static constexpr imageRequirements colorIR = findById(OD.IRS, colorRS.requirementId),
@@ -1170,6 +1220,7 @@ namespace WITE {
 
     template<targetLayout TL, renderPassRequirements RP, graphicsShaderRequirements GSR, literalList<sourceLayout> SLS>
     inline void recordRenders(auto& target, perTargetLayout& ptl, perTargetLayoutPerShader& ptlps, descriptorUpdateData_t<GSR.targetProvidedResources.len>& targetDescriptors, vk::RenderPass rp, vk::CommandBuffer cmd) {
+      PROFILEME;
       if constexpr(SLS.len) {
 	static constexpr sourceLayout SL = SLS[0];
 	// WARN("  using source ", SL.id);
@@ -1279,6 +1330,7 @@ namespace WITE {
 
     template<renderPassRequirements RP, graphicsShaderRequirements GSR>
     inline void recordRenders_targetOnly(auto& target, perTargetLayout& ptl, perTargetLayoutPerShader& ptlps, descriptorUpdateData_t<GSR.targetProvidedResources.len>& targetDescriptors, vk::RenderPass rp, vk::CommandBuffer cmd) {
+      PROFILEME;
       //for now, target only rendering must not supply a vertex or instance buffer, so vert count must come from an override
       shaderInstance& shaderInstance = ptlps.targetOnlyShader;
       if(!shaderInstance.pipeline) [[unlikely]] {
@@ -1316,6 +1368,7 @@ namespace WITE {
 
     template<size_t layerIdx, targetLayout TL, renderPassRequirements RP, literalList<graphicsShaderRequirements> GSRS>
     inline void recordRenders(auto& target, perTargetLayout& ptl, vk::RenderPass rp, vk::CommandBuffer cmd) {
+      PROFILEME;
       if constexpr(GSRS.len) {
 	static constexpr graphicsShaderRequirements GSR = GSRS[0];
 	recordBarriersForTime<resourceBarrierTiming { .layerIdx = layerIdx, .substep = substep_e::render, .passId = RP.id, .shaderId = GSR.id }>(cmd);
@@ -1337,6 +1390,7 @@ namespace WITE {
 
     template<size_t layerIdx, targetLayout TL, literalList<uint64_t> RPIDS>
     inline void recordRenders(auto& target, perTargetLayout& ptl, vk::CommandBuffer cmd) {
+      PROFILEME;
       if constexpr(RPIDS.len) {
 	static constexpr renderPassRequirements RP = findById(OD.RPRS, RPIDS[0]);
 	static constexpr const resourceReference* colorRR = findResourceReferenceToConsumer(TL.resources, RP.color),
@@ -1403,6 +1457,7 @@ namespace WITE {
 
     template<size_t layerIdx, targetLayout TL, layerRequirements LR>
     inline void recordRenders(perTargetLayout& ptl, vk::CommandBuffer cmd) {
+      PROFILEME;
       //TODO spawn each of these in a parallel cmd; rework call stack signatures to hand semaphores around instead of cmd
       //^^  ONLY if there is no writable source descriptor
       for(auto* target : allTargets.template ofLayout<TL.id>()) {
@@ -1412,6 +1467,7 @@ namespace WITE {
 
     template<size_t layerIdx, literalList<targetLayout> TLS, layerRequirements LR>
     inline void recordRenders(vk::CommandBuffer cmd) {
+      PROFILEME;
       if constexpr(TLS.len) {
 	static constexpr targetLayout TL = TLS[0];
 	recordRenders<layerIdx, TL, LR>(od.perTL[TL.id], cmd);
@@ -1419,18 +1475,8 @@ namespace WITE {
       };
     };
 
-    // template<uint64_t RCID, uint64_t TLID, uint64_t SLID>
-    // static consteval resourceReference resolveReference() {
-    //   const resourceReference* RR;
-    //   if constexpr(TLID != NONE)
-    // 	RR = findResourceReferenceToConsumer(findById(OD.TLS, TLID).resources, RCID);
-    //   if constexpr(SLID != NONE)
-    // 	if(RR == NULL)
-    // 	  RR = findResourceReferenceToConsumer(findById(OD.SLS, SLID).resources, RCID);
-    //   return *RR;//error bc null if neither layout provides it
-    // };
-
     template<computeShaderRequirements CS, uint64_t TID, uint64_t SID> static inline void getWorkgroupSize(vk::Extent3D& workgroupSize, target_t<TID>* target, source_t<SID>* source, uint64_t frameMod) {
+      PROFILEME;
       static constexpr resourceSlot RS = findById(OD.RSS, CS.primaryOutputSlotId);
       static constexpr targetLayout TL = TID != NONE ? findById(OD.TLS, TID) : targetLayout();
       static constexpr sourceLayout SL = SID != NONE ? findById(OD.SLS, TID) : sourceLayout();
@@ -1455,11 +1501,13 @@ namespace WITE {
 
     template<computeShaderRequirements CS, literalList<uint64_t> SLS>
     inline void recordComputeDispatches_sourceOnly(vk::CommandBuffer cmd) {
+      PROFILEME;
       asm("int3");//NYI
     };
 
     template<computeShaderRequirements CS, literalList<uint64_t> TLS>
     inline void recordComputeDispatches_targetOnly(vk::CommandBuffer cmd) {
+      PROFILEME;
       if constexpr(TLS.len) {
 	static constexpr targetLayout TL = findById(OD.TLS, TLS[0]);
 	if constexpr(satisfies(TL.resources, CS.targetProvidedResources)) {
@@ -1490,6 +1538,7 @@ namespace WITE {
 
     template<computeShaderRequirements CS, targetLayout TL, literalList<uint64_t> SLS>
     inline void recordComputeDispatches_nested(target_t<TL.id>* target, perTargetLayoutPerShader& ptlps, descriptorUpdateData_t<CS.targetProvidedResources.len>& perShader, vk::CommandBuffer cmd) {
+      PROFILEME;
       if constexpr(SLS.len) {
 	static constexpr sourceLayout SL = findById(OD.SLS, SLS[0]);
 	if constexpr(satisfies(SL.resources, CS.sourceProvidedResources)) {
@@ -1533,6 +1582,7 @@ namespace WITE {
 
     template<computeShaderRequirements CS, literalList<uint64_t> TLS, literalList<uint64_t> SLS>
     inline void recordComputeDispatches_nested(vk::CommandBuffer cmd) {
+      PROFILEME;
       if constexpr(TLS.len) {
 	static constexpr targetLayout TL = findById(OD.TLS, TLS[0]);
 	if constexpr(satisfies(TL.resources, CS.targetProvidedResources)) {
@@ -1551,6 +1601,7 @@ namespace WITE {
 
     template<size_t layerIdx, layerRequirements LR, literalList<uint64_t> CSS>
     inline void recordComputeDispatches(vk::CommandBuffer cmd) {
+      PROFILEME;
       if constexpr(CSS.len) {
 	recordBarriersForTime<resourceBarrierTiming { .layerIdx = layerIdx, .substep = substep_e::compute, .shaderId = CSS[0] }>(cmd);
 	static constexpr computeShaderRequirements CS = findById(OD.CSRS, CSS[0]);
@@ -1565,6 +1616,7 @@ namespace WITE {
     };
 
     template<size_t layerIdx> inline void renderFrom(vk::CommandBuffer cmd) {
+      PROFILEME;
       if constexpr(layerIdx < OD.LRS.len) {
 	static constexpr layerRequirements LR = OD.LRS[layerIdx];
 	recordBarriersForTime<resourceBarrierTiming { .layerIdx = layerIdx, .substep = substep_e::barrier0 }>(cmd);
@@ -1582,6 +1634,7 @@ namespace WITE {
     };
 
     template<literalList<objectLayout> OLS> inline void doPrerender(vk::CommandBuffer cmd) {
+      PROFILEME;
       if constexpr(OLS.len) {
 	constexpr objectLayout OL = OLS[0];
 	for(auto* object : allObjects.template ofLayout<OL.id>()) {
@@ -1592,6 +1645,7 @@ namespace WITE {
     };
 
     template<literalList<objectLayout> OLS> inline void doPostrender(vk::SemaphoreSubmitInfo& renderWaitSem) {
+      PROFILEME;
       if constexpr(OLS.len) {
 	constexpr objectLayout OL = OLS[0];
 	if constexpr(object_t<OL.id>::hasWindow) {
@@ -1604,6 +1658,7 @@ namespace WITE {
     };
 
     void waitForFrame(uint64_t frame, uint64_t timeoutNS = 10000000000) {//default = 10 seconds
+      PROFILEME;
       if(frame < this->frame - cmdFrameswapCount) {
 #ifdef WITE_DEBUG_FENCES
 	WARN("(not) waiting on ancient frame ", frame, " current frame is ", this->frame);
@@ -1622,6 +1677,7 @@ namespace WITE {
     };
 
     uint64_t render() {//returns frame number
+      PROFILEME;
       //TODO make some secondary cmds
       //TODO cache w/ dirty check the cmds
       scopeLock lock(&mutex);

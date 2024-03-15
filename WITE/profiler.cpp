@@ -1,20 +1,20 @@
 #include <assert.h>
 #include <string.h>
 
-#include "Profiler.hpp"
+#include "profiler.hpp"
 #include "DEBUG.hpp"
 
-namespace WITE::Util {
+namespace WITE {
 
   //statics
-  std::map<Profiler::hash_t, Profiler::ProfileData> Profiler::allProfiles;
-  std::mutex Profiler::allProfiles_mutex;
-  std::atomic_uint64_t Profiler::allProfilesMutexTime;
-  std::atomic_uint64_t Profiler::allProfilesExecutions;
-  timer_t Profiler::timer;
-  bool Profiler::initDone = false;
+  std::map<profiler::hash_t, profiler::ProfileData> profiler::allProfiles;
+  std::mutex profiler::allProfiles_mutex;
+  std::atomic_uint64_t profiler::allProfilesMutexTime;
+  std::atomic_uint64_t profiler::allProfilesExecutions;
+  timer_t profiler::timer;
+  bool profiler::initDone = false;
 
-  uint64_t Profiler::getNs() { //static
+  uint64_t profiler::getNs() { //static
     static constexpr struct itimerspec MAX_TIME { { 0, 0 }, { 60*60*24*365*16, 0 } };
     if(!initDone) {
       std::lock_guard<std::mutex> lock(allProfiles_mutex);
@@ -33,7 +33,7 @@ namespace WITE::Util {
       (MAX_TIME.it_value.tv_nsec - time.it_value.tv_nsec);
   };
 
-  void Profiler::printProfileData() { //static
+  void profiler::printProfileData() { //static
     std::lock_guard<std::mutex> lock(allProfiles_mutex);
     for(auto& pair : allProfiles) {
       printf("%100s:\t\ttotal: %15lu\texecutions: %15lu\taverage: %15lu\n",
@@ -49,16 +49,16 @@ namespace WITE::Util {
 	   allProfilesMutexTime.load() / allProfilesExecutions.load());
   };
 
-  Profiler::Profiler(hash_t hash, const char* filename, const char* funcname, uint64_t linenum, const char* message) :
+  profiler::profiler(hash_t hash, const char* filename, const char* funcname, uint64_t linenum, const char* message) :
     h(hash)
   {
     // int len = sprintf(NULL, "%s::%s:%lu (%s)", filename, funcname, linenum, message);
-    // ASSERT_TRAP(len > 0 && len < sizeof(identifier), "Profiler identifier generation failure");
+    // ASSERT_TRAP(len > 0 && len < sizeof(identifier), "profiler identifier generation failure");
     sprintf(identifier, "%s::%s:%lu (%s)", filename, funcname, linenum, message);
     startTime = getNs();
   };
 
-  Profiler::~Profiler() {
+  profiler::~profiler() {
     uint64_t endTime = getNs(), postEnd;
     ProfileData* pd;
     {

@@ -2,6 +2,7 @@
 
 #include "syncLock.hpp"
 #include "Thread.hpp"
+#include "profiler.hpp"
 
 namespace WITE {
 

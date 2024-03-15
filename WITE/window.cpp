@@ -1,6 +1,7 @@
 #include "window.hpp"
 #include "SDL.hpp"
 #include "gpu.hpp"
+#include "profiler.hpp"
 
 namespace WITE {
 
@@ -15,6 +16,7 @@ namespace WITE {
   };
 
   intBox3D getDefaultSize() {
+    PROFILEME;
     char* cliExtent = gpu::getOption("extent");
     if(cliExtent) {
       unsigned long x = std::strtoul(cliExtent, &cliExtent, 10);
@@ -34,6 +36,7 @@ namespace WITE {
   window::window(size_t gpuIdx) : window(gpuIdx, getDefaultSize()) {};
 
   window::window(size_t gpuIdx, intBox3D box) : gpuIdx(gpuIdx) {
+    PROFILEME;
     //a rendered image is always blitted to the window's swapchain image
     x = (uint32_t)box.minx;
     y = (uint32_t)box.miny;
@@ -98,6 +101,7 @@ namespace WITE {
   };
 
   void window::addInstanceExtensionsTo(std::vector<const char*>& extensions) {//static
+    PROFILEME;
     auto tempWin = SDL_CreateWindow("surface probe", 0, 0, 100, 100, SDL_WINDOW_VULKAN | SDL_WINDOW_HIDDEN);
     unsigned int cnt = 0;
     ASSERT_TRAP(SDL_Vulkan_GetInstanceExtensions(tempWin, &cnt, NULL), "failed to count vk extensions required by sdl");
@@ -135,10 +139,12 @@ namespace WITE {
   };
 
   void window::acquire() {
+    PROFILEME;
     VK_ASSERT(gpu::get(gpuIdx).getVkDevice().acquireNextImageKHR(swap, 10000000000 /*10 seconds*/, acquisitionSems[activeSwapSem], VK_NULL_HANDLE, &presentImageIndex), "failed to acquire");
   };
 
   void window::present(vk::Image src, vk::ImageLayout srcLayout, vk::Offset3D srcSize, vk::SemaphoreSubmitInfo& renderWaitSem) {
+    PROFILEME;
     ASSERT_TRAP(srcSize.z == 1, "attempted to present 3d image");
     auto dst = swapImages[presentImageIndex];
     vk::ImageMemoryBarrier2 barrier1 {
@@ -157,38 +163,45 @@ namespace WITE {
 #ifdef WITE_DEBUG_FENCES
     WARN("window using cmd ", cmd, " and window fence ", activeSwapSem);
 #endif
-    VK_ASSERT(gpu::get(gpuIdx).getVkDevice().waitForFences(1, &cmdFences[activeSwapSem], false, 10000000000 /* 10 seconds */),
-	      "Present fence timeout");
+    {
+      PROFILEME_MSG("Waiting for fence");
+      VK_ASSERT(gpu::get(gpuIdx).getVkDevice().waitForFences(1, &cmdFences[activeSwapSem], false, 10000000000 /* 10 seconds */),
+		"Present fence timeout");
+    }
 #ifdef WITE_DEBUG_FENCES
     WARN("window wait complete for ", activeSwapSem);
 #endif
     VK_ASSERT(gpu::get(gpuIdx).getVkDevice().resetFences(1, &cmdFences[activeSwapSem]), "Failed to reset fence (?how?)");
-    vk::CommandBufferBeginInfo begin { vk::CommandBufferUsageFlagBits::eOneTimeSubmit };
-    VK_ASSERT(cmd.begin(&begin), "failed to begin a command buffer");
-    WITE_DEBUG_IB(barrier1, cmd);
-    cmd.pipelineBarrier2(&di);
-    // vk::ClearColorValue color { 1.0f, 1.0f, 1.0f, 1.0f };
-    // vk::ImageSubresourceRange range { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 };
-    // cmd.clearColorImage(dst, srcLayout, &color, 1, &range);
-    vk::ImageBlit2 region {
-      { vk::ImageAspectFlagBits::eColor, 0, 0, 1 }, {{{0, 0, 0}, srcSize}},
-      { vk::ImageAspectFlagBits::eColor, 0, 0, 1 }, {{{0, 0, 0}, { (int32_t)w, (int32_t)h, 1 }}}
-    };
-    //must blit if only for format conversion, even if they are the same size (we can't know the surface format at compile time)
-    vk::BlitImageInfo2 blit { src, srcLayout, dst, vk::ImageLayout::eTransferDstOptimal, 1, &region, vk::Filter::eNearest };
-    cmd.blitImage2(&blit);
-    di.pImageMemoryBarriers = &barrier2;
-    cmd.pipelineBarrier2(&di);
-    WITE_DEBUG_IB(barrier2, cmd);
-    cmd.end();
+    {
+      PROFILEME_MSG("recording vkcmd");
+      vk::CommandBufferBeginInfo begin { vk::CommandBufferUsageFlagBits::eOneTimeSubmit };
+      VK_ASSERT(cmd.begin(&begin), "failed to begin a command buffer");
+      WITE_DEBUG_IB(barrier1, cmd);
+      cmd.pipelineBarrier2(&di);
+      // vk::ClearColorValue color { 1.0f, 1.0f, 1.0f, 1.0f };
+      // vk::ImageSubresourceRange range { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 };
+      // cmd.clearColorImage(dst, srcLayout, &color, 1, &range);
+      vk::ImageBlit2 region {
+	{ vk::ImageAspectFlagBits::eColor, 0, 0, 1 }, {{{0, 0, 0}, srcSize}},
+	{ vk::ImageAspectFlagBits::eColor, 0, 0, 1 }, {{{0, 0, 0}, { (int32_t)w, (int32_t)h, 1 }}}
+      };
+      //must blit if only for format conversion, even if they are the same size (we can't know the surface format at compile time)
+      vk::BlitImageInfo2 blit { src, srcLayout, dst, vk::ImageLayout::eTransferDstOptimal, 1, &region, vk::Filter::eNearest };
+      cmd.blitImage2(&blit);
+      di.pImageMemoryBarriers = &barrier2;
+      cmd.pipelineBarrier2(&di);
+      WITE_DEBUG_IB(barrier2, cmd);
+      cmd.end();
+    }
     vk::SemaphoreSubmitInfo waits[2] = {
       renderWaitSem,
       { acquisitionSems[activeSwapSem], 0, vk::PipelineStageFlagBits2::eNone }
     }, signal { blitSems[activeSwapSem], 0, vk::PipelineStageFlagBits2::eNone };
     vk::CommandBufferSubmitInfo cmdSubmitInfo(cmd);
     vk::SubmitInfo2 submit({}, 2, waits, 1, &cmdSubmitInfo, 1, &signal);
-    vk::PresentInfoKHR presentInfo { 1, &blitSems[activeSwapSem], 1, &swap, &presentImageIndex, NULL };
+      vk::PresentInfoKHR presentInfo { 1, &blitSems[activeSwapSem], 1, &swap, &presentImageIndex, NULL };
     {
+      PROFILEME_MSG("submitting vkcmd");
       scopeLock lock(gpu::get(gpuIdx).getQueueMutex());
       VK_ASSERT(gpu::get(gpuIdx).getQueue().submit2(1, &submit, cmdFences[activeSwapSem]), "failed to submit command buffer");
       VK_ASSERT(gpu::get(gpuIdx).getQueue().presentKHR(&presentInfo), "Present failed");

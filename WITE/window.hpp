@@ -33,6 +33,7 @@ namespace WITE {
   public:
     static void addInstanceExtensionsTo(std::vector<const char*>& extensions);
     static intBox3D getScreenBounds(size_t idx = 0);
+    static vk::PresentModeKHR getPreferredPresentMode();
 
     std::atomic_uint64_t framesSkipped;
 

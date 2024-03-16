@@ -243,6 +243,7 @@ std::unique_ptr<onion_t> primaryOnion;
 
 const float fov = 45;
 
+//2631fps on test system
 int main(int argc, char** argv) {
   gpu::setOptions(argc, argv);
   gpu::init("Simple render test");
@@ -260,7 +261,7 @@ int main(int argc, char** argv) {
   cameraData.clip.y = 100;
   cameraData.clip.z = glm::cot(glm::radians(fov/2));
   cameraData.clip.w = cameraData.clip.z * size.y / size.x;
-  for(size_t i = 0;i < 600;i++) {
+  for(size_t i = 0;i < 10000;i++) {
     model = glm::rotate(model, (float)glm::radians(0.01), rotAxis);
     cube->write<RS_cube_trans_staging.id>(model);
     camera->write<RS_camera_cameraData_staging.id>(cameraData);

@@ -15,7 +15,7 @@ namespace WITE {
     return intBoxFromSdlRect(rect);
   };
 
-  intBox3D getDefaultSize() {
+  intBox3D getDefaultSize() {//static
     PROFILEME;
     char* cliExtent = gpu::getOption("extent");
     if(cliExtent) {
@@ -31,6 +31,26 @@ namespace WITE {
       uint64_t w = max(192, wholeScreen.width()/4), h = w * 108 / 192;
       return intBox3D(center.x - w/2, center.x + w/2, center.y - h/2, center.y + h/2);
     }
+  };
+
+  vk::PresentModeKHR window::getPreferredPresentMode() {//static
+    //mailbox is the default preferred mode. User may pick another via cli argument.
+    //If what is picked is not supported, fifo will be used.
+    char* v = gpu::getOption("presentmode");
+    if(v == NULL || strcmp(v, "mailbox") == 0)
+      return vk::PresentModeKHR::eMailbox;//no tare, uncapped
+    // if(strcmp(v, "sharedcontinuousrefresh") == 0)
+    //   return vk::PresentModeKHR::eSharedContinuousRefresh;
+    // if(strcmp(v, "shareddemandrefresh") == 0)
+    //   return vk::PresentModeKHR::eSharedDemandRefresh;//nyi, different interface
+    if(strcmp(v, "fiforelaxed") == 0)
+      return vk::PresentModeKHR::eFifoRelaxed;//screen tare possible, only when under framerate, capped otherwise
+    if(strcmp(v, "fifo") == 0)
+      return vk::PresentModeKHR::eFifo;//framerate capped to monitor (vsync)
+    if(strcmp(v, "immediate") == 0)
+      return vk::PresentModeKHR::eImmediate;//screen tare likely
+    WARN("Requested present mode not recognized, using fifo (vsync)");
+    return vk::PresentModeKHR::eFifo;
   };
 
   window::window(size_t gpuIdx) : window(gpuIdx, getDefaultSize()) {};
@@ -52,11 +72,12 @@ namespace WITE {
     uint32_t presentModeCount = 10;
     vk::PresentModeKHR presentModes[10];//skipping a call to save a malloc, there are only 5 present modes in existance atm
     VK_ASSERT(phys.getSurfacePresentModesKHR(surface, &presentModeCount, presentModes), "failed to enumerate present modes");
+    vk::PresentModeKHR preferredMode = getPreferredPresentMode();
     vk::PresentModeKHR mode = vk::PresentModeKHR::eFifo;
-    if(contains(presentModes, vk::PresentModeKHR::eMailbox))
-      mode = vk::PresentModeKHR::eMailbox;
+    if(contains(presentModes, preferredMode))
+      mode = preferredMode;
     else
-      WARN("Mailbox present mode not supported, using fifo (vsync always on).");
+      WARN("Requested present mode not supported, using fifo (vsync always on).");
     swapCI.setMinImageCount(3).setImageArrayLayers(1).setImageColorSpace(vk::ColorSpaceKHR::eSrgbNonlinear)
       .setImageUsage(vk::ImageUsageFlagBits::eTransferDst).setImageSharingMode(vk::SharingMode::eExclusive)
       .setPreTransform(vk::SurfaceTransformFlagBitsKHR::eIdentity).setPresentMode(mode)

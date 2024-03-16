@@ -6,7 +6,8 @@ if [ -n "$vk_lib_path" ]; then
     PATH="$vk_lib_path:$PATH"
 fi;
 LINKOPTS="-L${vk_lib_path} -lrt -latomic -lvulkan -lSDL2"
-BOTHOPTS="-pthread -DDEBUG -DDO_PROFILE -g"
+BOTHOPTS="-pthread -DDEBUG -g"
+# -DDO_PROFILE
 # -DWITE_DEBUG_IMAGE_BARRIERS
 # -DWITE_DEBUG_FENCES
 BASEDIR="$(cd "$(dirname "$0")"; pwd -L)"
@@ -23,7 +24,7 @@ fi
 COMPILER=clang++
 WORKNICE="nice -n10"
 GLCOMPILER=glslangValidator
-TESTOPTIONS="nogpuid=2 extent=0,0,3840,2160" #skips llvme pipe on my test system, renders to left monitor
+TESTOPTIONS="nogpuid=2 extent=0,0,3840,2160 presentmode=immediate" #skips llvme pipe on my test system, renders to left monitor
 
 #config
 if [ -z "$VK_INCLUDE" -a ! -z "$VK_SDK_PATH" ]; then

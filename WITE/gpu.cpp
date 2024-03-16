@@ -194,6 +194,16 @@ namespace WITE {
     return NULL;
   };
 
+  bool gpu::getOptionBool(const char* key) {
+    char* v = getOption(key);
+    if(v == NULL) return false;
+    static constexpr const char* yesValues[] = { "yes", "y", "Y", "t", "T", "1" };
+    for(const char* c : yesValues)
+      if(strcmp(c, v) == 0)
+	return true;
+    return false;
+  };
+
   void gpu::init(const char* appName,
 		 std::initializer_list<const char*> appRequestedLayers,
 		 std::initializer_list<const char*> appRequestedExtensions) {//static

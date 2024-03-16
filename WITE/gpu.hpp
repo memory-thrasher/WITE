@@ -66,6 +66,7 @@ namespace WITE {
   public:
     static void setOptions(int argc, char** argv);//ideally passed through from main BEFORE calling init
     static char* getOption(const char* key);//options should be supplied as key=value
+    static bool getOptionBool(const char* key);
     static void init(const char* appName,
 		     std::initializer_list<const char*> appRequestedLayers = {},
 		     std::initializer_list<const char*> appRequestedExtensions = {});

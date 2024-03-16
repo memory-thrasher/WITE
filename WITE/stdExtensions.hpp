@@ -208,12 +208,12 @@ namespace WITE {
 
   template<class T> inline void atomicMin(std::atomic<T>& a, T v) {
     T old = a.load(std::memory_order_relaxed);
-    while(v < old && !atomic_compare_exchange_weak(&a, &old, v, std::memory_order_relaxed, std::memory_order_relaxed));
+    while(v < old && !atomic_compare_exchange_weak_explicit(&a, &old, v, std::memory_order_relaxed, std::memory_order_relaxed));
   };
 
   template<class T> inline void atomicMax(std::atomic<T>& a, T v) {
     T old = a.load(std::memory_order_relaxed);
-    while(v > old && !atomic_compare_exchange_weak(&a, &old, v, std::memory_order_relaxed, std::memory_order_relaxed));
+    while(v > old && !atomic_compare_exchange_weak_explicit(&a, &old, v, std::memory_order_relaxed, std::memory_order_relaxed));
   };
 
 }

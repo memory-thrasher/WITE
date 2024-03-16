@@ -823,7 +823,7 @@ namespace WITE {
 	if constexpr(hasWindow) {
 	  auto windowExt = presentWindow.getSize3D();
 	  resources.trackWindowSize(owner->frame, windowExt);
-	  presentWindow.acquire();
+	  // presentWindow.acquire();
 	}
 	resources.preRender(owner->frame, cmd, owner->getActiveGarbageCollector());
       };
@@ -1313,8 +1313,8 @@ namespace WITE {
 		verts[0] = source->template get<vbm.resourceSlotId>().frameBuffer(frame + vbm.frameLatency);
 		offsets[0] = vbm.subresource.offset;
 		vertices = GSR.vertexCountOverride ? GSR.vertexCountOverride :
-		  vbm.subresource.length ? vbm.subresource.length :
-		  findById(OD.BRS, vbs.requirementId).size / sizeofUdm<vb->usage.asVertex.format>();
+		  (vbm.subresource.length != VK_WHOLE_SIZE ? vbm.subresource.length : findById(OD.BRS, vbs.requirementId).size)
+		  / sizeofUdm<vb->usage.asVertex.format>();
 	      } else {
 		vertices = GSR.vertexCountOverride;
 	      }
@@ -1334,7 +1334,7 @@ namespace WITE {
 		cmd.bindVertexBuffers(0, vibCount, verts, offsets);
 	      }
 	      cmd.draw(vertices, instances, 0, 0);
-	      // WARN("Drew ", vertices, " from nested target-source");
+	      // WARN("Drew ", instances, " instances of ", vertices, " verticies from nested target-source");
 	      //TODO more flexibility with draw. Allow source layout to ask for multi-draw, indexed, indirect etc. Allow (dynamic) less than the whole buffer.
 	    }
 	  }
@@ -1705,10 +1705,10 @@ namespace WITE {
       WARN("waiting on fence ", fenceIdx, " for frame ", frame, " current frame is ", this->frame);
 #endif
       ASSERT_TRAP(frame < this->frame, "attempted to wait a current or future frame: ", frame, "; current is ", this->frame);
+      VK_ASSERT(dev->getVkDevice().waitForFences(1, &fences[fenceIdx], false, timeoutNS), "Frame timeout");
 #ifdef WITE_DEBUG_FENCES
       WARN("received signal on fence ", fenceIdx, " for frame ", frame, " current frame is ", this->frame);
 #endif
-      VK_ASSERT(dev->getVkDevice().waitForFences(1, &fences[fenceIdx], false, timeoutNS), "Frame timeout");
     };
 
     void gcAll() {
@@ -1753,6 +1753,18 @@ namespace WITE {
       }
       doPostrender<OD.OLS>(signalSem);//signaled by the render, waited by the presentation
       return frame++;
+    };
+
+    ~onion() {
+      PROFILEME;
+      join();
+      gcAll();
+      auto vkdev = dev->getVkDevice();
+      vkdev.freeCommandBuffers(cmdPool, cmdFrameswapCount, primaryCmds);
+      vkdev.destroy(cmdPool, ALLOCCB);
+      for(size_t i = 0;i < cmdFrameswapCount;i++)
+	vkdev.destroy(fences[i], ALLOCCB);
+      vkdev.destroy(semaphore, ALLOCCB);
     };
 
   };

@@ -50,14 +50,14 @@ namespace WITE {
     std::sort(&data[0], &data[cnt], [](const auto a, const auto b) { return a->totalTimeNs < b->totalTimeNs; });
     for(size_t i = 0;i < cnt;i++) {
       auto* datum = data[i];
-      printf("%100s:\t\ttotal: %15lu\texecutions: %15lu\taverage: %15lu\tmin: %15lu\tmax: %15lu\n",
+      printf("%100s:    total: %10lu  executions: %10lu  average: %10lu  min: %10lu  max: %10lu\n",
 	     datum->identifier,
 	     datum->totalTimeNs.load(),
 	     datum->executions.load(),
 	     datum->totalTimeNs.load() / datum->executions.load(),
 	     datum->min.load(), datum->max.load());
     }
-    printf("%100s:\t\ttotal: %15lu\texecutions: %15lu\taverage: %15lu\n",
+    printf("%100s:    total: %10lu  executions: %10lu  average: %10lu\n",
 	   "Profiling overhead",
 	   allProfilesMutexTime.load(),
 	   allProfilesExecutions.load(),

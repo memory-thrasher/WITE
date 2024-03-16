@@ -107,6 +107,18 @@ namespace WITE {
     VK_ASSERT(dev.allocateCommandBuffers(&allocInfo, cmds.get()), "failed to allocate command buffer");
   };
 
+  window::~window() {
+    SDL_DestroyWindow(sdlWindow);
+    auto vkdev = gpu::get(gpuIdx).getVkDevice();
+    vkdev.destroy(cmdPool);
+    for(size_t i = 0;i < swapSemCount;i++) {
+      vkdev.destroy(acquisitionSems[i], ALLOCCB);
+      vkdev.destroy(blitSems[i], ALLOCCB);
+      vkdev.destroy(cmdFences[i], ALLOCCB);
+    }
+    vkdev.destroy(swap, ALLOCCB);
+  };
+
   void window::addInstanceExtensionsTo(std::vector<const char*>& extensions) {//static
     PROFILEME;
     auto tempWin = SDL_CreateWindow("surface probe", 0, 0, 100, 100, SDL_WINDOW_VULKAN | SDL_WINDOW_HIDDEN);
@@ -145,15 +157,30 @@ namespace WITE {
     return { (uint32_t)w, (uint32_t)h, 1 };
   };
 
-  void window::acquire() {
-    PROFILEME;
-    VK_ASSERT(gpu::get(gpuIdx).getVkDevice().acquireNextImageKHR(swap, 10000000000 /*10 seconds*/, acquisitionSems[activeSwapSem], VK_NULL_HANDLE, &presentImageIndex), "failed to acquire");
-  };
-
   void window::present(vk::Image src, vk::ImageLayout srcLayout, vk::Offset3D srcSize, vk::SemaphoreSubmitInfo& renderWaitSem) {
     PROFILEME;
     ASSERT_TRAP(srcSize.z == 1, "attempted to present 3d image");
     auto& dev = gpu::get(gpuIdx);
+    auto vkdev = dev.getVkDevice();
+    uint32_t presentImageIndex;
+    {
+      PROFILEME_MSG("acquire");
+      auto acquireRes = vkdev.acquireNextImageKHR(swap, 0, acquisitionSems[activeSwapSem], VK_NULL_HANDLE, &presentImageIndex);
+      switch(acquireRes) {
+      case vk::Result::eTimeout:
+      case vk::Result::eNotReady:
+	std::atomic_fetch_add_explicit(&framesSkipped, 1, std::memory_order_relaxed);
+	return;
+      case vk::Result::eSuboptimalKHR:
+	//TODO handle
+      case vk::Result::eSuccess:
+	//proceed with present
+	break;
+      default:
+	VK_ASSERT(acquireRes, "failed to acquire");
+	break;
+      }
+    }
     auto dst = swapImages[presentImageIndex];
     vk::ImageMemoryBarrier2 barrier1 {
       vk::PipelineStageFlagBits2::eNone, vk::AccessFlagBits2::eNone,
@@ -173,13 +200,13 @@ namespace WITE {
 #endif
     {
       PROFILEME_MSG("Waiting for fence");
-      VK_ASSERT(dev.getVkDevice().waitForFences(1, &cmdFences[activeSwapSem], false, 10000000000 /* 10 seconds */),
+      VK_ASSERT(vkdev.waitForFences(1, &cmdFences[activeSwapSem], false, 10000000000 /* 10 seconds */),
 		"Present fence timeout");
     }
 #ifdef WITE_DEBUG_FENCES
     WARN("window wait complete for ", activeSwapSem);
 #endif
-    VK_ASSERT(dev.getVkDevice().resetFences(1, &cmdFences[activeSwapSem]), "Failed to reset fence (?how?)");
+    VK_ASSERT(vkdev.resetFences(1, &cmdFences[activeSwapSem]), "Failed to reset fence (?how?)");
     {
       PROFILEME_MSG("recording vkcmd");
       vk::CommandBufferBeginInfo begin { vk::CommandBufferUsageFlagBits::eOneTimeSubmit };

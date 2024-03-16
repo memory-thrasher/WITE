@@ -8,6 +8,7 @@ fi;
 LINKOPTS="-L${vk_lib_path} -lrt -latomic -lvulkan -lSDL2"
 BOTHOPTS="-pthread -DDEBUG -DDO_PROFILE -g"
 # -DWITE_DEBUG_IMAGE_BARRIERS
+# -DWITE_DEBUG_FENCES
 BASEDIR="$(cd "$(dirname "$0")"; pwd -L)"
 OUTDIR="${BASEDIR}/build" #TODO not just WITE but all subdirs
 LOGFILE="${OUTDIR}/buildlog.txt"

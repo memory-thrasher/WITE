@@ -43,19 +43,26 @@ namespace WITE {
     w = (uint32_t)box.width();
     h = (uint32_t)box.height();
     WARN("Creating window with extent: ", x, ",", y, " ", w, "x", h);
-    swapCI.setMinImageCount(3).setImageArrayLayers(1).setImageColorSpace(vk::ColorSpaceKHR::eSrgbNonlinear)
-      .setImageUsage(vk::ImageUsageFlagBits::eTransferDst).setImageSharingMode(vk::SharingMode::eExclusive)
-      .setPreTransform(vk::SurfaceTransformFlagBitsKHR::eIdentity).setPresentMode(vk::PresentModeKHR::eMailbox)
-      .setClipped(true);
-    sdlWindow = SDL_CreateWindow("WITE", x, y, w, h, SDL_WINDOW_VULKAN | SDL_WINDOW_SHOWN | SDL_WINDOW_BORDERLESS);
+    sdlWindow = SDL_CreateWindow("WITE", x, y, w, h, SDL_WINDOW_VULKAN | SDL_WINDOW_HIDDEN | SDL_WINDOW_BORDERLESS);
+    gpu& g = gpu::get(gpuIdx);
+    auto phys = g.getPhysical();
     VkSurfaceKHR vksurface;
     ASSERT_TRAP(SDL_Vulkan_CreateSurface(sdlWindow, gpu::getVkInstance(), &vksurface), "Failed to create vk surface");
     surface = vksurface;
-    swapCI.setSurface(surface);
+    uint32_t presentModeCount = 10;
+    vk::PresentModeKHR presentModes[10];//skipping a call to save a malloc, there are only 5 present modes in existance atm
+    VK_ASSERT(phys.getSurfacePresentModesKHR(surface, &presentModeCount, presentModes), "failed to enumerate present modes");
+    vk::PresentModeKHR mode = vk::PresentModeKHR::eFifo;
+    if(contains(presentModes, vk::PresentModeKHR::eMailbox))
+      mode = vk::PresentModeKHR::eMailbox;
+    else
+      WARN("Mailbox present mode not supported, using fifo (vsync always on).");
+    swapCI.setMinImageCount(3).setImageArrayLayers(1).setImageColorSpace(vk::ColorSpaceKHR::eSrgbNonlinear)
+      .setImageUsage(vk::ImageUsageFlagBits::eTransferDst).setImageSharingMode(vk::SharingMode::eExclusive)
+      .setPreTransform(vk::SurfaceTransformFlagBitsKHR::eIdentity).setPresentMode(mode)
+      .setClipped(true).setSurface(surface);
     //now that the window exists, we can ask each device if it can render to it
     vk::Bool32 supported = false;
-    gpu& g = gpu::get(gpuIdx);
-    auto phys = g.getPhysical();
     VK_ASSERT(phys.getSurfaceSupportKHR(g.getQueueFam(), surface, &supported), "failed to query surface support");
     ASSERT_TRAP(supported, "Device cannot render to this window!");
     uint32_t formatCount;
@@ -146,6 +153,7 @@ namespace WITE {
   void window::present(vk::Image src, vk::ImageLayout srcLayout, vk::Offset3D srcSize, vk::SemaphoreSubmitInfo& renderWaitSem) {
     PROFILEME;
     ASSERT_TRAP(srcSize.z == 1, "attempted to present 3d image");
+    auto& dev = gpu::get(gpuIdx);
     auto dst = swapImages[presentImageIndex];
     vk::ImageMemoryBarrier2 barrier1 {
       vk::PipelineStageFlagBits2::eNone, vk::AccessFlagBits2::eNone,
@@ -165,13 +173,13 @@ namespace WITE {
 #endif
     {
       PROFILEME_MSG("Waiting for fence");
-      VK_ASSERT(gpu::get(gpuIdx).getVkDevice().waitForFences(1, &cmdFences[activeSwapSem], false, 10000000000 /* 10 seconds */),
+      VK_ASSERT(dev.getVkDevice().waitForFences(1, &cmdFences[activeSwapSem], false, 10000000000 /* 10 seconds */),
 		"Present fence timeout");
     }
 #ifdef WITE_DEBUG_FENCES
     WARN("window wait complete for ", activeSwapSem);
 #endif
-    VK_ASSERT(gpu::get(gpuIdx).getVkDevice().resetFences(1, &cmdFences[activeSwapSem]), "Failed to reset fence (?how?)");
+    VK_ASSERT(dev.getVkDevice().resetFences(1, &cmdFences[activeSwapSem]), "Failed to reset fence (?how?)");
     {
       PROFILEME_MSG("recording vkcmd");
       vk::CommandBufferBeginInfo begin { vk::CommandBufferUsageFlagBits::eOneTimeSubmit };
@@ -202,11 +210,25 @@ namespace WITE {
       vk::PresentInfoKHR presentInfo { 1, &blitSems[activeSwapSem], 1, &swap, &presentImageIndex, NULL };
     {
       PROFILEME_MSG("submitting vkcmd");
-      scopeLock lock(gpu::get(gpuIdx).getQueueMutex());
-      VK_ASSERT(gpu::get(gpuIdx).getQueue().submit2(1, &submit, cmdFences[activeSwapSem]), "failed to submit command buffer");
-      VK_ASSERT(gpu::get(gpuIdx).getQueue().presentKHR(&presentInfo), "Present failed");
+      scopeLock lock(dev.getQueueMutex());
+      VK_ASSERT(dev.getQueue().submit2(1, &submit, cmdFences[activeSwapSem]), "failed to submit command buffer");
     }
+    {
+      PROFILEME_MSG("present");
+      VK_ASSERT(dev.getQueue().presentKHR(&presentInfo), "Present failed");
+    }
+    activeSwapSem++;
+    if(activeSwapSem >= swapSemCount) [[unlikely]] activeSwapSem = 0;
     //TODO handle suboptimal return. Send resize request to target_t?
   };
+
+  void window::hide() {
+    SDL_HideWindow(sdlWindow);
+  };
+
+  void window::show() {
+    SDL_ShowWindow(sdlWindow);
+  };
+
 
 }

@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cstring> //memcpy
 #include <map>
+#include <atomic>
 
 namespace WITE {
 
@@ -203,6 +204,16 @@ namespace WITE {
   template<class T> consteval inline size_t sizeofCollection(T t) {
     //std::vector et al can be used constexpr but when used as a temporary, the compiler complains of not deallocating the temporary. Redirecting it by value into another CE function makes it ok.
     return t.size();
+  };
+
+  template<class T> inline void atomicMin(std::atomic<T>& a, T v) {
+    T old = a.load(std::memory_order_relaxed);
+    while(v < old && !atomic_compare_exchange_weak(&a, &old, v, std::memory_order_relaxed, std::memory_order_relaxed));
+  };
+
+  template<class T> inline void atomicMax(std::atomic<T>& a, T v) {
+    T old = a.load(std::memory_order_relaxed);
+    while(v > old && !atomic_compare_exchange_weak(&a, &old, v, std::memory_order_relaxed, std::memory_order_relaxed));
   };
 
 }

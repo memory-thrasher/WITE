@@ -48,6 +48,14 @@ namespace WITE {
 
     image() : image(256, 256) {}
 
+    ~image() {
+      gpu& dev = gpu::get(R.deviceId);
+      for(size_t i = 0;i < R.frameswapCount;i++) {
+	dev.getVkDevice().destroyImage(vkImage[i], ALLOCCB);
+	rams[i].free();
+      }
+    };
+
     inline size_t frameImageIdx(uint64_t frame) const {
       if(frame < 0) [[unlikely]] frame += R.frameswapCount;
       return frame % R.frameswapCount;

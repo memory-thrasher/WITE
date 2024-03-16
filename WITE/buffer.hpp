@@ -34,6 +34,14 @@ namespace WITE {
       }
     };
 
+    ~buffer() {
+      gpu& dev = gpu::get(R.deviceId);
+      for(size_t i = 0;i < R.frameswapCount;i++) {
+	dev.getVkDevice().destroyBuffer(vkBuffer[i], ALLOCCB);
+	rams[i].free();
+      }
+    };
+
     size_t frameBufferIdx(int64_t frame) const {
       ASSERT_TRAP(frame >= -R.frameswapCount, "requested frame too far before frame 0");
       if(frame < 0) [[unlikely]] frame += R.frameswapCount;

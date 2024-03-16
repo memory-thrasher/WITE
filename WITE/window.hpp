@@ -45,6 +45,8 @@ namespace WITE {
     void acquire();
     void present(vk::Image src, vk::ImageLayout srcLayout, vk::Offset3D size, vk::SemaphoreSubmitInfo& renderWaitSem);
     void resize();//TODO
+    void hide();
+    void show();
 
   };
 

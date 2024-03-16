@@ -21,7 +21,7 @@ namespace WITE {
   private:
     typedef uint64_t hash_t;
     struct ProfileData {
-      std::atomic_uint64_t executions, totalTimeNs;
+      std::atomic_uint64_t executions, totalTimeNs, min = ~0, max;
       char identifier[4096];
     };
 

@@ -1,8 +1,11 @@
 #include <assert.h>
 #include <string.h>
+#include <algorithm>
+#include <memory>
 
 #include "profiler.hpp"
 #include "DEBUG.hpp"
+#include "stdExtensions.hpp"
 
 namespace WITE {
 
@@ -34,13 +37,25 @@ namespace WITE {
   };
 
   void profiler::printProfileData() { //static
-    std::lock_guard<std::mutex> lock(allProfiles_mutex);
-    for(auto& pair : allProfiles) {
-      printf("%100s:\t\ttotal: %15lu\texecutions: %15lu\taverage: %15lu\n",
-	     pair.second.identifier,
-	     pair.second.totalTimeNs.load(),
-	     pair.second.executions.load(),
-	     pair.second.totalTimeNs.load() / pair.second.executions.load());
+    std::unique_ptr<ProfileData*[]> data;
+    size_t cnt;
+    {
+      std::lock_guard<std::mutex> lock(allProfiles_mutex);
+      cnt = allProfiles.size();
+      data = std::make_unique<ProfileData*[]>(cnt);
+      size_t i = 0;
+      for(auto& pair : allProfiles)
+	data[i++] = &pair.second;
+    }
+    std::sort(&data[0], &data[cnt], [](const auto a, const auto b) { return a->totalTimeNs < b->totalTimeNs; });
+    for(size_t i = 0;i < cnt;i++) {
+      auto* datum = data[i];
+      printf("%100s:\t\ttotal: %15lu\texecutions: %15lu\taverage: %15lu\tmin: %15lu\tmax: %15lu\n",
+	     datum->identifier,
+	     datum->totalTimeNs.load(),
+	     datum->executions.load(),
+	     datum->totalTimeNs.load() / datum->executions.load(),
+	     datum->min.load(), datum->max.load());
     }
     printf("%100s:\t\ttotal: %15lu\texecutions: %15lu\taverage: %15lu\n",
 	   "Profiling overhead",
@@ -67,8 +82,11 @@ namespace WITE {
       if(strlen(pd->identifier) == 0)
 	strcpy(pd->identifier, identifier);
     }
+    auto time = endTime - startTime;
     pd->executions++;
-    pd->totalTimeNs += endTime - startTime;
+    pd->totalTimeNs += time;
+    atomicMin(pd->min, time);
+    atomicMax(pd->max, time);
     allProfilesExecutions++;
     postEnd = getNs();
     allProfilesMutexTime += postEnd - endTime;

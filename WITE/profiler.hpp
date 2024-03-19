@@ -12,7 +12,7 @@
 #define PROFILEME_MSG(MSG) ::WITE::profiler UNIQUENAME(wite_function_profiler) (::WITE::profiler::hash(__FILE__, __func__, __LINE__, MSG), __FILE__, __func__, __LINE__, MSG)
 #else
 #define PROFILEME
-#define PROFILEME_MSG
+#define PROFILEME_MSG(MSG)
 #endif
 
 namespace WITE {

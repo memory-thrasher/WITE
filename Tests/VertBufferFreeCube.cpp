@@ -3,7 +3,8 @@
 
 //include the compiled shader code which was outputted as a header in the build dir before c++ code gets compiled.
 #include "basicShader.frag.spv.h"
-#include "basicShader.vert.spv.h"
+// #include "basicShader.vert.spv.h"
+#include "box_normal.vert.spv.h"
 
 using namespace WITE;
 
@@ -43,29 +44,6 @@ CL/CP_dataDescription
 
 //this sample orders like objects together to save lines. Larger works would probably order elements by shader.
 
-//cube data just to show how a general mesh would be imported, in practice a cube should have a computed mesh
-
-constexpr vk::Format cubeMeshFormat[] = { Format::RGB32float, Format::RGB32float};
-
-wrap_mesh(gpuId, cubeMeshFormat, cubeMesh,
-          {{-1, -1, -1}, {-1, 0, 0}}, {{-1, 1, 1}, {-1, 0, 0}}, {{-1, -1, 1}, {-1, 0, 0}},
-	  {{-1, 1, 1}, {-1, 0, 0}}, {{-1, -1, -1}, {-1, 0, 0}}, {{-1, 1, -1}, {-1, 0, 0}},
-	  // front face
-	  {{-1, -1, -1}, {0, 0, -1}}, {{1, -1, -1}, {0, 0, -1}}, {{1, 1, -1}, {0, 0, -1}},
-	  {{-1, -1, -1}, {0, 0, -1}}, {{1, 1, -1}, {0, 0, -1}}, {{-1, 1, -1}, {0, 0, -1}},
-	  // top face
-	  {{-1, -1, -1}, {0, -1, 0}}, {{1, -1, 1}, {0, -1, 0}}, {{1, -1, -1}, {0, -1, 0}},
-	  {{-1, -1, -1}, {0, -1, 0}}, {{-1, -1, 1}, {0, -1, 0}}, {{1, -1, 1}, {0, -1, 0}},
-	  // bottom face
-	  {{-1, 1, -1}, {0, 1, 0}}, {{1, 1, 1}, {0, 1, 0}}, {{-1, 1, 1}, {0, 1, 0}},
-	  {{-1, 1, -1}, {0, 1, 0}}, {{1, 1, -1}, {0, 1, 0}}, {{1, 1, 1}, {0, 1, 0}},
-	  // right face
-	  {{1, 1, -1}, {1, 0, 0}}, {{1, -1, 1}, {1, 0, 0}}, {{1, 1, 1}, {1, 0, 0}},
-	  {{1, -1, 1}, {1, 0, 0}}, {{1, 1, -1}, {1, 0, 0}}, {{1, -1, -1}, {1, 0, 0}},
-	  // back face
-	  {{-1, 1, 1}, {0, 0, 1}}, {{1, 1, 1}, {0, 0, 1}}, {{-1, -1, 1}, {0, 0, 1}},
-	  {{-1, -1, 1}, {0, 0, 1}}, {{1, 1, 1}, {0, 0, 1}}, {{1, -1, 1}, {0, 0, 1}});
-
 struct cameraData_t {
   glm::vec4 clip;//(near plane, far plane, cot(fov/2), z/aspect
 };
@@ -80,7 +58,6 @@ constexpr imageRequirements IR_standardColor = defineSimpleColor(gpuId);
 
 //we'll need lists of them all later
 constexpr bufferRequirements BR_L_all[] = {
-  cubeMesh.bufferRequirements_v,
   BR_cameraData,
   BR_S_cameraData,
   BR_singleTransform,
@@ -119,7 +96,6 @@ constexpr resourceConsumer RC_L_S_simple_target[] = {
 constexpr resourceConsumer RC_L_S_simple_source[] = {
   //order here defines 'binding' layout qualifier in shader
   RC_S_simple_modelTrans,
-  cubeMesh.resourceConsumer_v,//defined for convenience by the mesh wrapper
 };
 
 constexpr uint64_t RC_ID_RP_1_depth = __LINE__,
@@ -172,11 +148,6 @@ constexpr resourceSlot RS_camera_cameraData_staging = {
   .id = __LINE__,
   .requirementId = BR_singleTransform.id,
   .objectLayoutId = OL_cube.id,
-}, RS_cube_mesh = {
-  .id = __LINE__,
-  .requirementId = cubeMesh.bufferRequirements_v.id,
-  .objectLayoutId = OL_cube.id,
-  .external = true,
 }, RS_L_all[] = {
   RS_camera_cameraData_staging,
   RS_camera_cameraData,
@@ -187,7 +158,6 @@ constexpr resourceSlot RS_camera_cameraData_staging = {
   //
   RS_cube_trans_staging,
   RS_cube_trans,
-  RS_cube_mesh,
 };
 
 //now tie each slot to one or more consumers
@@ -205,7 +175,6 @@ constexpr resourceReference RR_L_camera[] = {
   { .resourceConsumerId = CP_transform.src, .resourceSlotId = RS_cube_trans_staging.id },
   { .resourceConsumerId = CP_transform.dst, .resourceSlotId = RS_cube_trans.id },
   { .resourceConsumerId = RC_S_simple_modelTrans.id, .resourceSlotId = RS_cube_trans.id },
-  { .resourceConsumerId = cubeMesh.resourceConsumer_v.id, .resourceSlotId = RS_cube_mesh.id },
 };
 
 constexpr targetLayout TL_camera = {
@@ -223,7 +192,7 @@ constexpr sourceLayout SL_cube = {
 //now prep shader code
 defineShaderModules(SM_L_simple,
 		    //yes, size is in bytes even though code is an array of 32-bit ints. If shader code is stored in a file (as opposed to a header in this example), it will have to be trailing-whitespace-padded to 4-byte units. (it's code as text)
-		    { basicShader_vert, sizeof(basicShader_vert), vk::ShaderStageFlagBits::eVertex },
+		    { box_normal_vert, sizeof(box_normal_vert), vk::ShaderStageFlagBits::eVertex },
 		    { basicShader_frag, sizeof(basicShader_frag), vk::ShaderStageFlagBits::eFragment });
 
 //link shader to consumers
@@ -232,6 +201,7 @@ constexpr graphicsShaderRequirements S_simple {
   .modules = SM_L_simple,
   .targetProvidedResources = RC_L_S_simple_target,//target is always layout set 1
   .sourceProvidedResources = RC_L_S_simple_source,//source is always layout set 0
+  .vertexCountOverride = 36,
 };
 
 //create render pass
@@ -271,16 +241,14 @@ std::unique_ptr<onion_t> primaryOnion;
 
 const float fov = 45;
 
-//2342fps on test system
+//2347fps on test system
 int main(int argc, char** argv) {
   gpu::setOptions(argc, argv);
   gpu::init("Simple render test");
   winput::initInput();
   primaryOnion = std::make_unique<onion_t>();
-  auto cubeMeshBuf = cubeMesh.spawnMeshBuffer();//note: pointer, managed by onion
   auto camera = primaryOnion->create<OL_camera.id>();
   auto cube = primaryOnion->create<OL_cube.id>();
-  cube->set<RS_cube_mesh.id>(cubeMeshBuf.get());
   glm::vec3 rotAxis = glm::normalize(glm::dvec3(0, 1, 0));
   glm::mat4 cameraTrans = glm::lookAt(glm::dvec3(-15, 13, -10), glm::dvec3(0, 0, 0), glm::dvec3(0, 1, 0)),
     model = glm::mat4(1);//model: diagonal identity

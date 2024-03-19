@@ -1,6 +1,7 @@
 SpaceCompute
 ComputeSphere
 #SimpleRender
+VertBufferFreeCube
 SpaceFragment
 SpaceFragmentBloom
 ComputeProjection

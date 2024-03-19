@@ -39,6 +39,11 @@ namespace WITE {
   void profiler::printProfileData() { //static
     std::unique_ptr<ProfileData*[]> data;
     size_t cnt;
+    auto totalExecutions = allProfilesExecutions.load();
+    if(totalExecutions == 0) {
+      printf("No profile data");
+      return;
+    }
     {
       std::lock_guard<std::mutex> lock(allProfiles_mutex);
       cnt = allProfiles.size();
@@ -61,7 +66,7 @@ namespace WITE {
 	   "Profiling overhead",
 	   allProfilesMutexTime.load(),
 	   allProfilesExecutions.load(),
-	   allProfilesMutexTime.load() / allProfilesExecutions.load());
+	   allProfilesMutexTime.load() / totalExecutions);
   };
 
   profiler::profiler(hash_t hash, const char* filename, const char* funcname, uint64_t linenum, const char* message) :

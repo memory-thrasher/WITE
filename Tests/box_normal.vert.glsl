@@ -32,7 +32,8 @@ void main() {
   const vec4 worldPos = source.trans * vec4(localPos, 1);
   outWorldPos = worldPos.xyz;
   const vec3 camPos = (targetTrans.transform * worldPos).xyz;
-  gl_Position = vec4(camPos.xy * target.clip.wz * vec2(-1, 1) / camPos.z,
+  //abs prevents one coordinate from ending up on the other side of the screen when only part of the triangle is behind the camera
+  gl_Position = vec4(camPos.xy * target.clip.wz * vec2(-1, 1) / -abs(camPos.z),
 		     (-camPos.z - target.clip.x) / (target.clip.y - target.clip.x), 1);
   outNorm = (source.trans * vec4(localNorm, 0)).xyz;
   outUV = vec2(faceLocalPos);

@@ -1,6 +1,6 @@
 SpaceCompute
 ComputeSphere
-#SimpleRender
+SimpleRender
 VertBufferFreeCube
 SpaceFragment
 SpaceFragmentBloom

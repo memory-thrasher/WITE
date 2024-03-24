@@ -111,7 +111,7 @@ namespace WITE {
       .deviceId = GPUID,
       .id = ID,
       .format = Format::RGBA8unorm,//drivers are REQUIRED by vulkan to support this format for most operations (including color attachment)
-      .usage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eTransferDst,//transfer src is needed by window to present, transfer dst to clear (unless on a RP)
+      .usage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eTransferDst,//transfer src is needed by window to present, transfer dst to clear (unless on a RP)
       .frameswapCount = 2
     };
   };
@@ -155,7 +155,7 @@ namespace WITE {
     };
   };
 
-#define defineSamplerConsumerAt(ST) samplerConsumer<__LINE__, vk::ShaderStageFlagBits::e ##ST>::value
+#define defineSamplerConsumer(ST) samplerConsumer<__LINE__, vk::ShaderStageFlagBits::e ##ST>::value
   template<uint64_t ID, vk::ShaderStageFlagBits ST> struct samplerConsumer {
     static constexpr resourceConsumer value {
       .id = ID,
@@ -163,6 +163,15 @@ namespace WITE {
       .access = vk::AccessFlagBits2::eShaderSampledRead,
       .usage = { vk::DescriptorType::eCombinedImageSampler, { {}, vk::Filter::eNearest, vk::Filter::eNearest, vk::SamplerMipmapMode::eNearest } }
     };
+  };
+
+  //often, a specialization is quite simple, like a single constant or struct.
+#define defineShaderSpecialization(T, D, N) typedef shaderSpecializationWrapper_t<T, D> N;
+#define forwardShaderSpecialization(N) N ::map, (void*)& N ::value, sizeof(N ::value_t)
+  template<class T, const T D> struct shaderSpecializationWrapper_t {
+    typedef const T value_t;
+    static constexpr value_t value = D;
+    static constexpr vk::SpecializationMapEntry map { 0, 0, sizeof(T) };
   };
 
 };

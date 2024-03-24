@@ -36,7 +36,7 @@ namespace WITE {
       && b.frameswapCount;
   };
 
-  consteval vk::BufferCreateInfo getDefaultCI(bufferRequirements r) {
+  WITE_DEBUG_IB_CE vk::BufferCreateInfo getDefaultCI(bufferRequirements r) {
     ASSERT_CONSTEXPR(isValid(r));
     vk::BufferCreateInfo ret;
     ret.setSize(r.size);
@@ -44,7 +44,7 @@ namespace WITE {
     return ret;
   };
 
-  consteval vk::ImageCreateInfo getDefaultCI(imageRequirements r) {
+  WITE_DEBUG_IB_CE vk::ImageCreateInfo getDefaultCI(imageRequirements r) {
     ASSERT_CONSTEXPR(isValid(r));
     vk::ImageCreateInfo ret { {}, (vk::ImageType)(r.dimensions-1), r.format, {}, r.mipLevels, r.arrayLayers,
       vk::SampleCountFlagBits::e1, r.hostVisible ? vk::ImageTiling::eLinear : vk::ImageTiling::eOptimal, r.usage,
@@ -70,7 +70,7 @@ namespace WITE {
 
 #define NEW_ID(t) WITE::withId(t, __LINE__)
 
-  template<class T> consteval size_t findId(literalList<T> l, uint64_t id) {
+  template<class T> WITE_DEBUG_IB_CE size_t findId(literalList<T> l, uint64_t id) {
     for(size_t i = 0;i < l.len;i++)
       if(l[i].id == id)
 	return i;
@@ -78,14 +78,14 @@ namespace WITE {
     return l.len;
   };
 
-  template<class T> consteval bool containsId(literalList<T> l, uint64_t id) {
+  template<class T> WITE_DEBUG_IB_CE bool containsId(literalList<T> l, uint64_t id) {
     for(size_t i = 0;i < l.len;i++)
       if(l[i].id == id)
 	return true;
     return false;
   };
 
-  template<class T> consteval auto findById(literalList<T> l, uint64_t id) {
+  template<class T> WITE_DEBUG_IB_CE auto findById(literalList<T> l, uint64_t id) {
     for(size_t i = 0;i < l.len;i++)
       if(l[i].id == id)
 	return l[i];
@@ -160,14 +160,14 @@ namespace WITE {
     uint64_t objectLayoutId, resourceSlotId, requirementId = NONE;
   };
 
-  consteval resourceConsumer& operator|=(resourceConsumer& l, const resourceConsumer& r) {
+  WITE_DEBUG_IB_CE resourceConsumer& operator|=(resourceConsumer& l, const resourceConsumer& r) {
     l.stages |= r.stages;
     l.access |= r.access;
     l.id = r.id;
     return l;
   };
 
-  consteval resourceAccessTime& operator|=(resourceAccessTime&l, const resourceAccessTime& r) {
+  WITE_DEBUG_IB_CE resourceAccessTime& operator|=(resourceAccessTime&l, const resourceAccessTime& r) {
     l.layerIdx = r.layerIdx;
     l.substep = r.substep;
     l.usage |= r.usage;
@@ -176,7 +176,7 @@ namespace WITE {
     return l;
   };
 
-  consteval bool isDepth(imageRequirements R) { return bool(R.usage & vk::ImageUsageFlagBits::eDepthStencilAttachment); };
+  WITE_DEBUG_IB_CE bool isDepth(imageRequirements R) { return bool(R.usage & vk::ImageUsageFlagBits::eDepthStencilAttachment); };
 
   consteval vk::ImageSubresourceRange getAllInclusiveSubresource(const imageRequirements R) {
     // | vk::ImageAspectFlagBits::eStencil no stencil format has required support so stencil would need format cap detection
@@ -211,7 +211,7 @@ namespace WITE {
     return { vk::PipelineStageFlagBits2::eAllCommands, vk::AccessFlagBits2::eNone, vk::PipelineStageFlagBits2::eAllCommands, vk::AccessFlagBits2::eNone, oldLayout, newLayout, 0, 0, {}, getAllInclusiveSubresource(R) };
   };
 
-  consteval vk::ImageLayout imageLayoutFor(vk::AccessFlags2 access) {
+  WITE_DEBUG_IB_CE vk::ImageLayout imageLayoutFor(vk::AccessFlags2 access) {
     vk::ImageLayout ret = vk::ImageLayout::eUndefined;
     if(access & (vk::AccessFlagBits2::eIndirectCommandRead | vk::AccessFlagBits2::eIndexRead | vk::AccessFlagBits2::eVertexAttributeRead | vk::AccessFlagBits2::eUniformRead | vk::AccessFlagBits2::eInputAttachmentRead | vk::AccessFlagBits2::eShaderRead | vk::AccessFlagBits2::eShaderSampledRead | vk::AccessFlagBits2::eShaderStorageRead))
       ret = vk::ImageLayout::eShaderReadOnlyOptimal;
@@ -228,7 +228,7 @@ namespace WITE {
     return ret;
   };
 
-  consteval vk::PipelineStageFlags2 toPipelineStage2(resourceAccessTime rat) {
+  WITE_DEBUG_IB_CE vk::PipelineStageFlags2 toPipelineStage2(resourceAccessTime rat) {
     const auto f = rat.usage.stages;
     const auto a = rat.usage.access;
     if(f & vk::ShaderStageFlagBits::eAll)

@@ -120,10 +120,10 @@ namespace WITE {
     const uint32_t* data;
     uint32_t size;
     vk::ShaderStageFlagBits stage;
-    const char* entryPoint = "main";//NYI
     literalList<vk::SpecializationMapEntry> specializations;
     const void* const specializationData = NULL;
     size_t specializationDataSize = 0;
+    const char* entryPoint = "main";//NYI
   };
 
 #define defineShaderModules(NOM, ...) defineLiteralList(shaderModule, NOM, __VA_ARGS__)
@@ -155,7 +155,7 @@ namespace WITE {
   struct renderPassRequirements {
     uint64_t id;//unique among render passes
     //unique among copyStep.src/dst, resourceConsumer.id, clearStep.id, objectLayout.windowConsumerId, renderPassRequirements.depth/color
-    uint64_t depth, color; //MAYBE input attachment(s)  //ids for consumers that get generated with standard options
+    uint64_t depth = NONE, color; //MAYBE input attachment(s)  //ids for consumers that get generated with standard options
     bool clearDepth = false, clearColor = false;
     vk::ClearColorValue clearColorValue;
     vk::ClearDepthStencilValue clearDepthValue = { 1.0f, 0 };

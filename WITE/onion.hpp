@@ -72,6 +72,12 @@ namespace WITE {
       vk::SemaphoreTypeCreateInfo semTypeCI(vk::SemaphoreType::eTimeline);
       vk::SemaphoreCreateInfo semCI({}, &semTypeCI);
       VK_ASSERT(dev->getVkDevice().createSemaphore(&semCI, ALLOCCB, &semaphore), "failed to create semaphore");
+#ifdef WITE_DEBUG_IMAGE_BARRIERS
+      WARN("In image barrier debug mode, dumping image barrier information");
+      for(const auto& mb : allBarriers()) {
+	WARN("barrier for resource: objectLayoutId: ", mb.objectLayoutId, ", resourceSlotId: ", mb.resourceSlotId, ", requirementId: ", mb.requirementId, " will be transitioned from access: ", std::hex, (uint64_t)mb.before.usage.access, " (layout ", (int)imageLayoutFor(mb.before.usage.access), ") to access ", (uint64_t)mb.after.usage.access, " (layout ", (int)imageLayoutFor(mb.after.usage.access), std::dec, ") on: layerIdx: ", mb.timing.layerIdx, ", substep: ", (int)mb.timing.substep, ", passId: ", mb.timing.passId, ", shaderId: ", mb.timing.shaderId);
+      }
+#endif
     };
 
     inline garbageCollector& getActiveGarbageCollector() {
@@ -156,7 +162,7 @@ namespace WITE {
       return true;
     };
 
-    static consteval std::vector<resourceAccessTime> findUsages(uint64_t resourceSlotId) {
+    static WITE_DEBUG_IB_CE std::vector<resourceAccessTime> findUsages(uint64_t resourceSlotId) {
       std::vector<resourceAccessTime> ret;
       tempMap<uint64_t, resourceReference> referencesByConsumerId;
       // const resourceSlot RS = findById(OD.RSS, resourceSlotId);
@@ -225,7 +231,7 @@ namespace WITE {
       return ret;
     };
 
-    static consteval std::vector<resourceBarrier> findBarriers(uint64_t resourceSlotId) {
+    static WITE_DEBUG_IB_CE std::vector<resourceBarrier> findBarriers(uint64_t resourceSlotId) {
       auto usage = findUsages(resourceSlotId);
       size_t afterIdx = 0;
       std::vector<resourceBarrier> ret;
@@ -987,7 +993,7 @@ namespace WITE {
       }
     };
 
-    static consteval std::vector<resourceBarrier> allBarriers() {
+    static WITE_DEBUG_IB_CE std::vector<resourceBarrier> allBarriers() {
       std::vector<resourceBarrier> allBarriers;
       for(const resourceSlot& RS : OD.RSS)
 	concat(allBarriers, findBarriers(RS.id));
@@ -1027,7 +1033,7 @@ namespace WITE {
 	return findById(OD.TLS, layoutId);
     };
 
-    template<literalList<resourceBarrier> RBS> inline void recordBarriers(vk::CommandBuffer cmd) {
+    template<literalList<resourceBarrier> RBS, resourceBarrierTiming BT> inline void recordBarriers(vk::CommandBuffer cmd) {
       if constexpr(RBS.len) {
 	{
 	  PROFILEME;
@@ -1054,7 +1060,7 @@ namespace WITE {
 	    for(object_t<RB.objectLayoutId>* cluster : allObjects.template ofLayout<RB.objectLayoutId>()) {
 	      auto& img = cluster->template get<RB.resourceSlotId>();
 	      barriers[mbIdx].image = img.frameImage(RB.frameLatency + frame);
-	      WITE_DEBUG_IB(barriers[mbIdx], cmd);
+	      WITE_DEBUG_IBT(barriers[mbIdx], cmd, BT);
 	      mbIdx++;
 	      if(mbIdx == barrierBatchSize) [[unlikely]] {
 		cmd.pipelineBarrier2(&DI);
@@ -1090,14 +1096,17 @@ namespace WITE {
 	    }
 	  }
 	}
-	recordBarriers<RBS.sub(1)>(cmd);
+	recordBarriers<RBS.sub(1), BT>(cmd);
       }
     };
 
     template<resourceBarrierTiming BT> inline void recordBarriersForTime(vk::CommandBuffer cmd) {
       PROFILEME;
+#ifdef WITE_DEBUG_IMAGE_BARRIERS
+      WARN("recording barriers for timing: layerIdx: ", BT.layerIdx, ", substep: ", (int)BT.substep, ", passId: ", BT.passId, ", shaderId: ", BT.shaderId);
+#endif
       static constexpr auto BTS = barriersForTime<BT>();
-      recordBarriers<BTS>(cmd);
+      recordBarriers<BTS, BT>(cmd);
     };
 
     template<copyStep CS, literalList<uint64_t> XLS> inline void recordCopies(vk::CommandBuffer cmd) {
@@ -1412,6 +1421,7 @@ namespace WITE {
 	{
 	  PROFILEME;
 	  static constexpr renderPassRequirements RP = findById(OD.RPRS, RPIDS[0]);
+	  recordBarriersForTime<resourceBarrierTiming { .layerIdx = layerIdx, .substep = substep_e::render, .passId = RP.id, .shaderId = NONE }>(cmd);
 	  static constexpr const resourceReference* colorRR = findResourceReferenceToConsumer(TL.resources, RP.color),
 	    *depthRR = findResourceReferenceToConsumer(TL.resources, RP.depth);
 	  if constexpr(colorRR != NULL && (depthRR != NULL || RP.depth == NONE)) {
@@ -1464,11 +1474,12 @@ namespace WITE {
 	    cmd.setScissor(0, 1, &size);
 	    static constexpr vk::ClearValue clears[2] { RP.clearColorValue, RP.clearDepthValue };
 	    vk::RenderPassBeginInfo rpBegin(rp, fbb.fb, size, (uint32_t)RP.clearColor + (uint32_t)RP.clearDepth, RP.clearColor ? clears : clears+1);
-	    recordBarriersForTime<resourceBarrierTiming { .layerIdx = layerIdx, .substep = substep_e::render, .passId = RP.id, .shaderId = NONE }>(cmd);
 	    cmd.beginRenderPass(&rpBegin, vk::SubpassContents::eInline);
 	    // WARN("RP begin");
 	    recordRenders<layerIdx, TL, RP, RP.shaders>(target, ptl, rp, cmd);
 	    cmd.endRenderPass();
+	  } else {
+	    if(frame == 1) [[unlikely]] WARN("Warning: skipping rp ", RP.id, " on TL ", TL.id);
 	  }
 	}
 	recordRenders<layerIdx, TL, RPIDS.sub(1)>(target, ptl, cmd);

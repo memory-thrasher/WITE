@@ -141,7 +141,7 @@ constexpr graphicsShaderRequirements S_sphere {
   .vertexCountOverride = 3
 };
 
-constexpr resourceSlot RS_sphere_sphereData_staging = {//begin sphere
+constexpr resourceSlot RS_sphere_sphereData_staging = {
   .id = __LINE__,
   .requirementId = BR_S_sphereData.id,
   .objectLayoutId = OL_sphere.id,

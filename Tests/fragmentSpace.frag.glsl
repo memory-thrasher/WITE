@@ -18,7 +18,6 @@ const uint starTypes = 31;
 layout(std140, set = 0, binding = 0) readonly buffer scatterData_t {
   ivec4[planeCount] planeIncrement;//w unused
   ivec4[planeCount] planeOffset;
-  // vec4[planeCount] planeNormal;
   vec4[starTypes] starTypeColors;
 } scatterData;
 
@@ -48,7 +47,7 @@ void main() {
       //TODO camera position within sector
       const ivec3 intDelta = ivec3(depthTemp*norm + sign(norm) * 0.5f);
       const ivec3 hit = rayOrigin + intDelta - po;
-      if(mod(hit.x * pi.x + hit.y * pi.y + hit.z * pi.z, modulus) == 0) {//TODO prevent overflow, to allow now pow2 modulus?
+      if(mod(hit.x * pi.x + hit.y * pi.y + hit.z * pi.z, modulus) == 0) {//TODO prevent overflow, to allow non-pow2 modulus?
 	//grid point is on-plane, do the expensive tests
 	const uint tempStarType = (hit.x*hit.x + hit.x*7 + hit.y*hit.y*3 + hit.y*13 + hit.z*hit.z*5 + hit.z*37) & 0xFF;
 	//< T logic encourages clusters with gaps between

@@ -7,6 +7,20 @@
 
 namespace WITE {
 
+  namespace reservedIds {
+    uint64_t base = 0xFFFFFFFF00000000 - __LINE__,
+      cubeTransform = base + __LINE__,
+      cubeTransformStaging = base + __LINE__,
+  };
+
+  template<class T> consteval T withId(T t, uint64_t id) {
+    T ret = t;
+    ret.id = id;
+    return ret;
+  };
+
+#define NEW_ID(t) WITE::withId(t, __LINE__)
+
 #define wrap_mesh(GPU, U, NOM, ...) constexpr meshWrapper< GPU, U, ::WITE::countIL<udmObject<U>>({ __VA_ARGS__ }), __LINE__ * 1000000 > NOM = { __VA_ARGS__ }
 
   //produces configuration structs with id values of [ID, ID+2]
@@ -48,6 +62,7 @@ namespace WITE {
   };
 
   constexpr resizeBehavior_t resize_trackWindow_discard { imageResizeType::eDiscard, {}, true };
+  constexpr resizeBehavior_t resize_none { imageResizeType::eNone, {}, false };
 
 #define defineSimpleUniformBuffer(gpuId, size) simpleUB<gpuId, __LINE__, size>::value
   template<size_t GPUID, uint64_t ID, uint32_t size> struct simpleUB {
@@ -116,6 +131,18 @@ namespace WITE {
     };
   };
 
+#define defineIntermediateColor(gpuId) intermediateColor<gpuId, __LINE__>::value
+#define defineIntermediateColorWithFormat(gpuId, F) intermediateColor<gpuId, __LINE__, F>::value
+  template<size_t GPUID, uint64_t ID, vk::Format F = RGBA8Unorm> struct intermediateColor {
+    static constexpr imageRequirements value {
+      .deviceId = gpuId,
+      .id = ID,
+      .format = F,
+      .usage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled,
+      .frameswapCount = 1
+    };
+  };
+
 #define defineCopy() simpleCopy<__LINE__ * 1000000>::value
   //yeah there's not much to this, just a crosswalk
   template<uint64_t ID> struct simpleCopy {
@@ -172,6 +199,39 @@ namespace WITE {
     typedef const T value_t;
     static constexpr value_t value = D;
     static constexpr vk::SpecializationMapEntry map { 0, 0, sizeof(T) };
+  };
+
+  struct cubeTransform_t {
+    glm::mat4 transforms[6];
+  };
+
+  constexpr bufferRequirements BR_cubeTransform = withId(defineSimpleUniformBuffer(gpuId, sizeof(cubeTransform_t)), reservedIds::cubeTransform);
+  constexpr bufferRequirements BR_S_cubeTransform = withId(stagingRequirementsFor(BR_cubeTransform, 2), reservedIds::cubeTransformStaging);
+
+  template<literalList<resourceReference> allSideReferences,
+	   literalList<uint64_t> cameraTransformConsumers,
+	   uint64_t transformSlotId,
+	   uint64_t idBase,
+	   uint64_t objectLayoutId>
+  struct cubeHelper {
+    //TODO more stuff inside, fewer template arguments
+    //depth gets its own ll of consumers, so can be empty
+    static constexpr size_t rrCount = allSideReferences.len + cameraTransformConsumers.len;//per side
+    static constexpr uint64_t targetIdBase = idBase + 100;
+
+    static constexpr copyableArray<copyableArray<resourceReference, rrCount>, 6> targetRRS = [](size_t i) {
+      return [i](size_t j) {
+	return j < 6 ? resourceReference(cameraTransformConsumers[j],
+					 transformSlotId,
+					 { i * sizeof(glm::mat4), sizeof(glm::mat4) })
+	  : allSideReferences[j-6];
+      };
+    };
+
+    static constexpr copyableArray<targetLayout, 6> TLS = [](size_t i) {
+      return targetLayout(targetIdBase + i, objectLayoutId, targetRRS[i]);
+    };
+
   };
 
 };

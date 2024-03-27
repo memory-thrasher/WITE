@@ -194,4 +194,10 @@ namespace WITE {
     };
   };
 
+  template<class V, literalList<V> L, literalList<V> R, literalList<V> Y, literalList<V>... Z>
+  consteval auto concat() {
+    static constexpr auto A = concat<L, R>();
+    return concat<A, Y, Z...>();
+  };
+
 };

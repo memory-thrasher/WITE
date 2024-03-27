@@ -7,12 +7,6 @@
 
 namespace WITE {
 
-  namespace reservedIds {
-    uint64_t base = 0xFFFFFFFF00000000 - __LINE__,
-      cubeTransform = base + __LINE__,
-      cubeTransformStaging = base + __LINE__,
-  };
-
   template<class T> consteval T withId(T t, uint64_t id) {
     T ret = t;
     ret.id = id;
@@ -205,31 +199,114 @@ namespace WITE {
     glm::mat4 transforms[6];
   };
 
-  constexpr bufferRequirements BR_cubeTransform = withId(defineSimpleUniformBuffer(gpuId, sizeof(cubeTransform_t)), reservedIds::cubeTransform);
-  constexpr bufferRequirements BR_S_cubeTransform = withId(stagingRequirementsFor(BR_cubeTransform, 2), reservedIds::cubeTransformStaging);
+  struct cubeTargetData {
+    uint64_t gpuId, idBase;
+    objectLayout OL;
+    literalList<uint64_t> cameraTransformConsumers;
+    literalList<uint64_t> cameraColorConsumers;
+    literalList<uint64_t> cameraDepthConsumers;
+    literalList<resourceReference> otherTargetReferences;
+  };
 
-  template<literalList<resourceReference> allSideReferences,
-	   literalList<uint64_t> cameraTransformConsumers,
-	   uint64_t transformSlotId,
-	   uint64_t idBase,
-	   uint64_t objectLayoutId>
-  struct cubeHelper {
-    //TODO more stuff inside, fewer template arguments
-    //depth gets its own ll of consumers, so can be empty
-    static constexpr size_t rrCount = allSideReferences.len + cameraTransformConsumers.len;//per side
-    static constexpr uint64_t targetIdBase = idBase + 100;
+  template<cubeTargetData CD> struct cubeTargetHelper {
+    static constexpr uint64_t targetIdBase = CD.idBase + 100,
+      objectLayoutId = CD.OL.id,
+      requirementsBaseId = CD.idBase + 200;
 
-    static constexpr copyableArray<copyableArray<resourceReference, rrCount>, 6> targetRRS = [](size_t i) {
-      return [i](size_t j) {
-	return j < 6 ? resourceReference(cameraTransformConsumers[j],
-					 transformSlotId,
-					 { i * sizeof(glm::mat4), sizeof(glm::mat4) })
-	  : allSideReferences[j-6];
-      };
+    static constexpr bool hasDepth = cameraDepthConsumers.len;
+
+    static constexpr bufferRequirements BR_cubeTransform = withId(defineSimpleUniformBuffer(gpuId, sizeof(cubeTransform_t)), requirementsBaseId);
+    static constexpr bufferRequirements BR_S_cubeTransform = withId(stagingRequirementsFor(BR_cubeTransform, 2), requirementsBaseId + 1);
+
+    static constexpr imageRequirements IR_color = {
+      .deviceId = gpuId,
+      .id = requirementsBaseId + 2,
+      .format = Format::RGBA32float,
+      .usage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled,
+      .dimensions = 2,
+      .frameswapCount = 2,
+      .isCube = true,
+      .arrayLayers = 6,
+      .mipLevels = 1,//for now
+    }, IR_depth = {
+      .deviceId = gpuId,
+      .id = requirementsBaseId + 3,
+      .format = Format::D16Unorm,
+      .usage = vk::ImageUsageFlagBits::eDepthStencilAttachment,
+      .dimensions = 2,
+      .frameswapCount = 1,
+      .isCube = true,
+      .arrayLayers = 6,
     };
 
-    static constexpr copyableArray<targetLayout, 6> TLS = [](size_t i) {
-      return targetLayout(targetIdBase + i, objectLayoutId, targetRRS[i]);
+    static constexpr resourceSlot RS_cubemapCamera_trans_staging = {
+      .id = slotIdBase + 0,
+      .requirementId = BR_S_cubeTransform.id,
+      .objectLayoutId = objectLayoutId,
+    }, RS_cubemapCamera_trans = {
+      .id = slotIdBase + 1,
+      .requirementId = BR_cubeTransform.id,
+      .objectLayoutId = objectLayoutId,
+    }, RS_cubemapCamera_color = {
+      .id = slotIdBase + 2,
+      .requirementId = IR_color.id,
+      .objectLayoutId = objectLayoutId,
+      .resizeBehavior = resize_none,
+    }, RS_cubemapCamera_depth = {
+      .id = slotIdBase + 3,
+      .requirementId = IR_depth.id,
+      .objectLayoutId = objectLayoutId,
+      .resizeBehavior = resize_none,
+    };
+
+    static constexpr resourceSlot RS_all[] = {
+      RS_cubemapCamera_trans_staging,
+      RS_cubemapCamera_trans,
+      RS_cubemapCamera_color,
+      RS_cubemapCamera_depth,
+    };
+
+    static constexpr copyableArray<resourceSlot, sizeof(RS_all) / sizeof(RS_all[0]) - int(hasDepth ? 1 : 0)> RS_used = RS_all;
+
+    static constexpr size_t targetRRS_c = CD.cameraDepthConsumers.len + CD.cameraColorConsumers.len + CD.cameraTransformConsumers.len;
+
+    template<uint8_t sideId> struct sideData {
+      static constexpr copyableArray<resourceReference, CD.cameraTransformConsumers.len> targetTransformRRS = [](size_t j) {
+	return resourceReference(CD.cameraTransformConsumers[j], RS_cubemapCamera_trans.id,
+				 { sideId * sizeof(glm::mat4), sizeof(glm::mat4) });
+      };
+      static constexpr copyableArray<resourceReference, CD.cameraColorConsumers.len> targetColorRRS = [](size_t j) {
+	return resourceReference(CD.cameraColorConsumers[j], RS_cubemapCamera_color.id,
+				 { vk::ImageAspectFlagBits::eColor, 0, IR_color.mipLevels-1, sideId, 1 });
+      };
+      static constexpr copyableArray<resourceReference, CD.cameraDepthConsumers.len> targetDepthRRS = [](size_t j) {
+	return resourceReference(CD.cameraDepthConsumers[j], RS_cubemapCamera_depth.id,
+				 { vk::ImageAspectFlagBits::eDepth, 0, IR_depth.mipLevels-1, sideId, 1 });
+      };
+      static constexpr copyableArray<resourceReference, targetRRS_c> allRRS =
+	concat<targetTransformRRS, targetColorRRS, targetDepthRRS>();
+    };
+
+    static constexpr copyableArray<targetLayout, 6> TLS = {
+      targetLayout(targetIdBase + 0, objectLayoutId, sideData<0>::allRRS),
+      targetLayout(targetIdBase + 1, objectLayoutId, sideData<1>::allRRS),
+      targetLayout(targetIdBase + 2, objectLayoutId, sideData<2>::allRRS),
+      targetLayout(targetIdBase + 3, objectLayoutId, sideData<3>::allRRS),
+      targetLayout(targetIdBase + 4, objectLayoutId, sideData<4>::allRRS),
+      targetLayout(targetIdBase + 5, objectLayoutId, sideData<5>::allRRS),
+    };
+
+    template<onionDescriptor OD> static void updateTargetLocation(glm::vec3 l, onion<OD>::object<objectLayoutId>* o) {
+      //see vulkan standard, "Cube Map Face Selection". World-to-camera. Shaders handle perspective division.
+      cubeTransform_t ct {{//note: colum major
+	  { 0, 0, 1, 0,   0,-1, 0, 0,  -1, 0, 0, 0,    l.z,  l.y, -l.x, 1 },// +x
+	  { 0, 0,-1, 0,   0,-1, 0, 0,   1, 0, 0, 0,   -l.z,  l.y,  l.x, 1 },// -x
+	  { 1, 0, 0, 0,   0, 0, 1, 0,   0, 1, 0, 0,   -l.x, -l.z, -l.y, 1 },// +y
+	  { 1, 0, 0, 0,   0, 0,-1, 0,   0,-1, 0, 0,   -l.x,  l.z,  l.y, 1 },// -y
+	  { 1, 0, 0, 0,   0,-1, 0, 0,   0, 0, 1, 0,   -l.x,  l.y, -l.z, 1 },// +z
+	  {-1, 0, 0, 0,   0,-1, 0, 0,   0, 0,-1, 0,    l.x,  l.y,  l.z, 1 },// -z
+	}};
+      o->write<RS_targetTransforms.id>(ct);
     };
 
   };

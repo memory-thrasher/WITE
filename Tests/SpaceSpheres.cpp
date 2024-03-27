@@ -181,22 +181,7 @@ constexpr copyStep CP_camera_cameraData = defineCopy();
 
 //end camera shared
 //begin cubemap camera
-constexpr objectLayout OL_sphere = {
-  .id = __LINE__,
-  .windowConsumerId = RC_ID_present_color,//this implicitly creates a window that presents the image here by RR
-};
-
-constexpr imageRequirements IR_cube {
-  .deviceId = gpuId,
-  .id = __LINE__,
-  .format = Format::RGBA32float,
-  .usage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled,
-  .dimensions = 2,
-  .frameswapCount = 2,
-  .isCube = true,
-  .arrayLayers = 6,
-  .mipLevels = 1,//for now
-};
+constexpr objectLayout OL_sphere = { .id = __LINE__ };
 
 constexpr resourceSlot RS_cubemapCamera_cameraData_staging = {
   .id = __LINE__,
@@ -206,19 +191,6 @@ constexpr resourceSlot RS_cubemapCamera_cameraData_staging = {
   .id = __LINE__,
   .requirementId = BR_cameraData.id,
   .objectLayoutId = OL_sphere.id,
-}, RS_cubemapCamera_trans_staging = {
-  .id = __LINE__,
-  .requirementId = BR_S_singleTransform.id,
-  .objectLayoutId = OL_sphere.id,
-}, RS_cubemapCamera_trans = {
-  .id = __LINE__,
-  .requirementId = BR_singleTransform.id,
-  .objectLayoutId = OL_sphere.id,
-}, RS_cubemapCamera_color = {
-  .id = __LINE__,
-  .requirementId = IR_intermediateColor.id,
-  .objectLayoutId = OL_sphere.id,
-  .resizeBehavior = resize_none,
 };
 //TODO blurr according to material properties as post-processing??
 

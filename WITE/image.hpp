@@ -37,6 +37,9 @@ namespace WITE {
       }
       for(size_t i = 0;i < R.frameswapCount;i++) {
 	VK_ASSERT(gpu::get(R.deviceId).getVkDevice().createImage(&ci, ALLOCCB, &vkImage[i]), "failed to allocate image");
+#ifdef WITE_DEBUG_IMAGE_BARRIERS
+	WARN("Created image with handle ", std::hex, vkImage[i], std::dec, " for requirement ", R.id);
+#endif
 	dev.getVkDevice().getImageMemoryRequirements(vkImage[i], &mrs[i]);
 	dev.allocate(mrs[i], flags, &rams[i]);
 	dev.getVkDevice().bindImageMemory(vkImage[i], rams[i].handle, 0);
@@ -130,6 +133,9 @@ namespace WITE {
 	cmd.pipelineBarrier2(&di);
 	gc.push(oldImage);
 	gc.push(oldRam);
+#ifdef WITE_DEBUG_IMAGE_BARRIERS
+	WARN("Created image with handle ", std::hex, vkImage[idx], " to replace image ", oldImage, std::dec, " as part of resizing operation to size ", ci.extent.width, ", ", ci.extent.height, ", ", ci.extent.depth, ". New image has been transitioned to layout ", (int)phase2.newLayout);
+#endif
       }
     };
 

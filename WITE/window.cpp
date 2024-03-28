@@ -110,6 +110,10 @@ namespace WITE {
     VK_ASSERT(dev.getSwapchainImagesKHR(swap, &swapImageCount, NULL), "Could not count swapchain images.");
     swapImages = std::make_unique<vk::Image[]>(swapImageCount);
     VK_ASSERT(dev.getSwapchainImagesKHR(swap, &swapImageCount, swapImages.get()), "Could not get swapchain images");
+#ifdef WITE_DEBUG_IMAGE_BARRIERS
+    for(size_t i = 0;i < swapImageCount;i++)
+      WARN("Fetched image with handle ", std::hex, swapImages[i], std::dec, " from swapchain for window");
+#endif
     swapSemCount = swapImageCount + 2;
     acquisitionSems = std::make_unique<vk::Semaphore[]>(swapSemCount);
     blitSems = std::make_unique<vk::Semaphore[]>(swapSemCount);

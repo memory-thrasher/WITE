@@ -396,6 +396,14 @@ namespace WITE {
       RT::type data;
       mappedResourceTuple<objectLayoutId, idx+1> rest;
 
+#ifdef WITE_DEBUG_IMAGE_BARRIERS
+      mappedResourceTuple() {
+	if constexpr(RT::isImage)
+	  for(size_t i = 0;i < RT::IR.frameswapCount;i++)
+	    WARN("Created image with handle ", std::hex, at().frameImage(i), std::dec, " for resource slot ", RS.id);
+      };
+#endif
+
       template<size_t RSID = RS.id> inline auto& at() {
 	PROFILEME;
 	if constexpr(RSID == RS.id) {
@@ -1502,6 +1510,7 @@ namespace WITE {
     inline void recordRenders(vk::CommandBuffer cmd) {
       if constexpr(TLS.len) {
 	static constexpr targetLayout TL = TLS[0];
+#error problem: when there are multiple TLs, and render pass barriers, the barriers get re-executed for each target
 	recordRenders<layerIdx, TL, LR>(od.perTL[TL.id], cmd);
 	recordRenders<layerIdx, TLS.sub(1), LR>(cmd);
       };

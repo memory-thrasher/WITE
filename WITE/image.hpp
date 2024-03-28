@@ -18,7 +18,7 @@ namespace WITE {
     vk::ImageCreateInfo ci;
     vk::MemoryPropertyFlags flags;
     //dirty check: track when the image create info (size) was late updated, and when each image was created.
-    uint64_t frameCiUpdated, frameImageCreated[R.frameswapCount];
+    uint64_t frameCiUpdated = 0, frameImageCreated[R.frameswapCount];
     vk::Extent3D frameImageExtent[R.frameswapCount];
 
     image(vk::Extent2D ext) : image(ext.width, ext.height) {};

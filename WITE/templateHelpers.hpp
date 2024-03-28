@@ -285,7 +285,7 @@ namespace WITE {
 				   {{ vk::ImageAspectFlagBits::eDepth, 0, IR_depth.mipLevels, sideId, 1 }}};
       };
       static constexpr copyableArray<resourceReference, targetRRS_c> allRRS =
-	concat<resourceReference, targetTransformRRS, targetColorRRS, targetDepthRRS>();
+	concat<resourceReference, targetTransformRRS, targetColorRRS, targetDepthRRS, CD.otherTargetReferences>();
     };
 
     static constexpr copyableArray<targetLayout, 6> TLS = {

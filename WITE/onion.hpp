@@ -247,8 +247,10 @@ namespace WITE {
 	rb.objectLayoutId = RS.objectLayoutId;
 	rb.timing.layerIdx = rb.after.layerIdx;
 	rb.frameLatency = rb.after.frameLatency;
-	if(rb.before.layerIdx != rb.after.layerIdx || afterIdx == 0) {//prefer top of layer for barriers
-	  //afterIdx == 0: edge case for only having 1 layer
+	if(rb.after.frameLatency != rb.before.frameLatency || //after takes place on a later frame
+	   rb.before.layerIdx != rb.after.layerIdx ||
+	   afterIdx == 0) { //afterIdx == 0: edge case for only having 1 layer
+	  //prefer top of layer for barriers.
 	  rb.timing.substep = substep_e::barrier0;
 	} else if(rb.after.substep != rb.before.substep) {//next prefer between steps
 	  rb.timing.substep = (substep_e)((int)rb.after.substep - 1);
@@ -760,7 +762,7 @@ namespace WITE {
 	data->allObjectResources = resources;
 	data->objectId = objectId;
 	if constexpr(TLS.len > 1)
-	  rest.createAll(o, resources);
+	  rest.createAll(o, resources, objectId);
       };
 
       void freeAll(onion<OD>* o) {

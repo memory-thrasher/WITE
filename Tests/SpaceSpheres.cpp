@@ -527,11 +527,14 @@ int main(int argc, char** argv) {
   cd.clip.y = 100;
   cd.clip.z = glm::cot(glm::radians(fov/2));
   cd.clip.w = cd.clip.z * size.y / size.x;
-  for(size_t i = 0;i < 10000 && !shutdownRequested();i++) {
+  auto s1 = primaryOnion->create<OL_sphere.id>();
+  sphereData_t s1_data {{ -2, 0, 4, 0.5f }};
+  for(size_t i = 0;i < 100 && !shutdownRequested();i++) {
     winput::pollInput();
     cd.gridOrigin.z = i;
     camera->write<RS_camera_cameraData_staging.id>(cd);
     camera->write<RS_camera_trans_staging.id>(glm::lookAt(glm::vec3(0), glm::vec3(0, 0, 1), glm::vec3(0, 1, 0)));
+    s1->write<RS_sphere_sphereData_staging.id>(s1_data);
     primaryOnion->render();
   }
   WARN("NOTE: done rendering (any validation whining after here is in cleanup)");

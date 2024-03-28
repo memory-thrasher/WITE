@@ -5,6 +5,7 @@
 #include "vertexWholeScreen.vert.spv.h"
 #include "fragmentSpace.frag.spv.h"
 #include "fragmentBloom.frag.spv.h"
+#include "shinySphere.frag.spv.h"
 
 static_assert(sizeof(vertexWholeScreen_vert) > 0);
 static_assert(sizeof(fragmentSpace_frag) > 0);
@@ -149,11 +150,13 @@ constexpr graphicsShaderRequirements S_space {
   .vertexCountOverride = 3
 };
 
-constexpr resourceSlot  RS_space_spaceData = {
+constexpr resourceSlot RS_space_spaceData = {
   .id = __LINE__,
   .requirementId = BR_spaceData.id,
   .objectLayoutId = OL_space.id,
   .external = true,
+}, RS_L_space_all[] = {
+  RS_space_spaceData,
 };
 
 constexpr resourceReference RR_L_space[] = {
@@ -177,24 +180,121 @@ struct cameraData_t {
 constexpr bufferRequirements BR_cameraData = defineSimpleUniformBuffer(gpuId, sizeof(cameraData_t));
 constexpr bufferRequirements BR_S_cameraData = NEW_ID(stagingRequirementsFor(BR_cameraData, 2));
 
-constexpr copyStep CP_camera_cameraData = defineCopy();
+constexpr copyStep CP_cameraData = defineCopy();
 
 //end camera shared
-//begin cubemap camera
+//begin cubemaped sphere
 constexpr objectLayout OL_sphere = { .id = __LINE__ };
 
-constexpr resourceSlot RS_cubemapCamera_cameraData_staging = {
+struct sphereData_t {
+  glm::vec4 loc;//xyz = location, w = radius
+};
+
+constexpr bufferRequirements BR_sphereData = defineSimpleUniformBuffer(gpuId, sizeof(sphereData_t));
+constexpr bufferRequirements BR_S_sphereData = NEW_ID(stagingRequirementsFor(BR_sphereData, 2));
+
+constexpr resourceConsumer RC_S_sphere_cameraTrans = defineUBConsumer(Fragment),
+	    RC_S_sphere_cameraData = defineUBConsumer(Fragment),
+	    RC_S_sphere_sourceData = defineUBConsumer(Fragment),
+	    RC_S_sphere_sourceCubemap = defineSamplerConsumer(Fragment);
+
+constexpr resourceConsumer RC_L_S_sphere_target[] = {
+  RC_S_sphere_cameraData,
+  RC_S_sphere_cameraTrans,
+};
+
+constexpr resourceConsumer RC_L_S_sphere_source[] = {
+  RC_S_sphere_sourceData,
+  RC_S_sphere_sourceCubemap,
+};
+
+constexpr shaderModule SM_L_sphere[] = {
+  { vertexWholeScreen_vert, sizeof(vertexWholeScreen_vert), vk::ShaderStageFlagBits::eVertex },
+  { shinySphere_frag, sizeof(shinySphere_frag), vk::ShaderStageFlagBits::eFragment }
+};
+
+constexpr graphicsShaderRequirements S_sphere {
+  .id = __LINE__,
+  .modules = SM_L_sphere,
+  .targetProvidedResources = RC_L_S_sphere_target,
+  .sourceProvidedResources = RC_L_S_sphere_source,
+  .cullMode = vk::CullModeFlagBits::eNone,
+  .vertexCountOverride = 3
+};
+
+constexpr resourceSlot RS_sphere_sphereData_staging = {
+  .id = __LINE__,
+  .requirementId = BR_S_sphereData.id,
+  .objectLayoutId = OL_sphere.id,
+}, RS_sphere_sphereData = {
+  .id = __LINE__,
+  .requirementId = BR_sphereData.id,
+  .objectLayoutId = OL_sphere.id,
+}, RS_sphere_cubemapCamera_cameraData_staging = {
   .id = __LINE__,
   .requirementId = BR_S_cameraData.id,
   .objectLayoutId = OL_sphere.id,
-}, RS_cubemapCamera_cameraData = {
+}, RS_sphere_cubemapCamera_cameraData = {
   .id = __LINE__,
   .requirementId = BR_cameraData.id,
   .objectLayoutId = OL_sphere.id,
 };
 //TODO blurr according to material properties as post-processing??
 
-//end cubemap camera
+constexpr uint64_t RC_ID_L_sphere_cubemapCamera_transformConsumers[] = {
+  RC_S_sphere_cameraTrans.id,
+  RC_S_space_cameraTrans.id,
+};
+
+constexpr resourceReference RR_L_sphere_target_other[] = {
+  { .resourceConsumerId = RC_S_sphere_cameraData.id, .resourceSlotId = RS_sphere_cubemapCamera_cameraData.id },
+  { .resourceConsumerId = RC_S_space_cameraData.id, .resourceSlotId = RS_sphere_cubemapCamera_cameraData.id },
+};
+
+constexpr cubeTargetData CTD_sphere = {
+  .gpuId = gpuId,
+  .idBase = __LINE__*1000000,
+  .OL = OL_sphere,
+  .cameraTransformConsumers = RC_ID_L_sphere_cubemapCamera_transformConsumers,
+  .cameraColorConsumers = RC_ID_RP_1_color,
+  //note: no depth yet
+  .otherTargetReferences = RR_L_sphere_target_other,//these get duplicated into each cube side's target layout
+};
+
+typedef cubeTargetHelper<CTD_sphere> CTH_sphere;
+
+constexpr copyStep CP_sphereData = defineCopy();
+
+constexpr resourceReference RR_L_sphere_source[] = {
+  { .resourceConsumerId = CP_sphereData.src, .resourceSlotId = RS_sphere_sphereData_staging.id },
+  { .resourceConsumerId = CP_sphereData.dst, .resourceSlotId = RS_sphere_sphereData.id },
+  { .resourceConsumerId = RC_S_sphere_sourceData.id, .resourceSlotId = RS_sphere_sphereData.id },
+  { RC_S_sphere_sourceCubemap.id, CTH_sphere::RS_cubemapCamera_color.id, 0,
+    {{ vk::ImageAspectFlagBits::eColor, 0, CTH_sphere::IR_color.mipLevels, 0, 6 }, vk::ImageViewType::eCube } },
+  //the cube renderer shares its resources between all 6 cameras, so the source here handles copies that should only happen once
+  { .resourceConsumerId = CP_cameraData.src, .resourceSlotId = RS_sphere_cubemapCamera_cameraData_staging.id },
+  { .resourceConsumerId = CP_cameraData.dst, .resourceSlotId = RS_sphere_cubemapCamera_cameraData.id },
+  { .resourceConsumerId = CP_transform.src, .resourceSlotId = CTH_sphere::RS_cubemapCamera_trans_staging.id },
+  { .resourceConsumerId = CP_transform.dst, .resourceSlotId = CTH_sphere::RS_cubemapCamera_trans.id },
+};
+
+constexpr sourceLayout SL_sphere = {
+  .id = __LINE__,
+  .objectLayoutId = OL_sphere.id,
+  .resources = RR_L_sphere_source,
+};
+
+constexpr auto RS_L_sphere_all = concat<resourceSlot,
+				    CTH_sphere::RS_used,
+				    RS_sphere_sphereData,
+				    RS_sphere_sphereData_staging,
+				    RS_sphere_cubemapCamera_cameraData,
+				    RS_sphere_cubemapCamera_cameraData_staging
+				    >();
+
+constexpr auto TL_L_sphere = CTH_sphere::TLS;
+
+//end cubemaped sphere
 //begin bloom shaders
 constexpr resourceConsumer RC_bloomH_inColor = defineSamplerConsumer(Fragment);
 
@@ -234,7 +334,7 @@ constexpr uint64_t RC_ID_RP_bloomH_outColor = __LINE__,
 	    RC_ID_RP_bloomV_outColor = __LINE__;
 
 //end bloom shaders
-//begin priamry camera
+//begin primary camera
 constexpr objectLayout OL_camera = {
   .id = __LINE__,
   .windowConsumerId = RC_ID_present_color,//this implicitly creates a window that presents the image here by RR
@@ -277,12 +377,14 @@ constexpr resourceSlot RS_camera_cameraData_staging = {
 };
 
 constexpr resourceReference RR_L_camera[] = {
-  { .resourceConsumerId = CP_camera_cameraData.src, .resourceSlotId = RS_camera_cameraData_staging.id },
-  { .resourceConsumerId = CP_camera_cameraData.dst, .resourceSlotId = RS_camera_cameraData.id },
+  { .resourceConsumerId = CP_cameraData.src, .resourceSlotId = RS_camera_cameraData_staging.id },
+  { .resourceConsumerId = CP_cameraData.dst, .resourceSlotId = RS_camera_cameraData.id },
   { .resourceConsumerId = CP_transform.src, .resourceSlotId = RS_camera_trans_staging.id },
   { .resourceConsumerId = CP_transform.dst, .resourceSlotId = RS_camera_trans.id },
   { .resourceConsumerId = RC_S_space_cameraData.id, .resourceSlotId = RS_camera_cameraData.id },
   { .resourceConsumerId = RC_S_space_cameraTrans.id, .resourceSlotId = RS_camera_trans.id },
+  { .resourceConsumerId = RC_S_sphere_cameraData.id, .resourceSlotId = RS_camera_cameraData.id },
+  { .resourceConsumerId = RC_S_sphere_cameraTrans.id, .resourceSlotId = RS_camera_trans.id },
   { .resourceConsumerId = RC_ID_RP_1_color, .resourceSlotId = RS_camera_color_raw.id },
   { .resourceConsumerId = RC_bloomH_inColor.id, .resourceSlotId = RS_camera_color_raw.id },
   { .resourceConsumerId = RC_ID_RP_bloomH_outColor, .resourceSlotId = RS_camera_color_bloomH.id },
@@ -297,9 +399,18 @@ constexpr targetLayout TL_camera = {
   .resources = RR_L_camera, //pass by reference (with extra steps), so prior declaration is necessary
 };
 
+constexpr auto RS_L_camera_all = concat<resourceSlot,
+					RS_camera_trans,
+					RS_camera_trans_staging,
+					RS_camera_cameraData,
+					RS_camera_cameraData_staging,
+					RS_camera_color_raw,
+					RS_camera_color_bloomH,
+					RS_camera_color_bloomFinal>();
+
 //end camera
 //begin layer
-constexpr graphicsShaderRequirements S_RP_1[] = { S_space };
+constexpr graphicsShaderRequirements S_RP_1[] = { S_space, S_sphere };
 
 constexpr renderPassRequirements RP_1 {
   .id = __LINE__,
@@ -323,7 +434,7 @@ constexpr renderPassRequirements RP_bloomV {
 
 constexpr uint64_t RP_ID_L_L1[] = { RP_1.id, RP_bloomH.id, RP_bloomV.id };
 
-constexpr uint64_t CP_ID_L_L1[] = { CP_transform.id, CP_camera_cameraData.id };
+constexpr uint64_t CP_ID_L_L1[] = { CP_transform.id, CP_cameraData.id, CP_sphereData.id };
 
 constexpr layerRequirements L_1 {
   .copies = CP_ID_L_L1,
@@ -333,15 +444,18 @@ constexpr layerRequirements L_1 {
 //end layer
 //begin OD
 constexpr copyStep CP_all[] = {
-  CP_camera_cameraData,
+  CP_cameraData,
   CP_transform,
+  CP_sphereData,
 };
 
 constexpr sourceLayout SL_all[] = {
   SL_space,
+  SL_sphere,
 };
 
 constexpr objectLayout OL_L_all[] = {
+  OL_sphere,
   OL_space,
   OL_camera,
 };
@@ -349,6 +463,7 @@ constexpr objectLayout OL_L_all[] = {
 constexpr imageRequirements allImageRequirements[] = {
   IR_intermediateColor,
   IR_finalOutput,
+  cubeHelper_unpackIRS(CTH_sphere),
 };
 
 constexpr bufferRequirements allBufferRequirements[] = {
@@ -357,6 +472,9 @@ constexpr bufferRequirements allBufferRequirements[] = {
   BR_S_cameraData,
   BR_cameraData,
   BR_spaceData,
+  cubeHelper_unpackBRS(CTH_sphere),
+  BR_S_sphereData,
+  BR_sphereData,
 };
 
 constexpr renderPassRequirements RP_L_all[] = {
@@ -365,16 +483,12 @@ constexpr renderPassRequirements RP_L_all[] = {
   RP_1,
 };
 
-constexpr resourceSlot RS_L_all[] = {
-  RS_camera_trans,
-  RS_camera_trans_staging,
-  RS_camera_cameraData,
-  RS_camera_cameraData_staging,
-  RS_camera_color_raw,
-  RS_camera_color_bloomH,
-  RS_camera_color_bloomFinal,
-  RS_space_spaceData,
-};
+constexpr auto RS_L_all = concat<resourceSlot,
+				 RS_L_space_all,
+				 RS_L_sphere_all,
+				 RS_L_camera_all>();
+
+constexpr auto TL_L_all = concat<targetLayout, TL_camera, TL_L_sphere>();
 
 constexpr onionDescriptor od = {
   .IRS = allImageRequirements,
@@ -384,7 +498,7 @@ constexpr onionDescriptor od = {
   .CSS = CP_all,
   .LRS = L_1,
   .OLS = OL_L_all,
-  .TLS = TL_camera,
+  .TLS = TL_L_all,
   .SLS = SL_all,
   .GPUID = gpuId
 };

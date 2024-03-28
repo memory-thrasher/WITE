@@ -187,17 +187,26 @@ namespace WITE {
     static constexpr size_t value = count_initializer_list_layers<U>::value + 1;
   };
 
-  template<class V, literalList<V> L, literalList<V> R>
-  consteval copyableArray<V, L.len+R.len> concat() {
-    return [](size_t i) {
-      return i < L.len ? L[i] : R[i - L.len];
-    };
+  template<class V, literalList<V>... L>
+  consteval size_t sizeSum() {
+    constexpr literalList<V> LS[] = { L... };
+    size_t ret = 0;
+    for(size_t i = 0;i < sizeof...(L);i++)
+      ret += LS[i].len;
+    return ret;
   };
 
-  template<class V, literalList<V> L, literalList<V> R, literalList<V> Y, literalList<V>... Z>
-  consteval auto concat() {
-    static constexpr auto A = concat<L, R>();
-    return concat<A, Y, Z...>();
+  template<class V, literalList<V>... L>
+  consteval copyableArray<V, sizeSum<V, L...>()> concat() {
+    constexpr literalList<V> LS[] = { L... };
+    return [LS](size_t i) {
+      int j = 0;
+      while(i >= LS[j].len) {
+	i -= LS[j].len;
+	j++;
+      }
+      return LS[j][i];
+    };
   };
 
 };

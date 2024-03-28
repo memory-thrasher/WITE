@@ -127,9 +127,9 @@ namespace WITE {
 
 #define defineIntermediateColor(gpuId) intermediateColor<gpuId, __LINE__>::value
 #define defineIntermediateColorWithFormat(gpuId, F) intermediateColor<gpuId, __LINE__, F>::value
-  template<size_t GPUID, uint64_t ID, vk::Format F = RGBA8Unorm> struct intermediateColor {
+  template<size_t GPUID, uint64_t ID, vk::Format F = Format::RGBA8unorm> struct intermediateColor {
     static constexpr imageRequirements value {
-      .deviceId = gpuId,
+      .deviceId = GPUID,
       .id = ID,
       .format = F,
       .usage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled,
@@ -211,15 +211,16 @@ namespace WITE {
   template<cubeTargetData CD> struct cubeTargetHelper {
     static constexpr uint64_t targetIdBase = CD.idBase + 100,
       objectLayoutId = CD.OL.id,
-      requirementsBaseId = CD.idBase + 200;
+      requirementsBaseId = CD.idBase + 200,
+      slotIdBase = CD.idBase + 300;
 
-    static constexpr bool hasDepth = cameraDepthConsumers.len;
+    static constexpr bool hasDepth = CD.cameraDepthConsumers.len;
 
-    static constexpr bufferRequirements BR_cubeTransform = withId(defineSimpleUniformBuffer(gpuId, sizeof(cubeTransform_t)), requirementsBaseId);
+    static constexpr bufferRequirements BR_cubeTransform = withId(defineSimpleUniformBuffer(CD.gpuId, sizeof(cubeTransform_t)), requirementsBaseId);
     static constexpr bufferRequirements BR_S_cubeTransform = withId(stagingRequirementsFor(BR_cubeTransform, 2), requirementsBaseId + 1);
 
     static constexpr imageRequirements IR_color = {
-      .deviceId = gpuId,
+      .deviceId = CD.gpuId,
       .id = requirementsBaseId + 2,
       .format = Format::RGBA32float,
       .usage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled,
@@ -229,9 +230,9 @@ namespace WITE {
       .arrayLayers = 6,
       .mipLevels = 1,//for now
     }, IR_depth = {
-      .deviceId = gpuId,
+      .deviceId = CD.gpuId,
       .id = requirementsBaseId + 3,
-      .format = Format::D16Unorm,
+      .format = Format::D16unorm,
       .usage = vk::ImageUsageFlagBits::eDepthStencilAttachment,
       .dimensions = 2,
       .frameswapCount = 1,
@@ -266,38 +267,40 @@ namespace WITE {
       RS_cubemapCamera_depth,
     };
 
-    static constexpr copyableArray<resourceSlot, sizeof(RS_all) / sizeof(RS_all[0]) - int(hasDepth ? 1 : 0)> RS_used = RS_all;
+    static constexpr copyableArray<resourceSlot, sizeof(RS_all) / sizeof(RS_all[0]) - int(hasDepth ? 0 : 1)> RS_used = RS_all;
 
     static constexpr size_t targetRRS_c = CD.cameraDepthConsumers.len + CD.cameraColorConsumers.len + CD.cameraTransformConsumers.len;
 
     template<uint8_t sideId> struct sideData {
       static constexpr copyableArray<resourceReference, CD.cameraTransformConsumers.len> targetTransformRRS = [](size_t j) {
-	return resourceReference(CD.cameraTransformConsumers[j], RS_cubemapCamera_trans.id,
-				 { sideId * sizeof(glm::mat4), sizeof(glm::mat4) });
+	return resourceReference { CD.cameraTransformConsumers[j], RS_cubemapCamera_trans.id, 0,
+				   { sideId * sizeof(glm::mat4), sizeof(glm::mat4) }};
       };
       static constexpr copyableArray<resourceReference, CD.cameraColorConsumers.len> targetColorRRS = [](size_t j) {
-	return resourceReference(CD.cameraColorConsumers[j], RS_cubemapCamera_color.id,
-				 { vk::ImageAspectFlagBits::eColor, 0, IR_color.mipLevels-1, sideId, 1 });
+	return resourceReference { CD.cameraColorConsumers[j], RS_cubemapCamera_color.id, 1,
+				   {{ vk::ImageAspectFlagBits::eColor, 0, IR_color.mipLevels, sideId, 1 }}};
       };
       static constexpr copyableArray<resourceReference, CD.cameraDepthConsumers.len> targetDepthRRS = [](size_t j) {
-	return resourceReference(CD.cameraDepthConsumers[j], RS_cubemapCamera_depth.id,
-				 { vk::ImageAspectFlagBits::eDepth, 0, IR_depth.mipLevels-1, sideId, 1 });
+	return resourceReference { CD.cameraDepthConsumers[j], RS_cubemapCamera_depth.id, 0,
+				   {{ vk::ImageAspectFlagBits::eDepth, 0, IR_depth.mipLevels, sideId, 1 }}};
       };
       static constexpr copyableArray<resourceReference, targetRRS_c> allRRS =
-	concat<targetTransformRRS, targetColorRRS, targetDepthRRS>();
+	concat<resourceReference, targetTransformRRS, targetColorRRS, targetDepthRRS>();
     };
 
     static constexpr copyableArray<targetLayout, 6> TLS = {
-      targetLayout(targetIdBase + 0, objectLayoutId, sideData<0>::allRRS),
-      targetLayout(targetIdBase + 1, objectLayoutId, sideData<1>::allRRS),
-      targetLayout(targetIdBase + 2, objectLayoutId, sideData<2>::allRRS),
-      targetLayout(targetIdBase + 3, objectLayoutId, sideData<3>::allRRS),
-      targetLayout(targetIdBase + 4, objectLayoutId, sideData<4>::allRRS),
-      targetLayout(targetIdBase + 5, objectLayoutId, sideData<5>::allRRS),
+      { targetIdBase + 0, objectLayoutId, sideData<0>::allRRS },
+      { targetIdBase + 1, objectLayoutId, sideData<1>::allRRS },
+      { targetIdBase + 2, objectLayoutId, sideData<2>::allRRS },
+      { targetIdBase + 3, objectLayoutId, sideData<3>::allRRS },
+      { targetIdBase + 4, objectLayoutId, sideData<4>::allRRS },
+      { targetIdBase + 5, objectLayoutId, sideData<5>::allRRS },
     };
 
-    template<onionDescriptor OD> static void updateTargetLocation(glm::vec3 l, onion<OD>::object<objectLayoutId>* o) {
+    template<onionDescriptor OD>
+    static void updateTargetLocation(glm::vec3 l, typename onion<OD>::template object_t<objectLayoutId>* o) {
       //see vulkan standard, "Cube Map Face Selection". World-to-camera. Shaders handle perspective division.
+      //the cube map is always oriented along world axes, regardless of the orientation of the object.
       cubeTransform_t ct {{//note: colum major
 	  { 0, 0, 1, 0,   0,-1, 0, 0,  -1, 0, 0, 0,    l.z,  l.y, -l.x, 1 },// +x
 	  { 0, 0,-1, 0,   0,-1, 0, 0,   1, 0, 0, 0,   -l.z,  l.y,  l.x, 1 },// -x
@@ -306,9 +309,12 @@ namespace WITE {
 	  { 1, 0, 0, 0,   0,-1, 0, 0,   0, 0, 1, 0,   -l.x,  l.y, -l.z, 1 },// +z
 	  {-1, 0, 0, 0,   0,-1, 0, 0,   0, 0,-1, 0,    l.x,  l.y,  l.z, 1 },// -z
 	}};
-      o->write<RS_targetTransforms.id>(ct);
+      o->write<RS_cubemapCamera_trans_staging.id>(ct);
     };
 
   };
+
+#define cubeHelper_unpackIRS(CTH) CTH ::IR_color, CTH ::IR_depth
+#define cubeHelper_unpackBRS(CTH) CTH ::BR_cubeTransform, CTH ::BR_S_cubeTransform
 
 };

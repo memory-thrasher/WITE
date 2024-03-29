@@ -269,7 +269,7 @@ namespace WITE {
 
     static constexpr copyableArray<resourceSlot, sizeof(RS_all) / sizeof(RS_all[0]) - int(hasDepth ? 0 : 1)> RS_used = RS_all;
 
-    static constexpr size_t targetRRS_c = CD.cameraDepthConsumers.len + CD.cameraColorConsumers.len + CD.cameraTransformConsumers.len;
+    static constexpr size_t targetRRS_c = CD.cameraDepthConsumers.len + CD.cameraColorConsumers.len + CD.cameraTransformConsumers.len + CD.otherTargetReferences.len;
 
     template<uint8_t sideId> struct sideData {
       static constexpr copyableArray<resourceReference, CD.cameraTransformConsumers.len> targetTransformRRS = [](size_t j) {
@@ -309,7 +309,7 @@ namespace WITE {
 	  { 1, 0, 0, 0,   0,-1, 0, 0,   0, 0, 1, 0,   -l.x,  l.y, -l.z, 1 },// +z
 	  {-1, 0, 0, 0,   0,-1, 0, 0,   0, 0,-1, 0,    l.x,  l.y,  l.z, 1 },// -z
 	}};
-      o->write<RS_cubemapCamera_trans_staging.id>(ct);
+      o->template write<RS_cubemapCamera_trans_staging.id>(ct);
     };
 
   };

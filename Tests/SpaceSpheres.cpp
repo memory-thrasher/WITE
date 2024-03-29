@@ -508,9 +508,14 @@ constexpr onionDescriptor od = {
 typedef WITE::onion<od> onion_t;
 std::unique_ptr<onion_t> primaryOnion;
 
+static_assert(onion_t::satisfies(TL_L_sphere[0].resources, RC_L_S_space_target));
+static_assert(onion_t::satisfies(TL_L_sphere[0].resources, RC_L_S_sphere_target));
+static_assert(onion_t::satisfies(TL_camera.resources, RC_L_S_space_target));
+static_assert(onion_t::satisfies(TL_camera.resources, RC_L_S_sphere_target));
+
 const float fov = 45;
 
-//??fps
+//502fps
 int main(int argc, char** argv) {
   gpu::setOptions(argc, argv);
   gpu::init("Input and combined procedural and traditional render test");
@@ -529,12 +534,25 @@ int main(int argc, char** argv) {
   cd.clip.w = cd.clip.z * size.y / size.x;
   auto s1 = primaryOnion->create<OL_sphere.id>();
   sphereData_t s1_data {{ -2, 0, 4, 0.5f }};
-  for(size_t i = 0;i < 100 && !shutdownRequested();i++) {
+  auto s2 = primaryOnion->create<OL_sphere.id>();
+  sphereData_t s2_data {{ -2, 2, 6, 0.5f }};
+  cameraData_t s_cd { {}, { 1<<10, 1<<16, 1<<20, 0 }, { 0, glm::tan(glm::radians(90.0f)/256), 2.0f, 0 } };
+  s_cd.clip.x = 0.1f;
+  s_cd.clip.y = 100;
+  s_cd.clip.z = glm::cot(glm::radians(45.0f));
+  s_cd.clip.w = s_cd.clip.z;
+  for(size_t i = 0;i < 100000 && !shutdownRequested();i++) {
     winput::pollInput();
     cd.gridOrigin.z = i;
+    s_cd.gridOrigin = cd.gridOrigin;
     camera->write<RS_camera_cameraData_staging.id>(cd);
     camera->write<RS_camera_trans_staging.id>(glm::lookAt(glm::vec3(0), glm::vec3(0, 0, 1), glm::vec3(0, 1, 0)));
     s1->write<RS_sphere_sphereData_staging.id>(s1_data);
+    s1->write<RS_sphere_cubemapCamera_cameraData_staging.id>(s_cd);
+    CTH_sphere::updateTargetLocation<od>(glm::vec3(s1_data.loc), s1);
+    s2->write<RS_sphere_sphereData_staging.id>(s2_data);
+    s2->write<RS_sphere_cubemapCamera_cameraData_staging.id>(s_cd);
+    CTH_sphere::updateTargetLocation<od>(glm::vec3(s2_data.loc), s2);
     primaryOnion->render();
   }
   WARN("NOTE: done rendering (any validation whining after here is in cleanup)");

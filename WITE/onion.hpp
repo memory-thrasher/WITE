@@ -1355,7 +1355,7 @@ namespace WITE {
 		cmd.bindVertexBuffers(0, vibCount, verts, offsets);
 	      }
 	      cmd.draw(vertices, instances, 0, 0);
-	      // WARN("Drew ", instances, " instances of ", vertices, " verticies from nested target-source");
+	      //WARN("Drew ", instances, " instances of ", vertices, " verticies from nested target-source (", TL.id, "-", SL.id, ")");
 	      //TODO more flexibility with draw. Allow source layout to ask for multi-draw, indexed, indirect etc. Allow (dynamic) less than the whole buffer.
 	    }
 	  }
@@ -1485,8 +1485,8 @@ namespace WITE {
 	// WARN("RP begin");
 	recordRenders<TL, RP, RP.shaders>(target, ptl, rp, cmd);
 	cmd.endRenderPass();
-      // } else {
-      // 	if(frame == 1) [[unlikely]] WARN("Warning: skipping rp ", RP.id, " on TL ", TL.id);
+      } else {
+	if(frame == 1) [[unlikely]] WARN("Warning: skipping rp ", RP.id, " on TL ", TL.id);
       }
     };
 

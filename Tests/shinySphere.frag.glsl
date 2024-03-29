@@ -35,6 +35,8 @@ void main() {
   const vec3 camPos = z * norm;
   const vec3 sphereNormCamSpace = normalize(camPos - o);//sqrt
   const vec3 sphereNormWorld = (vec4(sphereNormCamSpace, 0) * targetTrans.transform).xyz;
+  // outColor = vec4(sphereNormWorld, 1) * 0.5f + 0.5f;
+  // outColor = vec4(texture(cube, sphereNormWorld).xyz, 1) * 0.5f + 0.5f;
   outColor = texture(cube, sphereNormWorld) * 0.8f + vec4(0.1, 0.1, 0.1, 0);
   gl_FragDepth = (z*norm.z - near) / (far - near);
 }

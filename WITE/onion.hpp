@@ -75,7 +75,7 @@ namespace WITE {
 #ifdef WITE_DEBUG_IMAGE_BARRIERS
       WARN("In image barrier debug mode, dumping image barrier information");
       for(const auto& mb : allBarriers()) {
-	WARN("barrier for resource: objectLayoutId: ", mb.objectLayoutId, ", resourceSlotId: ", mb.resourceSlotId, ", requirementId: ", mb.requirementId, " will be transitioned from access: ", std::hex, (uint64_t)mb.before.usage.access, " (layout ", (int)imageLayoutFor(mb.before.usage.access), ") to access ", (uint64_t)mb.after.usage.access, " (layout ", (int)imageLayoutFor(mb.after.usage.access), std::dec, ") on: layerIdx: ", mb.timing.layerIdx, ", substep: ", (int)mb.timing.substep, ", passId: ", mb.timing.passId, ", shaderId: ", mb.timing.shaderId);
+	WARN("barrier for resource: objectLayoutId: ", mb.objectLayoutId, ", resourceSlotId: ", mb.resourceSlotId, ", requirementId: ", mb.requirementId, ", at frame latency: ", (int)mb.frameLatency, " will be transitioned from access: ", std::hex, (uint64_t)mb.before.usage.access, " (layout ", (int)imageLayoutFor(mb.before.usage.access), ") to access ", (uint64_t)mb.after.usage.access, " (layout ", (int)imageLayoutFor(mb.after.usage.access), std::dec, ") on: layerIdx: ", mb.timing.layerIdx, ", substep: ", (int)mb.timing.substep, ", passId: ", mb.timing.passId, ", shaderId: ", mb.timing.shaderId);
       }
 #endif
     };
@@ -261,6 +261,7 @@ namespace WITE {
 	  rb.timing.shaderId = NONE;
 	} else {//otherwise wait as long as possible
 	  constexpr_assert(rb.after.substep == substep_e::compute);//mid-pass barriers not supported (would need dependencies)
+	  //also, multiple target layouts would execute the same barrier repeatedly
 	  rb.timing.substep = rb.after.substep;
 	  rb.timing.shaderId = rb.after.shaderId;
 	}
@@ -495,7 +496,8 @@ namespace WITE {
 	  static constexpr auto baseline = initBaselineBarriers();
 	  copyableArray<vk::ImageMemoryBarrier2, FC> barriers = baseline;
 	  for(int64_t i = 0;i < FC;i++) {
-	    barriers[i].image = data.frameImage(i + currentFrame);
+	    barriers[i].image = data.frameImage(i + currentFrame - 1);
+	    //-1: starting layout for this frame = the final layouy for the previous frame
 	    WITE_DEBUG_IB(barriers[i], cmd);
 	  }
 	  vk::DependencyInfo di { {}, 0, NULL, 0, NULL, FC, barriers.ptr() };
@@ -1113,7 +1115,7 @@ namespace WITE {
     template<resourceBarrierTiming BT> inline void recordBarriersForTime(vk::CommandBuffer cmd) {
       PROFILEME;
 #ifdef WITE_DEBUG_IMAGE_BARRIERS
-      WARN("recording barriers for timing: layerIdx: ", BT.layerIdx, ", substep: ", (int)BT.substep, ", passId: ", BT.passId, ", shaderId: ", BT.shaderId);
+      WARN("recording barriers for timing: layerIdx: ", BT.layerIdx, ", substep: ", (int)BT.substep, ", passId: ", BT.passId, ", shaderId: ", BT.shaderId, " on frame: ", frame);
 #endif
       static constexpr auto BTS = barriersForTime<BT>();
       recordBarriers<BTS, BT>(cmd);
@@ -1168,11 +1170,11 @@ namespace WITE {
       }
     };
 
-    template<literalList<uint64_t> CSIDS, layerRequirements LR> inline void recordCopies(vk::CommandBuffer cmd) {
+    template<literalList<uint64_t> CSIDS> inline void recordCopies(vk::CommandBuffer cmd) {
       if constexpr(CSIDS.len) {
 	static constexpr copyStep CS = findById(OD.CSS, CSIDS[0]);
 	recordCopies<CS, allLayoutIds>(cmd);
-	recordCopies<CSIDS.sub(1), LR>(cmd);
+	recordCopies<CSIDS.sub(1)>(cmd);
       }
     };
 
@@ -1201,11 +1203,11 @@ namespace WITE {
       }
     };
 
-    template<literalList<uint64_t> CLIDS, layerRequirements LR> inline void recordClears(vk::CommandBuffer cmd) {
+    template<literalList<uint64_t> CLIDS> inline void recordClears(vk::CommandBuffer cmd) {
       if constexpr(CLIDS.len) {
 	static constexpr clearStep CS = findById(OD.CLS, CLIDS[0]);
 	recordClears<CS, allLayoutIds>(cmd);
-	recordClears<CLIDS.sub(1), LR>(cmd);
+	recordClears<CLIDS.sub(1)>(cmd);
       }
     };
 
@@ -1401,13 +1403,12 @@ namespace WITE {
       //TODO more flexibility with draw. Allow source layout to ask for multi-draw, indexed, indirect etc. Allow (dynamic) less than the whole buffer.
     };
 
-    template<size_t layerIdx, targetLayout TL, renderPassRequirements RP, literalList<graphicsShaderRequirements> GSRS>
+    template<targetLayout TL, renderPassRequirements RP, literalList<graphicsShaderRequirements> GSRS>
     inline void recordRenders(auto& target, perTargetLayout& ptl, vk::RenderPass rp, vk::CommandBuffer cmd) {
       if constexpr(GSRS.len) {
 	{
 	  PROFILEME;
 	  static constexpr graphicsShaderRequirements GSR = GSRS[0];
-	  recordBarriersForTime<resourceBarrierTiming { .layerIdx = layerIdx, .substep = substep_e::render, .passId = RP.id, .shaderId = GSR.id }>(cmd);
 	  if constexpr(satisfies(TL.resources, GSR.targetProvidedResources)) {
 	    // WARN("Begin shader ", GSR.id, " using target ", TL.id);
 	    size_t frameMod = frame % target_t<TL.id>::maxFrameswap;
@@ -1421,99 +1422,95 @@ namespace WITE {
 	      recordRenders_targetOnly<RP, GSR>(target, ptl, ptlps, descriptorBundle, rp, cmd);
 	  }
 	}
-	recordRenders<layerIdx, TL, RP, GSRS.sub(1)>(target, ptl, rp, cmd);
+	recordRenders<TL, RP, GSRS.sub(1)>(target, ptl, rp, cmd);
       }
     };
 
-    template<size_t layerIdx, targetLayout TL, literalList<uint64_t> RPIDS>
+    template<renderPassRequirements RP, targetLayout TL>
     inline void recordRenders(auto& target, perTargetLayout& ptl, vk::CommandBuffer cmd) {
-      if constexpr(RPIDS.len) {
-	{
-	  PROFILEME;
-	  static constexpr renderPassRequirements RP = findById(OD.RPRS, RPIDS[0]);
-	  recordBarriersForTime<resourceBarrierTiming { .layerIdx = layerIdx, .substep = substep_e::render, .passId = RP.id, .shaderId = NONE }>(cmd);
-	  static constexpr const resourceReference* colorRR = findResourceReferenceToConsumer(TL.resources, RP.color),
-	    *depthRR = findResourceReferenceToConsumer(TL.resources, RP.depth);
-	  if constexpr(colorRR != NULL && (depthRR != NULL || RP.depth == NONE)) {
-	    vk::RenderPass& rp = ptl.rpByRequirementId[RP.id];
-	    if(!rp) [[unlikely]] {
-	      VK_ASSERT(dev->getVkDevice().createRenderPass(&renderPassInfoBundle<RP, TL>::rpci, ALLOCCB, &rp),
-			"failed to create render pass ", TL.id, " ", RP.id);
-	    }
-	    auto& color = target.template get<colorRR->resourceSlotId>();
-	    static constexpr resourceSlot colorRS = findById(OD.RSS, colorRR->resourceSlotId);
-	    frameBufferBundle& fbb = target.fbByRpIdByFrame[RP.id][frame % target_t<TL.id>::maxFrameswap];
-	    bool depthOutdated;
-	    if constexpr(RP.depth != NONE)
-	      depthOutdated = fbb.fb && fbb.lastUpdatedFrame < target.template get<depthRR->resourceSlotId>().frameUpdated(frame + depthRR->frameLatency);
-	    else
-	      depthOutdated = false;
-	    bool colorOutdated = fbb.fb && fbb.lastUpdatedFrame < color.frameUpdated(frame + colorRR->frameLatency);
-	    vk::Rect2D size = color.getSizeRect(frame + colorRR->frameLatency);
-	    if(!fbb.fb || colorOutdated || depthOutdated) [[unlikely]] {
-	      if(fbb.fb)
-		getActiveGarbageCollector().push(fbb.fb);
-	      if constexpr(RP.depth != NONE)
-		ASSERT_TRAP(size == target.template get<depthRR->resourceSlotId>().getSizeRect(frame + depthRR->frameLatency), "framebuffer depth color size mismatch");
-	      fbb.fbci.renderPass = rp;
-	      fbb.fbci.width = size.extent.width;
-	      fbb.fbci.height = size.extent.height;
-	      fbb.fbci.layers = 1;
-	      if constexpr(RP.depth == NONE)
-		fbb.fbci.attachmentCount = 1;
-	      else
-		fbb.fbci.attachmentCount = 2;
-	      if(colorOutdated)
-		getActiveGarbageCollector().push(fbb.attachments[0]);
-	      if(depthOutdated)
-		getActiveGarbageCollector().push(fbb.attachments[1]);
-	      if(!fbb.fb || colorOutdated)
-		fbb.attachments[0] = color.template createView<colorRR->subresource.viewType, getSubresource(colorRS.requirementId, *colorRR)>(frame + colorRR->frameLatency);
-	      if constexpr(RP.depth != NONE)
-		if(!fbb.fb || depthOutdated)
-		  fbb.attachments[1] = target.template get<depthRR->resourceSlotId>().
-		    template createView<depthRR->subresource.viewType,
-					getSubresource(findById(OD.RSS, depthRR->resourceSlotId).requirementId, *depthRR)>
-		    (frame + depthRR->frameLatency);
-	      VK_ASSERT(dev->getVkDevice().createFramebuffer(&fbb.fbci, ALLOCCB, &fbb.fb), "failed to create framebuffer");
-	      fbb.lastUpdatedFrame = frame;
-	    }
-	    //MAYBE multiview
-	    vk::Viewport viewport = { 0, 0, (float)size.extent.width, (float)size.extent.height, 0.0f, 1.0f };
-	    cmd.setViewport(0, 1, &viewport);
-	    cmd.setScissor(0, 1, &size);
-	    static constexpr vk::ClearValue clears[2] { RP.clearColorValue, RP.clearDepthValue };
-	    vk::RenderPassBeginInfo rpBegin(rp, fbb.fb, size, (uint32_t)RP.clearColor + (uint32_t)RP.clearDepth, RP.clearColor ? clears : clears+1);
-	    cmd.beginRenderPass(&rpBegin, vk::SubpassContents::eInline);
-	    // WARN("RP begin");
-	    recordRenders<layerIdx, TL, RP, RP.shaders>(target, ptl, rp, cmd);
-	    cmd.endRenderPass();
-	  } else {
-	    if(frame == 1) [[unlikely]] WARN("Warning: skipping rp ", RP.id, " on TL ", TL.id);
-	  }
+      static constexpr const resourceReference* colorRR = findResourceReferenceToConsumer(TL.resources, RP.color),
+	*depthRR = findResourceReferenceToConsumer(TL.resources, RP.depth);
+      if constexpr(colorRR != NULL && (depthRR != NULL || RP.depth == NONE)) {
+	PROFILEME;
+	vk::RenderPass& rp = ptl.rpByRequirementId[RP.id];
+	if(!rp) [[unlikely]] {
+	  VK_ASSERT(dev->getVkDevice().createRenderPass(&renderPassInfoBundle<RP, TL>::rpci, ALLOCCB, &rp),
+		    "failed to create render pass ", TL.id, " ", RP.id);
 	}
-	recordRenders<layerIdx, TL, RPIDS.sub(1)>(target, ptl, cmd);
+	auto& color = target.template get<colorRR->resourceSlotId>();
+	static constexpr resourceSlot colorRS = findById(OD.RSS, colorRR->resourceSlotId);
+	frameBufferBundle& fbb = target.fbByRpIdByFrame[RP.id][frame % target_t<TL.id>::maxFrameswap];
+	bool depthOutdated;
+	if constexpr(RP.depth != NONE)
+	  depthOutdated = fbb.fb && fbb.lastUpdatedFrame < target.template get<depthRR->resourceSlotId>().frameUpdated(frame + depthRR->frameLatency);
+	else
+	  depthOutdated = false;
+	bool colorOutdated = fbb.fb && fbb.lastUpdatedFrame < color.frameUpdated(frame + colorRR->frameLatency);
+	vk::Rect2D size = color.getSizeRect(frame + colorRR->frameLatency);
+	if(!fbb.fb || colorOutdated || depthOutdated) [[unlikely]] {
+	  if(fbb.fb)
+	    getActiveGarbageCollector().push(fbb.fb);
+	  if constexpr(RP.depth != NONE)
+	    ASSERT_TRAP(size == target.template get<depthRR->resourceSlotId>().getSizeRect(frame + depthRR->frameLatency), "framebuffer depth color size mismatch");
+	  fbb.fbci.renderPass = rp;
+	  fbb.fbci.width = size.extent.width;
+	  fbb.fbci.height = size.extent.height;
+	  fbb.fbci.layers = 1;
+	  if constexpr(RP.depth == NONE)
+	    fbb.fbci.attachmentCount = 1;
+	  else
+	    fbb.fbci.attachmentCount = 2;
+	  if(colorOutdated)
+	    getActiveGarbageCollector().push(fbb.attachments[0]);
+	  if(depthOutdated)
+	    getActiveGarbageCollector().push(fbb.attachments[1]);
+	  if(!fbb.fb || colorOutdated)
+	    fbb.attachments[0] = color.template createView<colorRR->subresource.viewType, getSubresource(colorRS.requirementId, *colorRR)>(frame + colorRR->frameLatency);
+	  if constexpr(RP.depth != NONE)
+	    if(!fbb.fb || depthOutdated)
+	      fbb.attachments[1] = target.template get<depthRR->resourceSlotId>().
+		template createView<depthRR->subresource.viewType,
+				    getSubresource(findById(OD.RSS, depthRR->resourceSlotId).requirementId, *depthRR)>
+		(frame + depthRR->frameLatency);
+	  VK_ASSERT(dev->getVkDevice().createFramebuffer(&fbb.fbci, ALLOCCB, &fbb.fb), "failed to create framebuffer");
+	  fbb.lastUpdatedFrame = frame;
+	}
+	//MAYBE multiview
+	vk::Viewport viewport = { 0, 0, (float)size.extent.width, (float)size.extent.height, 0.0f, 1.0f };
+	cmd.setViewport(0, 1, &viewport);
+	cmd.setScissor(0, 1, &size);
+	static constexpr vk::ClearValue clears[2] { RP.clearColorValue, RP.clearDepthValue };
+	vk::RenderPassBeginInfo rpBegin(rp, fbb.fb, size, (uint32_t)RP.clearColor + (uint32_t)RP.clearDepth, RP.clearColor ? clears : clears+1);
+	cmd.beginRenderPass(&rpBegin, vk::SubpassContents::eInline);
+	// WARN("RP begin");
+	recordRenders<TL, RP, RP.shaders>(target, ptl, rp, cmd);
+	cmd.endRenderPass();
+      // } else {
+      // 	if(frame == 1) [[unlikely]] WARN("Warning: skipping rp ", RP.id, " on TL ", TL.id);
       }
     };
 
-    template<size_t layerIdx, targetLayout TL, layerRequirements LR>
-    inline void recordRenders(perTargetLayout& ptl, vk::CommandBuffer cmd) {
-      PROFILEME;
-      //TODO spawn each of these in a parallel cmd; rework call stack signatures to hand semaphores around instead of cmd
-      //^^  ONLY if there is no writable source descriptor
-      for(auto* target : allTargets.template ofLayout<TL.id>()) {
-	recordRenders<layerIdx, TL, LR.renders>(*target, ptl, cmd);
-      }
-    };
-
-    template<size_t layerIdx, literalList<targetLayout> TLS, layerRequirements LR>
+    template<renderPassRequirements RP, literalList<targetLayout> TLS>
     inline void recordRenders(vk::CommandBuffer cmd) {
       if constexpr(TLS.len) {
+	PROFILEME;
 	static constexpr targetLayout TL = TLS[0];
-#error problem: when there are multiple TLs, and render pass barriers, the barriers get re-executed for each target
-	recordRenders<layerIdx, TL, LR>(od.perTL[TL.id], cmd);
-	recordRenders<layerIdx, TLS.sub(1), LR>(cmd);
-      };
+	perTargetLayout& ptl = od.perTL[TL.id];
+	for(auto* target : allTargets.template ofLayout<TL.id>())
+	  recordRenders<RP, TL>(*target, ptl, cmd);
+	recordRenders<RP, TLS.sub(1)>(cmd);
+      }
+    };
+
+    template<size_t layerIdx, literalList<uint64_t> RPIDS>
+    inline void recordRenders(vk::CommandBuffer cmd) {
+      if constexpr(RPIDS.len) {
+	PROFILEME;
+	static constexpr renderPassRequirements RP = findById(OD.RPRS, RPIDS[0]);
+	recordBarriersForTime<resourceBarrierTiming { .layerIdx = layerIdx, .substep = substep_e::render, .passId = RP.id, .shaderId = NONE }>(cmd);
+	recordRenders<RP, OD.TLS>(cmd);
+	recordRenders<layerIdx, RPIDS.sub(1)>(cmd);
+      }
     };
 
     template<computeShaderRequirements CS, uint64_t TID, uint64_t SID> static inline void getWorkgroupSize(vk::Extent3D& workgroupSize, target_t<TID>* target, source_t<SID>* source, uint64_t frameMod) {
@@ -1648,7 +1645,7 @@ namespace WITE {
       }
     };
 
-    template<size_t layerIdx, layerRequirements LR, literalList<uint64_t> CSS>
+    template<size_t layerIdx, literalList<uint64_t> CSS>
     inline void recordComputeDispatches(vk::CommandBuffer cmd) {
       if constexpr(CSS.len) {
 	{
@@ -1662,7 +1659,7 @@ namespace WITE {
 	  else
 	    recordComputeDispatches_nested<CS, OD.TLS, OD.SLS>(cmd);
 	}
-	recordComputeDispatches<layerIdx, LR, CSS.sub(1)>(cmd);
+	recordComputeDispatches<layerIdx, CSS.sub(1)>(cmd);
       }
     };
 
@@ -1672,14 +1669,13 @@ namespace WITE {
 	  PROFILEME;
 	  static constexpr layerRequirements LR = OD.LRS[layerIdx];
 	  recordBarriersForTime<resourceBarrierTiming { .layerIdx = layerIdx, .substep = substep_e::barrier0 }>(cmd);
-	  recordCopies<LR.copies, LR>(cmd);
+	  recordCopies<LR.copies>(cmd);
 	  recordBarriersForTime<resourceBarrierTiming { .layerIdx = layerIdx, .substep = substep_e::barrier1 }>(cmd);
-	  recordClears<LR.clears, LR>(cmd);
+	  recordClears<LR.clears>(cmd);
 	  recordBarriersForTime<resourceBarrierTiming { .layerIdx = layerIdx, .substep = substep_e::barrier2 }>(cmd);
-	  if constexpr(LR.renders)
-	    recordRenders<layerIdx, OD.TLS, LR>(cmd);
+	  recordRenders<layerIdx, LR.renders>(cmd);
 	  recordBarriersForTime<resourceBarrierTiming { .layerIdx = layerIdx, .substep = substep_e::barrier3 }>(cmd);
-	  recordComputeDispatches<layerIdx, LR, LR.computeShaders>(cmd);
+	  recordComputeDispatches<layerIdx, LR.computeShaders>(cmd);
 	  recordBarriersForTime<resourceBarrierTiming { .layerIdx = layerIdx, .substep = substep_e::barrier4 }>(cmd);
 	}
 	renderFrom<layerIdx+1>(cmd);

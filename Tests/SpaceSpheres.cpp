@@ -541,7 +541,7 @@ int main(int argc, char** argv) {
   s_cd.clip.y = 100;
   s_cd.clip.z = glm::cot(glm::radians(45.0f));
   s_cd.clip.w = s_cd.clip.z;
-  for(size_t i = 0;i < 100000 && !shutdownRequested();i++) {
+  for(size_t i = 0;i < 10000 && !shutdownRequested();i++) {
     winput::pollInput();
     cd.gridOrigin.z = i;
     s_cd.gridOrigin = cd.gridOrigin;

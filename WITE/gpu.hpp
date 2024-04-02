@@ -10,7 +10,7 @@
 #include "syncLock.hpp"
 #include "hash.hpp"
 #include "DEBUG.hpp"
-#include "Thread.hpp"
+#include "thread.hpp"
 #include "cmdPool.hpp"
 
 namespace WITE {
@@ -58,7 +58,7 @@ namespace WITE {
     std::map<hash_t, vk::DescriptorSetLayout> descriptorSetLayouts;
     std::map<hash_t, vk::PipelineLayout> pipelineLayouts;
     syncLock samplersMutex, descriptorSetLayoutsMutex, pipelineLayoutsMutex, queueMutex, lowPrioQueueMutex;
-    Platform::ThreadResource<cmdPool> tempCmds;
+    threadResource<cmdPool> tempCmds;
 
     gpu(size_t idx, vk::PhysicalDevice);
     gpu(gpu&&) = delete;

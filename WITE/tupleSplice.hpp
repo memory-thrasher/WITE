@@ -1,4 +1,4 @@
-namespace WITE::Util {
+namespace WITE {
 
   template<size_t start, size_t deleteCount, class... Tup> struct tuple_splice;
 

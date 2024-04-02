@@ -1,5 +1,4 @@
 #include "../WITE/WITE.hpp"
-#include "../WITE/Thread.hpp"
 
 //include the compiled shader code which was outputted as a header in the build dir before c++ code gets compiled.
 #include "basicShader.frag.spv.h"

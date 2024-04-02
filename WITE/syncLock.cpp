@@ -1,7 +1,7 @@
 #include <stdlib.h>
 
 #include "syncLock.hpp"
-#include "Thread.hpp"
+#include "thread.hpp"
 #include "profiler.hpp"
 
 namespace WITE {
@@ -13,8 +13,8 @@ namespace WITE {
     seed = queueSeed.fetch_add(1);//take a number
     while (seed > queueCurrent.load())
       if(!busy)
-	Platform::Thread::sleepShort();
-    owningThread = Platform::Thread::getCurrentTid();
+	thread::sleepShort();
+    owningThread = thread::getCurrentTid();
   }
 
   void syncLock::ReleaseLock() {
@@ -27,8 +27,8 @@ namespace WITE {
     newSeed = queueSeed.fetch_add(1);
     owningThread = ~0;
     queueCurrent.fetch_add(1);
-    while (newSeed > queueCurrent.load()) Platform::Thread::sleepShort();
-    owningThread = Platform::Thread::getCurrentTid();
+    while (newSeed > queueCurrent.load()) thread::sleepShort();
+    owningThread = thread::getCurrentTid();
   }
 
   bool syncLock::isHeld() {

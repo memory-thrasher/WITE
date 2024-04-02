@@ -4,7 +4,7 @@
 #include <memory>
 #include <functional>
 
-#include "TupleSplice.hpp"
+#include "tupleSplice.hpp"
 
 #ifdef _WIN32
 #define wintypename typename
@@ -12,61 +12,61 @@
 #define wintypename
 #endif
 
-namespace WITE::Util {
+namespace WITE {
 
-  template<class RET, class... RArgs> class Callback_t {
+  template<class RET, class... RArgs> class callback_t {
   public:
     virtual RET call(RArgs... rargs) const = 0;
-    virtual ~Callback_t() = default;
+    virtual ~callback_t() = default;
     RET operator()(RArgs... rargs) const {
       return call(rargs...);
     };
   };
 
-  template<class RET, class... RArgs> class CallbackConstexprWrapper : public Callback_t<RET, RArgs...> {
-    typedef Callback_t<RET, RArgs...> cbt;
+  template<class RET, class... RArgs> class callbackConstexprWrapper : public callback_t<RET, RArgs...> {
+    typedef callback_t<RET, RArgs...> cbt;
   private:
     const cbt* cb;
   public:
-    constexpr CallbackConstexprWrapper() : cb(NULL) {};
-    constexpr CallbackConstexprWrapper(const CallbackConstexprWrapper& src) : cb(src.cb) {};
-    constexpr CallbackConstexprWrapper(const cbt* src) : cb(src) {};
+    constexpr callbackConstexprWrapper() : cb(NULL) {};
+    constexpr callbackConstexprWrapper(const callbackConstexprWrapper& src) : cb(src.cb) {};
+    constexpr callbackConstexprWrapper(const cbt* src) : cb(src) {};
     RET call(RArgs... rargs) const override { return cb->call(std::forward<RArgs>(rargs)...); };
     constexpr operator bool() const { return cb; };
   };
 
-  template<class RET, class... RArgs> class CallbackPtr {
+  template<class RET, class... RArgs> class callbackPtr {
   private:
-    mutable std::shared_ptr<Callback_t<RET, RArgs...>> cb;
+    mutable std::shared_ptr<callback_t<RET, RArgs...>> cb;
   public:
-    // constexpr CallbackPtr(RET(*x)(RArgs...));
-    CallbackPtr() : cb() {};
-    CallbackPtr(Callback_t<RET, RArgs...>* cb) : cb(cb) {};
-    CallbackPtr(const CallbackPtr& other) : cb(other.cb) {};
+    // constexpr callbackPtr(RET(*x)(RArgs...));
+    callbackPtr() : cb() {};
+    callbackPtr(callback_t<RET, RArgs...>* cb) : cb(cb) {};
+    callbackPtr(const callbackPtr& other) : cb(other.cb) {};
     inline RET operator()(RArgs... rargs) const { return cb->call(std::forward<RArgs>(rargs)...); };
-    inline const Callback_t<RET, RArgs...>* operator->() const { return cb.get(); };
+    inline const callback_t<RET, RArgs...>* operator->() const { return cb.get(); };
     inline operator bool() const { return (bool)cb; };
   };
 
-  template<class RET, class... RArgs> class CallbackFactory {
+  template<class RET, class... RArgs> class callbackFactory {
   private:
     template<class L> static auto lambdaWrapper(L l, RArgs... rargs) { return l(std::forward<RArgs>(rargs)...); };
   public:
-    template<class T, class... CArgs> class Callback : public Callback_t<RET, RArgs...> {
+    template<class T, class... CArgs> class callback : public callback_t<RET, RArgs...> {
     private:
       RET(T::*const x)(CArgs..., RArgs...);
       T *const owner;
       const std::tuple<CArgs...> cargs;
     public:
-      constexpr Callback(T* t, RET(T::*const x)(CArgs..., RArgs...), CArgs... pda) :
+      constexpr callback(T* t, RET(T::*const x)(CArgs..., RArgs...), CArgs... pda) :
 	x(x), owner(t), cargs(std::forward<CArgs>(pda)...) {};
-      constexpr ~Callback() {};
-      constexpr Callback(const Callback<T, CArgs...>& other) : x(other.x), owner(other.owner), cargs(other.cargs) {};
+      constexpr ~callback() {};
+      constexpr callback(const callback<T, CArgs...>& other) : x(other.x), owner(other.owner), cargs(other.cargs) {};
       RET call(RArgs... rargs) const override {
 	return std::apply(x, std::tuple_cat(std::tie(owner), cargs, std::tie(rargs...)));
       };
     };
-    template<class... CArgs> class StaticCallback : public Callback_t<RET, RArgs...> {
+    template<class... CArgs> class StaticCallback : public callback_t<RET, RArgs...> {
     private:
       RET(*const x)(CArgs..., RArgs...);
       std::tuple<CArgs...> cargs;
@@ -79,7 +79,7 @@ namespace WITE::Util {
 	return std::apply(x, std::tuple_cat(cargs, std::tie(rargs...)));
       };
     };
-    typedef CallbackPtr<RET, RArgs...> callback_t;
+    typedef callbackPtr<RET, RArgs...> callback_t;
     template<class U, class... CArgs> constexpr static callback_t
     make(U* owner, CArgs... cargs, RET(U::*const func)(CArgs..., RArgs...));
     template<class... CArgs> constexpr static callback_t
@@ -88,24 +88,24 @@ namespace WITE::Util {
     constexpr static callback_t make(L);
   };
 
-  template<class RET, class... RArgs> template<class U, class... CArgs> constexpr CallbackPtr<RET, RArgs...>
-  CallbackFactory<RET, RArgs...>::make(U*const owner, CArgs... cargs, RET(U::*const func)(CArgs..., RArgs...)) {
-    return CallbackPtr(new CallbackFactory<RET, RArgs...>::Callback<U, CArgs...>(owner, func, std::forward<CArgs>(cargs)...));
+  template<class RET, class... RArgs> template<class U, class... CArgs> constexpr callbackPtr<RET, RArgs...>
+  callbackFactory<RET, RArgs...>::make(U*const owner, CArgs... cargs, RET(U::*const func)(CArgs..., RArgs...)) {
+    return callbackPtr(new callbackFactory<RET, RArgs...>::callback<U, CArgs...>(owner, func, std::forward<CArgs>(cargs)...));
   }
 
-  template<class RET, class... RArgs> template<class... CArgs> constexpr CallbackPtr<RET, RArgs...>
-  CallbackFactory<RET, RArgs...>::make(CArgs... cargs, RET(*const func)(CArgs..., RArgs...)) {
-    return CallbackPtr(new CallbackFactory<RET, RArgs...>::StaticCallback<CArgs...>(func, std::forward<CArgs>(cargs)...));
+  template<class RET, class... RArgs> template<class... CArgs> constexpr callbackPtr<RET, RArgs...>
+  callbackFactory<RET, RArgs...>::make(CArgs... cargs, RET(*const func)(CArgs..., RArgs...)) {
+    return callbackPtr(new callbackFactory<RET, RArgs...>::StaticCallback<CArgs...>(func, std::forward<CArgs>(cargs)...));
   }
 
   //wrapper for lambdas
   template<class RET, class... RArgs>
   template<class L> requires requires(L l, RArgs... ra) { {l(std::forward<RArgs>(ra)...)} -> std::convertible_to<RET>; }
-  constexpr CallbackPtr<RET, RArgs...> CallbackFactory<RET, RArgs...>::make(L l) {
-    return make<L>(l, &CallbackFactory<RET, RArgs...>::lambdaWrapper);
+  constexpr callbackPtr<RET, RArgs...> callbackFactory<RET, RArgs...>::make(L l) {
+    return make<L>(l, &callbackFactory<RET, RArgs...>::lambdaWrapper);
   };
 
-#define typedefCB(name, ...) typedef WITE::Util::CallbackFactory<__VA_ARGS__> name## _F; typedef typename name## _F::callback_t name ; typedef WITE::Util::CallbackConstexprWrapper<__VA_ARGS__> name## _ce ;
+#define typedefCB(name, ...) typedef WITE::callbackFactory<__VA_ARGS__> name## _F; typedef typename name## _F::callback_t name ; typedef WITE::callbackConstexprWrapper<__VA_ARGS__> name## _ce ;
 
   typedefCB(rawDataSource, int, void*, size_t)
 

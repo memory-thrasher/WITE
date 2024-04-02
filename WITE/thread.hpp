@@ -1,24 +1,24 @@
 #pragma once
 
 #include "syncLock.hpp"
-#include "Callback.hpp"
+#include "callback.hpp"
 #include "stdExtensions.hpp"
 #include "constants.hpp"
 #include "DEBUG.hpp"
 
-namespace WITE::Platform {
+namespace WITE {
 
-  template<class T> class ThreadResource {
+  template<class T> class threadResource {
   public:
     typedef T* Tentry;
     typedefCB(Initer, Tentry)
     typedefCB(Destroyer, void, Tentry);
     template<typename U = T, std::enable_if_t<std::is_default_constructible<U>::value, int> = 0>
-    ThreadResource() : ThreadResource(Initer_F::make(&makeDefault)) {};
-    ThreadResource(Initer typeInit, Destroyer destroyer = NULL) : typeInit(typeInit), typeDestroy(destroyer) {
+    threadResource() : threadResource(Initer_F::make(&makeDefault)) {};
+    threadResource(Initer typeInit, Destroyer destroyer = NULL) : typeInit(typeInit), typeDestroy(destroyer) {
       WITE::memset(data, 0, sizeof(data));
     };
-    ~ThreadResource() {
+    ~threadResource() {
       scopeLock contextHold(&lock);
       size_t i;
       for (i = 0;i < MAX_THREADS;i++)
@@ -62,7 +62,7 @@ namespace WITE::Platform {
           out[count++] = data[i];
       return count;
     }
-    T reduce(Util::CallbackPtr<T, const T&, const T&> cb) {
+    T reduce(callbackPtr<T, const T&, const T&> cb) {
       T ret;
       if(typeInit) {
 	auto pre = typeInit();
@@ -74,7 +74,7 @@ namespace WITE::Platform {
 	  ret = cb(ret, *data[i]);
       return ret;
     }
-    void each(Util::CallbackPtr<void, T&> cb) {
+    void each(callbackPtr<void, T&> cb) {
       for(size_t i = 0;i < MAX_THREADS;i++)
 	if(data[i])
 	  cb(*data[i]);
@@ -86,30 +86,30 @@ namespace WITE::Platform {
     syncLock lock;
   };
 
-  class Thread {
+  class thread {
   public:
     typedefCB(threadEntry_t, void);
     static uint32_t getCurrentTid();//returns engine thread index, NOT system tid. Can be used to index.
     static void init();
     static void initThisThread(threadEntry_t entry = NULL);
     static void spawnThread(threadEntry_t entry);
-    static Thread* current();
+    static thread* current();
     static void sleep(uint64_t ms = 0);
     static void sleepShort();//for non-busy wait, wait aa very small amount of time
     //^^todo maybe like std::this_thread::sleep_for(std::chrono::micorseconds(10));
     uint32_t getTid();
-    ~Thread();
+    ~thread();
   private:
     static std::atomic<uint32_t> seed;
-    static ThreadResource<Thread> threads;
+    static threadResource<thread> threads;
     threadEntry_t entry;
     uint32_t tid;
-    Thread(threadEntry_t entry, uint32_t id);
-    Thread();//dumby for allocation
+    thread(threadEntry_t entry, uint32_t id);
+    thread();//dumby for allocation
   };
 
-  template<class T> T* ThreadResource<T>::get() {
-    return get(Thread::getCurrentTid());
+  template<class T> T* threadResource<T>::get() {
+    return get(thread::getCurrentTid());
   }
 
 }

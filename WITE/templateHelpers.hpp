@@ -1,7 +1,7 @@
 #pragma once
 
 #include "wite_vulkan.hpp"
-#include "templateStructs.hpp"
+#include "onionTemplateStructs.hpp"
 #include "literalList.hpp"
 #include "buffer.hpp"
 

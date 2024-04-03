@@ -3,7 +3,7 @@
 #include <vector>
 #include <memory>
 
-#include "templateStructs.hpp"
+#include "onionTemplateStructs.hpp"
 #include "math.hpp"
 #include "descriptorPoolPool.hpp"
 #include "hash.hpp"

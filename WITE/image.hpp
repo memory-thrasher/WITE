@@ -2,7 +2,7 @@
 
 #include "wite_vulkan.hpp"
 #include "gpu.hpp"
-#include "templateStructs.hpp"
+#include "onionTemplateStructs.hpp"
 #include "garbageCollector.hpp"
 #include "DEBUG.hpp"
 

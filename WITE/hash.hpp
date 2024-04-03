@@ -1,7 +1,7 @@
 #pragma once
 
 #include "literalList.hpp"
-#include "templateStructs.hpp"
+#include "onionTemplateStructs.hpp"
 #include "wite_vulkan.hpp"
 
 namespace WITE {

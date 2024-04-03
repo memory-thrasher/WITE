@@ -2,7 +2,7 @@
 
 #include "wite_vulkan.hpp"
 #include "gpu.hpp"
-#include "templateStructs.hpp"
+#include "onionTemplateStructs.hpp"
 #include "udm.hpp"
 #include "stdExtensions.hpp"
 

@@ -4,7 +4,7 @@
 #include <type_traits>
 
 #include "window.hpp"
-#include "templateStructs.hpp"
+#include "onionTemplateStructs.hpp"
 #include "onionUtils.hpp"
 #include "buffer.hpp"
 #include "image.hpp"

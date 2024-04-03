@@ -4,7 +4,7 @@
 #include <memory>
 
 #include "wite_vulkan.hpp"
-// #include "templateStructs.hpp"
+// #include "onionTemplateStructs.hpp"
 // #include "onionUtils.hpp"
 #include "math.hpp"
 // #include "image.hpp"

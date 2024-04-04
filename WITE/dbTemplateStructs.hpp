@@ -7,9 +7,10 @@
 namespace WITE {
 
   enum class dbSyncMethod {
-    lock, //mutex needed to read or write, current data always available
-    worm, //write one read many, only one update allowed per frame, only previous frame data may be read
-    atomic, //logs contain delta operations like increment and clamp, data is as current as the read call
+    lock, //mutex used internally for read and write, current data always available, logs contain copies of the new data
+    worm, //write one read many, only one update allowed per frame, only previous frame data may be read, logs are copies
+    atomic, //logs contain delta operations like increment and clamp, data is as current as the read call, older data available
+    immediate, //no logs or synchronization, caller must prevent concurrent access. Use with care.
   };
 
   struct dbColumn {

@@ -11,6 +11,7 @@
 #include <sys/mman.h>
 #include <sys/file.h>
 #include <filesystem>
+#include <iterator>
 //TODO see if these are all needed
 
 #inlucde "syncLock.hpp"
@@ -22,17 +23,23 @@ namespace WITE {
   class dbfile {
 
   private:
+    struct link_t {
+      static constexpr uint64_t NONE = std::numeric_limits<uint64_t>::max();
+      uint64_t previous = NONE, next = NONE;
+    };
     struct header_t {
       uint64_t freeSpceLen;//lifo queue position
+      uint64_t allocatedFirst, allocatedLast;//LL root node
     };
     struct au_t {
       uint64_t freeSpace[AU];//lifo queue space
+      link_t allocatedLL[AU];//parallels data, shows which are allocated
       T data[AU];
     };
     static constexpr size_t au_size = sizeof(au_t);
     static constexpr uint8_t plug[au_size] = { 0 };
 
-    syncLock fileMutex, blocksMutex, freeSpaceMutex;
+    syncLock fileMutex, blocksMutex, allocationMutex;
     header_t* header;
     std::vector<au_t*> blocks;//these are mmaped regions (or subdivisions thereof)
     int fd;
@@ -56,12 +63,16 @@ namespace WITE {
       return blocks[idx / AU]->freeSpace[idx % AU];
     };
 
+    inline link_t& allocatedLEA(uint64_t idx) {
+      return blocks[idx / AU]->allocatedLL[idx % AU];
+    };
+
   public:
     dbfile() = delete;
     dbfile(dbfile&&) = delete;
 
     dbfile(const std::string fn, bool clobber) : filename(fn) {
-      scopeLock fl(&fileMutx), bm(&blocksMutex), fsm(&freeSpaceMutex);
+      scopeLock fl(&fileMutx), bm(&blocksMutex), am(&allocationMutex);
       fd = open(filename.c_str(), O_RDWR | O_CREAT | O_NOFOLLOW | O_LARGEFILE | (clobber ? O_TRUNC : 0), 0660);
       ASSERT_TRAP(fd, "failed to open file errno: ", errno);
       ASSERT_TRAP(flock(fd, LOCK_EX | LOCK_NB) == 0, "failed to lock file ", filename, " with errno: ", errno); //lock will be closed when fd is closed
@@ -102,7 +113,7 @@ namespace WITE {
     };
 
     uint64_t allocate() {
-      scopeLock fsm(&freeSpaceMutex);
+      scopeLock am(&allocationMutex);
       uint64_t ret;
       if(!freeSpaceLen) [[unlikely]] {
 	scopeLock fl(&fileMutx), bm(&blocksMutex);
@@ -120,14 +131,37 @@ namespace WITE {
       ASSERT_TRAP(iter != freeSpaceBitmap.end(), "duplicate entity found in free space queue");
       freeSpaceBitmap.erase(iter);
 #endif
+      link_t& l = allocatedLEA(ret);
+      l.previous = header->allocatedLast;//might be NONE
+      l.next = link_t::NONE;
+      if(header->allocatedFirst == link_t::NONE) [[unlikely]] {//list was empty
+	header->allocatedFirst = ret;
+      } else {
+	ASSERT_TRAP(header->allocatedLast != link_t::NONE, "root node in invalid state");
+	link_t& oldLast = allocatedLEA(header->allocatedLast);
+	ASSERT_TRAP(oldLast.next == link_t::NONE, "last node didn't know it was last.");
+	oldLast.next = ret;
+      }
+      header->allocatedLast = ret;
       return ret;
     };
 
+    //NOTE: free might break an iterator (if the iteratee is freed)
     void free(uint64_t idx) {
-      scopeLock fsm(&freeSpaceMutex);
+      scopeLock am(&allocationMutex);
       ASSERT_TRAP(idx < blocks.size() * AU, "idx too big");
       freeSpaceLEA(freeSpaceLen++) = idx;
       ASSERT_TRAP(freeSpaceBitmap.emplace(idx).second, "duplicate entity found in free space queue");
+      link_t& d = allocatedLEA(idx);
+      if(d.next == link_t::NONE) [[unlikely]]
+	header->allocatedLast = d.previous;
+      else
+	allocatedLEA(d.next).previous = d.previous;
+      if(d.previous == link_t::NONE) [[unlikely]]
+	header->allocatedFirst = d.next;
+      else
+	allocatedLEA(d.previous).next = d.next;
+      d.next = d.previous = link_t::NONE;
     };
 
     T* deref(uint64_t idx) {
@@ -136,8 +170,66 @@ namespace WITE {
     };
 
     void copy(std::string dstFilename) {
-      scopeLock fsm(&freeSpaceMutex);
+      scopeLock am(&allocationMutex);
       std::filesystem::copy_file(filename, dstFilename, std::filesystem::copy_options::overwrite_existing);
+    };
+
+    inline uint64_t first() {
+      scopeLock am(&allocationMutex);
+      return header->allocatedFirst;
+    };
+
+    inline uint64_t after(uint64_t id) {
+      scopeLock am(&allocationMutex);
+      return allocatedLEA(id).next;
+    };
+
+    //NOTE: iterator_t i is invalidated if free(*i) is called
+    class iterator_t {
+    private:
+      dbfile<T, AU>* dbf;
+      uint64_t target;
+    public:
+      typedef int64_t difference_type;
+      typedef std::forward_iterator_tag iterator_concept;
+
+      iterator_t() = default;
+      iterator_t(const iterator_t& o) = default;
+      iterator_t(dbfile<T, AU>* dbf) : dbf(dbf), target(dbf->first()) {};
+      iterator_t(dbfile<T, AU>* dbf, uint64_t t) : dbf(dbf), target(t) {};
+
+      uint64_t operator*() const {
+	return target;
+      };
+
+      iterator_t& operator++() {//prefix
+	target = dbf->after(target);
+	return *this;
+      };
+
+      iterator_t operator++(int) {//postfix
+	iterator_t ret = *this;
+	operator++();
+	return ret;
+      };
+
+      static inline bool operator==(const iterator_t& l, const iterator_t& r) {
+	return (l.target == link_t::NONE && r.target == link_t::NONE) ||//because default-initialized is required
+	  (l.dbf == r.dbf && l.target == r.target);
+      };
+
+      static inline bool operator!=(const iterator_t& l, const iterator_t& r) {
+	return !(r == l);
+      };
+
+    };
+
+    inline iterator_t begin() const {
+      return { this };
+    };
+
+    inline iterator_t end() const {
+      return {};
     };
 
   };

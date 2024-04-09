@@ -176,6 +176,11 @@ namespace WITE {
       return blocks[idx / AU]->data[idx % AU];
     };
 
+    inline T* get(uint64_t idx) {
+      if(idx == NONE) return NULL;
+      return &deref(idx);
+    };
+
     void copy(std::string dstFilename) {
       scopeLock am(&allocationMutex);
       std::filesystem::copy_file(filename, dstFilename, std::filesystem::copy_options::overwrite_existing);

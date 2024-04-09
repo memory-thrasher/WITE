@@ -14,7 +14,7 @@ namespace WITE {
   private:
     typedef R RAW;
     typedef uint64_t U;//underlaying type for raw data, to avoid using constructors and storage qualifiers on disk
-    static constexpr size_t TCnt = (sizeof(R) - 1) / 8 + 1;
+    static constexpr size_t TCnt = (sizeof(R) - 1) / sizeof(U) + 1;
     typedef U T[TCnt];
 
     enum class eLogType : uint64_t {
@@ -29,7 +29,7 @@ namespace WITE {
 
     struct L {//every log contains a complete copy
       eLogType type;
-      uint64_t frame, previousLog, nextLog;
+      uint64_t frame, previousLog, nextLog;//, masterRow;
       T data;
     };
 
@@ -41,10 +41,15 @@ namespace WITE {
 
     //row mutex must be held
     void appendLog(uint64_t id, L&& l) {
+      D& master = masterDataFile.deref(id);
+      if(master.lastLog == NONE && logDataFile.deref(master.lastLog).type == eLogType::eDelete) [[unlikely]] {
+	//edge case: if writing to a object that has already been deleted based on pre-deletion frame data, just drop the write
+	//the object will not be reallocated until after the delete log is applied
+	return;
+      }
       uint64_t nlid = logDataFile.allocate();
       L& nl = logDataFile.deref(nlid);
       nl = l;
-      D& master = masterDataFile.deref(id);
       if(master.firstLog == NONE) [[unlikely]] {
 	ASSERT_TRAP(master.lastLog == NONE, "invalid log list state");
 	master.firstLog = nlid;
@@ -54,19 +59,17 @@ namespace WITE {
       }
       nl.previousLog = master.lastLog;//might be NONE
       nl.nextLog = NONE;
+      // nl.masterRow = id;
       master.lastLog = nlid;
     };
 
+    //row mutex must be held
     inline const L* findLastLogBefore(uint64_t id, uint64_t frame) {
       //requests will generally be for the previous frame's data. If there's a ton of logs, most are probably older.
       //also, if multiple writes happen on the same frame (which should be avoided) this will get the last one
-      uint64_t tlid = masterDataFile.deref(id).lastLog;
-      const L* tl;
-      do {
-	if(tlid == NONE) [[unlikely]] return NULL;
-	tl = &logDataFile.deref(tlid);
-	tlid = tl->previousLog;
-      } while(tl->frame > frame);
+      const L* tl = logDataFile.get(masterDataFile.deref(id).lastLog);
+      while(tl && tl->frame > frame)
+	tl = logDataFile.get(tl->previousLog);
       return tl;
     };
 
@@ -77,11 +80,11 @@ namespace WITE {
 	return false; //this case only covers the case when the delete log has been applied
       const L* lastLog = findLastLogBefore(id, frame);
       if(lastLog) [[likely]] {
-	switch(lastLog.type) {
+	switch(lastLog->type) {
 	case eLogType::eDelete:
 	  return false;//...so we need this case when the delete has not yet been applied
 	case eLogType::eUpdate:
-	  memcpy(*out, lastLog.data);
+	  memcpy(*out, lastLog->data);
 	  return true;
 	}
       } else {
@@ -113,11 +116,17 @@ namespace WITE {
       if(!clobber && maxFrame) {
 	for(uint64_t id : masterDataFile) {
 	  D& master = masterDataFile.deref(ret);
-	  while(master.lastLog != NONE) {
-	    L& l = logDataFile.deref(master.lastLog);
-	    if(l <= maxFrame) break;
-	    master.lastLog = l.previousLog;
+	  uint64_t tlid = master.lastLog;
+	  L* tl = logDataFile.get(tlid);
+	  while(tl && tl->frame > maxFrame) {
+	    logDataFile.free(tlid);
+	    tlid = tl->previousLog;
+	    tl = logDataFile.get(tlid);
 	  }
+	  if(tl) [[likely]]
+	    master.lastLog = tlid;
+	  else
+	    master.lastLog = master.firstLog = NONE;
 	}
       }
     };
@@ -157,6 +166,48 @@ namespace WITE {
     void store(uint64_t id, uint64_t frame, R* in) {
       scopeLock l = lock(id);
       write(id, frame, in);
+    };
+
+    //applies all logs to the given object up to and including any associated with the given frame
+    //NOTE: applying a delete log frees the object, which invalidates any iterators pointing at it
+    void applyLogs(uint64_t id, uint64_t throughFrame) {
+      scopeLock lk = lock(id);
+      D& master = masterDataFile.deref(ret);
+      //every log has a complete copy of the data portion so we only need to apply the last and free the ones before it
+      uint64_t tlid = master.firstLog;
+      L* tl = logDataFile.get(tlid);
+      if(!tl || tl->frame > throughFrame) [[unliekly]] return;
+      L* nl = logDataFile.get(tl->nextLog);
+      while(nl && nl->frame <= throughFrame) {
+	logDataFile.free(tlid);
+	tlid = tl->nextLog;
+	tl = nl;
+	nl = logDataFile.get(tl->nextLog);
+      }
+      //if there is a delete log, it will be the last one
+      switch(tl->type) {
+      case eLogType::eDelete:
+	ASSERT_TRAP(tl->nextLog == NONE, "delete is not the last log for that object");
+	masterDataFile.free(id);
+	break;
+      case eLogType::eUpdate: [[likely]]
+	memcpy(master.data, tl->data);
+	master.firstLog = tl->nextLog;//might be NONE
+	if(nl) [[likely]]
+	  nl->previousLog = NONE;
+	else
+	  master.lastLog = NONE;
+	break;
+      }
+      logDataFile.free(tlid);
+    };
+
+    inline auto begin() {
+      return masterDataFile.begin();
+    };
+
+    inline auto end() {
+      return masterDataFile.end();
     };
 
   };

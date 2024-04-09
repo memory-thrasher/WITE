@@ -22,7 +22,8 @@ namespace WITE {
     void yield();
     void release();
     scopeLock(syncLock* lock);
-    scopeLock(scopeLock& o);
+    scopeLock(const scopeLock& o) = delete;
+    scopeLock(scopeLock&& o);
     ~scopeLock();
   private:
     syncLock *lock;

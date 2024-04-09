@@ -41,9 +41,9 @@ namespace WITE {
     held = true;
   }
 
-  scopeLock::scopeLock(scopeLock& o) : lock(o.lock) {
+  scopeLock::scopeLock(scopeLock&& o) : lock(o.lock), held(o.held) {
     o.lock = NULL;
-    held = false;
+    o.held = false;
   }
 
   void scopeLock::release() {

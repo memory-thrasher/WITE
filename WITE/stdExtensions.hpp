@@ -3,6 +3,7 @@
 #include <vector>
 #include <algorithm>
 #include <cstring> //memcpy
+#include <string>
 #include <map>
 #include <atomic>
 
@@ -36,6 +37,17 @@ namespace WITE {
     src.clear();
   }
 
+  template<size_t CNT> std::string&& concat(std::string& strings[CNT]) {
+    std::string ret;
+    size_t totalLen = 0;
+    for(std::string& s : strings)
+      totalLen += s.size();
+    ret.reserve(totalLen);
+    for(std::string& s : strings)
+      ret.append(s);
+    return st::move(ret);
+  }
+
   template<class T, class U, class V> void uniq(T src, U p, V& out) {
     for(auto it = src.begin();it != src.end();it++) {
       auto u = p(*it);
@@ -63,7 +75,7 @@ namespace WITE {
 
   template<typename D, typename S> inline void memcpy(D& dst, const S& src)
     requires std::negation_v<std::is_volatile<D>> {
-    static_assert(sizeof(D) == sizeof(S));
+    static_assert(sizeof(D) >= sizeof(S));
     std::memcpy(reinterpret_cast<void*>(&dst), reinterpret_cast<const void*>(&src), sizeof(S));
   }
 

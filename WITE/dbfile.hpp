@@ -16,6 +16,7 @@
 
 #inlucde "syncLock.hpp"
 #include "DEBUG.hpp"
+#include "shared.hpp"
 
 namespace WITE {
 
@@ -24,7 +25,6 @@ namespace WITE {
 
   private:
     struct link_t {
-      static constexpr uint64_t NONE = std::numeric_limits<uint64_t>::max();
       uint64_t previous = NONE, next = NONE;
     };
     struct header_t {
@@ -93,7 +93,7 @@ namespace WITE {
 	size = au_size;
       }
       void* mm = mmap(NULL, size, PROTO_READ | PROTO_WRITE, MAP_SHARED, fd, 0);
-      ASSERT_TRAP(mm, "mmap fail", errno);
+      ASSERT_TRAP(mm && mm != MAP_FAILED, "mmap fail ", errno);
       header = reinterpret_cast<header_t*>(mm);
       blocks.emplace_back(reinterpret_cast<au_t*>(mm + sizeof(header_t)));
       if(existingAUs) [[likely]] {
@@ -112,6 +112,13 @@ namespace WITE {
       }
     };
 
+    ~dbfile() {
+      scopeLock fl(&fileMutx), bm(&blocksMutex), am(&allocationMutex);
+      msync(reinterpret_cast<void*>(header), sizeof(header_t), MS_SYNC);
+      for(au_t* b : blocks)
+	msync(reinterpret_cast<void*>(b), au_size, MS_SYNC);
+    };
+
     uint64_t allocate() {
       scopeLock am(&allocationMutex);
       uint64_t ret;
@@ -120,7 +127,7 @@ namespace WITE {
 	uint64_t auId = blocks.size();
 	write(fd, plug, au_size);
 	void* mm = mmap(NULL, au_size, PROTO_READ | PROTO_WRITE, MAP_SHARED, fd, auId * au_size);
-	ASSERT_TRAP(mm, "mmap fail", errno);
+	ASSERT_TRAP(mm && mm != MAP_FAILED, "mmap fail", errno);
 	blocks.emplace_back(reinterpret_cast<au_t*>(mm));
 	initialize(auId);
       }
@@ -133,13 +140,13 @@ namespace WITE {
 #endif
       link_t& l = allocatedLEA(ret);
       l.previous = header->allocatedLast;//might be NONE
-      l.next = link_t::NONE;
-      if(header->allocatedFirst == link_t::NONE) [[unlikely]] {//list was empty
+      l.next = NONE;
+      if(header->allocatedFirst == NONE) [[unlikely]] {//list was empty
 	header->allocatedFirst = ret;
       } else {
-	ASSERT_TRAP(header->allocatedLast != link_t::NONE, "root node in invalid state");
+	ASSERT_TRAP(header->allocatedLast != NONE, "root node in invalid state");
 	link_t& oldLast = allocatedLEA(header->allocatedLast);
-	ASSERT_TRAP(oldLast.next == link_t::NONE, "last node didn't know it was last.");
+	ASSERT_TRAP(oldLast.next == NONE, "last node didn't know it was last.");
 	oldLast.next = ret;
       }
       header->allocatedLast = ret;
@@ -153,20 +160,20 @@ namespace WITE {
       freeSpaceLEA(freeSpaceLen++) = idx;
       ASSERT_TRAP(freeSpaceBitmap.emplace(idx).second, "duplicate entity found in free space queue");
       link_t& d = allocatedLEA(idx);
-      if(d.next == link_t::NONE) [[unlikely]]
+      if(d.next == NONE) [[unlikely]]
 	header->allocatedLast = d.previous;
       else
 	allocatedLEA(d.next).previous = d.previous;
-      if(d.previous == link_t::NONE) [[unlikely]]
+      if(d.previous == NONE) [[unlikely]]
 	header->allocatedFirst = d.next;
       else
 	allocatedLEA(d.previous).next = d.next;
-      d.next = d.previous = link_t::NONE;
+      d.next = d.previous = NONE;
     };
 
-    T* deref(uint64_t idx) {
+    T& deref(uint64_t idx) {
       scopeLock bm(&blocksMutex);
-      return &blocks[idx / AU]->data[idx % AU];
+      return blocks[idx / AU]->data[idx % AU];
     };
 
     void copy(std::string dstFilename) {
@@ -214,7 +221,7 @@ namespace WITE {
       };
 
       static inline bool operator==(const iterator_t& l, const iterator_t& r) {
-	return (l.target == link_t::NONE && r.target == link_t::NONE) ||//because default-initialized is required
+	return (l.target == NONE && r.target == NONE) ||//because default-initialized is required
 	  (l.dbf == r.dbf && l.target == r.target);
       };
 

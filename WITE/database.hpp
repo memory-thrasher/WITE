@@ -5,17 +5,9 @@
 
 namespace WITE {
 
-  template<literalList<dbTable DBT> struct database {
+  template<class... TYPES> struct database {
 
     std::atomic_uint64_t currentFrame = 1, flushingFrame = 0;
-
-    template<dbTable T> struct table {
-
-      static constexpr columnAttributes<T.columns> CAS {};
-
-      //
-
-    };
 
     template<literalList<dbTable> TS> struct tableTuple {
 

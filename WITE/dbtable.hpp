@@ -9,8 +9,14 @@
 
 namespace WITE {
 
+  class dbtableBase {
+  public:
+    virtual ~dbtableBase() = default;
+    //TODO more as needed
+  };
+
   //content is serialized to disk. R is expected to behave when memcpy'd around (no atomics etc).
-  template<class R, size_t AU = 128, size_t AU_LOG = AU * 4> class dbtable {//R for raw
+  template<class R, size_t AU = 128, size_t AU_LOG = AU * 4> class dbtable : public dbtableBase {//R for raw
   private:
     typedef R RAW;
     typedef uint64_t U;//underlaying type for raw data, to avoid using constructors and storage qualifiers on disk
@@ -105,7 +111,7 @@ namespace WITE {
 
   public:
 
-    dbtable(std::string basedir, std::string typeId, bool clobber = false) :
+    dbtable(std::string& basedir, std::string& typeId, bool clobber = false) :
       mdfFilename(concat(std::string[]{ basedir, "master_", typeId, ".wdb" })),
       ldfFilename(concat(std::string[]{ basedir, "log_", typeId, ".wdb" })),
       masterDataFile(mdfFilename, clobber),
@@ -208,6 +214,14 @@ namespace WITE {
 
     inline auto end() {
       return masterDataFile.end();
+    };
+
+    inline uint64_t capacity() {
+      return masterDataFile.capacity();
+    };
+
+    inline uint64_t size() {
+      return capacity() - masterDataFile.freeSpace();
     };
 
   };

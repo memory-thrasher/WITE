@@ -244,6 +244,15 @@ namespace WITE {
       return {};
     };
 
+    inline uint64_t capacity() {
+      scopeLock bm(&blocksMutex);
+      return blocks.size() * AU;
+    };
+
+    inline uint64_t freeSpace() {
+      return header->freeSpaceLen;
+    };
+
   };
 
 }

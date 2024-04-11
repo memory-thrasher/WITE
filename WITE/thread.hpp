@@ -92,18 +92,21 @@ namespace WITE {
     static uint32_t getCurrentTid();//returns engine thread index, NOT system tid. Can be used to index.
     static void init();
     static void initThisThread(threadEntry_t entry = NULL);
-    static void spawnThread(threadEntry_t entry);
+    static void spawnThread(threadEntry_t entry);//all spawned threads should be joined
     static thread* current();
+    static thread* get(uint32_t tid);
     static void sleep(uint64_t ms = 0);
     static void sleepShort();//for non-busy wait, wait aa very small amount of time
     //^^todo maybe like std::this_thread::sleep_for(std::chrono::micorseconds(10));
     uint32_t getTid();
+    void join();//all spawned threads should be joined
     ~thread();
   private:
     static std::atomic<uint32_t> seed;
     static threadResource<thread> threads;
     threadEntry_t entry;
     uint32_t tid;
+    void* pthread;//void* to keep the pthread include out of the WITE headers just in case another platform needs something else
     thread(threadEntry_t entry, uint32_t id);
     thread();//dumby for allocation
   };

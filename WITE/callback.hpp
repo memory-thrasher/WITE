@@ -6,12 +6,6 @@
 
 #include "tupleSplice.hpp"
 
-#ifdef _WIN32
-#define wintypename typename
-#else
-#define wintypename
-#endif
-
 namespace WITE {
 
   template<class RET, class... RArgs> class callback_t {

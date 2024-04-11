@@ -17,12 +17,19 @@ optional members:
     spunDown(uint64_t objectId) //called when the object is destroyed or when the game is closing (should clean up transients)
    */
 
-  template<class... TYPES> struct database {
-
+  template<class... TYPES> class database {
+  private:
     std::atomic_uint64_t currentFrame = 1, flushingFrame = 0;
     dbtableTuple<TYPES...> bobby;//327
 
-    //
+  public:
+    database(std::string& basedir, bool clobber = false) : bobby(basedir, clobber), live(live) {
+      //
+    };
+
+    void main() {
+      //
+    };
 
   };
 

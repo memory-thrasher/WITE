@@ -23,9 +23,9 @@ namespace WITE {
     }
 
     void* pthreadCallback(void* param) {
-      auto temp = reinterpret_cast<thread::threadEntry_t*>(param);
-      thread::initThisThread(*temp);
-      delete temp;
+      auto storage = reinterpret_cast<thread::thread*>(param);
+      putThreadRef(storage);
+      if (storage->entry) storage->entry();
       return 0;
     }
 
@@ -33,6 +33,10 @@ namespace WITE {
       return pthread_getspecific(threadInternal::threadObjKey);
     }
 
+  }
+
+  thread* thread::get(uint32_t tid) {
+    return threads.get(tid);
   }
 
   syncLock initLock;
@@ -55,9 +59,18 @@ namespace WITE {
   }
 
   void thread::spawnThread(threadEntry_t entry) {//static
-    pthread_t temp;
-    pthread_create(&temp, NULL, &threadInternal::pthreadCallback, reinterpret_cast<void*>(new threadEntry_t(entry)));
+    pthread_t* temp = new pthread_t();
+    uint32_t tid = seed.fetch_add(1, std::memory_order_relaxed);
+    thread* t = threads.get(tid);
+    new(t)thread(entry, tid);
+    t->pthread = reinterpret_cast<void*>(temp);
+    pthread_create(temp, NULL, &threadInternal::pthreadCallback, reinterpret_cast<void*>(t));
   }
+
+  void thread::join() {
+    if(getCurrentTid() == tid) [[unliekly]] return;
+    ASSERT_TRAP(pthread_join(*reinterpret_cast<pthread_t*>(pthread), NULL), "pthread_join failed");
+  };
 
   //#endif posix
 

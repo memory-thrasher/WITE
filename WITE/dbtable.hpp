@@ -29,7 +29,7 @@ namespace WITE {
     };
 
     struct D {
-      uint64_t firstLog, lastLog, lastDeletedFrame, lastCreatedFrame;
+      uint64_t firstLog, lastLog, lastDeletedFrame, lastCreatedFrame, lastLogAppliedFrame;
       T data;
     };
 
@@ -121,7 +121,18 @@ namespace WITE {
     void rollback(uint64_t maxFrame) {//trim bits of log from final (possibly incomplete) frame (only use when loading)
       if(!clobber && maxFrame) {
 	for(uint64_t id : masterDataFile) {
-	  D& master = masterDataFile.deref(ret);
+	  D& master = masterDataFile.deref(id);
+	  if(master.lastLogAppliedFrame < master.lastCreatedFrame &&
+	     (master.firstLog == NONE || logDataFile.deref(master.firstLog).frame > mexFrame)) [[unlikely]] {
+	    //file corruption edge case, a the first update log was trimmed so the object never got initialized
+	    while(master.firstLog != NONE) {
+	      L& l = logDataFile.deref(master.firstLog);
+	      logDataFile.free(master.firstLog);
+	      master.firstLog = l.nextLog;
+	    }
+	    masterDataFile.free(id);
+	    return;
+	  }
 	  uint64_t tlid = master.lastLog;
 	  L* tl = logDataFile.get(tlid);
 	  while(tl && tl->frame > maxFrame) {
@@ -199,6 +210,7 @@ namespace WITE {
       case eLogType::eUpdate: [[likely]]
 	memcpy(master.data, tl->data);
 	master.firstLog = tl->nextLog;//might be NONE
+	master.lastLogAppliedFrame = tl->frame;
 	if(nl) [[likely]]
 	  nl->previousLog = NONE;
 	else

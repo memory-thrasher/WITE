@@ -34,7 +34,6 @@ namespace WITE {
     static size_t gpuCount;
     static std::unique_ptr<gpu[]> gpus;
     static char appName[1024];
-    static std::vector<std::unique_ptr<char[]>> options;
 
     size_t idx;
     std::map<vk::Format, vk::FormatProperties> formatProperties;
@@ -64,9 +63,6 @@ namespace WITE {
     gpu(gpu&&) = delete;
     void recordDeallocate(vram* doomed);
   public:
-    static void setOptions(int argc, char** argv);//ideally passed through from main BEFORE calling init
-    static char* getOption(const char* key);//options should be supplied as key=value
-    static bool getOptionBool(const char* key);
     static void init(const char* appName,
 		     std::initializer_list<const char*> appRequestedLayers = {},
 		     std::initializer_list<const char*> appRequestedExtensions = {});

@@ -11,7 +11,7 @@ namespace WITE {
     typedefCB(jobEntry_t, void, jobData_t&);
     struct job_t {
       jobEntry_t entry;
-      jobData_t data;
+      jobData_t data;//because creating a new callback for every job would waste time (malloc)
     };
 
   private:
@@ -31,6 +31,7 @@ namespace WITE {
     static void workerEntry(threadPool*, threadData_t*);
 
   public:
+    threadPool();
     threadPool(uint64_t threadCount);
     ~threadPool();
     submitJob(const job_t*);

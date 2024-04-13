@@ -1,4 +1,5 @@
 #include "threadPool.hpp"
+#include "configuration.hpp"
 
 namespace WITE {
 
@@ -16,6 +17,8 @@ namespace WITE {
       }
     }
   };
+
+  threadPool::threadPool() : threadPool(configuration::getOption("dbthreadcount", thread::guessCpuCount())) {};
 
   threadPool::threadPool(uint64_t threadCount) : threadCount(threadCount) {
     threads = std::make_unique<threadData_t[]>(threadCount);

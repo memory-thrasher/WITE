@@ -92,11 +92,12 @@ namespace WITE {
     static uint32_t getCurrentTid();//returns engine thread index, NOT system tid. Can be used to index.
     static void init();
     static void initThisThread(threadEntry_t entry = NULL);
-    static void spawnThread(threadEntry_t entry);//all spawned threads should be joined
+    static thread* spawnThread(threadEntry_t entry);//all spawned threads should be joined
     static thread* current();
     static thread* get(uint32_t tid);
     static void sleep(uint64_t ms = 0);
     static void sleepShort();//for non-busy wait, wait aa very small amount of time
+    static uint32_t guessCpuCount();
     //^^todo maybe like std::this_thread::sleep_for(std::chrono::micorseconds(10));
     uint32_t getTid();
     void join();//all spawned threads should be joined

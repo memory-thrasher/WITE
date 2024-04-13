@@ -9,6 +9,7 @@
 #include "math.hpp"
 #include "DEBUG.hpp"
 #include "window.hpp"
+#include "configuration.hpp"
 
 const std::map<vk::MemoryPropertyFlags, int64_t> memoryScoreByFlag = {
   { vk::MemoryPropertyFlagBits::eDeviceLocal      ,   256 },
@@ -30,7 +31,6 @@ namespace WITE {
   std::unique_ptr<gpu[]> gpu::gpus;
   char gpu::appName[1024];
   bool gpu::running;
-  std::vector<std::unique_ptr<char[]>> gpu::options;
 
   gpu::gpu() : tempCmds(NULL) {};//init dummy
 
@@ -175,35 +175,6 @@ namespace WITE {
     running = false;
   };
 
-  void gpu::setOptions(int argc, char** argv) {//static
-    for(int i = 0;i < argc;i++) {
-      char* temp = new char[std::strlen(argv[i])];
-      std::strcpy(temp, argv[i]);
-      WARN("CLI option: ", temp);
-      options.emplace_back(temp);//constructs unique_pointer around char array
-    }
-  };
-
-  char* gpu::getOption(const char* key) {//static
-    int keyLen = strlen(key);
-    for(const auto& up : options) {
-      char* kvp = up.get();
-      if(strlen(kvp) > keyLen && kvp[keyLen] == '=' && strncmp(key, kvp, keyLen) == 0)
-	return kvp+keyLen+1;//if no value given, this is a 0-length string (pointer to 0x00)
-    }
-    return NULL;
-  };
-
-  bool gpu::getOptionBool(const char* key) {
-    char* v = getOption(key);
-    if(v == NULL) return false;
-    static constexpr const char* yesValues[] = { "yes", "y", "Y", "t", "T", "1" };
-    for(const char* c : yesValues)
-      if(strcmp(c, v) == 0)
-	return true;
-    return false;
-  };
-
   void gpu::init(const char* appName,
 		 std::initializer_list<const char*> appRequestedLayers,
 		 std::initializer_list<const char*> appRequestedExtensions) {//static
@@ -235,7 +206,7 @@ namespace WITE {
     VK_ASSERT(vkInstance.enumeratePhysicalDevices(&cnt, pds), "Failed to enumerate gpus");
     gpus = std::make_unique<gpu[]>(cnt);
     gpuCount = 0;
-    char* skipGpus = getOption("nogpuid");//csv list of indexes
+    char* skipGpus = configuration::getOption("nogpuid");//csv list of indexes
     char* remaining;
     bool skip;
     for(long i = 0;i < cnt;i++) {

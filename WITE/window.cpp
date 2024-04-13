@@ -2,6 +2,7 @@
 #include "SDL.hpp"
 #include "gpu.hpp"
 #include "profiler.hpp"
+#include "configuration.hpp"
 
 namespace WITE {
 
@@ -17,7 +18,7 @@ namespace WITE {
 
   intBox3D getDefaultSize() {//static
     PROFILEME;
-    char* cliExtent = gpu::getOption("extent");
+    char* cliExtent = configuration::getOption("extent");
     if(cliExtent) {
       unsigned long x = std::strtoul(cliExtent, &cliExtent, 10);
       unsigned long y = std::strtoul(cliExtent + 1, &cliExtent, 10);
@@ -25,7 +26,7 @@ namespace WITE {
       unsigned long h = std::strtoul(cliExtent + 1, &cliExtent, 10);
       return intBox3D(x, w+x, y, h+y);
     } else {
-      char* cliScreen = gpu::getOption("screen");
+      char* cliScreen = configuration::getOption("screen");
       auto wholeScreen = window::getScreenBounds(cliScreen ? std::strtoul(cliScreen, NULL, 10) : 0);
       auto center = wholeScreen.center();
       uint64_t w = max(192, wholeScreen.width()/4), h = w * 108 / 192;
@@ -36,7 +37,7 @@ namespace WITE {
   vk::PresentModeKHR window::getPreferredPresentMode() {//static
     //mailbox is the default preferred mode. User may pick another via cli argument.
     //If what is picked is not supported, fifo will be used.
-    char* v = gpu::getOption("presentmode");
+    char* v = configuration::getOption("presentmode");
     if(v == NULL || strcmp(v, "mailbox") == 0)
       return vk::PresentModeKHR::eMailbox;//no tare, uncapped
     // if(strcmp(v, "sharedcontinuousrefresh") == 0)

@@ -1,8 +1,8 @@
-#include "thread.hpp"
-#include "DEBUG.hpp"
-
 #include <pthread.h>
 #include <unistd.h>
+
+#include "thread.hpp"
+#include "DEBUG.hpp"
 
 namespace WITE {
 
@@ -58,13 +58,14 @@ namespace WITE {
     return static_cast<thread*>(ret);
   }
 
-  void thread::spawnThread(threadEntry_t entry) {//static
+  thread* thread::spawnThread(threadEntry_t entry) {//static
     pthread_t* temp = new pthread_t();
     uint32_t tid = seed.fetch_add(1, std::memory_order_relaxed);
     thread* t = threads.get(tid);
     new(t)thread(entry, tid);
     t->pthread = reinterpret_cast<void*>(temp);
     pthread_create(temp, NULL, &threadInternal::pthreadCallback, reinterpret_cast<void*>(t));
+    return t;
   }
 
   void thread::join() {
@@ -112,5 +113,17 @@ namespace WITE {
   void thread::sleepShort() { //static
     usleep(10);
   }
+
+  uint32_t thread::guessCpuCount() {//static
+    constexpr int64_t MIN = 4;//mostly to interpret 0 or -1 as failure
+    int64_t ret;
+    ret = sysconf(_SC_NPROCESSORS_CONF);
+    if(ret <= MIN) ret = get_nprocs_conf();
+    if(ret <= MIN) ret = sysconf(_SC_NPROCESSORS_ONLN);
+    if(ret <= MIN) ret = get_nprocs();
+    //TODO other methods to guess here
+    if(ret <= MIN) ret = MIN;
+    return uint32_t(ret);
+  };
 
 }

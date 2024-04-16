@@ -17,51 +17,166 @@ optional members:
     spunDown(uint64_t objectId) //called when the object is destroyed or when the game is closing (should clean up transients)
    */
 
+  //each type is stored as-is on disk (memcpy and mmap) so should be simple. POD except for static members is recommended.
   template<class... TYPES> class database {
   private:
-    std::atomic_uint64_t currentFrame = 0, flushingFrame = 0;
+    static constexpr size_t tableCount = sizeof...(TYPES);
+    static_assert(tableCount > 0);
+    std::atomic_uint64_t currentFrame;
     dbtableTuple<TYPES...> bobby;//327
     threadPool threads;//dedicated thread pool so we can tell when all frame data is done
     std::atomic_bool_t backupInProgress;
     const std::string backupTarget;
     thread* backupThread;
+    std::atomic_uint64_t tablesBackedUp;
 
-    template<class T, class... REST> inline void backupTable() {
+    template<class T, class... REST> inline void applyLogsThrough(uint64_t applyFrame) {
+      bobby.template get<T::typeId>().applyLogsAll(applyFrame);
+      if constexpr(sizeof...(REST) > 0)
+	applyLogsThrough<REST...>(applyFrame);
+    };
+
+    template<class T, class... REST> inline void backupTable(uint64_t applyFrame) {
       //log files won't be backed up, and won't be applied while the backup is running, so just get all the mdfs to a common frame and let all new data flow sit around in the logs
-#error TODO rework dbtable load to allow log file to not exist (purge any log links in the mdf)
+      auto& tbl = bobby.template get<T::typeId>();
+      tbl.applyLogsAll(applyFrame);
+      tbl.copyMdf(backupTarget);
+      tablesBackedUp.fetch_add(1, std::memory_order_relaxed);
+      if constexpr(sizeof...(REST) > 0)
+	backupTable<REST...>(applyFrame);
     };
 
     void backupThreadEntry() {
-      backupTable<TYPES...>();
-      backupInProgress = false;
+      uint64_t applyFrame = maxFrame() - 1;
+      while(minFrame() >= applyFrame) {//need more log variety to ensure only a complete frame is written
+	thread::sleepShort();
+	applyFrame = maxFrame() - 1;
+      }
+      backupTable<TYPES...>(applyFrame);
+      backupInProgress.store(false, std::memory_order_release);
+    };
+
+    template<class A, class... REST> inline uint64_t maxFrame() {
+      uint64_t ret = bobby.template get<A::typeId>().maxFrame();
+      if constexpr(sizeof...(REST) > 0)
+	ret = max(ret, template maxFrame<REST...>());
+      return ret;
+    };
+
+    template<class A, class... REST> inline uint64_t minFrame() {
+      uint64_t ret = bobby.template get<A::typeId>().minFrame();
+      if constexpr(sizeof...(REST) > 0)
+	ret = min(ret, template minFrame<REST...>());
+      return ret;
+    };
+
+    template<class A, class... REST> inline uint64_t updateAll() {
+      if constexpr(has_update<A>::value)
+	for(uint64_t oid : bobby::template get<A::typeId>())
+	  A::update(oid);
+      if constexpr(sizeof...(REST) > 0)
+	updateAll<REST...>();
+    };
+
+    template<class A, class... REST> inline uint64_t spinUpAll() {
+      if constexpr(has_spunUp<A>::value)
+	for(uint64_t oid : bobby::template get<A::typeId>())
+	  A::spunUp(oid);
+      if constexpr(sizeof...(REST) > 0)
+	spinUpAll<REST...>();
+    };
+
+    template<class A, class... REST> inline uint64_t spinDownAll() {
+      if constexpr(has_spunDown<A>::value)
+	for(uint64_t oid : bobby::template get<A::typeId>())
+	  A::spunDown(oid);
+      if constexpr(sizeof...(REST) > 0)
+	spinDownAll<REST...>();
     };
 
   public:
-    database(std::string& basedir, bool clobber) : bobby(basedir, clobber) {};
+    database(std::string& basedir, bool clobberMaster, bool clobberLog) : bobby(basedir, clobberMaster, clobberLog) {
+      assert_trap(clobberLog || !clobberMaster, "cannot keep log without master");
+      currentFrame = maxFrame() + 1;
+      spinUpAll<TPYES...>();
+    };
+
+    uint64_t maxFrame() {
+      return template maxFrame<TYPES...>();
+    };
+
+    uint64_t minFrame() {
+      return template minFrame<TYPES...>();
+    };
+
+    //the intention is for main to call in a loop: winput.poll(); db.updateTick(); onion.render(); db.endFrame();
 
     //process a single frame, part 1: updates only
     void updateTick() {
-      //
+      threads.waitForAll();
+      updateAll<TYPES...>();
     };
 
     //process a single frame, part 2: logfile maintenance
-    void maintenanceTick() {
-      if(!backupInProgress.load(std::memory_order_relaxed)) { //don't flush logs when the mdfs are being copied
-	//
+    void endFrame() {
+      threads.waitForAll();
+      if(!backupInProgress.load(std::memory_order_consume)) { //don't flush logs when the mdfs are being copied
+	if(backupThread) {
+	  //all threads should be joined once they're finished
+	  backupThread->join();//should be immediately joinable since it's done (or very nearly so)
+	  backupThread = NULL;
+	}
+	if(currentFrame > MIN_LOG_HISTORY)
+	  applyLogsThrough<TYPES...>(currentFrame - MIN_LOG_HISTORY);
       }
+      currentFrame.fetch_add(1, std::memory_order_relaxed);
     };
 
     bool requestBackup(const std::string& outdir) {
       bool t = false;
-      if(backupInProgress.compare_exchange_strong(t, true, std::memory_order_relaxed)) {
+      std::error_code ec;
+      if(!std::filesystem::exists(outdir))
+	assert_trap(std::filesystem::create_directories(outdir, ec), "create dir failed ", ec);
+      assert_trap(std::filesystem::is_directory(outdir, ec), "not a directory ", ec);
+      if(backupInProgress.compare_exchange_strong(t, true, std::memory_order_acq_rel)) {
+	tablesBackedUp.store(0, std::memory_order_relaxed);
 	backupTarget = outdir;
 	if(backupThread) {
-	  backupThread->join();//should be immediately joinable since it's done
-	  delete backupThread;
+	  //all threads should be joined once they're finished
+	  backupThread->join();//should be immediately joinable since it's done (or very nearly so)
+	  backupThread = NULL;
 	}
 	//callback allocation is forgivable for file io
 	backupThread = thread::spawnThread(thread::threadEntry_t_F::make(this, backupThreadEntry));
+	return true;
+      } else {
+	return false;
       }
+    };
+
+    void gracefulShutdownAndJoin() {
+      assert_trap(currentFrame > 0);
+      threads.waitForAll();
+      while(backupInProgress.load(std::memory_order_consume)) thread::sleepShort();
+      applyLogsThrough(currentFrame - 1);
+      spinDownAll<TPYES...>();
+    };
+
+    template<class A> uint64_t create(A* data) {
+      uint64_t ret = bobby.template get<A::typeId>().allocate(currentFrame, data);
+      if constexpr(has_allocated<A>::value)
+	A::allocated(ret);
+      if constexpr(has_spunUp<A>::value)
+	A::spunUp(ret);
+      return ret;
+    };
+
+    template<class A> void destroy(uint64_t oid) {
+      bobby.template get<A::typeId>().free(oid, currentFrame);
+      if constexpr(has_spunDown<A>::value)
+	A::spunDown(oid);
+      if constexpr(has_freed<A>::value)
+	A::freed(oid);
     };
 
   };

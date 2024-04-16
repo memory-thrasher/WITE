@@ -181,7 +181,7 @@ namespace WITE {
       return &deref(idx);
     };
 
-    void copy(std::string dstFilename) {
+    void copy(const std::string& dstFilename) {
       scopeLock am(&allocationMutex);
       std::filesystem::copy_file(filename, dstFilename, std::filesystem::copy_options::overwrite_existing);
     };

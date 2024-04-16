@@ -50,4 +50,11 @@ namespace WITE {
     }
   };
 
+  void threadPool::waitForAll() {
+    for(size_t i = 0;i < threadCount;i++)
+      while(td.nextWrite.load(std::memory_order_consume) !=
+	    td.nextRead.load(std::memory_order_consume))//not empty
+	thread::sleepShort();
+  };
+
 }

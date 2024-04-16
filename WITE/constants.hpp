@@ -7,33 +7,13 @@
 #define MAX_GPUS 4
 #endif
 
-#ifndef MAX_LDMS
-#define MAX_LDMS 8
-#endif
-
-#ifndef DB_THREAD_COUNT
-#define DB_THREAD_COUNT 16
-#endif
-
-#ifndef PROMISE_THREAD_COUNT
-#define PROMISE_THREAD_COUNT (DB_THREAD_COUNT/2)
-#endif
-
 #ifndef MAX_THREADS
 #define MAX_THREADS 256
 #endif
 
-#ifndef MAX_RESOURCES
-#define MAX_RESOURCES 4
+#ifndef MIN_LOG_HISTORY
+#define MIN_LOG_HISTORY 3
 #endif
-
-#ifndef MAX_STEPS
-#define MAX_STEPS 64
-#endif
-
-#define GENERATED_THREAD_COUNT (PROMISE_THREAD_COUNT + DB_THREAD_COUNT)
-
-static_assert(GENERATED_THREAD_COUNT + 1 < MAX_THREADS);//+1 for main
 
 #define CONCAT1(a, b) a ## b
 #define CONCAT(a, b) CONCAT1(a, b)

@@ -34,7 +34,8 @@ namespace WITE {
     threadPool();
     threadPool(uint64_t threadCount);
     ~threadPool();
-    submitJob(const job_t*);
+    void submitJob(const job_t*);
+    void waitForAll();
 
   };
 

@@ -9,9 +9,9 @@ namespace WITE {
     dbtable<R> data;
     dbtableTuple<REST...> rest;
 
-    dbtableTuple(std::string& basedir, bool clobber) :
-      data(basedir, R::dbFileId, clobber),
-      rest(basedir, clobber)
+    dbtableTuple(std::string& basedir, bool clobberMaster, bool clobberLog) :
+      data(basedir, R::dbFileId, clobberMaster, clobberLog),
+      rest(basedir, clobberMaster, clobberLog)
     {};
 
     template<uint64_t ID> inline auto& get() {

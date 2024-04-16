@@ -39,7 +39,7 @@ namespace WITE {
       T data;
     };
 
-    const std::string mdfFilename, ldfFilename;
+    const std::string mdfFilename, ldfFilename, typeId;
     dbfile<D, AU> masterDataFile;
     dbfile<L, AU_LOG> logDataFile;
     std::map<uint64_t, syncLock> rowLocks;
@@ -111,12 +111,20 @@ namespace WITE {
 
   public:
 
-    dbtable(std::string& basedir, std::string& typeId, bool clobber = false) :
+    dbtable(std::string& basedir, std::string& typeId, bool clobberMaster, bool clobberLog) :
       mdfFilename(concat(std::string[]{ basedir, "master_", typeId, ".wdb" })),
       ldfFilename(concat(std::string[]{ basedir, "log_", typeId, ".wdb" })),
-      masterDataFile(mdfFilename, clobber),
-      logDataFile(ldfFilename, clobber)
-    {};
+      typeId(typeId),
+      masterDataFile(mdfFilename, clobberMaster),
+      logDataFile(ldfFilename, clobberLog)
+    {
+      if(clobberLog && !clobberMaster) { //if we're not keeping the log, drop any references to it
+	for(uint64_t id : masterDataFile) {
+	  D& m = masterDataFile.deref(id);
+	  m.firstLog = m.lastLog = NONE;
+	}
+      }
+    };
 
     void rollback(uint64_t maxFrame) {//trim bits of log from final (possibly incomplete) frame (only use when loading)
       if(!clobber && maxFrame) {
@@ -124,7 +132,7 @@ namespace WITE {
 	  D& master = masterDataFile.deref(id);
 	  if(master.lastLogAppliedFrame < master.lastCreatedFrame &&
 	     (master.firstLog == NONE || logDataFile.deref(master.firstLog).frame > mexFrame)) [[unlikely]] {
-	    //file corruption edge case, a the first update log was trimmed so the object never got initialized
+	    //file corruption edge case, the first update log was trimmed so the object never got initialized
 	    while(master.firstLog != NONE) {
 	      L& l = logDataFile.deref(master.firstLog);
 	      logDataFile.free(master.firstLog);
@@ -220,6 +228,19 @@ namespace WITE {
       logDataFile.free(tlid);
     };
 
+    void applyLogsAll(uint64_t throughFrame) {
+      auto it = begin();
+      auto e = end();
+      while(it != e) {
+	applyLogs(it++, throughFrame);//prefix increment: the iterator must be incremented before applyLogs is called so it doesn't get invalidated by a delete log
+      }
+    };
+
+    void copyMdf(const std::string& outdir) {
+      std::string outfile = concat(std::string[]{ outdir, "backup_", typeId, ".wdb" });
+      masterDataFile.copy(outfile);
+    };
+
     inline auto begin() {
       return masterDataFile.begin();
     };
@@ -234,6 +255,18 @@ namespace WITE {
 
     inline uint64_t size() {
       return capacity() - masterDataFile.freeSpace();
+    };
+
+    uint64_t maxFrame() {
+      uint64_t ret = 0;
+      for(uint64_t id : masterDataFile)
+	ret = max(ret, logDataFile.deref(masterDataFile.deref(id).lastLog).frame);
+    };
+
+    uint64_t minFrame() {
+      uint64_t ret = NONE;
+      for(uint64_t id : masterDataFile)
+	ret = min(ret, logDataFile.deref(masterDataFile.deref(id).firstLog).frame);
     };
 
   };

@@ -45,7 +45,6 @@ namespace WITE {
     std::map<uint64_t, syncLock> rowLocks;
     syncLock rowLocks_mutex;//only needed for ops that might alter the size of rowLocks
 
-    //row mutex must be held
     void appendLog(uint64_t id, L&& l) {
       D& master = masterDataFile.deref(id);
       if(master.lastLog == NONE && logDataFile.deref(master.lastLog).type == eLogType::eDelete) [[unlikely]] {
@@ -56,6 +55,8 @@ namespace WITE {
       uint64_t nlid = logDataFile.allocate();
       L& nl = logDataFile.deref(nlid);
       nl = l;
+      nl.nextLog = NONE;
+      nl.previousLog = master.lastLog;//might be NONE
       if(master.firstLog == NONE) [[unlikely]] {
 	ASSERT_TRAP(master.lastLog == NONE, "invalid log list state");
 	master.firstLog = nlid;
@@ -63,43 +64,10 @@ namespace WITE {
 	ASSERT_TRAP(master.lastLog != NONE, "invalid log list state");
 	logDataFile.deref(master.lastLog).nextLog = nlid;
       }
-      nl.previousLog = master.lastLog;//might be NONE
-      nl.nextLog = NONE;
       // nl.masterRow = id;
       master.lastLog = nlid;
     };
 
-    //row mutex must be held
-    inline const L* findLastLogBefore(uint64_t id, uint64_t frame) {
-      //requests will generally be for the previous frame's data. If there's a ton of logs, most are probably older.
-      //also, if multiple writes happen on the same frame (which should be avoided) this will get the last one
-      const L* tl = logDataFile.get(masterDataFile.deref(id).lastLog);
-      while(tl && tl->frame > frame)
-	tl = logDataFile.get(tl->previousLog);
-      return tl;
-    };
-
-    //row mutex must be held
-    bool read(uint64_t id, uint64_t frame, R* out) {
-      const D& master = masterDataFile.deref(ret);
-      if(master.lastDeletedFrame > lastCreatedFrame) [[unlikely]]
-	return false; //this case only covers the case when the delete log has been applied
-      const L* lastLog = findLastLogBefore(id, frame);
-      if(lastLog) [[likely]] {
-	switch(lastLog->type) {
-	case eLogType::eDelete:
-	  return false;//...so we need this case when the delete has not yet been applied
-	case eLogType::eUpdate:
-	  memcpy(*out, lastLog->data);
-	  return true;
-	}
-      } else {
-	memcpy(*out, master.data);
-	return true;
-      }
-    };
-
-    //row mutex must be held
     void write(uint64_t id, uint64_t frame, R* data) {
       L log {
 	.type = eLogType::eUpdate,
@@ -161,13 +129,14 @@ namespace WITE {
       return rowLocks[rowIdx];
     };
 
+    //provided for convenience but NOT used internally. Caller must ensure thread safety in access of individual rows.
     inline scopeLock&& lock(uint64_t rowIdx) {
       return std::move(scopeLock(mutexFor(rowIdx)));
     };
 
+    //only blocks if underlaying file is busy
     uint64_t allocate(uint64_t frame, R* data) {
       uint64_t ret = masterDataFile.allocate();
-      scopeLock l = lock(ret);
       //at this point, all logs from the previous holder have been flushed (or else it wouldn't have been in the pool)
       D& master = masterDataFile.deref(ret);
       master.firstLog = master.lastLog = NONE;
@@ -176,27 +145,51 @@ namespace WITE {
       return ret;
     };
 
+    //`free` must only be called once for each `allocate`. `store` should never be concurrent with `free` on the same id. `store` should never be called after free on the same id unless that id has since been returned by `allocate`.
     void free(uint64_t id, uint64_t frame) {
-      scopeLock l = lock(id);
       appendLog(id, L { .type = eLogType::eDelete, .frame = frame });
     };
 
     //reads the state of the requested object as of the requested frame, if possible, or otherwise, the oldest known state
     //returns true if the object exists at the time the chosen state was correct, or false to indicate out was unchanged
-    bool consume(uint64_t id, uint64_t frame, R* out) {
-      scopeLock l = lock(id);
-      return read(id, frame, out);
+    //concurrency allowed with everything but `applyLogs`
+    bool load(uint64_t id, uint64_t frame, R* out) {
+      const D& master = masterDataFile.deref(ret);
+      if(master.lastDeletedFrame > lastCreatedFrame) [[unlikely]]
+	return false; //this case only covers the case when the delete log has been applied
+      //start from firstLog so a concurrent write (which will alter lastLog) does not interfere
+      //if the concurrent write alters firstLog, it is changing it from NONE to the id of a log which is already valid
+      L* tl = logDataFile.get(masterDataFile.deref(id).firstLog);
+      if(tl != NULL) [[likely]] {
+	L* nextL = logDataFile.get(tl->nextLog);
+	while(nextL && nextL->frame <= frame) {
+	  tl = nextL;
+	  nextL = logDataFile.get(tl->nextLog);
+	}
+      }
+      if(tl) [[likely]] {
+	switch(tl->type) {
+	case eLogType::eDelete:
+	  return false;//...so we need this case for when the delete has not yet been applied
+	case eLogType::eUpdate:
+	  memcpy(*out, tl->data);
+	  return true;
+	}
+      } else {
+	memcpy(*out, master.data);
+	return true;
+      }
     };
 
+    //concurrency allowed with `load` only. Any calls to `store` must return before further calls are made to `store` or `free`
     void store(uint64_t id, uint64_t frame, R* in) {
-      scopeLock l = lock(id);
       write(id, frame, in);
     };
 
     //applies all logs to the given object up to and including any associated with the given frame
     //NOTE: applying a delete log frees the object, which invalidates any iterators pointing at it
+    //concurrency never allowed. Game loop should not allow log application to overlap with other game logic
     void applyLogs(uint64_t id, uint64_t throughFrame) {
-      scopeLock lk = lock(id);
       D& master = masterDataFile.deref(ret);
       //every log has a complete copy of the data portion so we only need to apply the last and free the ones before it
       uint64_t tlid = master.firstLog;

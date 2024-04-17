@@ -107,12 +107,14 @@ namespace WITE {
 #define MAKE_FUNC_TEST(type, name, sig, sig2)				\
   template<class T> struct get_member_ ##name## _or_NULL {		\
     static constexpr type## _ce value;					\
+    static constexpr bool exists = false;				\
   };									\
   template<class T>							\
   requires requires( sig ) { T::name ( sig2 ); }			\
   struct get_member_ ##name## _or_NULL<T> {				\
     static constexpr type## _F::StaticCallback<> cbt = &T::name;	\
     static constexpr type## _ce value = &cbt;				\
+    static constexpr bool exists = true;				\
   }
 
 

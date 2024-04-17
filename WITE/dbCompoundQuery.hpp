@@ -8,7 +8,7 @@ namespace WITE {
   //reads of a prior frame's data is preferred because it won't change and so does not need to be locked
   class dbCompoundQuery {
   private:
-    std::set<syncLock*> mutexes;
+    std::set<syncLock*> mutexes;//row locks. Sorted by address so the locking order is consistent.
     std::vector<scopeLock> locks;
-    //TODO finish this when the db api is ready
+    //TODO implement if needed. Can't think of a good reason to do this, nor proof that it won't ever be needed.
   };

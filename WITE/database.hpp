@@ -71,9 +71,16 @@ optional members:
     };
 
     template<class A, class... REST> inline uint64_t updateAll() {
-      if constexpr(has_update<A>::value)
-	for(uint64_t oid : bobby::template get<A::typeId>())
-	  A::update(oid);
+      if constexpr(has_update<A>::value) {
+	auto& tbl = bobby::template get<A::typeId>();
+	auto iter = tbl.begin();
+	auto end = tbl.end();
+	while(iter != end) {
+	  uint64_t oid = iter++;
+	  //NOTE: postfix operator, iterator MUST be incremented before update is called or else the iterator might be invalidadted if the object deletes itself in its own update (which is the recommended place to delete something).
+	  dbJobWrapper<A, A::update>(oid, threads);
+	}
+      }
       if constexpr(sizeof...(REST) > 0)
 	updateAll<REST...>();
     };
@@ -81,7 +88,7 @@ optional members:
     template<class A, class... REST> inline uint64_t spinUpAll() {
       if constexpr(has_spunUp<A>::value)
 	for(uint64_t oid : bobby::template get<A::typeId>())
-	  A::spunUp(oid);
+	  dbJobWrapper<A, A::spunUp>(oid, threads);
       if constexpr(sizeof...(REST) > 0)
 	spinUpAll<REST...>();
     };
@@ -89,7 +96,7 @@ optional members:
     template<class A, class... REST> inline uint64_t spinDownAll() {
       if constexpr(has_spunDown<A>::value)
 	for(uint64_t oid : bobby::template get<A::typeId>())
-	  A::spunDown(oid);
+	  dbJobWrapper<A, A::spunDown>(oid, threads);
       if constexpr(sizeof...(REST) > 0)
 	spinDownAll<REST...>();
     };
@@ -177,6 +184,31 @@ optional members:
 	A::spunDown(oid);
       if constexpr(has_freed<A>::value)
 	A::freed(oid);
+    };
+
+    //true if object exists and was copied to `out`, false otherwise
+    //does NOT lock the row, even when reading the current frame, use with caution
+    template<class A> inline bool read(uint64_t oid, uint64_t frameDelay, A* out) {
+      return bobby.template get<A::typeId>().load(oid, currentFrame - frameDelay, out);
+    };
+
+    //true if object exists and was copied to `out`, false otherwise
+    //locks the object
+    template<class A> inline bool readCurrent(uint64_t oid, A* out) {
+      scopeLock lock = bobby.template get<A::typeId>().lock(oid);
+      return read(oid, 0, out);
+    };
+
+    //true if object exists and was copied to `out`, false otherwise
+    //usually non-blocking, safe because prior frame data does not change
+    template<class A> inline bool readCommitted(uint64_t oid, A* out) {
+      return read(oid, 1, out);
+    };
+
+    //true if object exists and was copied to `out`, false otherwise
+    //does NOT lock the row, externally lock if more than one write might happen in a frame.
+    template<class A> inline void write(uint64_t oid, A* in) {
+      return bobby.template get<A::typeId>().store(oid, currentFrame, in);
     };
 
   };

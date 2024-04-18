@@ -166,7 +166,7 @@ optional members:
       threads.waitForAll();
       while(backupInProgress.load(std::memory_order_consume)) thread::sleepShort();
       applyLogsThrough(currentFrame - 1);
-      spinDownAll<TPYES...>();
+      spinDownAll<TYPES...>();
     };
 
     template<class A> uint64_t create(A* data) {
@@ -209,6 +209,10 @@ optional members:
     //does NOT lock the row, externally lock if more than one write might happen in a frame.
     template<class A> inline void write(uint64_t oid, A* in) {
       return bobby.template get<A::typeId>().store(oid, currentFrame, in);
+    };
+
+    inline uint64_t getFrame() {
+      return currentFrame;
     };
 
   };

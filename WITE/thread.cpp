@@ -1,5 +1,6 @@
 #include <pthread.h>
 #include <unistd.h>
+#include <sys/sysinfo.h>
 
 #include "thread.hpp"
 #include "DEBUG.hpp"
@@ -23,7 +24,7 @@ namespace WITE {
     }
 
     void* pthreadCallback(void* param) {
-      auto storage = reinterpret_cast<thread::thread*>(param);
+      auto storage = reinterpret_cast<thread*>(param);
       putThreadRef(storage);
       if (storage->entry) storage->entry();
       return 0;
@@ -69,7 +70,7 @@ namespace WITE {
   }
 
   void thread::join() {
-    if(getCurrentTid() == tid) [[unliekly]] return;
+    if(getCurrentTid() == tid) [[unlikely]] return;
     ASSERT_TRAP(pthread_join(*reinterpret_cast<pthread_t*>(pthread), NULL), "pthread_join failed");
   };
 

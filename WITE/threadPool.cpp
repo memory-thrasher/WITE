@@ -3,10 +3,10 @@
 
 namespace WITE {
 
-  threadPool::workerEntry(threadPool* pool, threadPool::threadData_t* threadData) {//static
+  void threadPool::workerEntry(threadPool::threadData_t* threadData) {
     threadData->thread = thread::current();
     auto readTarget = threadData->nextRead.load(std::memory_order_relaxed);//won't move till we move it so don't re-read it
-    while(!pool->exit.load(std::memory_order_consume)) {
+    while(!exit.load(std::memory_order_consume)) {
       if(readTarget == threadData->nextWrite.load(std::memory_order_consume)) [[unlikely]] {//queue underflow
 	thread::sleepShort();
       } else {
@@ -23,7 +23,7 @@ namespace WITE {
   threadPool::threadPool(uint64_t threadCount) : threadCount(threadCount) {
     threads = std::make_unique<threadData_t[]>(threadCount);
     for(size_t i = 0;i < threadCount;i++) {
-      thread::spawnThread(thread::threadEntry_t_F::make(&threads[i], workerEntry));
+      thread::spawnThread(thread::threadEntry_t_F::make<threadPool, threadData_t*>(this, &threads[i], &threadPool::workerEntry));
     }
   };
 
@@ -33,13 +33,13 @@ namespace WITE {
       threads[i].thread->join();
   };
 
-  threadPool::submitJob(const job_t* j) {
+  void threadPool::submitJob(const job_t* j) {
     scopeLock submitLock(&submitMutex);
     while(true) {
       for(size_t i = 0;i < threadCount;i++) {
 	threadData_t& td = threads[i];
 	auto writeTarget = td.nextWrite.load(std::memory_order_acquire);
-	if((writeTarget + 1) & jobMask != td.nextRead.load(std::memory_order_consume)) [[unlikely]] {
+	if(((writeTarget + 1) & jobMask) != td.nextRead.load(std::memory_order_consume)) [[unlikely]] {
 	  //there was room, there will continue to be room since we hold submitLock.
 	  td.jobs[writeTarget] = *j;
 	  td.nextWrite.fetch_add(1, std::memory_order_release);//don't care about acquire, that's protected by submitLock
@@ -51,10 +51,23 @@ namespace WITE {
   };
 
   void threadPool::waitForAll() {
-    for(size_t i = 0;i < threadCount;i++)
+    ASSERT_TRAP(!onMemberThread(), "cannot wait a thread pool from one of its members.");
+    for(size_t i = 0;i < threadCount;i++) {
+      threadData_t& td = threads[i];
       while(td.nextWrite.load(std::memory_order_consume) !=
 	    td.nextRead.load(std::memory_order_consume))//not empty
 	thread::sleepShort();
+    }
+  };
+
+  bool threadPool::onMemberThread() {
+    auto current = thread::current();
+    for(size_t i = 0;i < threadCount;i++) {
+      threadData_t& td = threads[i];
+      if(current == td.thread)
+	return true;
+    }
+    return false;
   };
 
 }

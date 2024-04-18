@@ -1,5 +1,6 @@
 SimpleRender
 VertBufferFreeCube
 SpaceFragment
+SpaceSpheres
 InputTest
 

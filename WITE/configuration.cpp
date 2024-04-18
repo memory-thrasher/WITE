@@ -1,6 +1,9 @@
 #include <vector>
 #include <string>
+#include <cstring>
+#include <memory>
 
+#include "DEBUG.hpp"
 #include "configuration.hpp"
 
 namespace WITE::configuration {
@@ -56,7 +59,7 @@ namespace WITE::configuration {
 
   unsigned int getOption(const char* key, unsigned int def) {
     char* option = getOption(key);
-    if(option) return std::stoui(option);
+    if(option) return (unsigned int)std::stoul(option);//no stoui
     else return def;
   };
 

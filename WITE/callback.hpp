@@ -27,18 +27,23 @@ namespace WITE {
     constexpr callbackConstexprWrapper(const cbt* src) : cb(src) {};
     RET call(RArgs... rargs) const override { return cb->call(std::forward<RArgs>(rargs)...); };
     constexpr operator bool() const { return cb; };
+    constexpr operator const cbt*() const { return cb; };
   };
 
   template<class RET, class... RArgs> class callbackPtr {
   private:
-    mutable std::shared_ptr<callback_t<RET, RArgs...>> cb;
+    typedef callback_t<RET, RArgs...> cbt;
+    mutable std::shared_ptr<cbt> cb;//used for non-constexpr
+    const cbt* cbce;//used for constexpr
   public:
     // constexpr callbackPtr(RET(*x)(RArgs...));
     callbackPtr() : cb() {};
-    callbackPtr(callback_t<RET, RArgs...>* cb) : cb(cb) {};
-    callbackPtr(const callbackPtr& other) : cb(other.cb) {};
-    inline RET operator()(RArgs... rargs) const { return cb->call(std::forward<RArgs>(rargs)...); };
-    inline const callback_t<RET, RArgs...>* operator->() const { return cb.get(); };
+    callbackPtr(cbt* cb) : cb(cb) {};
+    constexpr explicit callbackPtr(const cbt* cb) : cbce(cb) {};
+    callbackPtr(const callbackPtr& other) = default;
+    inline const cbt& operator*() const { return cbce ? *cbce : *cb; };
+    inline const cbt* operator->() const { return &operator*(); };
+    inline RET operator()(RArgs... rargs) const { return this->operator*().call(std::forward<RArgs>(rargs)...); };
     inline operator bool() const { return (bool)cb; };
   };
 
@@ -75,7 +80,7 @@ namespace WITE {
     };
     typedef callbackPtr<RET, RArgs...> callback_t;
     template<class U, class... CArgs> constexpr static callback_t
-    make(U* owner, CArgs... cargs, RET(U::*const func)(CArgs..., RArgs...));
+    make(U*const owner, CArgs... cargs, RET(U::*const func)(CArgs..., RArgs...));
     template<class... CArgs> constexpr static callback_t
     make(CArgs... cargs, RET(*const func)(CArgs..., RArgs...));
     template<class L> requires requires(L l, RArgs... ra) { {l(std::forward<RArgs>(ra)...)} -> std::convertible_to<RET>; }

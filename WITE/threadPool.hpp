@@ -28,7 +28,7 @@ namespace WITE {
     uint32_t threadCount;
     std::atomic_bool exit = false;
 
-    static void workerEntry(threadPool*, threadData_t*);
+    void workerEntry(threadData_t*);
 
   public:
     threadPool();
@@ -36,6 +36,7 @@ namespace WITE {
     ~threadPool();
     void submitJob(const job_t*);
     void waitForAll();
+    bool onMemberThread();
 
   };
 

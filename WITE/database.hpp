@@ -1,8 +1,7 @@
 #pragma once
 
-#include "dbTemplateStructs.hpp"
 #include "dbUtils.hpp"
-#include "dbtableTuple.hpp"
+#include "dbTableTuple.hpp"
 
 namespace WITE {
 
@@ -23,10 +22,10 @@ optional members:
     static constexpr size_t tableCount = sizeof...(TYPES);
     static_assert(tableCount > 0);
     std::atomic_uint64_t currentFrame;
-    dbtableTuple<TYPES...> bobby;//327
+    dbTableTuple<TYPES...> bobby;//327
     threadPool threads;//dedicated thread pool so we can tell when all frame data is done
-    std::atomic_bool_t backupInProgress;
-    const std::string backupTarget;
+    std::atomic_bool backupInProgress;
+    std::string backupTarget;
     thread* backupThread;
     std::atomic_uint64_t tablesBackedUp;
 
@@ -59,24 +58,24 @@ optional members:
     template<class A, class... REST> inline uint64_t maxFrame() {
       uint64_t ret = bobby.template get<A::typeId>().maxFrame();
       if constexpr(sizeof...(REST) > 0)
-	ret = max(ret, template maxFrame<REST...>());
+	ret = max(ret, maxFrame<REST...>());
       return ret;
     };
 
     template<class A, class... REST> inline uint64_t minFrame() {
       uint64_t ret = bobby.template get<A::typeId>().minFrame();
       if constexpr(sizeof...(REST) > 0)
-	ret = min(ret, template minFrame<REST...>());
+	ret = min(ret, minFrame<REST...>());
       return ret;
     };
 
-    template<class A, class... REST> inline uint64_t updateAll() {
+    template<class A, class... REST> inline void updateAll() {
       if constexpr(has_update<A>::value) {
-	auto& tbl = bobby::template get<A::typeId>();
+	auto& tbl = bobby.template get<A::typeId>();
 	auto iter = tbl.begin();
 	auto end = tbl.end();
 	while(iter != end) {
-	  uint64_t oid = iter++;
+	  uint64_t oid = *(iter++);
 	  //NOTE: postfix operator, iterator MUST be incremented before update is called or else the iterator might be invalidadted if the object deletes itself in its own update (which is the recommended place to delete something).
 	  dbJobWrapper<A, A::update>(oid, threads);
 	}
@@ -85,35 +84,47 @@ optional members:
 	updateAll<REST...>();
     };
 
-    template<class A, class... REST> inline uint64_t spinUpAll() {
+    template<class A, class... REST> inline void spinUpAll() {
       if constexpr(has_spunUp<A>::value)
-	for(uint64_t oid : bobby::template get<A::typeId>())
+	for(uint64_t oid : bobby.template get<A::typeId>())
 	  dbJobWrapper<A, A::spunUp>(oid, threads);
       if constexpr(sizeof...(REST) > 0)
 	spinUpAll<REST...>();
     };
 
-    template<class A, class... REST> inline uint64_t spinDownAll() {
+    template<class A, class... REST> inline void spinDownAll() {
       if constexpr(has_spunDown<A>::value)
-	for(uint64_t oid : bobby::template get<A::typeId>())
+	for(uint64_t oid : bobby.template get<A::typeId>())
 	  dbJobWrapper<A, A::spunDown>(oid, threads);
       if constexpr(sizeof...(REST) > 0)
 	spinDownAll<REST...>();
     };
 
+    template<class A, class... REST> inline void deleteFiles() {
+      bobby.template get<A::typeId>().deleteFiles();
+      if constexpr(sizeof...(REST) > 0)
+	deleteFiles<TYPES...>();
+    };
+
+    template<class A, class... REST> inline void deleteLogs() {
+      bobby.template get<A::typeId>().deleteLogs();
+      if constexpr(sizeof...(REST) > 0)
+	deleteLogs<TYPES...>();
+    };
+
   public:
     database(std::string& basedir, bool clobberMaster, bool clobberLog) : bobby(basedir, clobberMaster, clobberLog) {
-      assert_trap(clobberLog || !clobberMaster, "cannot keep log without master");
+      ASSERT_TRAP(clobberLog || !clobberMaster, "cannot keep log without master");
       currentFrame = maxFrame() + 1;
-      spinUpAll<TPYES...>();
+      spinUpAll<TYPES...>();
     };
 
     uint64_t maxFrame() {
-      return template maxFrame<TYPES...>();
+      return maxFrame<TYPES...>();
     };
 
     uint64_t minFrame() {
-      return template minFrame<TYPES...>();
+      return minFrame<TYPES...>();
     };
 
     //the intention is for main to call in a loop: winput.poll(); db.updateTick(); onion.render(); db.endFrame();
@@ -143,8 +154,8 @@ optional members:
       bool t = false;
       std::error_code ec;
       if(!std::filesystem::exists(outdir))
-	assert_trap(std::filesystem::create_directories(outdir, ec), "create dir failed ", ec);
-      assert_trap(std::filesystem::is_directory(outdir, ec), "not a directory ", ec);
+	ASSERT_TRAP(std::filesystem::create_directories(outdir, ec), "create dir failed ", ec);
+      ASSERT_TRAP(std::filesystem::is_directory(outdir, ec), "not a directory ", ec);
       if(backupInProgress.compare_exchange_strong(t, true, std::memory_order_acq_rel)) {
 	tablesBackedUp.store(0, std::memory_order_relaxed);
 	backupTarget = outdir;
@@ -154,19 +165,29 @@ optional members:
 	  backupThread = NULL;
 	}
 	//callback allocation is forgivable for file io
-	backupThread = thread::spawnThread(thread::threadEntry_t_F::make(this, backupThreadEntry));
+	backupThread = thread::spawnThread(thread::threadEntry_t_F::make(this, &database::backupThreadEntry));
 	return true;
       } else {
 	return false;
       }
     };
 
+    void deleteFiles() {
+      deleteFiles<TYPES...>();
+    }
+
+    void deleteLogs() {
+      deleteLogs<TYPES...>();
+    }
+
     void gracefulShutdownAndJoin() {
-      assert_trap(currentFrame > 0);
+      ASSERT_TRAP(currentFrame > 0, "cannot shutdown a db on frame 0");
       threads.waitForAll();
       while(backupInProgress.load(std::memory_order_consume)) thread::sleepShort();
-      applyLogsThrough(currentFrame - 1);
+      applyLogsThrough<TYPES...>(currentFrame - 1);
       spinDownAll<TYPES...>();
+      threads.waitForAll();
+      deleteLogs();
     };
 
     template<class A> uint64_t create(A* data) {

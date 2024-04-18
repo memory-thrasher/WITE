@@ -3,20 +3,20 @@
 #include <string>
 #include <map>
 
-#include "dbTemplateStructs.hpp"
 #include "stdExtensions.hpp"
 #include "shared.hpp"
+#include "dbFile.hpp"
 
 namespace WITE {
 
-  class dbtableBase {
+  class dbTableBase {
   public:
-    virtual ~dbtableBase() = default;
+    virtual ~dbTableBase() = default;
     //TODO more as needed
   };
 
   //content is serialized to disk. R is expected to behave when memcpy'd around (no atomics etc).
-  template<class R, size_t AU = 128, size_t AU_LOG = AU * 4> class dbtable : public dbtableBase {//R for raw
+  template<class R, size_t AU = 128, size_t AU_LOG = AU * 4> class dbTable : public dbTableBase {//R for raw
   private:
     typedef R RAW;
     typedef uint64_t U;//underlaying type for raw data, to avoid using constructors and storage qualifiers on disk
@@ -40,8 +40,8 @@ namespace WITE {
     };
 
     const std::string mdfFilename, ldfFilename, typeId;
-    dbfile<D, AU> masterDataFile;
-    dbfile<L, AU_LOG> logDataFile;
+    dbFile<D, AU> masterDataFile;
+    dbFile<L, AU_LOG> logDataFile;
     std::map<uint64_t, syncLock> rowLocks;
     syncLock rowLocks_mutex;//only needed for ops that might alter the size of rowLocks
 
@@ -74,14 +74,14 @@ namespace WITE {
 	.frame = frame,
       };
       memcpy(log.data, *data);
-      appendLog(id, log);
+      appendLog(id, std::move(log));
     };
 
   public:
 
-    dbtable(std::string& basedir, std::string& typeId, bool clobberMaster, bool clobberLog) :
-      mdfFilename(concat(std::string[]{ basedir, "master_", typeId, ".wdb" })),
-      ldfFilename(concat(std::string[]{ basedir, "log_", typeId, ".wdb" })),
+    dbTable(const std::string& basedir, const std::string& typeId, bool clobberMaster, bool clobberLog) :
+      mdfFilename(concat({ basedir, "master_", typeId, ".wdb" })),
+      ldfFilename(concat({ basedir, "log_", typeId, ".wdb" })),
       typeId(typeId),
       masterDataFile(mdfFilename, clobberMaster),
       logDataFile(ldfFilename, clobberLog)
@@ -94,39 +94,40 @@ namespace WITE {
       }
     };
 
-    void rollback(uint64_t maxFrame) {//trim bits of log from final (possibly incomplete) frame (only use when loading)
-      if(!clobber && maxFrame) {
-	for(uint64_t id : masterDataFile) {
-	  D& master = masterDataFile.deref(id);
-	  if(master.lastLogAppliedFrame < master.lastCreatedFrame &&
-	     (master.firstLog == NONE || logDataFile.deref(master.firstLog).frame > mexFrame)) [[unlikely]] {
-	    //file corruption edge case, the first update log was trimmed so the object never got initialized
-	    while(master.firstLog != NONE) {
-	      L& l = logDataFile.deref(master.firstLog);
-	      logDataFile.free(master.firstLog);
-	      master.firstLog = l.nextLog;
-	    }
-	    masterDataFile.free(id);
-	    return;
-	  }
-	  uint64_t tlid = master.lastLog;
-	  L* tl = logDataFile.get(tlid);
-	  while(tl && tl->frame > maxFrame) {
-	    logDataFile.free(tlid);
-	    tlid = tl->previousLog;
-	    tl = logDataFile.get(tlid);
-	  }
-	  if(tl) [[likely]]
-	    master.lastLog = tlid;
-	  else
-	    master.lastLog = master.firstLog = NONE;
-	}
-      }
-    };
+    //TODO integrate rollback into constructor if log is not clobbered and exists (a graceful shutdown will delete the log file)
+    // void rollback(uint64_t maxFrame) {//trim bits of log from final (possibly incomplete) frame (only use when loading)
+    //   if(!clobber && maxFrame) {
+    // 	for(uint64_t id : masterDataFile) {
+    // 	  D& master = masterDataFile.deref(id);
+    // 	  if(master.lastLogAppliedFrame < master.lastCreatedFrame &&
+    // 	     (master.firstLog == NONE || logDataFile.deref(master.firstLog).frame > maxFrame)) [[unlikely]] {
+    // 	    //file corruption edge case, the first update log was trimmed so the object never got initialized
+    // 	    while(master.firstLog != NONE) {
+    // 	      L& l = logDataFile.deref(master.firstLog);
+    // 	      logDataFile.free(master.firstLog);
+    // 	      master.firstLog = l.nextLog;
+    // 	    }
+    // 	    masterDataFile.free(id);
+    // 	    return;
+    // 	  }
+    // 	  uint64_t tlid = master.lastLog;
+    // 	  L* tl = logDataFile.get(tlid);
+    // 	  while(tl && tl->frame > maxFrame) {
+    // 	    logDataFile.free(tlid);
+    // 	    tlid = tl->previousLog;
+    // 	    tl = logDataFile.get(tlid);
+    // 	  }
+    // 	  if(tl) [[likely]]
+    // 	    master.lastLog = tlid;
+    // 	  else
+    // 	    master.lastLog = master.firstLog = NONE;
+    // 	}
+    //   }
+    // };
 
     inline syncLock* mutexFor(uint64_t rowIdx) {
       scopeLock l(&rowLocks_mutex);
-      return rowLocks[rowIdx];
+      return &rowLocks[rowIdx];
     };
 
     //provided for convenience but NOT used internally. Caller must ensure thread safety in access of individual rows.
@@ -154,8 +155,8 @@ namespace WITE {
     //returns true if the object exists at the time the chosen state was correct, or false to indicate out was unchanged
     //concurrency allowed with everything but `applyLogs`
     bool load(uint64_t id, uint64_t frame, R* out) {
-      const D& master = masterDataFile.deref(ret);
-      if(master.lastDeletedFrame > lastCreatedFrame) [[unlikely]]
+      const D& master = masterDataFile.deref(id);
+      if(master.lastDeletedFrame > master.lastCreatedFrame) [[unlikely]]
 	return false; //this case only covers the case when the delete log has been applied
       //start from firstLog so a concurrent write (which will alter lastLog) does not interfere
       //if the concurrent write alters firstLog, it is changing it from NONE to the id of a log which is already valid
@@ -172,11 +173,11 @@ namespace WITE {
 	case eLogType::eDelete:
 	  return false;//...so we need this case for when the delete has not yet been applied
 	case eLogType::eUpdate:
-	  memcpy(*out, tl->data);
+	  ::memcpy(reinterpret_cast<void*>(out), reinterpret_cast<void*>(&tl->data), sizeof(R));
 	  return true;
 	}
       } else {
-	memcpy(*out, master.data);
+	::memcpy(reinterpret_cast<void*>(out), reinterpret_cast<const void*>(&master.data), sizeof(R));
 	return true;
       }
     };
@@ -190,11 +191,11 @@ namespace WITE {
     //NOTE: applying a delete log frees the object, which invalidates any iterators pointing at it
     //concurrency never allowed. Game loop should not allow log application to overlap with other game logic
     void applyLogs(uint64_t id, uint64_t throughFrame) {
-      D& master = masterDataFile.deref(ret);
+      D& master = masterDataFile.deref(id);
       //every log has a complete copy of the data portion so we only need to apply the last and free the ones before it
       uint64_t tlid = master.firstLog;
       L* tl = logDataFile.get(tlid);
-      if(!tl || tl->frame > throughFrame) [[unliekly]] return;
+      if(!tl || tl->frame > throughFrame) [[unlikely]] return;
       L* nl = logDataFile.get(tl->nextLog);
       while(nl && nl->frame <= throughFrame) {
 	logDataFile.free(tlid);
@@ -225,13 +226,25 @@ namespace WITE {
       auto it = begin();
       auto e = end();
       while(it != e) {
-	applyLogs(it++, throughFrame);//prefix increment: the iterator must be incremented before applyLogs is called so it doesn't get invalidated by a delete log
+	applyLogs(*it++, throughFrame);//prefix increment: the iterator must be incremented before applyLogs is called so it doesn't get invalidated by a delete log
       }
     };
 
     void copyMdf(const std::string& outdir) {
-      std::string outfile = concat(std::string[]{ outdir, "backup_", typeId, ".wdb" });
+      std::string outfile = concat({ outdir, "backup_", typeId, ".wdb" });
       masterDataFile.copy(outfile);
+    };
+
+    void deleteFiles() {
+      logDataFile.close();
+      masterDataFile.close();
+      std::filesystem::remove(mdfFilename);
+      std::filesystem::remove(ldfFilename);
+    };
+
+    void deleteLogs() {
+      logDataFile.close();
+      std::filesystem::remove(ldfFilename);
     };
 
     inline auto begin() {
@@ -254,12 +267,14 @@ namespace WITE {
       uint64_t ret = 0;
       for(uint64_t id : masterDataFile)
 	ret = max(ret, logDataFile.deref(masterDataFile.deref(id).lastLog).frame);
+      return ret;
     };
 
     uint64_t minFrame() {
       uint64_t ret = NONE;
       for(uint64_t id : masterDataFile)
 	ret = min(ret, logDataFile.deref(masterDataFile.deref(id).firstLog).frame);
+      return ret;
     };
 
   };

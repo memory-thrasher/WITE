@@ -14,21 +14,23 @@
 #include <iterator>
 //TODO see if these are all needed
 
-#inlucde "syncLock.hpp"
+#include <set>
+
+#include "syncLock.hpp"
 #include "DEBUG.hpp"
 #include "shared.hpp"
 
 namespace WITE {
 
   template<class T, size_t AU>//allocation units, number of T per file growth. sizeof(T)*AU is minimum file size and the increment
-  class dbfile {
+  class dbFile {
 
   private:
     struct link_t {
       uint64_t previous = NONE, next = NONE;
     };
     struct header_t {
-      uint64_t freeSpceLen;//lifo queue position
+      uint64_t freeSpaceLen;//lifo queue position
       uint64_t allocatedFirst, allocatedLast;//LL root node
     };
     struct au_t {
@@ -68,37 +70,36 @@ namespace WITE {
     };
 
   public:
-    dbfile() = delete;
-    dbfile(dbfile&&) = delete;
+    dbFile() = delete;
+    dbFile(dbFile&&) = delete;
 
-    dbfile(const std::string fn, bool clobber) : filename(fn) {
-      scopeLock fl(&fileMutx), bm(&blocksMutex), am(&allocationMutex);
+    dbFile(const std::string fn, bool clobber) : filename(fn) {
+      scopeLock fl(&fileMutex), bm(&blocksMutex), am(&allocationMutex);
       fd = open(filename.c_str(), O_RDWR | O_CREAT | O_NOFOLLOW | O_LARGEFILE | (clobber ? O_TRUNC : 0), 0660);
       ASSERT_TRAP(fd, "failed to open file errno: ", errno);
       ASSERT_TRAP(flock(fd, LOCK_EX | LOCK_NB) == 0, "failed to lock file ", filename, " with errno: ", errno); //lock will be closed when fd is closed
-      stat fst;
+      struct stat fst;
       size_t size = 0;
       ASSERT_TRAP(fstat(fd, &fst) == 0, "file creation failed");
       ASSERT_TRAP((fst.st_mode & S_IFMT) == S_IFREG, "attempted to open a file that exists but is not a regular file");
-      size = static_cast<size_t>(fst.off_t);
-      bool load = size;
+      size = static_cast<size_t>(fst.st_size);
       size_t existingAUs = size ? (size - sizeof(header_t)) / au_size : 0;
       if(existingAUs) [[likely]] {//load
 	ASSERT_TRAP((size - sizeof(header_t)) % au_size == 0, "attempted to load file with invalid size");
 	lseek(fd, 0, SEEK_END);
       } else {//init
 	header_t temph;
-	write(fd, temph, sizeof(header_t));
-	write(fd, plug, au_size);
+	write(fd, &temph);
+	writeArray(fd, plug, au_size);
 	size = au_size;
       }
-      void* mm = mmap(NULL, size, PROTO_READ | PROTO_WRITE, MAP_SHARED, fd, 0);
+      void* mm = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
       ASSERT_TRAP(mm && mm != MAP_FAILED, "mmap fail ", errno);
       header = reinterpret_cast<header_t*>(mm);
-      blocks.emplace_back(reinterpret_cast<au_t*>(mm + sizeof(header_t)));
+      blocks.emplace_back(reinterpret_cast<au_t*>(reinterpret_cast<uint8_t*>(mm) + sizeof(header_t)));
       if(existingAUs) [[likely]] {
 #if DEBUG
-	ASSERT_TRAP(header->freeSpaceLen <= initialTCount);
+	ASSERT_TRAP(header->freeSpaceLen <= existingAUs, "invalid free space length (recovery nyi)");
 	for(uint64_t i = 0;i < header->freeSpaceLen;i++) {
 	  uint64_t j = freeSpaceLEA(i);
 	  ASSERT_TRAP(freeSpaceBitmap.emplace(j).second, "duplicate entity found in free space queue");
@@ -106,27 +107,32 @@ namespace WITE {
 #endif
 	//if the file contains multiple allocation units, then those all share one large mmap, but still populate `blocks` with portions of that mmap rather than complicate the logic of deciding which map to use
 	for(uint64_t i = 1;i < existingAUs;i++)
-	  blocks.emplace_back(&blocks[0] + i);
+	  blocks.emplace_back(blocks[0] + i);
       } else {//initialize file contents
 	initialize(0);
       }
     };
 
-    ~dbfile() {
-      scopeLock fl(&fileMutx), bm(&blocksMutex), am(&allocationMutex);
+    ~dbFile() {
+      close();
+    };
+
+    void close() {
+      scopeLock fl(&fileMutex), bm(&blocksMutex), am(&allocationMutex);
       msync(reinterpret_cast<void*>(header), sizeof(header_t), MS_SYNC);
       for(au_t* b : blocks)
 	msync(reinterpret_cast<void*>(b), au_size, MS_SYNC);
+      ::close(fd);
     };
 
     uint64_t allocate() {
       scopeLock am(&allocationMutex);
       uint64_t ret;
-      if(!freeSpaceLen) [[unlikely]] {
-	scopeLock fl(&fileMutx), bm(&blocksMutex);
+      if(!header->freeSpaceLen) [[unlikely]] {
+	scopeLock fl(&fileMutex), bm(&blocksMutex);
 	uint64_t auId = blocks.size();
-	write(fd, plug, au_size);
-	void* mm = mmap(NULL, au_size, PROTO_READ | PROTO_WRITE, MAP_SHARED, fd, auId * au_size);
+	writeArray(fd, plug, au_size);
+	void* mm = mmap(NULL, au_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, auId * au_size);
 	ASSERT_TRAP(mm && mm != MAP_FAILED, "mmap fail", errno);
 	blocks.emplace_back(reinterpret_cast<au_t*>(mm));
 	initialize(auId);
@@ -157,7 +163,7 @@ namespace WITE {
     void free(uint64_t idx) {
       scopeLock am(&allocationMutex);
       ASSERT_TRAP(idx < blocks.size() * AU, "idx too big");
-      freeSpaceLEA(freeSpaceLen++) = idx;
+      freeSpaceLEA(header->freeSpaceLen++) = idx;
       ASSERT_TRAP(freeSpaceBitmap.emplace(idx).second, "duplicate entity found in free space queue");
       link_t& d = allocatedLEA(idx);
       if(d.next == NONE) [[unlikely]]
@@ -199,7 +205,7 @@ namespace WITE {
     //NOTE: iterator_t i is invalidated if free(*i) is called
     class iterator_t {
     private:
-      dbfile<T, AU>* dbf;
+      dbFile<T, AU>* dbf;
       uint64_t target;
     public:
       typedef int64_t difference_type;
@@ -207,8 +213,8 @@ namespace WITE {
 
       iterator_t() = default;
       iterator_t(const iterator_t& o) = default;
-      iterator_t(dbfile<T, AU>* dbf) : dbf(dbf), target(dbf->first()) {};
-      iterator_t(dbfile<T, AU>* dbf, uint64_t t) : dbf(dbf), target(t) {};
+      iterator_t(dbFile<T, AU>* dbf) : dbf(dbf), target(dbf->first()) {};
+      iterator_t(dbFile<T, AU>* dbf, uint64_t t) : dbf(dbf), target(t) {};
 
       uint64_t operator*() const {
 	return target;
@@ -225,22 +231,23 @@ namespace WITE {
 	return ret;
       };
 
-      static inline bool operator==(const iterator_t& l, const iterator_t& r) {
+      inline bool operator==(const iterator_t& r) const {
+	const iterator_t& l = *this;
 	return (l.target == NONE && r.target == NONE) ||//because default-initialized is required
 	  (l.dbf == r.dbf && l.target == r.target);
       };
 
-      static inline bool operator!=(const iterator_t& l, const iterator_t& r) {
-	return !(r == l);
+      inline bool operator!=(const iterator_t& r) const {
+	return !(*this == r);
       };
 
     };
 
-    inline iterator_t begin() const {
+    inline iterator_t begin() {
       return { this };
     };
 
-    inline iterator_t end() const {
+    inline iterator_t end() {
       return {};
     };
 

@@ -14,4 +14,6 @@
 #include "templateHelpers.hpp"
 #include "winput.hpp"
 #include "shutdown.hpp"
+#include "configuration.hpp"
+#include "database.hpp"
 

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "dbtable.hpp"
+#include "dbTable.hpp"
 
 namespace WITE {
 

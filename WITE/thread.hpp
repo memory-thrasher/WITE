@@ -102,10 +102,10 @@ namespace WITE {
     uint32_t getTid();
     void join();//all spawned threads should be joined
     ~thread();
+    threadEntry_t entry;
   private:
     static std::atomic<uint32_t> seed;
     static threadResource<thread> threads;
-    threadEntry_t entry;
     uint32_t tid;
     void* pthread;//void* to keep the pthread include out of the WITE headers just in case another platform needs something else
     thread(threadEntry_t entry, uint32_t id);

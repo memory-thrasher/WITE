@@ -6,6 +6,7 @@
 #include <string>
 #include <map>
 #include <atomic>
+#include <unistd.h>
 
 namespace WITE {
 
@@ -37,16 +38,28 @@ namespace WITE {
     src.clear();
   }
 
-  template<size_t CNT> std::string&& concat(std::string& strings[CNT]) {
+  constexpr std::string&& concat(const std::initializer_list<const std::string> strings) {
     std::string ret;
     size_t totalLen = 0;
-    for(std::string& s : strings)
+    for(const std::string& s : strings)
       totalLen += s.size();
     ret.reserve(totalLen);
-    for(std::string& s : strings)
+    for(const std::string& s : strings)
       ret.append(s);
-    return st::move(ret);
+    return std::move(ret);
   }
+
+  template<class T> ssize_t write(int fd, const T* data) {
+    return ::write(fd, reinterpret_cast<const void*>(data), sizeof(T));
+  };
+
+  template<class T, size_t CNT> ssize_t writeArray(int fd, const T data[CNT]) {
+    return ::write(fd, reinterpret_cast<const void*>(data), CNT*sizeof(T));
+  };
+
+  template<class T> ssize_t writeArray(int fd, const T* data, size_t cnt) {
+    return ::write(fd, reinterpret_cast<const void*>(data), cnt*sizeof(T));
+  };
 
   template<class T, class U, class V> void uniq(T src, U p, V& out) {
     for(auto it = src.begin();it != src.end();it++) {
@@ -119,20 +132,20 @@ namespace WITE {
     }
   }
 
-  template<typename T, size_t L> inline void memcpy(T* out, T(&in)[L]) {
-    memcpy(out, &in, L * sizeof(T));
-  }
+  // template<typename T, size_t L> inline void memcpy(T* out, T(&in)[L]) {
+  //   memcpy(out, &in, L * sizeof(T));
+  // }
 
-  template<typename T, size_t L> inline void memcpy(T(&out)[L], T* in) {
-    memcpy(&out, in, L * sizeof(T));
-  }
+  // template<typename T, size_t L> inline void memcpy(T(&out)[L], T* in) {
+  //   memcpy(&out, in, L * sizeof(T));
+  // }
 
   template<typename T, size_t L> inline void memcpy(T* out, const T(&in)[L]) {
-    memcpy(out, &in, L * sizeof(T));
+    cpy(out, in, L * sizeof(T));
   }
 
   template<typename T, size_t L> inline void memcpy(T(&out)[L], const T* in) {
-    memcpy(&out, in, L * sizeof(T));
+    cpy(out, in, L * sizeof(T));
   }
 
   // template<typename CVT, typename T = std::remove_cv_t<CVT>> inline T cv_cast(CVT i) {

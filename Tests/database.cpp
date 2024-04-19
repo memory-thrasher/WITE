@@ -126,9 +126,8 @@ void timer::update(uint64_t oid) {
 
 int main(int argc, char** argv) {
   WITE::configuration::setOptions(argc, argv);
-  std::string dirPath = std::filesystem::temp_directory_path();
-  dirPath += "wite_db_test";
-  db = std::make_unique<db_t>(dirPath, true, true);//blow away any existing file
+  std::filesystem::path dirPath = std::filesystem::temp_directory_path() / "wite_db_test";
+  db = std::make_unique<db_t>(dirPath.string(), true, true);//blow away any existing file
   //create some objects before entering the game loop
   spawner s;
   s.locationX = s.locationY = 10;

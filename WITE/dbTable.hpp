@@ -39,7 +39,8 @@ namespace WITE {
       T data;
     };
 
-    const std::string mdfFilename, ldfFilename, typeId;
+    const std::filesystem::path mdfFilename, ldfFilename;
+    const std::string typeId;
     dbFile<D, AU> masterDataFile;
     dbFile<L, AU_LOG> logDataFile;
     std::map<uint64_t, syncLock> rowLocks;
@@ -79,13 +80,14 @@ namespace WITE {
 
   public:
 
-    dbTable(const std::string& basedir, const std::string& typeId, bool clobberMaster, bool clobberLog) :
-      mdfFilename(concat({ basedir, "master_", typeId, ".wdb" })),
-      ldfFilename(concat({ basedir, "log_", typeId, ".wdb" })),
+    dbTable(const std::filesystem::path& basedir, const std::string& typeId, bool clobberMaster, bool clobberLog) :
+      mdfFilename(basedir / concat({ "master_", typeId, ".wdb" })),
+      ldfFilename(basedir / concat({ "log_", typeId, ".wdb" })),
       typeId(typeId),
       masterDataFile(mdfFilename, clobberMaster),
       logDataFile(ldfFilename, clobberLog)
     {
+      WARN(basedir, "\t", mdfFilename);
       if(clobberLog && !clobberMaster) { //if we're not keeping the log, drop any references to it
 	for(uint64_t id : masterDataFile) {
 	  D& m = masterDataFile.deref(id);
@@ -230,8 +232,8 @@ namespace WITE {
       }
     };
 
-    void copyMdf(const std::string& outdir) {
-      std::string outfile = concat({ outdir, "backup_", typeId, ".wdb" });
+    void copyMdf(const std::filesystem::path& outdir) {
+      std::filesystem::path outfile = outdir / concat({ "backup_", typeId, ".wdb" });
       masterDataFile.copy(outfile);
     };
 

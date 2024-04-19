@@ -38,16 +38,7 @@ namespace WITE {
     src.clear();
   }
 
-  constexpr std::string&& concat(const std::initializer_list<const std::string> strings) {
-    std::string ret;
-    size_t totalLen = 0;
-    for(const std::string& s : strings)
-      totalLen += s.size();
-    ret.reserve(totalLen);
-    for(const std::string& s : strings)
-      ret.append(s);
-    return std::move(ret);
-  }
+  std::string concat(const std::initializer_list<const std::string> strings);
 
   template<class T> ssize_t write(int fd, const T* data) {
     return ::write(fd, reinterpret_cast<const void*>(data), sizeof(T));

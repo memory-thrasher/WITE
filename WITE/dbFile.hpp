@@ -30,8 +30,8 @@ namespace WITE {
       uint64_t previous = NONE, next = NONE;
     };
     struct header_t {
-      uint64_t freeSpaceLen;//lifo queue position
-      uint64_t allocatedFirst, allocatedLast;//LL root node
+      uint64_t freeSpaceLen = 0;//lifo queue position
+      uint64_t allocatedFirst = 0, allocatedLast = 0;//LL root node
     };
     struct au_t {
       uint64_t freeSpace[AU];//lifo queue space
@@ -45,7 +45,7 @@ namespace WITE {
     header_t* header;
     std::vector<au_t*> blocks;//these are mmaped regions (or subdivisions thereof)
     int fd;
-    const std::string filename;
+    const std::filesystem::path filename;
 #if DEBUG
     std::set<uint64_t> freeSpaceBitmap;//sanity check for debugging only, duplicates the on-disk allocation queue
 #endif
@@ -53,7 +53,7 @@ namespace WITE {
     void initialize(uint64_t auId) {
       ASSERT_TRAP(header->freeSpaceLen <= auId * AU, "queue position invalid before initializing new allocation unit");
       uint64_t base = auId * au_size;
-      for(uint32_t i = 0;i < au_size;i++) {
+      for(uint32_t i = 0;i < AU;i++) {
 	freeSpaceLEA(header->freeSpaceLen++) = base + i;
 #if DEBUG
 	ASSERT_TRAP(freeSpaceBitmap.emplace(i).second, "duplicate entity found in free space queue");
@@ -73,7 +73,7 @@ namespace WITE {
     dbFile() = delete;
     dbFile(dbFile&&) = delete;
 
-    dbFile(const std::string fn, bool clobber) : filename(fn) {
+    dbFile(const std::filesystem::path& fn, bool clobber) : filename(fn) {
       scopeLock fl(&fileMutex), bm(&blocksMutex), am(&allocationMutex);
       fd = open(filename.c_str(), O_RDWR | O_CREAT | O_NOFOLLOW | O_LARGEFILE | (clobber ? O_TRUNC : 0), 0660);
       ASSERT_TRAP(fd, "failed to open file errno: ", errno);
@@ -187,7 +187,7 @@ namespace WITE {
       return &deref(idx);
     };
 
-    void copy(const std::string& dstFilename) {
+    void copy(const std::filesystem::path& dstFilename) {
       scopeLock am(&allocationMutex);
       std::filesystem::copy_file(filename, dstFilename, std::filesystem::copy_options::overwrite_existing);
     };

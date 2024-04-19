@@ -6,7 +6,7 @@ namespace WITE {
 
   template<class... REST> struct dbTableTuple {//terminal case first
 
-    dbTableTuple(std::string&, bool, bool) {};
+    dbTableTuple(const std::filesystem::path&, bool, bool) {};
 
     inline dbTableBase* get(uint64_t id) {
       return NULL;
@@ -19,7 +19,7 @@ namespace WITE {
     dbTable<R> data;
     dbTableTuple<REST...> rest;
 
-    dbTableTuple(std::string& basedir, bool clobberMaster, bool clobberLog) :
+    dbTableTuple(const std::filesystem::path& basedir, bool clobberMaster, bool clobberLog) :
       data(basedir, R::dbFileId, clobberMaster, clobberLog),
       rest(basedir, clobberMaster, clobberLog)
     {};

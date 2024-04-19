@@ -113,7 +113,7 @@ optional members:
     };
 
   public:
-    database(std::string& basedir, bool clobberMaster, bool clobberLog) : bobby(basedir, clobberMaster, clobberLog) {
+    database(const std::filesystem::path& basedir, bool clobberMaster, bool clobberLog) : bobby(basedir, clobberMaster, clobberLog) {
       ASSERT_TRAP(clobberLog || !clobberMaster, "cannot keep log without master");
       currentFrame = maxFrame() + 1;
       spinUpAll<TYPES...>();

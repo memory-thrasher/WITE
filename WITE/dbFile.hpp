@@ -75,8 +75,13 @@ namespace WITE {
 
     dbFile(const std::filesystem::path& fn, bool clobber) : filename(fn) {
       scopeLock fl(&fileMutex), bm(&blocksMutex), am(&allocationMutex);
+      const std::filesystem::path dir = filename.parent_path();
+      std::error_code ec;
+      if(!std::filesystem::exists(dir))
+	ASSERT_TRAP(std::filesystem::create_directories(dir, ec), "create dir failed ", ec);
+      ASSERT_TRAP(std::filesystem::is_directory(dir, ec), "not a directory ", ec);
       fd = open(filename.c_str(), O_RDWR | O_CREAT | O_NOFOLLOW | O_LARGEFILE | (clobber ? O_TRUNC : 0), 0660);
-      ASSERT_TRAP(fd, "failed to open file errno: ", errno);
+      ASSERT_TRAP(fd > 0, "failed to open file ", filename, " with errno: ", errno);
       ASSERT_TRAP(flock(fd, LOCK_EX | LOCK_NB) == 0, "failed to lock file ", filename, " with errno: ", errno); //lock will be closed when fd is closed
       struct stat fst;
       size_t size = 0;

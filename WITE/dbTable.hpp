@@ -87,7 +87,6 @@ namespace WITE {
       masterDataFile(mdfFilename, clobberMaster),
       logDataFile(ldfFilename, clobberLog)
     {
-      WARN(basedir, "\t", mdfFilename);
       if(clobberLog && !clobberMaster) { //if we're not keeping the log, drop any references to it
 	for(uint64_t id : masterDataFile) {
 	  D& m = masterDataFile.deref(id);

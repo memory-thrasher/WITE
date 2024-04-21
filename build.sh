@@ -10,6 +10,7 @@ BOTHOPTS="-pthread -DDEBUG -g"
 # -DDO_PROFILE
 # -DWITE_DEBUG_IMAGE_BARRIERS
 # -DWITE_DEBUG_FENCES
+# -DWITE_DEBUG_DB
 BASEDIR="$(cd "$(dirname "$0")"; pwd -L)"
 OUTDIR="${BASEDIR}/build" #TODO not just WITE but all subdirs
 LOGFILE="${OUTDIR}/buildlog.txt"
@@ -79,7 +80,7 @@ find $BUILDLIBS $BUILDAPP $BUILDTESTS -name '*.cpp' -type f -print0 |
 		$WORKNICE $COMPILER $VK_INCLUDE -I "${BUILDDIR}" -E -o /dev/null -w -ferror-limit=1 -H "${SRCFILE}" 2>&1 | grep '^\.' | grep -o '[^[:space:]]*$' | sort -u >"${DEPENDENCIES}"
 	    fi
 	    # -I "${BUILDDIR}" is for shaders which get turned into headers
-	    if ! $WORKNICE $COMPILER $VK_INCLUDE -I "${BUILDDIR}" --std=c++20 -D_POSIX_C_SOURCE=200112L -fPIC $BOTHOPTS -Werror -Wall "${SRCFILE}" -c -o "${DSTFILE}" >>"${LOGFILE}" 2>>"${THISERRLOG}"; then
+	    if ! $WORKNICE $COMPILER $VK_INCLUDE -I "${BUILDDIR}" --std=c++20 -fPIC $BOTHOPTS -Werror -Wall "${SRCFILE}" -c -o "${DSTFILE}" >>"${LOGFILE}" 2>>"${THISERRLOG}"; then # -D_POSIX_C_SOURCE=200112L
 		rm "${DSTFILE}" 2>/dev/null
 		echo "Failed Build: ${SRCFILE}" >>"${THISERRLOG}"
 		#echo "Failed Build: ${SRCFILE}"

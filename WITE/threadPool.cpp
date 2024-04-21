@@ -18,9 +18,10 @@ namespace WITE {
     }
   };
 
-  threadPool::threadPool() : threadPool(configuration::getOption("dbthreadcount", thread::guessCpuCount())) {};
+  threadPool::threadPool() : threadPool(configuration::getOption("threadsperpool", thread::guessCpuCount())) {};
 
   threadPool::threadPool(uint64_t threadCount) : threadCount(threadCount) {
+    thread::init();//repeated calling not a problem
     threads = std::make_unique<threadData_t[]>(threadCount);
     for(size_t i = 0;i < threadCount;i++) {
       thread::spawnThread(thread::threadEntry_t_F::make<threadPool, threadData_t*>(this, &threads[i], &threadPool::workerEntry));
@@ -42,7 +43,7 @@ namespace WITE {
 	if(((writeTarget + 1) & jobMask) != td.nextRead.load(std::memory_order_consume)) [[unlikely]] {
 	  //there was room, there will continue to be room since we hold submitLock.
 	  td.jobs[writeTarget] = *j;
-	  td.nextWrite.fetch_add(1, std::memory_order_release);//don't care about acquire, that's protected by submitLock
+	  td.nextWrite.store((writeTarget + 1) & jobMask, std::memory_order_release);
 	  return;
 	}
       }

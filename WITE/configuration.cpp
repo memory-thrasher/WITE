@@ -12,7 +12,7 @@ namespace WITE::configuration {
 
   void setOptions(int argc, char** argv) {//static
     for(int i = 0;i < argc;i++) {
-      char* temp = new char[std::strlen(argv[i])];
+      char* temp = new char[std::strlen(argv[i]) + 1];
       std::strcpy(temp, argv[i]);
       WARN("CLI option: ", temp);
       options.emplace_back(temp);//constructs unique_pointer around char array

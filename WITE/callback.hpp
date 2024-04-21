@@ -35,11 +35,12 @@ namespace WITE {
     typedef callback_t<RET, RArgs...> cbt;
     mutable std::shared_ptr<cbt> cb;//used for non-constexpr
     const cbt* cbce;//used for constexpr
+    //TODO Remove abstraction?
   public:
     // constexpr callbackPtr(RET(*x)(RArgs...));
-    callbackPtr() : cb() {};
-    callbackPtr(cbt* cb) : cb(cb) {};
-    constexpr explicit callbackPtr(const cbt* cb) : cbce(cb) {};
+    callbackPtr() : cb(), cbce(NULL) {};
+    callbackPtr(cbt* cb) : cb(cb), cbce(NULL) {};
+    constexpr explicit callbackPtr(const cbt* cb) : cb(), cbce(cb) {};
     callbackPtr(const callbackPtr& other) = default;
     inline const cbt& operator*() const { return cbce ? *cbce : *cb; };
     inline const cbt* operator->() const { return &operator*(); };

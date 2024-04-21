@@ -48,11 +48,12 @@ namespace WITE {
 
     void appendLog(uint64_t id, L&& l) {
       D& master = masterDataFile.deref(id);
-      if(master.lastLog == NONE && logDataFile.deref(master.lastLog).type == eLogType::eDelete) [[unlikely]] {
+      if(master.lastLog != NONE && logDataFile.deref(master.lastLog).type == eLogType::eDelete) [[unlikely]] {
 	//edge case: if writing to a object that has already been deleted based on pre-deletion frame data, just drop the write
 	//the object will not be reallocated until after the delete log is applied
 	return;
       }
+      WITE_DEBUG_DB_MASTER(id);
       uint64_t nlid = logDataFile.allocate();
       L& nl = logDataFile.deref(nlid);
       nl = l;
@@ -67,6 +68,8 @@ namespace WITE {
       }
       // nl.masterRow = id;
       master.lastLog = nlid;
+      WITE_DEBUG_DB_MASTER(id);
+      WITE_DEBUG_DB_LOG(master.lastLog);
     };
 
     void write(uint64_t id, uint64_t frame, R* data) {
@@ -143,6 +146,7 @@ namespace WITE {
       D& master = masterDataFile.deref(ret);
       master.firstLog = master.lastLog = NONE;
       master.lastCreatedFrame = frame;
+      WITE_DEBUG_DB_MASTER(ret);
       write(ret, frame, data);
       return ret;
     };
@@ -192,17 +196,21 @@ namespace WITE {
     //NOTE: applying a delete log frees the object, which invalidates any iterators pointing at it
     //concurrency never allowed. Game loop should not allow log application to overlap with other game logic
     void applyLogs(uint64_t id, uint64_t throughFrame) {
+      WITE_DEBUG_DB_MASTER(id);
       D& master = masterDataFile.deref(id);
       //every log has a complete copy of the data portion so we only need to apply the last and free the ones before it
       uint64_t tlid = master.firstLog;
       L* tl = logDataFile.get(tlid);
+      WITE_DEBUG_DB_LOG(tlid);
       if(!tl || tl->frame > throughFrame) [[unlikely]] return;
       L* nl = logDataFile.get(tl->nextLog);
       while(nl && nl->frame <= throughFrame) {
-	logDataFile.free(tlid);
+	auto oldtlid = tlid;
 	tlid = tl->nextLog;
+	WITE_DEBUG_DB_LOG(tlid);
 	tl = nl;
 	nl = logDataFile.get(tl->nextLog);
+	logDataFile.free(oldtlid);
       }
       //if there is a delete log, it will be the last one
       switch(tl->type) {
@@ -221,6 +229,7 @@ namespace WITE {
 	break;
       }
       logDataFile.free(tlid);
+      WITE_DEBUG_DB_MASTER(id);
     };
 
     void applyLogsAll(uint64_t throughFrame) {

@@ -70,6 +70,20 @@
 #define WITE_DEBUG_IB_CE consteval
 #endif
 
+#ifdef WITE_DEBUG_DB
+#define WITE_DEBUG_DB_HEADER WARN("dbFile: ", std::hex, this, std::dec, " Header: { freeSpaceLen: ", header->freeSpaceLen, ", allocatedFirst: ", header->allocatedFirst, ", allocatedLast: ", header->allocatedLast, " }")
+#define WITE_DEBUG_DB_ALLOCATION(A) WARN("dbFile: ", std::hex, this, std::dec, " Allocation map segment: ", allocatedLEA(A).previous, " <-- ", A, " --> ", allocatedLEA(A).next)
+#define WITE_DEBUG_DB_FREESPACE(A) WARN("dbFile: ", std::hex, this, std::dec, " Free space entry at idx ", A, " is now ", freeSpaceLEA(A))
+#define WITE_DEBUG_DB_LOG(A) WARN("dbTable: ", std::hex, this, std::dec, " log chain segment: ", logDataFile.deref(A).previousLog, " <-- ", A, " --> ", logDataFile.deref(A).nextLog)
+#define WITE_DEBUG_DB_MASTER(A) WARN("dbTable: ", std::hex, this, std::dec, " master row ", A, " firstLog: ", masterDataFile.deref(A).firstLog, " lastLog: ", masterDataFile.deref(A).firstLog)
+#else
+#define WITE_DEBUG_DB_HEADER {}
+#define WITE_DEBUG_DB_ALLOCATION(A) {}
+#define WITE_DEBUG_DB_FREESPACE(A) {}
+#define WITE_DEBUG_DB_LOG(A) {}
+#define WITE_DEBUG_DB_MASTER(A) {}
+#endif
+
 #define CRASH_PREINIT(...) { ERROR(__VA_ARGS__); exit(EXIT_FAILURE); }
 #define CRASH(...) { ERROR(__VA_ARGS__); } //TODO set a global flag for dbs to graceul down
 #define CRASHRET(ret, ...) { CRASH(__VA_ARGS__); return ret; } //return will never happen but it satisfies the compiler

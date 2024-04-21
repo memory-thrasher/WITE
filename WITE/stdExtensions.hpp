@@ -132,11 +132,11 @@ namespace WITE {
   // }
 
   template<typename T, size_t L> inline void memcpy(T* out, const T(&in)[L]) {
-    cpy(out, in, L * sizeof(T));
+    cpy(out, in, L);
   }
 
   template<typename T, size_t L> inline void memcpy(T(&out)[L], const T* in) {
-    cpy(out, in, L * sizeof(T));
+    cpy(out, in, L);
   }
 
   // template<typename CVT, typename T = std::remove_cv_t<CVT>> inline T cv_cast(CVT i) {

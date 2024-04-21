@@ -14,7 +14,9 @@
 #include <iterator>
 //TODO see if these are all needed
 
+#ifdef DEBUG
 #include <set>
+#endif
 
 #include "syncLock.hpp"
 #include "DEBUG.hpp"
@@ -31,7 +33,7 @@ namespace WITE {
     };
     struct header_t {
       uint64_t freeSpaceLen = 0;//lifo queue position
-      uint64_t allocatedFirst = 0, allocatedLast = 0;//LL root node
+      uint64_t allocatedFirst = NONE, allocatedLast = NONE;//LL root node
     };
     struct au_t {
       uint64_t freeSpace[AU];//lifo queue space
@@ -53,19 +55,26 @@ namespace WITE {
     void initialize(uint64_t auId) {
       ASSERT_TRAP(header->freeSpaceLen <= auId * AU, "queue position invalid before initializing new allocation unit");
       uint64_t base = auId * au_size;
+      WITE_DEBUG_DB_HEADER;
       for(uint32_t i = 0;i < AU;i++) {
-	freeSpaceLEA(header->freeSpaceLen++) = base + i;
+	int j = base + i;
+	freeSpaceLEA(header->freeSpaceLen) = j;
+	WITE_DEBUG_DB_FREESPACE(header->freeSpaceLen);
+	header->freeSpaceLen++;
 #if DEBUG
-	ASSERT_TRAP(freeSpaceBitmap.emplace(i).second, "duplicate entity found in free space queue");
+	ASSERT_TRAP(freeSpaceBitmap.insert(j).second, "duplicate entity found in free space queue ", j);
 #endif
       }
+      WITE_DEBUG_DB_HEADER;
     };
 
     inline uint64_t& freeSpaceLEA(uint64_t idx) {
+      ASSERT_TRAP(idx / AU < blocks.size(), "out of bounds: block does not exist");
       return blocks[idx / AU]->freeSpace[idx % AU];
     };
 
     inline link_t& allocatedLEA(uint64_t idx) {
+      ASSERT_TRAP(idx / AU < blocks.size(), "out of bounds: block does not exist");
       return blocks[idx / AU]->allocatedLL[idx % AU];
     };
 
@@ -96,7 +105,7 @@ namespace WITE {
 	header_t temph;
 	write(fd, &temph);
 	writeArray(fd, plug, au_size);
-	size = au_size;
+	size = au_size + sizeof(header_t);
       }
       void* mm = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
       ASSERT_TRAP(mm && mm != MAP_FAILED, "mmap fail ", errno);
@@ -107,7 +116,7 @@ namespace WITE {
 	ASSERT_TRAP(header->freeSpaceLen <= existingAUs, "invalid free space length (recovery nyi)");
 	for(uint64_t i = 0;i < header->freeSpaceLen;i++) {
 	  uint64_t j = freeSpaceLEA(i);
-	  ASSERT_TRAP(freeSpaceBitmap.emplace(j).second, "duplicate entity found in free space queue");
+	  ASSERT_TRAP(freeSpaceBitmap.emplace(j).second, "duplicate entity found in free space queue ", j);
 	}
 #endif
 	//if the file contains multiple allocation units, then those all share one large mmap, but still populate `blocks` with portions of that mmap rather than complicate the logic of deciding which map to use
@@ -133,6 +142,7 @@ namespace WITE {
     uint64_t allocate() {
       scopeLock am(&allocationMutex);
       uint64_t ret;
+      WITE_DEBUG_DB_HEADER;
       if(!header->freeSpaceLen) [[unlikely]] {
 	scopeLock fl(&fileMutex), bm(&blocksMutex);
 	uint64_t auId = blocks.size();
@@ -143,10 +153,10 @@ namespace WITE {
 	initialize(auId);
       }
       ASSERT_TRAP(header->freeSpaceLen, "disk allocation failed?");
-      ret = freeSpaceLEA(header->freeSpaceLen--);
+      ret = freeSpaceLEA(--header->freeSpaceLen);
 #if DEBUG
       auto iter = freeSpaceBitmap.find(ret);
-      ASSERT_TRAP(iter != freeSpaceBitmap.end(), "duplicate entity found in free space queue");
+      ASSERT_TRAP(iter != freeSpaceBitmap.end(), "allocated entity from free space queue not in bitmap ", ret);
       freeSpaceBitmap.erase(iter);
 #endif
       link_t& l = allocatedLEA(ret);
@@ -161,6 +171,7 @@ namespace WITE {
 	oldLast.next = ret;
       }
       header->allocatedLast = ret;
+      WITE_DEBUG_DB_HEADER;
       return ret;
     };
 
@@ -168,22 +179,31 @@ namespace WITE {
     void free(uint64_t idx) {
       scopeLock am(&allocationMutex);
       ASSERT_TRAP(idx < blocks.size() * AU, "idx too big");
-      freeSpaceLEA(header->freeSpaceLen++) = idx;
-      ASSERT_TRAP(freeSpaceBitmap.emplace(idx).second, "duplicate entity found in free space queue");
+      WITE_DEBUG_DB_HEADER;
+      freeSpaceLEA(header->freeSpaceLen) = idx;
+      WITE_DEBUG_DB_FREESPACE(header->freeSpaceLen);
+      header->freeSpaceLen++;
+      ASSERT_TRAP(freeSpaceBitmap.emplace(idx).second, "duplicate entity found in free space queue ", idx);
       link_t& d = allocatedLEA(idx);
       if(d.next == NONE) [[unlikely]]
 	header->allocatedLast = d.previous;
-      else
+      else {
 	allocatedLEA(d.next).previous = d.previous;
+	WITE_DEBUG_DB_ALLOCATION(d.next);
+      }
       if(d.previous == NONE) [[unlikely]]
 	header->allocatedFirst = d.next;
-      else
+      else {
 	allocatedLEA(d.previous).next = d.next;
+	WITE_DEBUG_DB_ALLOCATION(d.previous);
+      }
       d.next = d.previous = NONE;
+      WITE_DEBUG_DB_HEADER;
     };
 
     T& deref(uint64_t idx) {
       scopeLock bm(&blocksMutex);
+      ASSERT_TRAP(idx / AU < blocks.size(), "out of bounds: block does not exist");
       return blocks[idx / AU]->data[idx % AU];
     };
 
@@ -199,11 +219,14 @@ namespace WITE {
 
     inline uint64_t first() {
       scopeLock am(&allocationMutex);
+      WITE_DEBUG_DB_HEADER;
+      ASSERT_TRAP(header->freeSpaceLen <= blocks.size() * AU, "invalid header, pointer trouble?");
       return header->allocatedFirst;
     };
 
     inline uint64_t after(uint64_t id) {
       scopeLock am(&allocationMutex);
+      WITE_DEBUG_DB_ALLOCATION(id);
       return allocatedLEA(id).next;
     };
 
@@ -216,7 +239,7 @@ namespace WITE {
       typedef int64_t difference_type;
       typedef std::forward_iterator_tag iterator_concept;
 
-      iterator_t() = default;
+      iterator_t() : target(NONE) {};
       iterator_t(const iterator_t& o) = default;
       iterator_t(dbFile<T, AU>* dbf) : dbf(dbf), target(dbf->first()) {};
       iterator_t(dbFile<T, AU>* dbf, uint64_t t) : dbf(dbf), target(t) {};
@@ -262,6 +285,7 @@ namespace WITE {
     };
 
     inline uint64_t freeSpace() {
+      WITE_DEBUG_DB_HEADER;
       return header->freeSpaceLen;
     };
 

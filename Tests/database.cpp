@@ -16,8 +16,8 @@ struct unit {
   float locationX = 0, locationY = 0, deltaX = 0, deltaY = 0;
   int ttl;
   static void update(uint64_t oid);
-  static void allocate(uint64_t oid);
-  static void free(uint64_t oid);
+  static void allocated(uint64_t oid);
+  static void freed(uint64_t oid);
   static void spunUp(uint64_t oid);
   static void spunDown(uint64_t oid);
 };
@@ -100,11 +100,11 @@ void unit::update(uint64_t oid) {
   db->write<unit>(oid, &s);
 };
 
-void unit::allocate(uint64_t oid) {
+void unit::allocated(uint64_t oid) {
   allocates++;
 };
 
-void unit::free(uint64_t oid) {
+void unit::freed(uint64_t oid) {
   frees++;
 };
 
@@ -143,5 +143,6 @@ int main(int argc, char** argv) {
   }
   db->gracefulShutdownAndJoin();
   db->deleteFiles();
+  std::cout << "updates: " << unit::updates << " allocates: " << unit::allocates << " frees: " << unit::frees << " spunUps: " << unit::spunUps << " spunDowns: " << unit::spunDowns << "\n";
 };
 

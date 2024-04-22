@@ -71,7 +71,7 @@ namespace WITE {
 
   void thread::join() {
     if(getCurrentTid() == tid) [[unlikely]] return;
-    ASSERT_TRAP(pthread_join(*reinterpret_cast<pthread_t*>(pthread), NULL), "pthread_join failed");
+    ASSERT_TRAP(pthread_join(*reinterpret_cast<pthread_t*>(pthread), NULL) == 0, "pthread_join failed");
   };
 
   //#endif posix

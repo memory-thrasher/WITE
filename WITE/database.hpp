@@ -103,13 +103,13 @@ optional members:
     template<class A, class... REST> inline void deleteFiles() {
       bobby.template get<A::typeId>().deleteFiles();
       if constexpr(sizeof...(REST) > 0)
-	deleteFiles<TYPES...>();
+	deleteFiles<REST...>();
     };
 
     template<class A, class... REST> inline void deleteLogs() {
       bobby.template get<A::typeId>().deleteLogs();
       if constexpr(sizeof...(REST) > 0)
-	deleteLogs<TYPES...>();
+	deleteLogs<REST...>();
     };
 
   public:

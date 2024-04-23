@@ -11,9 +11,10 @@ namespace WITE {
   void syncLock::WaitForLock(bool busy) {
     uint64_t seed;
     seed = queueSeed.fetch_add(1);//take a number
+    uint32_t sleepCnt = 0;
     while (seed > queueCurrent.load())
-      if(!busy)
-	thread::sleepShort();
+      if(!busy) [[likely]]
+	thread::sleepShort(sleepCnt);
     owningThread = thread::getCurrentTid();
   }
 
@@ -27,7 +28,8 @@ namespace WITE {
     newSeed = queueSeed.fetch_add(1);
     owningThread = ~0;
     queueCurrent.fetch_add(1);
-    while (newSeed > queueCurrent.load()) thread::sleepShort();
+    uint32_t sleepCnt = 0;
+    while (newSeed > queueCurrent.load()) thread::sleepShort(sleepCnt);
     owningThread = thread::getCurrentTid();
   }
 

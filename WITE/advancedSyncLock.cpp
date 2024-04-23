@@ -15,6 +15,7 @@ namespace WITE {
   bool advancedSyncLock::acquire(uint64_t timeoutNS) {
     timespec startTime = Util::now();
     auto tid = thread::getCurrentTid();
+    uint32_t sleepCnt = 0;
     do {
       scopeLock lock(&mutex);
       if(holds == 0 || currentOwner == tid) {
@@ -24,7 +25,7 @@ namespace WITE {
       }
       lock.release();
       if(timeoutNS > 0)
-	thread::sleepShort();
+	thread::sleepShort(sleepCnt);
     } while(Util::toNS(Util::since(startTime)) < timeoutNS);
     return false;
   };

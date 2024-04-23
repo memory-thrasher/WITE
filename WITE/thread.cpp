@@ -111,11 +111,16 @@ namespace WITE {
     usleep(ms * 1000);
   }
 
-  void thread::sleepShort() { //static
-    usleep(10);
+  void thread::sleepShort() {
+    usleep(1);
   }
 
-  uint32_t thread::guessCpuCount() {//static
+  void thread::sleepShort(uint32_t& counter, uint32_t busyCount) {
+    if(++counter % busyCount == 0) [[unlikely]]
+      usleep(1);
+  }
+
+  int32_t thread::guessCpuCount() {//static
     constexpr int64_t MIN = 4;//mostly to interpret 0 or -1 as failure
     int64_t ret;
     ret = sysconf(_SC_NPROCESSORS_CONF);
@@ -124,7 +129,7 @@ namespace WITE {
     if(ret <= MIN) ret = get_nprocs();
     //TODO other methods to guess here
     if(ret <= MIN) ret = MIN;
-    return uint32_t(ret);
+    return int32_t(ret);
   };
 
 }

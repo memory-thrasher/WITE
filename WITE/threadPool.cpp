@@ -1,15 +1,18 @@
 #include "threadPool.hpp"
 #include "configuration.hpp"
+#include "math.hpp"
 
 namespace WITE {
 
   void threadPool::workerEntry(threadPool::threadData_t* threadData) {
     threadData->thread = thread::current();
     auto readTarget = threadData->nextRead.load(std::memory_order_relaxed);//won't move till we move it so don't re-read it
+    uint32_t sleepCnt = 0;
     while(!exit.load(std::memory_order_consume)) {
       if(readTarget == threadData->nextWrite.load(std::memory_order_consume)) [[unlikely]] {//queue underflow
-	thread::sleepShort();
+	thread::sleepShort(sleepCnt);
       } else {
+	sleepCnt = 0;
 	job_t& j = threadData->jobs[readTarget];
 	j.entry(j.data);
 	readTarget = (readTarget + 1) & jobMask;
@@ -18,7 +21,7 @@ namespace WITE {
     }
   };
 
-  threadPool::threadPool() : threadPool(configuration::getOption("threadsperpool", thread::guessCpuCount())) {};
+  threadPool::threadPool() : threadPool(configuration::getOption("threadsperpool", max(1, thread::guessCpuCount()-4))) {};
 
   threadPool::threadPool(uint64_t threadCount) : threadCount(threadCount) {
     thread::init();//repeated calling not a problem
@@ -36,6 +39,7 @@ namespace WITE {
 
   void threadPool::submitJob(const job_t* j) {
     scopeLock submitLock(&submitMutex);
+    uint32_t sleepCnt = 0;
     while(true) {
       for(size_t i = 0;i < threadCount;i++) {
 	threadData_t& td = threads[i];
@@ -47,17 +51,18 @@ namespace WITE {
 	  return;
 	}
       }
-      thread::sleepShort();
+      thread::sleepShort(sleepCnt);
     }
   };
 
   void threadPool::waitForAll() {
+    uint32_t sleepCnt = 0;
     ASSERT_TRAP(!onMemberThread(), "cannot wait a thread pool from one of its members.");
     for(size_t i = 0;i < threadCount;i++) {
       threadData_t& td = threads[i];
       while(td.nextWrite.load(std::memory_order_consume) !=
 	    td.nextRead.load(std::memory_order_consume))//not empty
-	thread::sleepShort();
+	thread::sleepShort(sleepCnt);
     }
   };
 

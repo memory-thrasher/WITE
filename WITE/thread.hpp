@@ -97,7 +97,8 @@ namespace WITE {
     static thread* get(uint32_t tid);
     static void sleep(uint64_t ms = 0);
     static void sleepShort();//for non-busy wait, wait aa very small amount of time
-    static uint32_t guessCpuCount();
+    static void sleepShort(uint32_t& counter, uint32_t busyCount = 2048);//dynamically shifts from busy to non-busy wait based on iteration count
+    static int32_t guessCpuCount();
     //^^todo maybe like std::this_thread::sleep_for(std::chrono::micorseconds(10));
     uint32_t getTid();
     void join();//all spawned threads should be joined

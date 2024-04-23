@@ -47,8 +47,9 @@ optional members:
 
     void backupThreadEntry() {
       uint64_t applyFrame = maxFrame() - 1;
+      uint32_t sleepCnt = 0;
       while(minFrame() >= applyFrame) {//need more log variety to ensure only a complete frame is written
-	thread::sleepShort();
+	thread::sleepShort(sleepCnt);
 	applyFrame = maxFrame() - 1;
       }
       backupTable<TYPES...>(applyFrame);
@@ -183,7 +184,8 @@ optional members:
     void gracefulShutdownAndJoin() {
       ASSERT_TRAP(currentFrame > 0, "cannot shutdown a db on frame 0");
       threads.waitForAll();
-      while(backupInProgress.load(std::memory_order_consume)) thread::sleepShort();
+      uint32_t sleepCnt = 0;
+      while(backupInProgress.load(std::memory_order_consume)) thread::sleepShort(sleepCnt);
       applyLogsThrough<TYPES...>(currentFrame - 1);
       spinDownAll<TYPES...>();
       threads.waitForAll();

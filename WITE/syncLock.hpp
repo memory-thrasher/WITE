@@ -14,7 +14,6 @@ namespace WITE {
   private:
     typedef std::atomic<uint64_t> ticket_t;
     ticket_t queueSeed, queueCurrent;
-    uint32_t owningThread;
   };
 
   class scopeLock {

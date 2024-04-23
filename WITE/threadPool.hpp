@@ -25,7 +25,7 @@ namespace WITE {
 
     syncLock submitMutex;//lock only required for submit, read cannot overflow and sporadic underflow is harmless
     std::unique_ptr<threadData_t[]> threads;
-    uint32_t threadCount;
+    uint32_t threadCount, nextWorker;
     std::atomic_bool exit = false;
 
     void workerEntry(threadData_t*);

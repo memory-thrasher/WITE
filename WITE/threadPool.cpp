@@ -21,7 +21,7 @@ namespace WITE {
     }
   };
 
-  threadPool::threadPool() : threadPool(configuration::getOption("threadsperpool", max(1, thread::guessCpuCount()-4))) {};
+  threadPool::threadPool() : threadPool(configuration::getOption("threadsperpool", max(1, thread::guessCpuCount()-2))) {};
 
   threadPool::threadPool(uint64_t threadCount) : threadCount(threadCount) {
     thread::init();//repeated calling not a problem
@@ -41,13 +41,15 @@ namespace WITE {
     scopeLock submitLock(&submitMutex);
     uint32_t sleepCnt = 0;
     while(true) {
-      for(size_t i = 0;i < threadCount;i++) {
+      for(uint32_t k = 0;k < threadCount;k++) {
+	uint32_t i = (k + nextWorker) % threadCount;//round robin distributor with sporadic skipping
 	threadData_t& td = threads[i];
 	auto writeTarget = td.nextWrite.load(std::memory_order_acquire);
 	if(((writeTarget + 1) & jobMask) != td.nextRead.load(std::memory_order_consume)) [[unlikely]] {
 	  //there was room, there will continue to be room since we hold submitLock.
 	  td.jobs[writeTarget] = *j;
 	  td.nextWrite.store((writeTarget + 1) & jobMask, std::memory_order_release);
+	  nextWorker = (k + 1) % threadCount;
 	  return;
 	}
       }

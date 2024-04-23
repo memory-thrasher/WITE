@@ -4,11 +4,7 @@
 //defines wrapped in ifndef mean they can be overriden at compile-time i.e. -D. Both the shared lib and any application must have the same override(s)!
 
 #ifndef MAX_GPUS
-#define MAX_GPUS 4
-#endif
-
-#ifndef MAX_THREADS
-#define MAX_THREADS 256
+#define MAX_GPUS 8
 #endif
 
 #ifndef MIN_LOG_HISTORY

@@ -8,13 +8,14 @@ namespace WITE {
   class advancedSyncLock {
   private:
     syncLock mutex;
-    uint32_t currentOwner, holds;
+    tid_t currentOwner;
+    uint32_t holds;
   public:
     advancedSyncLock();
     ~advancedSyncLock();
     bool acquire(uint64_t timeoutNS = ~0);//0 means now or never. Execution maytake much longer than specified timeout.
     void release();
-    bool heldBy(uint32_t tid);
+    bool heldBy(tid_t tid);
     bool isHeld();
     bool inline isHeldByThisThread() { return heldBy(thread::getCurrentTid()); };
   };

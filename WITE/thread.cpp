@@ -1,124 +1,74 @@
-#include <pthread.h>
 #include <unistd.h>
 #include <sys/sysinfo.h>
+#include <chrono>
 
 #include "thread.hpp"
 #include "DEBUG.hpp"
 
 namespace WITE {
 
-  //#if posix, but c should always be posix
-
-  namespace threadInternal {
-
-    pthread_key_t threadObjKey;
-
-    void threadDestructorWrapper(void* thread) {
-      //thread* t = reinterpret_cast<thread*>(thread);
-      //TODO cleanup storage?
-    }
-
-    void putThreadRef(thread* ref) {
-      if (pthread_setspecific(threadObjKey, reinterpret_cast<void*>(ref)))
-	CRASH("Thread init failed: Failed to store thread id in thread storage (pthread)\n");
-    }
-
-    void* pthreadCallback(void* param) {
-      auto storage = reinterpret_cast<thread*>(param);
-      putThreadRef(storage);
-      if (storage->entry) storage->entry();
-      return 0;
-    }
-
-    bool hasThreadRef() {
-      return pthread_getspecific(threadInternal::threadObjKey);
-    }
-
-  }
-
-  thread* thread::get(uint32_t tid) {
-    return threads.get(tid);
-  }
-
-  syncLock initLock;
-  void thread::init() {//static
-    if (seed.load() == 0) {
-      scopeLock lock(&initLock);
-      if (seed.load() == 0) {
-	if(pthread_key_create(&threadInternal::threadObjKey, &threadInternal::threadDestructorWrapper))
-	  CRASH("Failed to allocate thread key. This should not happen.");
-      }
-    }
-    initThisThread();
-  }
-
-  thread* thread::current() {
-    void* ret = pthread_getspecific(threadInternal::threadObjKey);
-    if (!ret) //CRASHRET_PREINIT(NULL, "Failed to fetch thread data by key. This should not happen.");
-      return NULL;
-    return static_cast<thread*>(ret);
-  }
-
-  thread* thread::spawnThread(threadEntry_t entry) {//static
-    pthread_t* temp = new pthread_t();
-    uint32_t tid = seed.fetch_add(1, std::memory_order_relaxed);
-    thread* t = threads.get(tid);
-    new(t)thread(entry, tid);
-    t->pthread = reinterpret_cast<void*>(temp);
-    pthread_create(temp, NULL, &threadInternal::pthreadCallback, reinterpret_cast<void*>(t));
-    return t;
-  }
-
-  void thread::join() {
-    if(getCurrentTid() == tid) [[unlikely]] return;
-    ASSERT_TRAP(pthread_join(*reinterpret_cast<pthread_t*>(pthread), NULL) == 0, "pthread_join failed");
+  tid_t tid_none() {
+    return std::thread::id();
+    //std::thread::id specifies that default constructed is never a valid thread id, and is the default id for thread objects that do not represent real threads
   };
 
-  //#endif posix
+  threadResource<thread> thread::threads;//static
 
-  std::atomic<uint32_t> thread::seed = 0;//static
-  threadResource<thread> thread::threads(decltype(thread::threads)::initAsEmpty());//static
+  tid_t thread::getCurrentTid() {//static
+    return std::this_thread::get_id();
+  };
 
-  void thread::initThisThread(threadEntry_t entry) {//static, entry defaults to null
-    if(threadInternal::hasThreadRef()) {
-      WARN("Repeated init on this thread");
-      if(entry) entry->call();
-      return;
-    }
-    uint32_t tid = seed.fetch_add(1, std::memory_order_relaxed);
-    auto storage = threads.get(tid);
-    new(storage)thread(entry, tid);
-    threadInternal::putThreadRef(storage);
-    if (storage->entry) storage->entry();
-  }
+  void thread::init() {//static
+    //this did something back in the pthread days
+    initThisThread();
+  };
 
-  uint32_t thread::getTid() {
-    return tid;
-  }
+  void thread::initThisThread() {//static
+    threads.get()->tid = getCurrentTid();
+  };
 
-  uint32_t thread::getCurrentTid() {
-    if (seed.load() == 0)
-      return 0;
-    auto c = current();
-    return c ? c->getTid() : -5;
-  }
+  thread* thread::spawnThread(threadEntry_t entry) {//static
+    std::atomic_uint8_t sem = 0;
+    std::thread* baby = new std::thread([entry, &sem](){
+      {
+	uint32_t counter = 0;
+	while(sem == 0) sleepShort(counter);
+	sem = 2;
+      }//parent has finished prepping ret. Also sem becomes invalid here
+      initThisThread();
+      if(entry) [[likely]] entry();
+    });
+    thread* ret = threads.get(baby->get_id());
+    ret->threadObj.reset(baby);
+    sem = 1;//done preparing baby thread's home
+    uint32_t counter = 0;
+    while(sem != 2) sleepShort(counter);//don't return until we know the baby thread is done with sem
+    return ret;
+  };
 
-  thread::thread(threadEntry_t entry, uint32_t id) : entry(entry), tid(id) {}
-  thread::thread() {}
-  thread::~thread() {}
+  thread* thread::current() {//static
+    return threads.get();
+  };
 
-  void thread::sleep(uint64_t ms) { //static
-    usleep(ms * 1000);
-  }
+  thread* thread::get(tid_t tid) {//static
+    return threads.get(tid);
+  };
 
-  void thread::sleepShort() {
-    usleep(1);
-  }
+  void thread::sleep(uint64_t ns) {//static
+    std::this_thread::sleep_for(std::chrono::nanoseconds(ns));
+  };
 
-  void thread::sleepShort(uint32_t& counter, uint32_t busyCount) {
-    if(++counter % busyCount == 0) [[unlikely]]
-      usleep(1);
-  }
+  void thread::sleepShort() {//static
+    std::this_thread::yield();
+  };
+
+  void thread::sleepShort(uint32_t& counter, uint32_t busyCount) {//static
+    //test case is 15% faster with the limited busy wait
+    if(counter >= busyCount) [[unlikely]]
+      sleepShort();
+    else
+      counter++;
+  };
 
   int32_t thread::guessCpuCount() {//static
     constexpr int64_t MIN = 4;//mostly to interpret 0 or -1 as failure
@@ -130,6 +80,15 @@ namespace WITE {
     //TODO other methods to guess here
     if(ret <= MIN) ret = MIN;
     return int32_t(ret);
+  };
+
+  tid_t thread::getTid() {
+    return tid;
+  };
+
+  void thread::join(){
+    if(threadObj && threadObj->joinable())
+      threadObj->join();
   };
 
 }

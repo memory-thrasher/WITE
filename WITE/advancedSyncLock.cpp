@@ -8,7 +8,7 @@ namespace WITE {
 
   advancedSyncLock::~advancedSyncLock() {
     scopeLock lock(&mutex);
-    currentOwner = ~0;
+    currentOwner = tid_none();
     holds = (~0)>>1;
   };
 
@@ -38,7 +38,7 @@ namespace WITE {
     --holds;
   };
 
-  bool advancedSyncLock::heldBy(uint32_t tid) {
+  bool advancedSyncLock::heldBy(tid_t tid) {
     scopeLock lock(&mutex);
     return holds && currentOwner == tid;
   };

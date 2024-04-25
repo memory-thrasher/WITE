@@ -100,6 +100,7 @@ namespace WITE {
     dci.pNext = reinterpret_cast<void*>(&pdf11);
     std::vector<const char*> deviceExtensions;
     deviceExtensions.push_back("VK_KHR_swapchain");
+    // deviceExtensions.push_back("VK_EXT_mesh_shader");//TODO make optional?
     // deviceExtensions.push_back("VK_KHR_synchronization2");
     dci.enabledExtensionCount = deviceExtensions.size();
     dci.ppEnabledExtensionNames = deviceExtensions.data();

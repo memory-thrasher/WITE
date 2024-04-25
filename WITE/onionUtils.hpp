@@ -107,6 +107,13 @@ namespace WITE {
     }
   };
 
+  template<literalList<shaderModule> MS, vk::ShaderStageFlagBits S> consteval bool containsStage() {
+    for(const shaderModule& M : MS)
+      if(M.stage == S)
+	return true;
+    return false;
+  };
+
   enum class substep_e : uint8_t { barrier0, copy, barrier1, clear, barrier2, render, barrier3, compute, barrier4, post };
 
   struct resourceAccessTime {
@@ -324,6 +331,86 @@ namespace WITE {
     std::map<uint64_t, perTargetLayout> perTL;
     std::map<uint64_t, perSourceLayout> perSL;
     uint64_t objectIdSeed = 0;
+  };
+
+  //NOTE: A source/target layout is not allowed to name two resources referencing the same usage
+  consteval const resourceReference* findResourceReferenceToSlot(literalList<resourceReference> RRS, uint64_t slotId) {
+    if(slotId == NONE) return NULL;
+    for(const resourceReference& RS : RRS)
+      if(RS.resourceSlotId == slotId)
+	return &RS;
+    return NULL;
+  };
+
+  //NOTE: A source/target layout is not allowed to name two resources referencing the same usage
+  consteval const resourceReference* findResourceReferenceToConsumer(literalList<resourceReference> RRS, uint64_t consumerId) {
+    if(consumerId == NONE) return NULL;
+    for(const resourceReference& RS : RRS)
+      if(RS.resourceConsumerId == consumerId)
+	return &RS;
+    return NULL;
+  };
+
+  consteval resourceConsumer consumerForColorAttachment(uint64_t id) {
+    return { id, vk::ShaderStageFlagBits::eFragment, vk::AccessFlagBits2::eColorAttachmentWrite };
+  };
+
+  consteval resourceConsumer consumerForDepthAttachment(uint64_t id) {
+    return { id, vk::ShaderStageFlagBits::eFragment, vk::AccessFlagBits2::eDepthStencilAttachmentWrite };
+  };
+
+  consteval size_t calculateDescriptorCount(literalList<resourceConsumer> resources) {
+    size_t ret = 0;
+    for(const auto& rc : resources)
+      if(rc.usage.type == resourceUsageType::eDescriptor)
+	ret++;
+    return ret;
+  };
+
+  template<literalList<resourceReference> resources> struct findVB {
+    consteval bool operator()(const resourceConsumer& rr) {
+      return rr.usage.type == resourceUsageType::eVertex &&
+	rr.usage.asVertex.rate == vk::VertexInputRate::eVertex &&
+	findResourceReferenceToConsumer(resources, rr.id);
+    };
+  };
+
+  template<literalList<resourceReference> resources> struct findIB {
+    consteval bool operator()(const resourceConsumer& rr) {
+      return rr.usage.type == resourceUsageType::eVertex &&
+	rr.usage.asVertex.rate == vk::VertexInputRate::eInstance &&
+	findResourceReferenceToConsumer(resources, rr.id);
+    };
+  };
+
+  template<literalList<resourceReference> resources> struct findIndex {
+    consteval bool operator()(const resourceConsumer& rr) {
+      return rr.usage.type == resourceUsageType::eIndex &&
+	findResourceReferenceToConsumer(resources, rr.id);
+    };
+  };
+
+  template<literalList<resourceReference> resources> struct findIndirect {
+    consteval bool operator()(const resourceConsumer& rr) {
+      return rr.usage.type == resourceUsageType::eIndirect &&
+	findResourceReferenceToConsumer(resources, rr.id);
+    };
+  };
+
+  template<literalList<resourceReference> resources> struct findIndirectCount {
+    consteval bool operator()(const resourceConsumer& rr) {
+      return rr.usage.type == resourceUsageType::eIndirectCount &&
+	findResourceReferenceToConsumer(resources, rr.id);
+    };
+  };
+
+  consteval uint32_t sizeofIndexType(vk::IndexType i) {
+    switch(i) {
+    case vk::IndexType::eUint16: return 2;
+    case vk::IndexType::eUint32: return 4;
+    case vk::IndexType::eUint8EXT: return 1;
+    default: constexprAssertFailed(); return 0;
+    }
   };
 
 }

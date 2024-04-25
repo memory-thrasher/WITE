@@ -104,43 +104,9 @@ namespace WITE {
       return false;
     };
 
-    //NOTE: A source/target layout is not allowed to name two resources referencing the same usage
-    static consteval const resourceReference* findResourceReferenceToSlot(literalList<resourceReference> RRS, uint64_t slotId) {
-      if(slotId == NONE) return NULL;
-      for(const resourceReference& RS : RRS)
-	if(RS.resourceSlotId == slotId)
-	  return &RS;
-      return NULL;
-    };
-
-    //NOTE: A source/target layout is not allowed to name two resources referencing the same usage
-    static consteval const resourceReference* findResourceReferenceToConsumer(literalList<resourceReference> RRS, uint64_t consumerId) {
-      if(consumerId == NONE) return NULL;
-      for(const resourceReference& RS : RRS)
-	if(RS.resourceConsumerId == consumerId)
-	  return &RS;
-      return NULL;
-    };
-
     static consteval resourceConsumer consumerForWindowForObject(uint64_t objectLayoutId) {
       objectLayout OL = findById(OD.OLS, objectLayoutId);
       return { OL.windowConsumerId, {}, vk::AccessFlagBits2::eTransferRead, {} };
-    };
-
-    static consteval resourceConsumer consumerForColorAttachment(uint64_t id) {
-      return { id, vk::ShaderStageFlagBits::eFragment, vk::AccessFlagBits2::eColorAttachmentWrite };
-    };
-
-    static consteval resourceConsumer consumerForDepthAttachment(uint64_t id) {
-      return { id, vk::ShaderStageFlagBits::eFragment, vk::AccessFlagBits2::eDepthStencilAttachmentWrite };
-    };
-
-    static consteval size_t calculateDescriptorCount(literalList<resourceConsumer> resources) {
-      size_t ret = 0;
-      for(const auto& rc : resources)
-	if(rc.usage.type == resourceUsageType::eDescriptor)
-	  ret++;
-      return ret;
     };
 
     template<uint64_t id> static consteval auto findShader() {
@@ -1260,24 +1226,16 @@ namespace WITE {
 	  // WARN("  using source ", SL.id);
 	  if constexpr(satisfies(SL.resources, GSR.sourceProvidedResources)) {
 	    //for now (at least), only one vertex binding of each input rate type. Source only.
-	    struct findVB {
-	      consteval bool operator()(const resourceConsumer& rr) {
-		return rr.usage.type == resourceUsageType::eVertex &&
-		  rr.usage.asVertex.rate == vk::VertexInputRate::eVertex &&
-		  findResourceReferenceToConsumer(SL.resources, rr.id);
-	      };
-	    };
-	    struct findIB {
-	      consteval bool operator()(const resourceConsumer& rr) {
-		return rr.usage.type == resourceUsageType::eVertex &&
-		  rr.usage.asVertex.rate == vk::VertexInputRate::eInstance &&
-		  findResourceReferenceToConsumer(SL.resources, rr.id);
-	      };
-	    };
-	    static_assert(GSR.sourceProvidedResources.countWhereCE(findVB()) <= 1);
-	    static_assert(GSR.sourceProvidedResources.countWhereCE(findIB()) <= 1);
-	    static constexpr const resourceConsumer* vb = GSR.sourceProvidedResources.firstWhere(findVB());
-	    static constexpr const resourceConsumer* ib = GSR.sourceProvidedResources.firstWhere(findIB());
+	    static_assert(GSR.sourceProvidedResources.countWhereCE(findVB<SL.resources>()) <= 1);
+	    static_assert(GSR.sourceProvidedResources.countWhereCE(findIB<SL.resources>()) <= 1);
+	    static_assert(GSR.sourceProvidedResources.countWhereCE(findIndex<SL.resources>()) <= 1);
+	    static_assert(GSR.sourceProvidedResources.countWhereCE(findIndirect<SL.resources>()) <= 1);
+	    static_assert(GSR.sourceProvidedResources.countWhereCE(findIndirectCount<SL.resources>()) <= 1);
+	    static constexpr const resourceConsumer* vb = GSR.sourceProvidedResources.firstWhere(findVB<SL.resources>());
+	    static constexpr const resourceConsumer* ib = GSR.sourceProvidedResources.firstWhere(findIB<SL.resources>());
+	    static constexpr const resourceConsumer* indexConsumer = GSR.sourceProvidedResources.firstWhere(findIndex<SL.resources>());
+	    static constexpr const resourceConsumer* indirectConsumer = GSR.sourceProvidedResources.firstWhere(findIndirect<SL.resources>());
+	    static constexpr const resourceConsumer* countConsumer = GSR.sourceProvidedResources.firstWhere(findIndirectCount<SL.resources>());
 	    static constexpr size_t vibCount = (ib ? 1 : 0) + (vb ? 1 : 0);
 	    shaderInstance& shaderInstance = ptlps.perSL[SL.id];
 	    perSourceLayoutPerShader& pslps = od.perSL[SL.id].perShader[GSR.id];
@@ -1327,7 +1285,7 @@ namespace WITE {
 	      vk::Buffer verts[vibCount];
 	      vk::DeviceSize offsets[2];
 	      static_assert(vb || GSR.vertexCountOverride);//vertex data required if vertex count not given statically
-	      vk::DeviceSize vertices, instances;
+	      uint32_t vertices, instances;
 	      if constexpr(vb) {
 		static constexpr resourceReference vbm = *findResourceReferenceToConsumer(SL.resources, vb->id); //compiler-time error: dereferencing null if the source did not provide a reference to the vertex buffer used by the shader
 		static constexpr resourceSlot vbs = findById(OD.RSS, vbm.resourceSlotId);
@@ -1345,18 +1303,73 @@ namespace WITE {
 		verts[vibCount-1] = source->template get<ibm.resourceSlotId>().frameBuffer(frame + ibm.frameLatency);
 		offsets[vibCount-1] = ibm.subresource.offset;
 		instances = GSR.instanceCountOverride ? GSR.instanceCountOverride :
-		  ibm.subresource.length ? ibm.subresource.length :
+		  ibm.subresource.length != VK_WHOLE_SIZE ? ibm.subresource.length :
 		  findById(OD.BRS, ibs.requirementId).size / sizeofUdm<ib->usage.asVertex.format>();
 	      } else {
 		//but instances defaults to 1
 		instances = GSR.instanceCountOverride ? GSR.instanceCountOverride : 1;
 	      }
 	      if constexpr(vibCount) {
+		static_assert(!containsStage<GSR.modules, vk::ShaderStageFlagBits::eMeshEXT>(),
+			      "mesh shaders must not have a vertex buffer");
 		cmd.bindVertexBuffers(0, vibCount, verts, offsets);
 	      }
-	      cmd.draw(vertices, instances, 0, 0);
+	      vk::Buffer indirectBuffer, indirectCountBuffer;
+	      vk::DeviceSize indirectOffset, countOffset;
+	      uint32_t drawCount;//for indirect, also maxDrawCount for indirectCount
+	      static constexpr uint32_t indirectStride = containsStage<GSR.modules, vk::ShaderStageFlagBits::eMeshEXT>() ?
+		sizeof(vk::DrawMeshTasksIndirectCommandEXT) : sizeof(vk::DrawIndirectCommand);
+	      if constexpr(indirectConsumer) {
+		static constexpr resourceReference ibm = *findResourceReferenceToConsumer(SL.resources, indirectConsumer->id);
+		static constexpr resourceSlot ibs = findById(OD.RSS, ibm.resourceSlotId);
+		indirectBuffer = source->template get<ibm.resourceSlotId>().frameBuffer(frame + ibm.frameLatency);
+		indirectOffset = ibm.subresource.offset;
+		drawCount = ibm.subresource.length != VK_WHOLE_SIZE ? ibm.subresource.length :
+		  findById(OD.BRS, ibs.requirementId).size / indirectStride;
+		if constexpr(countConsumer) {
+		  static constexpr resourceReference cbm = *findResourceReferenceToConsumer(SL.resources, countConsumer->id);
+		  indirectCountBuffer = source->template get<cbm.resourceSlotId>().frameBuffer(frame + cbm.frameLatency);
+		  countOffset = cbm.subresource.offset;
+		}
+	      } else {
+		static_assert(countConsumer == NULL, "count buffer not allowed without indirect buffer");
+	      }
+	      if constexpr(indexConsumer) {//indexed draw of vertex shader
+		static_assert(containsStage<GSR.modules, vk::ShaderStageFlagBits::eVertex>() && vb,
+			      "index buffers only usable with vertex buffers");
+		static constexpr resourceReference ibm = *findResourceReferenceToConsumer(SL.resources, indexConsumer->id);
+		static constexpr resourceSlot ibs = findById(OD.RSS, ibm.resourceSlotId);
+		static constexpr bufferRequirements ibr = findById(OD.BRS, ibs.requirementId);
+		cmd.bindIndexBuffer(source->template get<ibm.resourceSlotId>().frameBuffer(frame + ibm.frameLatency),
+				    ibm.subresource.offset, ibr.indexBufferType);
+		vertices = (GSR.vertexCountOverride ? GSR.vertexCountOverride : ibr.size) /
+		  sizeofIndexType(ibr.indexBufferType);
+		if constexpr(countConsumer)
+		  cmd.drawIndexedIndirectCount(indirectBuffer, indirectOffset, indirectCountBuffer, countOffset,
+					       drawCount, indirectStride);
+		else if constexpr(indirectConsumer)
+		  cmd.drawIndexedIndirect(indirectBuffer, indirectOffset, drawCount, indirectStride);
+		else
+		  cmd.drawIndexed(vertices, instances, 0, 0, 0);
+	      } else if constexpr(containsStage<GSR.modules, vk::ShaderStageFlagBits::eVertex>()) {//non-indexed draw of vertex shader
+		if constexpr(countConsumer)
+		  cmd.drawIndirectCount(indirectBuffer, indirectOffset, indirectCountBuffer, countOffset,
+					drawCount, indirectStride);
+		else if constexpr(indirectConsumer)
+		  cmd.drawIndirect(indirectBuffer, indirectOffset, drawCount, indirectStride);
+		else
+		  cmd.draw(vertices, instances, 0, 0);
+	      } else {//mesh shader
+		static_assert(containsStage<GSR.modules, vk::ShaderStageFlagBits::eMeshEXT>(), "invalid shader type");
+		if constexpr(countConsumer)
+		  cmd.drawMeshTasksIndirectCountEXT(indirectBuffer, indirectOffset, indirectCountBuffer, countOffset,
+						    drawCount, indirectStride);
+		else if constexpr(indirectConsumer)
+		  cmd.drawMeshTasksIndirectEXT(indirectBuffer, indirectOffset, drawCount, indirectStride);
+		else
+		  cmd.drawMeshTasksEXT(GSR.meshGroupCountX, GSR.meshGroupCountY, GSR.meshGroupCountZ);
+	      }
 	      //WARN("Drew ", instances, " instances of ", vertices, " verticies from nested target-source (", TL.id, "-", SL.id, ")");
-	      //TODO more flexibility with draw. Allow source layout to ask for multi-draw, indexed, indirect etc. Allow (dynamic) less than the whole buffer.
 	    }
 	  }
 	}
@@ -1398,6 +1411,8 @@ namespace WITE {
       cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, shaderInstance.pipeline);
       cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, shaderInstance.pipelineLayout, 0, 1, &targetDescriptors.descriptorSet, 0, NULL);
       static_assert(GSR.vertexCountOverride > 0);
+      static_assert(containsStage<GSR.modules, vk::ShaderStageFlagBits::eVertex>(),
+		    "vertex shader required. Mesh shaders not yet implemented for target-only rendering");
       cmd.draw(GSR.vertexCountOverride, GSR.instanceCountOverride ? GSR.instanceCountOverride : 1, 0, 0);
       // WARN("Drew ", GSR.vertexCountOverride, " from target only");
       //TODO more flexibility with draw. Allow source layout to ask for multi-draw, indexed, indirect etc. Allow (dynamic) less than the whole buffer.
@@ -1409,6 +1424,9 @@ namespace WITE {
 	{
 	  PROFILEME;
 	  static constexpr graphicsShaderRequirements GSR = GSRS[0];
+	  static_assert(containsStage<GSR.modules, vk::ShaderStageFlagBits::eMeshEXT>() ^
+			containsStage<GSR.modules, vk::ShaderStageFlagBits::eVertex>(),
+			"graphics shaders must have a vertex or a mesh shader but not both");
 	  if constexpr(satisfies(TL.resources, GSR.targetProvidedResources)) {
 	    // WARN("Begin shader ", GSR.id, " using target ", TL.id);
 	    size_t frameMod = frame % target_t<TL.id>::maxFrameswap;

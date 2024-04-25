@@ -25,10 +25,11 @@ namespace WITE {
     uint32_t size = 0;
     uint8_t frameswapCount = 0;
     bool hostVisible = false;
+    vk::IndexType indexBufferType;//for indexed drawing buffers only
     //MAYBE isTexel
   };
 
-  enum class resourceUsageType { eOther, eDescriptor, eVertex };//other for copy and maybe others
+  enum class resourceUsageType { eOther, eDescriptor, eVertex, eIndex, eIndirect, eIndirectCount };//other for copy and maybe others
 
   struct resourceUsage {
     resourceUsageType type;
@@ -45,6 +46,7 @@ namespace WITE {
     constexpr resourceUsage(vk::DescriptorType dt, vk::SamplerCreateInfo sci = {}) : type(resourceUsageType::eDescriptor), asDescriptor({ dt, sci }) {};
     constexpr resourceUsage(udm format, vk::VertexInputRate vir) : type(resourceUsageType::eVertex), asVertex({ format, vir }) {};
     constexpr resourceUsage() : type(resourceUsageType::eOther) {};
+    constexpr resourceUsage(resourceUsageType type) : type(type) {};
     constexpr resourceUsage(const resourceUsage&) = default;
   };
 
@@ -146,7 +148,8 @@ namespace WITE {
     vk::PrimitiveTopology topology = vk::PrimitiveTopology::eTriangleList;
     vk::CullModeFlags cullMode = vk::CullModeFlagBits::eBack;
     bool windCounterClockwise = false;
-    vk::DeviceSize vertexCountOverride = 0, instanceCountOverride = 0;//0 means don't override, figure it out based on buffer size
+    vk::DeviceSize vertexCountOverride = 0, instanceCountOverride = 0;//0 means don't override, figure it out based on buffer size.
+    uint32_t meshGroupCountX = 0, meshGroupCountY = 1, meshGroupCountZ = 1;//direct mesh only
     vk::PipelineColorBlendAttachmentState blend = { false, vk::BlendFactor::eOne, vk::BlendFactor::eOne, vk::BlendOp::eAdd, vk::BlendFactor::eOne, vk::BlendFactor::eOne, vk::BlendOp::eAdd, vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA };
   };
 

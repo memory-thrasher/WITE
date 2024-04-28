@@ -12,7 +12,7 @@ BOTHOPTS="-DDEBUG -g"
 # -DWITE_DEBUG_FENCES
 # -DWITE_DEBUG_DB
 BASEDIR="$(cd "$(dirname "$0")"; pwd -L)"
-OUTDIR="${BASEDIR}/build" #TODO not just WITE but all subdirs
+OUTDIR="${BASEDIR}/build"
 LOGFILE="${OUTDIR}/buildlog.txt"
 ERRLOG="${OUTDIR}/builderrs.txt"
 ERRLOGBIT="errors.txt"
@@ -26,8 +26,6 @@ COMPILER=clang++
 WORKNICE="nice -n10"
 GLCOMPILER=glslangValidator
 TESTOPTIONS="nogpuid=2 extent=0,0,3840,2160 presentmode=immediate" #skips llvme pipe on my test system, renders to left monitor
-
-#config
 if [ -z "$VK_INCLUDE" -a ! -z "$VK_SDK_PATH" ]; then
     VK_INCLUDE="-I${VK_SDK_PATH}/Include -I${VK_SDK_PATH}/Third-Party/Include"
 fi
@@ -38,57 +36,62 @@ find "${OUTDIR}" -type f -iname '*.o' -print0 |
 	    rm "${OFILE}" 2>/dev/null;
     done;
 
-#compile shaders first (so they can be imported as c data members)
-find $BUILDAPP $BUILDTESTS -iname '*.glsl' -type f -print0 |
-    while IFS= read -d '' SRCFILE && [ $(cat ${ERRLOGBITDIR}/*-${ERRLOGBIT} 2>/dev/null | wc -l) -eq 0 ]; do
-	DSTFILE="${OUTDIR}/${SRCFILE%.*}.spv.h"
-	VARNAME="$(basename "${SRCFILE}" | sed -r 's,/,_,g;s/\.([^.]*)\.glsl$/_\1/')"
-	#TODO are imports or other dependencies possible?
-	THISERRLOG="${ERRLOGBITDIR}/$(echo "${SRCFILE}" | tr '/' '-')-${ERRLOGBIT}"
-	rm "${THISERRLOG}" 2>/dev/null
-	(
-	    if ! [ -f "${DSTFILE}" ] || [ "${SRCFILE}" -nt "${DSTFILE}" ] || [ "$0" -nt "${DSTFILE}" ]; then
-		#echo building
-		$WORKNICE $GLCOMPILER -V --target-env vulkan1.3 -gVS "${SRCFILE}" -o "${DSTFILE}" --vn "${VARNAME}" || rm "${DSTFILE}" 2>/dev/null
-	    fi
-	) 2>&1 | grep -v "^${SRCFILE}$" > "${THISERRLOG}" &
-    done
+find "${BASEDIR}/aux" -type f -name '*.sh' | sort | while read a; do $a >>"${LOGFILE}" 2>>"${ERRLOG}"; done;
 
-while pgrep $GLCOMPILER &>/dev/null; do sleep 0.2s; done
+if ! [ -f "${ERRLOG}" ] || [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
+    #compile shaders first (so they can be imported as c data members)
+    find $BUILDAPP $BUILDTESTS -iname '*.glsl' -type f -print0 |
+	while IFS= read -d '' SRCFILE && [ $(cat ${ERRLOGBITDIR}/*-${ERRLOGBIT} 2>/dev/null | wc -l) -eq 0 ]; do
+	    DSTFILE="${OUTDIR}/${SRCFILE%.*}.spv.h"
+	    VARNAME="$(basename "${SRCFILE}" | sed -r 's,/,_,g;s/\.([^.]*)\.glsl$/_\1/')"
+	    #TODO are imports or other dependencies possible?
+	    THISERRLOG="${ERRLOGBITDIR}/$(echo "${SRCFILE}" | tr '/' '-')-${ERRLOGBIT}"
+	    rm "${THISERRLOG}" 2>/dev/null
+	    (
+		if ! [ -f "${DSTFILE}" ] || [ "${SRCFILE}" -nt "${DSTFILE}" ] || [ "$0" -nt "${DSTFILE}" ]; then
+		    #echo building
+		    $WORKNICE $GLCOMPILER -V --target-env vulkan1.3 -gVS "${SRCFILE}" -o "${DSTFILE}" --vn "${VARNAME}" || rm "${DSTFILE}" 2>/dev/null
+		fi
+	    ) 2>&1 | grep -v "^${SRCFILE}$" > "${THISERRLOG}" &
+	done
+    while pgrep $GLCOMPILER &>/dev/null; do sleep 0.2s; done
+fi
 
-#compile to static
-find $BUILDLIBS $BUILDAPP $BUILDTESTS -name '*.cpp' -type f -print0 |
-    while IFS= read -d '' SRCFILE && [ $(cat ${ERRLOGBITDIR}/*-${ERRLOGBIT} 2>/dev/null | wc -l) -eq 0 ]; do
-	DSTFILE="${OUTDIR}/${SRCFILE%.*}.o"
-	DEPENDENCIES="${OUTDIR}/${SRCFILE%.*}.d"
-	THISERRLOG="${ERRLOGBITDIR}/$(echo "${SRCFILE}" | tr '/' '-')-${ERRLOGBIT}"
-	BUILDDIR="$(dirname "${DSTFILE}")"
-	rm "${THISERRLOG}" 2>/dev/null
-	mkdir -p "$(dirname "$DSTFILE")";
-	(
-	    if [ -f "${DSTFILE}" ] && [ "${DSTFILE}" -nt "$0" ] && [ "${DSTFILE}" -nt "${SRCFILE}" ]; then
-		while read depend; do
-		    if ! [ -f "${depend}" ]; then
-			echo "rebuilding ${SRCFILE} because ${depend} not found (dependencies: ${DEPENDENCIES})";
-			break;
-		    elif [ "${depend}" -nt "${DSTFILE}" ]; then
-			echo "rebuilding ${SRCFILE} because ${depend} is newer";
-			break;
-		    fi
-		done <"${DEPENDENCIES}" | grep -Fq rebuild || exit 0;
-	    else
-		$WORKNICE $COMPILER $VK_INCLUDE -I "${BUILDDIR}" -E -o /dev/null -w -ferror-limit=1 -H "${SRCFILE}" 2>&1 | grep '^\.' | grep -o '[^[:space:]]*$' | sort -u >"${DEPENDENCIES}"
-	    fi
-	    # -I "${BUILDDIR}" is for shaders which get turned into headers
-	    if ! $WORKNICE $COMPILER $VK_INCLUDE -I "${BUILDDIR}" --std=c++20 -fPIC $BOTHOPTS -Werror -Wall "${SRCFILE}" -c -o "${DSTFILE}" >>"${LOGFILE}" 2>>"${THISERRLOG}"; then # -D_POSIX_C_SOURCE=200112L
-		rm "${DSTFILE}" 2>/dev/null
-		echo "Failed Build: ${SRCFILE}" >>"${THISERRLOG}"
-		#echo "Failed Build: ${SRCFILE}"
-	    #else
-		#echo "Built: ${SRCFILE}"
-	    fi
-	) &
-    done
+if ! [ -f "${ERRLOG}" ] || [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
+    #compile to static
+    find $BUILDLIBS $BUILDAPP $BUILDTESTS -name '*.cpp' -type f -print0 |
+	while IFS= read -d '' SRCFILE && [ $(cat ${ERRLOGBITDIR}/*-${ERRLOGBIT} 2>/dev/null | wc -l) -eq 0 ]; do
+	    DSTFILE="${OUTDIR}/${SRCFILE%.*}.o"
+	    DEPENDENCIES="${OUTDIR}/${SRCFILE%.*}.d"
+	    THISERRLOG="${ERRLOGBITDIR}/$(echo "${SRCFILE}" | tr '/' '-')-${ERRLOGBIT}"
+	    BUILDDIR="$(dirname "${DSTFILE}")"
+	    rm "${THISERRLOG}" 2>/dev/null
+	    mkdir -p "$(dirname "$DSTFILE")";
+	    (
+		if [ -f "${DSTFILE}" ] && [ "${DSTFILE}" -nt "$0" ] && [ "${DSTFILE}" -nt "${SRCFILE}" ]; then
+		    while read depend; do
+			if ! [ -f "${depend}" ]; then
+			    echo "rebuilding ${SRCFILE} because ${depend} not found (dependencies: ${DEPENDENCIES})";
+			    break;
+			elif [ "${depend}" -nt "${DSTFILE}" ]; then
+			    echo "rebuilding ${SRCFILE} because ${depend} is newer";
+			    break;
+			fi
+		    done <"${DEPENDENCIES}" | grep -Fq rebuild || exit 0;
+		else
+		    $WORKNICE $COMPILER $VK_INCLUDE -I "${BUILDDIR}" -E -o /dev/null -w -ferror-limit=1 -H "${SRCFILE}" 2>&1 | grep '^\.' | grep -o '[^[:space:]]*$' | sort -u >"${DEPENDENCIES}"
+		fi
+		# -I "${BUILDDIR}" is for shaders which get turned into headers
+		if ! $WORKNICE $COMPILER $VK_INCLUDE -I "${BUILDDIR}" --std=c++20 -fPIC $BOTHOPTS -Werror -Wall "${SRCFILE}" -c -o "${DSTFILE}" >>"${LOGFILE}" 2>>"${THISERRLOG}"; then # -D_POSIX_C_SOURCE=200112L
+		    rm "${DSTFILE}" 2>/dev/null
+		    echo "Failed Build: ${SRCFILE}" >>"${THISERRLOG}"
+		    #echo "Failed Build: ${SRCFILE}"
+		    #else
+		    #echo "Built: ${SRCFILE}"
+		fi
+	    ) &
+	done
+fi
 
 let nocompiles=0;
 while [ $nocompiles -lt 4 ]; do
@@ -99,7 +102,7 @@ while [ $nocompiles -lt 4 ]; do
     fi;
     sleep 0.05s;
 done
-cat ${ERRLOGBITDIR}/*-${ERRLOGBIT} >"${ERRLOG}"
+cat ${ERRLOGBITDIR}/*-${ERRLOGBIT} >>"${ERRLOG}"
 
 #libs
 if ! [ -f "${ERRLOG}" ] || [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then

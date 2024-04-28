@@ -148,7 +148,7 @@ constexpr graphicsShaderRequirements S_space {
   .vertexCountOverride = 3
 };
 
-constexpr resourceSlot  RS_space_spaceData = {
+constexpr resourceSlot RS_space_spaceData = {
   .id = __LINE__,
   .requirementId = BR_spaceData.id,
   .objectLayoutId = OL_space.id,

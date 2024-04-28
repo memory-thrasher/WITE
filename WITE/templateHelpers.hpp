@@ -176,6 +176,16 @@ namespace WITE {
     };
   };
 
+#define defineSBWriteonlyConsumer(ST) simpleStorageWriteConsumer<__LINE__, vk::ShaderStageFlagBits::e ##ST>::value
+  template<uint64_t ID, vk::ShaderStageFlagBits ST> struct simpleStorageWriteConsumer {
+    static constexpr resourceConsumer value {
+      .id = ID,
+      .stages = ST,
+      .access = vk::AccessFlagBits2::eShaderStorageWrite,
+      .usage = { vk::DescriptorType::eStorageBuffer }
+    };
+  };
+
 #define defineSamplerConsumer(ST) samplerConsumer<__LINE__, vk::ShaderStageFlagBits::e ##ST>::value
   template<uint64_t ID, vk::ShaderStageFlagBits ST> struct samplerConsumer {
     static constexpr resourceConsumer value {

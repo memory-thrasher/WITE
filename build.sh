@@ -64,7 +64,6 @@ if ! [ -f "${ERRLOG}" ] || [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
 	    DSTFILE="${OUTDIR}/${SRCFILE%.*}.o"
 	    DEPENDENCIES="${OUTDIR}/${SRCFILE%.*}.d"
 	    THISERRLOG="${ERRLOGBITDIR}/$(echo "${SRCFILE}" | tr '/' '-')-${ERRLOGBIT}"
-	    BUILDDIR="$(dirname "${DSTFILE}")"
 	    rm "${THISERRLOG}" 2>/dev/null
 	    mkdir -p "$(dirname "$DSTFILE")";
 	    (
@@ -79,10 +78,10 @@ if ! [ -f "${ERRLOG}" ] || [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
 			fi
 		    done <"${DEPENDENCIES}" | grep -Fq rebuild || exit 0;
 		else
-		    $WORKNICE $COMPILER $VK_INCLUDE -I "${BUILDDIR}" -E -o /dev/null -w -ferror-limit=1 -H "${SRCFILE}" 2>&1 | grep '^\.' | grep -o '[^[:space:]]*$' | sort -u >"${DEPENDENCIES}"
+		    $WORKNICE $COMPILER $VK_INCLUDE -I "${OUTDIR}" -E -o /dev/null -w -ferror-limit=1 -H "${SRCFILE}" 2>&1 | grep '^\.' | grep -o '[^[:space:]]*$' | sort -u >"${DEPENDENCIES}"
 		fi
-		# -I "${BUILDDIR}" is for shaders which get turned into headers
-		if ! $WORKNICE $COMPILER $VK_INCLUDE -I "${BUILDDIR}" --std=c++20 -fPIC $BOTHOPTS -Werror -Wall "${SRCFILE}" -c -o "${DSTFILE}" >>"${LOGFILE}" 2>>"${THISERRLOG}"; then # -D_POSIX_C_SOURCE=200112L
+		# -I "${OUTDIR}" is for shaders which get turned into headers
+		if ! $WORKNICE $COMPILER $VK_INCLUDE -I "${OUTDIR}" --std=c++20 -fPIC $BOTHOPTS -Werror -Wall "${SRCFILE}" -c -o "${DSTFILE}" >>"${LOGFILE}" 2>>"${THISERRLOG}"; then # -D_POSIX_C_SOURCE=200112L
 		    rm "${DSTFILE}" 2>/dev/null
 		    echo "Failed Build: ${SRCFILE}" >>"${THISERRLOG}"
 		    #echo "Failed Build: ${SRCFILE}"

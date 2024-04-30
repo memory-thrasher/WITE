@@ -1,10 +1,10 @@
 #include "../WITE/WITE.hpp"
 
 //include the compiled shader code which was outputted as a header in the build dir before c++ code gets compiled.
-#include "vertexWholeScreen.vert.spv.h"
-#include "fragmentSpace.frag.spv.h"
-#include "fragmentBloom.frag.spv.h"
-#include "shinySphere.frag.spv.h"
+#include "Tests/vertexWholeScreen.vert.spv.h"
+#include "Tests/fragmentSpace.frag.spv.h"
+#include "Tests/fragmentBloom.frag.spv.h"
+#include "Tests/shinySphere.frag.spv.h"
 
 static_assert(sizeof(vertexWholeScreen_vert) > 0);
 static_assert(sizeof(fragmentSpace_frag) > 0);

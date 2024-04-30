@@ -90,8 +90,14 @@ namespace WITE {
       scopeLock lock(&descriptorSetLayoutsMutex);
       static constexpr hash_t CIHASH = hash(CI);
       vk::DescriptorSetLayout& ret = descriptorSetLayouts[CIHASH];
-      if(!ret)
+      if(!ret) {
 	VK_ASSERT(getVkDevice().createDescriptorSetLayout(&CI, ALLOCCB, &ret), "failed to create descriptorSetLayout");
+	// WARN("Creating DSL with bindings: ", CI.bindingCount);
+	// for(int i = 0;i < CI.bindingCount;i++) {
+	//   const auto& b = CI.pBindings[i];
+	//   WARN("  binding: ", i, " (", b.binding, "): type: ", std::hex, (long long)b.descriptorType, ", stages: ", (vk::ShaderStageFlags::MaskType)b.stageFlags, std::dec, ", count: ", b.descriptorCount);
+	// }
+      }
       return ret;
     };
 
@@ -104,17 +110,15 @@ namespace WITE {
 
     template<literalList<vk::DescriptorSetLayoutCreateInfo> DSLS> vk::PipelineLayout getPipelineLayout() {
       static constexpr hash_t PLHASH = hash(DSLS);
+      scopeLock lock(&pipelineLayoutsMutex);
       vk::PipelineLayout& ret = pipelineLayouts[PLHASH];
       if(!ret) {
-	scopeLock lock(&pipelineLayoutsMutex);
-	if(!ret) {
-	  vk::PipelineLayoutCreateInfo ci;//NOTE: push constants NYI, supply here if needed
-	  vk::DescriptorSetLayout dsls[DSLS.len];
-	  ci.setLayoutCount = DSLS.len;
-	  ci.pSetLayouts = dsls;
-	  populateDSLS<DSLS>(dsls);
-	  VK_ASSERT(getVkDevice().createPipelineLayout(&ci, ALLOCCB, &ret), "failed to create pipelineLayout");
-	}
+	vk::PipelineLayoutCreateInfo ci;//NOTE: push constants NYI, supply here if needed
+	vk::DescriptorSetLayout dsls[DSLS.len];
+	ci.setLayoutCount = DSLS.len;
+	ci.pSetLayouts = dsls;
+	populateDSLS<DSLS>(dsls);
+	VK_ASSERT(getVkDevice().createPipelineLayout(&ci, ALLOCCB, &ret), "failed to create pipelineLayout");
       }
       return ret;
     };

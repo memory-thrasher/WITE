@@ -1,10 +1,10 @@
 #include "../WITE/WITE.hpp"
 
 //include the compiled shader code which was outputted as a header in the build dir before c++ code gets compiled.
-#include "basicShader.frag.spv.h"
-#include "box_normal.vert.spv.h"
-#include "vertexWholeScreen.vert.spv.h"
-#include "fragmentSphere.frag.spv.h"
+#include "Tests/basicShader.frag.spv.h"
+#include "Tests/box_normal.vert.spv.h"
+#include "Tests/vertexWholeScreen.vert.spv.h"
+#include "Tests/fragmentSphere.frag.spv.h"
 
 using namespace WITE;
 

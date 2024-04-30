@@ -57,15 +57,15 @@ int main(int argc, char** argv) {
     }
   }
   int rolling = 0;
-  std::cout << "typedef uint32_t font_character_extent[2];\n\nconstexpr font_character font_characters_extents[" << charCount << "] = {\n";
+  std::cout << "typedef WITE::udmObject<WITE::UDM::RG32uint> font_character_extent;\nconstexpr font_character_extent font_character_extents[" << charCount << "] = {\n";
   for(int i = 0;i < charCount;i++) {
     std::cout << "  { " << rolling << ", " << triangles[i].size() << " },\n";
     rolling += triangles[i].size();
   }
-  std::cout << "};\n\ntypedef uint8_t font_point[2];\n\nconstexpr font_point font_triangles[" << charCount << "] = { ";
+  std::cout << "};\n\ntypedef WITE::udmObject<WITE::UDM::RG8uint> font_point;\nconstexpr font_point font_triangles[] = {";
   for(int i = 0;i < charCount;i++)
     for(const auto& pt : triangles[i])
-      std::cout << "{ " << pt.x << ", " << pt.y << " },";
-  std::cout << "};\n\n";
+      std::cout << "{" << pt.x << "," << pt.y << "},";
+  std::cout << "};\n";
   return 0;
 };

@@ -60,27 +60,39 @@ namespace WITE {
 
     //vulkan pools are fixed size. Rather than tracking which pools have available DS, we simply immediately exhaust new pools into the available buffer and never give them back to vulkan
     virtual vk::DescriptorSet allocate() override {
-      vk::DescriptorSet ret;
-      if(available.size()) {
-	ret = available.front();
-	available.pop();
+      if constexpr(RCS.LENGTH) {
+	vk::DescriptorSet ret;
+	if(available.size()) {
+	  ret = available.front();
+	  available.pop();
+	} else {
+	  vk::DescriptorPool newPool;
+	  VK_ASSERT(dev.getVkDevice().createDescriptorPool(&dpci, ALLOCCB, &newPool), "failed to create descriptor set pool");
+	  pools.push_back(newPool);
+	  allocInfo.setDescriptorPool(newPool);
+	  VK_ASSERT(dev.getVkDevice().allocateDescriptorSets(&allocInfo, setsStaging), "failed to empty pool");
+	  ret = setsStaging[0];
+	  for(size_t i = 1;i < batchSize;i++)
+	    available.push(setsStaging[i]);
+	}
+	return ret;
       } else {
-	vk::DescriptorPool newPool;
-	VK_ASSERT(dev.getVkDevice().createDescriptorPool(&dpci, ALLOCCB, &newPool), "failed to create descriptor set pool");
-	pools.push_back(newPool);
-	allocInfo.setDescriptorPool(newPool);
-	VK_ASSERT(dev.getVkDevice().allocateDescriptorSets(&allocInfo, setsStaging), "failed to empty pool");
-	ret = setsStaging[0];
-	for(size_t i = 1;i < batchSize;i++)
-	  available.push(setsStaging[i]);
+	return VK_NULL_HANDLE;
       }
-      return ret;
     };
 
     virtual void free(vk::DescriptorSet f) override {
-      available.push(f);
+      if constexpr(RCS.LENGTH) {
+	available.push(f);
+      }
     };
 
+  };
+
+  template<uint64_t GPUID> struct descriptorPoolPool<literalList<resourceConsumer>{}, GPUID> : public descriptorPoolPoolBase {
+    static constexpr vk::DescriptorSetLayoutCreateInfo dslci { {}, 0, NULL };
+    vk::DescriptorSet allocate() override { return VK_NULL_HANDLE; };
+    void free(vk::DescriptorSet) override {};
   };
 
 };

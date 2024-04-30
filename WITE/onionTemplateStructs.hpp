@@ -25,7 +25,7 @@ namespace WITE {
     uint32_t size = 0;
     uint8_t frameswapCount = 0;
     bool hostVisible = false;
-    vk::IndexType indexBufferType;//for indexed drawing buffers only
+    vk::IndexType indexBufferType;//for indexed drawing buffers only. Maybe this belongs in resourceConsumer
     //MAYBE isTexel
   };
 
@@ -66,7 +66,7 @@ namespace WITE {
     constexpr unifiedSubresource() : isDefault(true) {};
     constexpr unifiedSubresource(vk::ImageSubresourceRange imageRange, vk::ImageViewType viewType = vk::ImageViewType::e2D) :
       isDefault(false), range(imageRange), viewType(viewType) {};
-    constexpr unifiedSubresource(vk::DeviceSize offset, vk::DeviceSize length) :
+    constexpr unifiedSubresource(vk::DeviceSize offset, vk::DeviceSize length = VK_WHOLE_SIZE) :
       isDefault(false), offset(offset), length(length) {};
   };
 

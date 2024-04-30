@@ -92,6 +92,7 @@ namespace WITE {
     pdf12.shaderSharedInt64Atomics = true;
     pdf12.shaderInt8 = true;
     pdf12.timelineSemaphore = true;
+    pdf12.drawIndirectCount = true;
     vk::PhysicalDeviceVulkan13Features pdf13;
     pdf12.pNext = reinterpret_cast<void*>(&pdf13);
     pdf13.synchronization2 = true;

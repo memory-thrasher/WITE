@@ -319,6 +319,7 @@ namespace WITE {
 
   struct perSourceLayoutPerShader {
     std::unique_ptr<descriptorPoolPoolBase> descriptorPool;
+    shaderInstance sourceOnlyShader;
   };
 
   struct perSourceLayout {

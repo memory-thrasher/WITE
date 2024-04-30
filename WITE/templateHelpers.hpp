@@ -13,12 +13,15 @@ namespace WITE {
     return ret;
   };
 
-#define NEW_ID(t) WITE::withId(t, __LINE__)
+#define NEW_ID(t) ::WITE::withId(t, __LINE__)
 
-#define wrap_mesh(GPU, U, NOM, ...) constexpr meshWrapper< GPU, U, ::WITE::countIL<udmObject<U>>({ __VA_ARGS__ }), __LINE__ * 1000000 > NOM = { __VA_ARGS__ }
+#define wrap_mesh(GPU, U, NOM, ...) constexpr ::WITE::meshWrapper< GPU, U, ::WITE::countIL<udmObject<U>>({ __VA_ARGS__ }), __LINE__ * 1000000 > NOM = { __VA_ARGS__ }
+#define wrap_mesh_fromArray(GPU, U, NOM, M) constexpr ::WITE::meshWrapper< GPU, U, sizeof(M)/::WITE::sizeofUdm<U>(), __LINE__ * 1000000 > NOM = M
 
   //produces configuration structs with id values of [ID, ID+2]
   template<size_t gpuId, udm U, size_t C, uint64_t ID, bool instance = false> struct meshWrapper {
+
+    static_assert(C > 0);
 
     static constexpr uint64_t id = ID;
 
@@ -42,6 +45,7 @@ namespace WITE {
     copyableArray<udmObject<U>, C> mesh;
 
     constexpr meshWrapper(std::initializer_list<udmObject<U>> il) : mesh(il) {};
+    constexpr meshWrapper(const udmObject<U> m[C]) : mesh(m) {};
 
     void load(buffer_t* b) const {
       b->slowOutOfBandSet(mesh);
@@ -58,7 +62,7 @@ namespace WITE {
   constexpr resizeBehavior_t resize_trackWindow_discard { imageResizeType::eDiscard, {}, true };
   constexpr resizeBehavior_t resize_none { imageResizeType::eNone, {}, false };
 
-#define defineSimpleUniformBuffer(gpuId, size) simpleUB<gpuId, __LINE__, size>::value
+#define defineSimpleUniformBuffer(gpuId, size) ::WITE::simpleUB<gpuId, __LINE__, size>::value
   template<size_t GPUID, uint64_t ID, uint32_t size> struct simpleUB {
     static constexpr bufferRequirements value {
       .deviceId = GPUID,
@@ -69,7 +73,7 @@ namespace WITE {
     };
   };
 
-#define defineSimpleStorageBuffer(gpuId, size) simpleSB<gpuId, __LINE__, size>::value
+#define defineSimpleStorageBuffer(gpuId, size) ::WITE::simpleSB<gpuId, __LINE__, size>::value
   template<size_t GPUID, uint64_t ID, uint32_t size> struct simpleSB {
     static constexpr bufferRequirements value {
       .deviceId = GPUID,
@@ -80,7 +84,7 @@ namespace WITE {
     };
   };
 
-#define defineSingleTransform(gpuId) singleTransform<gpuId, __LINE__>::value
+#define defineSingleTransform(gpuId) ::WITE::singleTransform<gpuId, __LINE__>::value
   template<size_t GPUID, uint64_t ID> struct singleTransform {
     static constexpr bufferRequirements value {
       .deviceId = GPUID,
@@ -91,7 +95,7 @@ namespace WITE {
     };
   };
 
-#define defineComputeDepth(gpuId) computeDepth<gpuId, __LINE__>::value
+#define defineComputeDepth(gpuId) ::WITE::computeDepth<gpuId, __LINE__>::value
   template<size_t GPUID, uint64_t ID> struct computeDepth {
     static constexpr imageRequirements value {
       .deviceId = GPUID,
@@ -103,7 +107,7 @@ namespace WITE {
     };
   };
 
-#define defineSimpleDepth(gpuId) simpleDepth<gpuId, __LINE__>::value
+#define defineSimpleDepth(gpuId) ::WITE::simpleDepth<gpuId, __LINE__>::value
   template<size_t GPUID, uint64_t ID> struct simpleDepth {
     static constexpr imageRequirements value {
       .deviceId = GPUID,
@@ -114,7 +118,7 @@ namespace WITE {
     };
   };
 
-#define defineSimpleColor(gpuId) simpleColor<gpuId, __LINE__>::value
+#define defineSimpleColor(gpuId) ::WITE::simpleColor<gpuId, __LINE__>::value
   template<size_t GPUID, uint64_t ID> struct simpleColor {
     static constexpr imageRequirements value {
       .deviceId = GPUID,
@@ -125,8 +129,8 @@ namespace WITE {
     };
   };
 
-#define defineIntermediateColor(gpuId) intermediateColor<gpuId, __LINE__>::value
-#define defineIntermediateColorWithFormat(gpuId, F) intermediateColor<gpuId, __LINE__, F>::value
+#define defineIntermediateColor(gpuId) ::WITE::intermediateColor<gpuId, __LINE__>::value
+#define defineIntermediateColorWithFormat(gpuId, F) ::WITE::intermediateColor<gpuId, __LINE__, F>::value
   template<size_t GPUID, uint64_t ID, vk::Format F = Format::RGBA8unorm> struct intermediateColor {
     static constexpr imageRequirements value {
       .deviceId = GPUID,
@@ -137,7 +141,7 @@ namespace WITE {
     };
   };
 
-#define defineCopy() simpleCopy<__LINE__ * 1000000>::value
+#define defineCopy() ::WITE::simpleCopy<__LINE__ * 1000000>::value
   //yeah there's not much to this, just a crosswalk
   template<uint64_t ID> struct simpleCopy {
     static constexpr copyStep value {
@@ -147,7 +151,7 @@ namespace WITE {
     };
   };
 
-#define defineClear(...) simpleClear<vk::ClearValue {{ __VA_ARGS__ }}, __LINE__>::value
+#define defineClear(...) ::WITE::simpleClear<vk::ClearValue {{ __VA_ARGS__ }}, __LINE__>::value
   //not much to this, either
   template<vk::ClearValue CV, uint64_t ID> struct simpleClear {
     static constexpr clearStep value {
@@ -156,8 +160,8 @@ namespace WITE {
     };
   };
 
-#define defineUBConsumer(ST) simpleUBConsumer<__LINE__, vk::ShaderStageFlagBits::e ##ST>::value
-  template<uint64_t ID, vk::ShaderStageFlagBits ST> struct simpleUBConsumer {
+#define defineUBConsumer(ST) ::WITE::simpleUBConsumer<__LINE__, vk::ShaderStageFlagBits::e ##ST>::value
+  template<uint64_t ID, vk::ShaderStageFlags ST> struct simpleUBConsumer {
     static constexpr resourceConsumer value {
       .id = ID,
       .stages = ST,
@@ -166,8 +170,8 @@ namespace WITE {
     };
   };
 
-#define defineSBReadonlyConsumer(ST) simpleStorageReadConsumer<__LINE__, vk::ShaderStageFlagBits::e ##ST>::value
-  template<uint64_t ID, vk::ShaderStageFlagBits ST> struct simpleStorageReadConsumer {
+#define defineSBReadonlyConsumer(ST) ::WITE::simpleStorageReadConsumer<__LINE__, vk::ShaderStageFlagBits::e ##ST>::value
+  template<uint64_t ID, vk::ShaderStageFlags ST> struct simpleStorageReadConsumer {
     static constexpr resourceConsumer value {
       .id = ID,
       .stages = ST,
@@ -176,8 +180,8 @@ namespace WITE {
     };
   };
 
-#define defineSBWriteonlyConsumer(ST) simpleStorageWriteConsumer<__LINE__, vk::ShaderStageFlagBits::e ##ST>::value
-  template<uint64_t ID, vk::ShaderStageFlagBits ST> struct simpleStorageWriteConsumer {
+#define defineSBWriteonlyConsumer(ST) ::WITE::simpleStorageWriteConsumer<__LINE__, vk::ShaderStageFlagBits::e ##ST>::value
+  template<uint64_t ID, vk::ShaderStageFlags ST> struct simpleStorageWriteConsumer {
     static constexpr resourceConsumer value {
       .id = ID,
       .stages = ST,
@@ -186,8 +190,8 @@ namespace WITE {
     };
   };
 
-#define defineSamplerConsumer(ST) samplerConsumer<__LINE__, vk::ShaderStageFlagBits::e ##ST>::value
-  template<uint64_t ID, vk::ShaderStageFlagBits ST> struct samplerConsumer {
+#define defineSamplerConsumer(ST) ::WITE::samplerConsumer<__LINE__, vk::ShaderStageFlagBits::e ##ST>::value
+  template<uint64_t ID, vk::ShaderStageFlags ST> struct samplerConsumer {
     static constexpr resourceConsumer value {
       .id = ID,
       .stages = ST,
@@ -196,8 +200,28 @@ namespace WITE {
     };
   };
 
+#define defineIndirectConsumer() ::WITE::indirectConsumer<__LINE__>::value
+  template<uint64_t ID> struct indirectConsumer {
+    static constexpr resourceConsumer value {
+      .id = ID,
+      .stages = vk::ShaderStageFlagBits::eVertex,
+      .access = vk::AccessFlagBits2::eIndirectCommandRead,
+      .usage = resourceUsageType::eIndirect,
+    };
+  };
+
+#define defineIndirectCountConsumer() ::WITE::indirectCountConsumer<__LINE__>::value
+  template<uint64_t ID> struct indirectCountConsumer {
+    static constexpr resourceConsumer value {
+      .id = ID,
+      .stages = vk::ShaderStageFlagBits::eVertex,
+      .access = vk::AccessFlagBits2::eIndirectCommandRead,
+      .usage = resourceUsageType::eIndirectCount,
+    };
+  };
+
   //often, a specialization is quite simple, like a single constant or struct.
-#define defineShaderSpecialization(T, D, N) typedef shaderSpecializationWrapper_t<T, D> N;
+#define defineShaderSpecialization(T, D, N) typedef ::WITE::shaderSpecializationWrapper_t<T, D> N;
 #define forwardShaderSpecialization(N) N ::map, (void*)& N ::value, sizeof(N ::value_t)
   template<class T, const T D> struct shaderSpecializationWrapper_t {
     typedef const T value_t;

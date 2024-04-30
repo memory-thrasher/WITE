@@ -8,13 +8,14 @@ layout(std140, set = 0, binding = 0) readonly buffer string_t {
 } string;
 
 layout(std140, set = 0, binding = 1) readonly buffer charData_t {
-  uvec2[128] charData;//xy = vertCount,firstVirt
+  // uvec2[128] charData;//xy = vertCount,firstVirt
+  uvec4[64] charData;//xy = vertCount,firstVirt
 } charData;
 
-layout(std140, set = 0, binding = 3) buffer indirectBuffer_t {
+layout(std140, set = 0, binding = 2) buffer indirectBuffer_t {
   //uvec4 just happens to match drawIndirectCommand: xyzw = verts, instances, firstVert, firstInstance
   //instanceid = character position in stream
-  uint characterCount;
+  uvec4 characterCount;
   uvec4[1024] commands;
 } indirectBuffer;
 
@@ -23,10 +24,10 @@ void main() {
   const uint uvid = gl_GlobalInvocationID.x/16,
     compId = (gl_GlobalInvocationID.x/4)%4,
     byteId = gl_GlobalInvocationID.x%4;
-  uint c = string.string[uvid][compId] >> (3-byteId)*4;
+  uint c = (string.string[uvid][compId] >> (byteId*8)) & 0xFF;
   if(c == 0)
-    indirectBuffer.characterCount = gl_GlobalInvocationID.x;
-  indirectBuffer.commands[gl_GlobalInvocationID.x] = (c > 32) ?
-    vec4(charData.charData[c].x, 1, charData.charData[c].y, gl_GlobalInvocationID) :
-    vec4();//32 = space
+    indirectBuffer.characterCount.x = gl_GlobalInvocationID.x;
+  indirectBuffer.commands[gl_GlobalInvocationID.x] = (c > 32) ?//32 = space
+    uvec4(charData.charData[c>>1][(c&1)*2+1], 1, charData.charData[c>>1][(c&1)*2+0], gl_GlobalInvocationID.x) :
+    uvec4(0, 0, 0, 0);
 }

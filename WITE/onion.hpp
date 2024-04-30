@@ -1271,7 +1271,8 @@ namespace WITE {
 	      VK_ASSERT(dev->getVkDevice().createGraphicsPipelines(dev->getPipelineCache(), 1, &gpci, ALLOCCB, &shaderInstance.pipeline), "Failed to create graphics pipeline ", GSR.id);
 	    }
 	    cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, shaderInstance.pipeline);
-	    cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, shaderInstance.pipelineLayout, 1, 1, &targetDescriptors.descriptorSet, 0, NULL);
+	    if constexpr(GSR.targetProvidedResources)
+	      cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, shaderInstance.pipelineLayout, 1, 1, &targetDescriptors.descriptorSet, 0, NULL);
 	    for(source_t<SL.id>* source : allSources.template ofLayout<SL.id>()) {
 	      if constexpr(!TL.selfRender && SL.objectLayoutId == TL.objectLayoutId)
 		if(source->objectId == target.objectId) [[unlikely]]
@@ -1280,7 +1281,8 @@ namespace WITE {
 	      auto& descriptorBundle = source->perShaderByIdByFrame[frameMod].template get<GSR.id>();
 	      prepareDescriptors<object_t<SL.objectLayoutId>::RSS, SL.resources, GSR.sourceProvidedResources>
 		(descriptorBundle, pslps.descriptorPool, *source->allObjectResources, frameMod);
-	      cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, shaderInstance.pipelineLayout, 0, 1, &descriptorBundle.descriptorSet, 0, NULL);
+	      if constexpr(GSR.sourceProvidedResources)
+		cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, shaderInstance.pipelineLayout, 0, 1, &descriptorBundle.descriptorSet, 0, NULL);
 	      //for now, source must provide all vertex info
 	      vk::Buffer verts[vibCount];
 	      vk::DeviceSize offsets[2];
@@ -1324,8 +1326,8 @@ namespace WITE {
 		static constexpr resourceSlot ibs = findById(OD.RSS, ibm.resourceSlotId);
 		indirectBuffer = source->template get<ibm.resourceSlotId>().frameBuffer(frame + ibm.frameLatency);
 		indirectOffset = ibm.subresource.offset;
-		drawCount = ibm.subresource.length != VK_WHOLE_SIZE ? ibm.subresource.length :
-		  findById(OD.BRS, ibs.requirementId).size / indirectStride;
+		drawCount = (ibm.subresource.length != VK_WHOLE_SIZE ? ibm.subresource.length :
+			     findById(OD.BRS, ibs.requirementId).size - indirectOffset) / indirectStride;
 		if constexpr(countConsumer) {
 		  static constexpr resourceReference cbm = *findResourceReferenceToConsumer(SL.resources, countConsumer->id);
 		  indirectCountBuffer = source->template get<cbm.resourceSlotId>().frameBuffer(frame + cbm.frameLatency);
@@ -1344,32 +1346,43 @@ namespace WITE {
 				    ibm.subresource.offset, ibr.indexBufferType);
 		vertices = (GSR.vertexCountOverride ? GSR.vertexCountOverride : ibr.size) /
 		  sizeofIndexType(ibr.indexBufferType);
-		if constexpr(countConsumer)
+		if constexpr(countConsumer) {
 		  cmd.drawIndexedIndirectCount(indirectBuffer, indirectOffset, indirectCountBuffer, countOffset,
 					       drawCount, indirectStride);
-		else if constexpr(indirectConsumer)
+		  // WARN("Drew indexed indirect count");
+		} else if constexpr(indirectConsumer) {
 		  cmd.drawIndexedIndirect(indirectBuffer, indirectOffset, drawCount, indirectStride);
-		else
+		  // WARN("Drew indexed indirect ", drawCount);
+		} else {
 		  cmd.drawIndexed(vertices, instances, 0, 0, 0);
+		  // WARN("Drew indexed ", instances, " instances of ", vertices, " verticies from nested target-source (", TL.id, "-", SL.id, ")");
+		}
 	      } else if constexpr(containsStage<GSR.modules, vk::ShaderStageFlagBits::eVertex>()) {//non-indexed draw of vertex shader
-		if constexpr(countConsumer)
+		if constexpr(countConsumer) {
 		  cmd.drawIndirectCount(indirectBuffer, indirectOffset, indirectCountBuffer, countOffset,
 					drawCount, indirectStride);
-		else if constexpr(indirectConsumer)
+		  // WARN("Drew indirect count");
+		} else if constexpr(indirectConsumer) {
 		  cmd.drawIndirect(indirectBuffer, indirectOffset, drawCount, indirectStride);
-		else
+		  // WARN("Drew indirect ", drawCount);
+		} else {
 		  cmd.draw(vertices, instances, 0, 0);
+		  // WARN("Drew ", instances, " instances of ", vertices, " verticies from nested target-source (", TL.id, "-", SL.id, ")");
+		}
 	      } else {//mesh shader
 		static_assert(containsStage<GSR.modules, vk::ShaderStageFlagBits::eMeshEXT>(), "invalid shader type");
-		if constexpr(countConsumer)
+		if constexpr(countConsumer) {
 		  cmd.drawMeshTasksIndirectCountEXT(indirectBuffer, indirectOffset, indirectCountBuffer, countOffset,
 						    drawCount, indirectStride);
-		else if constexpr(indirectConsumer)
+		  // WARN("Drew mesh indirect count");
+		} else if constexpr(indirectConsumer) {
 		  cmd.drawMeshTasksIndirectEXT(indirectBuffer, indirectOffset, drawCount, indirectStride);
-		else
+		  // WARN("Drew mesh indirect ", drawCount);
+		} else {
+		  // WARN("Drew mesh ", GSR.meshGroupCountX, ", ", GSR.meshGroupCountY, ", ", GSR.meshGroupCountZ);
 		  cmd.drawMeshTasksEXT(GSR.meshGroupCountX, GSR.meshGroupCountY, GSR.meshGroupCountZ);
+		}
 	      }
-	      //WARN("Drew ", instances, " instances of ", vertices, " verticies from nested target-source (", TL.id, "-", SL.id, ")");
 	    }
 	  }
 	}
@@ -1409,7 +1422,8 @@ namespace WITE {
 	VK_ASSERT(dev->getVkDevice().createGraphicsPipelines(dev->getPipelineCache(), 1, &gpci, ALLOCCB, &shaderInstance.pipeline), "Failed to create graphics pipeline ", GSR.id);
       }
       cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, shaderInstance.pipeline);
-      cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, shaderInstance.pipelineLayout, 0, 1, &targetDescriptors.descriptorSet, 0, NULL);
+      if constexpr(GSR.targetProvidedResources)
+	cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, shaderInstance.pipelineLayout, 0, 1, &targetDescriptors.descriptorSet, 0, NULL);
       static_assert(GSR.vertexCountOverride > 0);
       static_assert(containsStage<GSR.modules, vk::ShaderStageFlagBits::eVertex>(),
 		    "vertex shader required. Mesh shaders not yet implemented for target-only rendering");
@@ -1534,14 +1548,9 @@ namespace WITE {
     template<computeShaderRequirements CS, uint64_t TID, uint64_t SID> static inline void getWorkgroupSize(vk::Extent3D& workgroupSize, target_t<TID>* target, source_t<SID>* source, uint64_t frameMod) {
       PROFILEME;
       static constexpr resourceSlot RS = findById(OD.RSS, CS.primaryOutputSlotId);
-      static constexpr targetLayout TL = TID != NONE ? findById(OD.TLS, TID) : targetLayout();
-      static constexpr sourceLayout SL = SID != NONE ? findById(OD.SLS, TID) : sourceLayout();
-      static constexpr const resourceReference* TRR = findResourceReferenceToConsumer(TL.resources, RS.id);
-      static constexpr const resourceReference* SRR = findResourceReferenceToConsumer(SL.resources, RS.id);
-      static_assert(TRR || SRR);
       if constexpr(containsId(OD.IRS, RS.requirementId)) {//is image
 	vk::Extent3D imageSize;
-	if constexpr(TRR)
+	if constexpr(TID != NONE && findResourceReferenceToConsumer(findById(OD.TLS, TID).resources, RS.id))
 	  imageSize = target->template get<RS.id>().getSizeExtent(frameMod);
 	else
 	  imageSize = source->template get<RS.id>().getSizeExtent(frameMod);
@@ -1555,23 +1564,52 @@ namespace WITE {
       }
     };
 
-    template<computeShaderRequirements CS, literalList<uint64_t> SLS>
+    template<computeShaderRequirements CS, literalList<sourceLayout> SLS>
     inline void recordComputeDispatches_sourceOnly(vk::CommandBuffer cmd) {
-      PROFILEME;
-      asm("int3");//NYI
+      if constexpr(SLS.len) {
+	{
+	  PROFILEME;
+	  static constexpr sourceLayout SL = SLS[0];
+	  if constexpr(satisfies(SL.resources, CS.sourceProvidedResources)) {
+	    for(source_t<SL.id>* source : allSources.template ofLayout<SL.id>()) {
+	      perSourceLayoutPerShader& pslps = od.perSL[SL.id].perShader[CS.id];
+	      size_t frameMod = frame % source_t<SL.id>::maxFrameswap;
+	      auto& descriptorBundle = source->perShaderByIdByFrame[frameMod].template get<CS.id>();
+	      prepareDescriptors<object_t<SL.objectLayoutId>::RSS, SL.resources, CS.sourceProvidedResources>
+		(descriptorBundle, pslps.descriptorPool, *source->allObjectResources, frameMod);
+	      if(!pslps.sourceOnlyShader.pipeline) [[unlikely]] {
+		PROFILEME_MSG("compute pipeline creation, source only");
+		pslps.sourceOnlyShader.pipelineLayout = dev->getPipelineLayout<descriptorPoolPool<CS.sourceProvidedResources, OD.GPUID>::dslci>();
+		static_assert(CS.module->stage == vk::ShaderStageFlagBits::eCompute);
+		vk::ComputePipelineCreateInfo ci;
+		shaderFactory<CS.module, OD.GPUID>::create(&ci.stage);
+		ci.layout = pslps.sourceOnlyShader.pipelineLayout;
+		VK_ASSERT(dev->getVkDevice().createComputePipelines(dev->getPipelineCache(), 1, &ci, ALLOCCB, &pslps.sourceOnlyShader.pipeline), "failed to create compute pipeline");
+	      }
+	      cmd.bindPipeline(vk::PipelineBindPoint::eCompute, pslps.sourceOnlyShader.pipeline);
+	      if constexpr(CS.sourceProvidedResources)
+		cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute, pslps.sourceOnlyShader.pipelineLayout, 0, 1, &descriptorBundle.descriptorSet, 0, NULL);
+	      vk::Extent3D workgroupSize;
+	      getWorkgroupSize<CS, NONE, SL.id>(workgroupSize, NULL, source, frameMod);
+	      cmd.dispatch(workgroupSize.width, workgroupSize.height, workgroupSize.depth);
+	    }
+	  }
+	}
+	recordComputeDispatches_sourceOnly<CS, SLS.sub(1)>(cmd);
+      }
     };
 
-    template<computeShaderRequirements CS, literalList<uint64_t> TLS>
+    template<computeShaderRequirements CS, literalList<targetLayout> TLS>
     inline void recordComputeDispatches_targetOnly(vk::CommandBuffer cmd) {
       if constexpr(TLS.len) {
 	{
 	  PROFILEME;
-	  static constexpr targetLayout TL = findById(OD.TLS, TLS[0]);
+	  static constexpr targetLayout TL = TLS[0];
 	  if constexpr(satisfies(TL.resources, CS.targetProvidedResources)) {
 	    for(target_t<TL.id>* target : allTargets.template ofLayout<TL.id>()) {
 	      perTargetLayoutPerShader& ptlps = od.perTL[TL.id].perShader[CS.id];
 	      size_t frameMod = frame % target_t<TL.id>::maxFrameswap;
-	      auto& descriptorBundle = target->perShaderByIdByFrame[CS.id][frameMod];
+	      auto& descriptorBundle = target->perShaderByIdByFrame[frameMod].template get<CS.id>();
 	      prepareDescriptors<object_t<TL.objectLayoutId>::RSS, TL.resources, CS.targetProvidedResources>
 		(descriptorBundle, ptlps.descriptorPool, *target->allObjectResources, frameMod);
 	      if(!ptlps.targetOnlyShader.pipeline) [[unlikely]] {
@@ -1584,7 +1622,8 @@ namespace WITE {
 		VK_ASSERT(dev->getVkDevice().createComputePipelines(dev->getPipelineCache(), 1, &ci, ALLOCCB, &ptlps.targetOnlyShader.pipeline), "failed to create compute pipeline");
 	      }
 	      cmd.bindPipeline(vk::PipelineBindPoint::eCompute, ptlps.targetOnlyShader.pipeline);
-	      cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute, ptlps.targetOnlyShader.pipelineLayout, 0, 1, &descriptorBundle.descriptorSet, 0, NULL);
+	      if constexpr(CS.targetProvidedResources)
+		cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute, ptlps.targetOnlyShader.pipelineLayout, 0, 1, &descriptorBundle.descriptorSet, 0, NULL);
 	      vk::Extent3D workgroupSize;
 	      getWorkgroupSize<CS, TL.id, NONE>(workgroupSize, target, NULL, frameMod);
 	      cmd.dispatch(workgroupSize.width, workgroupSize.height, workgroupSize.depth);
@@ -1595,12 +1634,12 @@ namespace WITE {
       }
     };
 
-    template<computeShaderRequirements CS, targetLayout TL, literalList<uint64_t> SLS>
+    template<computeShaderRequirements CS, targetLayout TL, literalList<sourceLayout> SLS>
     inline void recordComputeDispatches_nested(target_t<TL.id>* target, perTargetLayoutPerShader& ptlps, descriptorUpdateData_t<CS.targetProvidedResources.len>& perShader, vk::CommandBuffer cmd) {
       if constexpr(SLS.len) {
 	{
 	  PROFILEME;
-	  static constexpr sourceLayout SL = findById(OD.SLS, SLS[0]);
+	  static constexpr sourceLayout SL = SLS[0];
 	  if constexpr(satisfies(SL.resources, CS.sourceProvidedResources)) {
 	    shaderInstance& shaderInstance = ptlps.perSL[SL.id];
 	    perSourceLayoutPerShader& pslps = od.perSL[SL.id].perShader[CS.id];
@@ -1622,16 +1661,18 @@ namespace WITE {
 	      VK_ASSERT(dev->getVkDevice().createComputePipelines(dev->getPipelineCache(), 1, &ci, ALLOCCB, &shaderInstance.pipeline), "failed to create compute pipeline");
 	    }
 	    cmd.bindPipeline(vk::PipelineBindPoint::eCompute, shaderInstance.pipeline);
-	    cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute, shaderInstance.pipelineLayout, 1, 1, &perShader.descriptorSet, 0, NULL);
+	    if constexpr(CS.targetProvidedResources)
+	      cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute, shaderInstance.pipelineLayout, 1, 1, &perShader.descriptorSet, 0, NULL);
 	    for(source_t<SL.id>* source : allSources.template ofLayout<SL.id>()) {
 	      if constexpr(!TL.selfRender && SL.objectLayoutId == TL.objectLayoutId)
 		if(source->objectId == target->objectId) [[unlikely]]
 		  continue;
 	      size_t frameMod = frame % source_t<SL.id>::maxFrameswap;
-	      auto& descriptorBundle = source->perShaderByIdByFrame[CS.id][frameMod];
+	      auto& descriptorBundle = source->perShaderByIdByFrame[frameMod].template get<CS.id>();
 	      prepareDescriptors<object_t<SL.objectLayoutId>::RSS, SL.resources, CS.sourceProvidedResources>
 		(descriptorBundle, pslps.descriptorPool, source->resources, frameMod);
-	      cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute, shaderInstance.pipelineLayout, 0, 1, &descriptorBundle.descriptorSet, 0, NULL);
+	      if constexpr(CS.sourceProvidedResources)
+		cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute, shaderInstance.pipelineLayout, 0, 1, &descriptorBundle.descriptorSet, 0, NULL);
 	      vk::Extent3D workgroupSize;
 	      getWorkgroupSize<CS, TL.id, SL.id>(workgroupSize, target, source, frameMod);
 	      cmd.dispatch(workgroupSize.width, workgroupSize.height, workgroupSize.depth);
@@ -1642,17 +1683,17 @@ namespace WITE {
       }
     };
 
-    template<computeShaderRequirements CS, literalList<uint64_t> TLS, literalList<uint64_t> SLS>
+    template<computeShaderRequirements CS, literalList<targetLayout> TLS, literalList<sourceLayout> SLS>
     inline void recordComputeDispatches_nested(vk::CommandBuffer cmd) {
       if constexpr(TLS.len) {
 	{
 	  PROFILEME;
-	  static constexpr targetLayout TL = findById(OD.TLS, TLS[0]);
+	  static constexpr targetLayout TL = TLS[0];
 	  if constexpr(satisfies(TL.resources, CS.targetProvidedResources)) {
 	    for(target_t<TL.id>* target : allTargets.template ofLayout<TL.id>()) {
 	      perTargetLayoutPerShader& ptlps = od.perTL[TL.id].perShader[CS.id];
 	      size_t frameMod = frame % target_t<TL.id>::maxFrameswap;
-	      auto& descriptorBundle = target->perShaderByIdByFrame[CS.id][frameMod];
+	      auto& descriptorBundle = target->perShaderByIdByFrame[frameMod].template get<CS.id>();
 	      prepareDescriptors<object_t<TL.objectLayoutId>::RSS, TL.resources, CS.targetProvidedResources>
 		(descriptorBundle, ptlps.descriptorPool, target->resources, frameMod);
 	      recordComputeDispatches_nested<CS, TL, SLS>(target, ptlps, descriptorBundle, cmd);

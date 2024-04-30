@@ -1,9 +1,8 @@
 #include "../WITE/WITE.hpp"
 
 //include the compiled shader code which was outputted as a header in the build dir before c++ code gets compiled.
-#include "basicShader.frag.spv.h"
-// #include "basicShader.vert.spv.h"
-#include "box_normal.vert.spv.h"
+#include "Tests/basicShader.frag.spv.h"
+#include "Tests/box_normal.vert.spv.h"
 
 using namespace WITE;
 

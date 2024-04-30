@@ -20,7 +20,7 @@ int indexOf(char c, char* str, int start) {
 };
 
 int main(int argc, char** argv) {
-  constexpr float ox = 0.05f, oy = 0.74f, pitchx = 0.04f, pitchy = -0.04f;
+  constexpr float ox = 0, oy = 0, pitchx = 0.0714f, pitchy = -0.0714f;
   constexpr int maxlinelength = 1024, charCount = 128;
   char line[maxlinelength];
   char charname = 0;

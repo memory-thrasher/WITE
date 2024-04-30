@@ -234,15 +234,15 @@ int main(int argc, char** argv) {
   text->set<RS_text_charData.id>(&characterData);
   text->set<RS_text_mesh.id>(textMeshBuf.get());
   glm::vec2 size = camera->getWindow().getVecSize();
-  float fontSizePxl = 24;
+  float fontSizePxl = 28;
   drawData_t drawData = {
     { 1, 1, 1, 1 },
-    { 0.1f, 0.1f, 0.8f, 0.8f },
-    { fontSizePxl / size.x, fontSizePxl / size.y, 0.05f, 0.26f },
+    { 0.1f, 0.1f, 0.2f, 0.8f },
+    { fontSizePxl / size.x, fontSizePxl / size.y, 0, 0 },
   };
-  for(size_t i = 0;i < 100000 && !WITE::shutdownRequested();i++) {
+  for(size_t i = 0;i < 10000 && !WITE::shutdownRequested();i++) {
     WITE::winput::pollInput();
-    onion_printf(text, "Hello World! Frame: %d  the quick brown fox jumped over the lazy dog. THE QUICK BROWN FOX JUMPED OVER THE LAZY DOG?", i);
+    onion_printf(text, "Hello World! Frame: %d  the quick brown fox jumped over the lazy dog. THE QUICK BROWN FOX JUMPED OVER THE LAZY DOG? !\"#$%%&'()*+,-./0123456789:;<=>?@[\\]^_`{|}~", i);
     text->write<RS_text_S_drawData.id>(drawData);
     primaryOnion->render();
   }

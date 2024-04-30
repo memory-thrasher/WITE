@@ -13,6 +13,5 @@ void main() {
   const float widthChars = floor(drawData.bbox.z/drawData.charMetric.x);
   const uvec2 charPos = uvec2(mod(gl_InstanceIndex, widthChars), gl_InstanceIndex / widthChars);
   //TODO truncate at height? in compute?
-  // gl_Position = vec4(charPos * drawData.charMetric.xy + drawData.charMetric.zw + coords * vec2(0.04, 0.04) * drawData.bbox.zw, 0, 1);
-  gl_Position = vec4((drawData.bbox.xy + drawData.charMetric.xy * (charPos + drawData.charMetric.zw + coords * 0.04f)) * 2 - vec2(1, 1), 0, 1);
+  gl_Position = vec4((drawData.bbox.xy + drawData.charMetric.xy * (charPos + drawData.charMetric.zw + coords * 0.0714f)) * 2 - vec2(1, 1), 0, 1);
 }

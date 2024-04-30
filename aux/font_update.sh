@@ -21,7 +21,7 @@ if ! [ -f "${binname}" ] || [ "${cppname}" -nt "${binname}" ] || [ "${filename}"
     clang++ --std=c++20 -Werror -Wall -DDEBUG -g "${cppname}" -o "${binname}" || exit 2
 fi
 
-if ! [ -f "${outname}" ] || [ "${binname}" -nt "${outname}" ] || [ "${filename}" -nt "${outname}" ]; then
+if ! [ -f "${outname}" ] || [ "${binname}" -nt "${outname}" ] || [ "${inname}" -nt "${outname}" ] || [ "${filename}" -nt "${outname}" ]; then
     "${binname}" <"${inname}" >"${outname}"
 fi
 

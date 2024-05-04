@@ -1517,8 +1517,8 @@ namespace WITE {
 	// WARN("RP begin");
 	recordRenders<TL, RP, RP.shaders>(target, ptl, rp, cmd);
 	cmd.endRenderPass();
-      } else {
-	if(frame == 1) [[unlikely]] WARN("Warning: skipping rp ", RP.id, " on TL ", TL.id);
+      // } else {
+      // 	if(frame == 1) [[unlikely]] WARN("Warning: skipping rp ", RP.id, " on TL ", TL.id);
       }
     };
 

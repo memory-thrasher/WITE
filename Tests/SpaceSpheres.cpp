@@ -517,7 +517,7 @@ const float fov = 45;
 //502fps
 int main(int argc, char** argv) {
   configuration::setOptions(argc, argv);
-  gpu::init("Input and combined procedural and traditional render test");
+  gpu::init("test");
   winput::initInput();
   primaryOnion = std::make_unique<onion_t>();
   auto camera = primaryOnion->create<OL_camera.id>();

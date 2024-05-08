@@ -53,8 +53,8 @@ constexpr WITE::graphicsShaderRequirements S_mesh {
   .targetProvidedResources = RC_L_S_mesh_target,
   .sourceProvidedResources = RC_L_S_mesh_source,
   .cullMode = vk::CullModeFlagBits::eNone,
-  .meshGroupCountX = 1,
-  .meshGroupCountY = 1,
+  .meshGroupCountX = 256,
+  .meshGroupCountY = 256,
   .meshGroupCountZ = 1,//160: all mesh implementations are gauranteed to support up to 2^22 total and 2^16 in each dimension
 };
 
@@ -187,6 +187,8 @@ const float fov = 45;
 
 //tested on 3090ti
 //10,000 frames with the maximum gauranteed functional mesh size (160^3 workgroups of 128 invocations) but no actual outputs: 55s (181 fps)
+//100,000 frames with 2^9^2 workgroup of 128 invocations: 66 (1515 fps)
+//100,000 frames with 2^8^2 workgroup of 128 invocations: 42 (2380 fps)
 //100,000 frames with single workgroup of 128 invocations: 34.28 (2917 fps)
 //100,000 frames with single workgroup of 32 invocations: 34.2 (2924 fps)
 //100,000 frames with single workgroup of 1 invocations: 34.27 (2918 fps)
@@ -205,7 +207,7 @@ int main(int argc, char** argv) {
   meshData_t meshData { {1, 0, 0, 1} };
   float az = 1.5f, inc = 0.5f, dist = 12;
   WITE::winput::compositeInputData cid;
-  for(size_t i = 0;i < 10000 && !WITE::shutdownRequested();i++) {
+  for(size_t i = 0;i < 100000 && !WITE::shutdownRequested();i++) {
     WITE::winput::pollInput();
     if(WITE::winput::getButton(WITE::winput::rmb)) {
       WITE::winput::getInput(WITE::winput::mouse, cid);

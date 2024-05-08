@@ -4,12 +4,16 @@
 #include <cstring>
 #include <cstdlib>
 
+#define VULKAN_HPP_STORAGE_SHARED_EXPORT
+
 #include "gpu.hpp"
 #include "bitmaskIterator.hpp"
 #include "math.hpp"
 #include "DEBUG.hpp"
 #include "window.hpp"
 #include "configuration.hpp"
+
+VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE;
 
 const std::map<vk::MemoryPropertyFlags, int64_t> memoryScoreByFlag = {
   { vk::MemoryPropertyFlagBits::eDeviceLocal      ,   256 },
@@ -34,7 +38,7 @@ namespace WITE {
 
   gpu::gpu() : tempCmds(NULL) {};//init dummy
 
-  gpu::gpu(size_t idx, vk::PhysicalDevice pv) :
+  gpu::gpu(size_t idx, vk::PhysicalDevice pv, int deviceExtensionsCount, const char** deviceExtensions) :
     idx(idx),
     pv(pv),
     tempCmds(decltype(tempCmds)::Initer_F::make<size_t>(idx, &cmdPool::lowPrioForDevice))
@@ -96,15 +100,24 @@ namespace WITE {
     vk::PhysicalDeviceVulkan13Features pdf13;
     pdf12.pNext = reinterpret_cast<void*>(&pdf13);
     pdf13.synchronization2 = true;
+    //begin mesh
+    bool containsMesh = false;
+    for(size_t i = 0;i < deviceExtensionsCount && !containsMesh;i++)
+      if(!std::strcmp(deviceExtensions[i], "VK_EXT_mesh_shader"))
+	containsMesh = true;
+    vk::PhysicalDeviceMeshShaderFeaturesEXT pdfMesh;
+    if(containsMesh) [[likely]] {
+      pdfMesh.taskShader = pdfMesh.meshShader = true;
+      pdf13.pNext = reinterpret_cast<void*>(&pdfMesh);
+      pdf13.maintenance4 = true;//mesh shaders need LocalSizeId apparently
+    }
+    //end mesh
     vk::DeviceCreateInfo dci((vk::DeviceCreateFlags)0, 1, &dqci);
     dci.pEnabledFeatures = &pdf;
     dci.pNext = reinterpret_cast<void*>(&pdf11);
-    std::vector<const char*> deviceExtensions;
-    deviceExtensions.push_back("VK_KHR_swapchain");
-    // deviceExtensions.push_back("VK_EXT_mesh_shader");//TODO make optional?
     // deviceExtensions.push_back("VK_KHR_synchronization2");
-    dci.enabledExtensionCount = deviceExtensions.size();
-    dci.ppEnabledExtensionNames = deviceExtensions.data();
+    dci.enabledExtensionCount = deviceExtensionsCount;
+    dci.ppEnabledExtensionNames = deviceExtensions;
     dci.queueCreateInfoCount = 1;
     dci.pQueueCreateInfos = &dqci;
     VK_ASSERT(pv.createDevice(&dci, ALLOCCB, &dev), "Failed to create device");
@@ -179,7 +192,8 @@ namespace WITE {
 
   void gpu::init(const char* appName,
 		 std::initializer_list<const char*> appRequestedLayers,
-		 std::initializer_list<const char*> appRequestedExtensions) {//static
+		 std::initializer_list<const char*> appRequestedExtensions,
+		 std::initializer_list<const char*> appRequestedDeviceExtensions) {//static
     if(inited.exchange(true))
       return;
     running = true;
@@ -188,21 +202,26 @@ namespace WITE {
     vk::InstanceCreateInfo ci((vk::InstanceCreateFlags)0, &appI);
     std::vector<const char*> extensions(appRequestedExtensions);
     std::vector<const char*> layers(appRequestedLayers);
+    std::vector<const char*> deviceExtensions(appRequestedDeviceExtensions);
 #ifdef DEBUG
     layers.push_back("VK_LAYER_KHRONOS_validation");
     //layers.push_back("VK_LAYER_LUNARG_api_dump");//better to enable selectively with VK_INSTANCE_LAYERS env var
 #endif
     window::addInstanceExtensionsTo(extensions);
-    // extensions.push_back("VK_KHR_get_physical_device_properties2");
+    deviceExtensions.push_back("VK_KHR_swapchain");
     for(const char* e : extensions)
       LOG("Using extension: ", e);
     for(const char* l : layers)
       LOG("Using layer: ", l);
+    for(const char* d : deviceExtensions)
+      LOG("Using device extension: ", d);
     ci.enabledLayerCount = layers.size();
     ci.ppEnabledLayerNames = layers.data();
     ci.enabledExtensionCount = extensions.size();
     ci.ppEnabledExtensionNames = extensions.data();
+    VULKAN_HPP_DEFAULT_DISPATCHER.init();
     VK_ASSERT(vk::createInstance(&ci, ALLOCCB, &vkInstance), "Failed to create vulkan instance.");
+    VULKAN_HPP_DEFAULT_DISPATCHER.init(vkInstance);
     uint32_t cnt = MAX_GPUS;
     vk::PhysicalDevice pds[MAX_GPUS];
     VK_ASSERT(vkInstance.enumeratePhysicalDevices(&cnt, pds), "Failed to enumerate gpus");
@@ -220,9 +239,10 @@ namespace WITE {
 	  skip = i == skipId;
 	  if(*remaining) remaining++;//skip delim
 	}
+	//TODO skip gpus that don't support one of the requested extensions
       }
       if(!skip) {
-	new(&gpus[gpuCount])gpu(gpuCount, pds[i]);
+	new(&gpus[gpuCount])gpu(gpuCount, pds[i], deviceExtensions.size(), deviceExtensions.data());
 	gpuCount++;
       } else {
 	WARN("skipped gpu ", i, " because it's on the skip list: ", skipGpus);
@@ -230,6 +250,10 @@ namespace WITE {
     }
     if(gpuCount < 1) {
       CRASH("No gpu found.");
+    } else if(gpuCount == 1) {
+      //loader code abstracts the dispatcher per-device. We can ask it to skip that if we only have one device.
+      //MAYBE eventually have a dispatcher copy for each device but it'd have to be injected into EVERY vulkan api call using a device
+      VULKAN_HPP_DEFAULT_DISPATCHER.init(gpus[gpuCount-1].getVkDevice());
     }
   };
 

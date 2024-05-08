@@ -6,7 +6,7 @@ if [ -n "$vk_lib_path" ]; then
     PATH="$vk_lib_path:$PATH"
 fi;
 LINKOPTS="-L${vk_lib_path} -lrt -latomic -lvulkan -lSDL2"
-BOTHOPTS="-DDEBUG -g"
+BOTHOPTS="-DDEBUG -g -DVK_NO_PROTOTYPES"
 # -DDO_PROFILE
 # -DWITE_DEBUG_IMAGE_BARRIERS
 # -DWITE_DEBUG_FENCES

@@ -1223,6 +1223,7 @@ namespace WITE {
 	{
 	  PROFILEME;
 	  static constexpr sourceLayout SL = SLS[0];
+	  static constexpr bool isMesh = containsStage<GSR.modules, vk::ShaderStageFlagBits::eMeshEXT>();
 	  // WARN("  using source ", SL.id);
 	  if constexpr(satisfies(SL.resources, GSR.sourceProvidedResources)) {
 	    //for now (at least), only one vertex binding of each input rate type. Source only.
@@ -1286,7 +1287,7 @@ namespace WITE {
 	      //for now, source must provide all vertex info
 	      vk::Buffer verts[vibCount];
 	      vk::DeviceSize offsets[2];
-	      static_assert(vb || GSR.vertexCountOverride);//vertex data required if vertex count not given statically
+	      static_assert((vb || GSR.vertexCountOverride) ^ isMesh);//vertex data required if vertex count not given statically, unless mesh shader is to be used
 	      uint32_t vertices, instances;
 	      if constexpr(vb) {
 		static constexpr resourceReference vbm = *findResourceReferenceToConsumer(SL.resources, vb->id); //compiler-time error: dereferencing null if the source did not provide a reference to the vertex buffer used by the shader
@@ -1312,14 +1313,14 @@ namespace WITE {
 		instances = GSR.instanceCountOverride ? GSR.instanceCountOverride : 1;
 	      }
 	      if constexpr(vibCount) {
-		static_assert(!containsStage<GSR.modules, vk::ShaderStageFlagBits::eMeshEXT>(),
+		static_assert(!isMesh,
 			      "mesh shaders must not have a vertex buffer");
 		cmd.bindVertexBuffers(0, vibCount, verts, offsets);
 	      }
 	      vk::Buffer indirectBuffer, indirectCountBuffer;
 	      vk::DeviceSize indirectOffset, countOffset;
 	      uint32_t drawCount;//for indirect, also maxDrawCount for indirectCount
-	      static constexpr uint32_t indirectStride = containsStage<GSR.modules, vk::ShaderStageFlagBits::eMeshEXT>() ?
+	      static constexpr uint32_t indirectStride = isMesh ?
 		sizeof(vk::DrawMeshTasksIndirectCommandEXT) : sizeof(vk::DrawIndirectCommand);
 	      if constexpr(indirectConsumer) {
 		static constexpr resourceReference ibm = *findResourceReferenceToConsumer(SL.resources, indirectConsumer->id);
@@ -1370,7 +1371,7 @@ namespace WITE {
 		  // WARN("Drew ", instances, " instances of ", vertices, " verticies from nested target-source (", TL.id, "-", SL.id, ")");
 		}
 	      } else {//mesh shader
-		static_assert(containsStage<GSR.modules, vk::ShaderStageFlagBits::eMeshEXT>(), "invalid shader type");
+		static_assert(isMesh, "invalid shader type");
 		if constexpr(countConsumer) {
 		  cmd.drawMeshTasksIndirectCountEXT(indirectBuffer, indirectOffset, indirectCountBuffer, countOffset,
 						    drawCount, indirectStride);

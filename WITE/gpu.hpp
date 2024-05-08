@@ -59,13 +59,14 @@ namespace WITE {
     syncLock samplersMutex, descriptorSetLayoutsMutex, pipelineLayoutsMutex, queueMutex, lowPrioQueueMutex;
     threadResource<cmdPool> tempCmds;
 
-    gpu(size_t idx, vk::PhysicalDevice);
+    gpu(size_t idx, vk::PhysicalDevice, int deviceExtensionsCount, const char** deviceExtensions);
     gpu(gpu&&) = delete;
     void recordDeallocate(vram* doomed);
   public:
     static void init(const char* appName,
 		     std::initializer_list<const char*> appRequestedLayers = {},
-		     std::initializer_list<const char*> appRequestedExtensions = {});
+		     std::initializer_list<const char*> appRequestedExtensions = {},
+		     std::initializer_list<const char*> appRequestedDeviceExtensions = {});
     static void shutdown();
     static bool running;
     static gpu& get(size_t);

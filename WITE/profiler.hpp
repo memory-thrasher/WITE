@@ -10,9 +10,11 @@
 #ifdef DO_PROFILE
 #define PROFILEME ::WITE::profiler UNIQUENAME(wite_function_profiler) (::WITE::profiler::hash(__FILE__, __func__, __LINE__, ""), __FILE__, __func__, __LINE__, "")
 #define PROFILEME_MSG(MSG) ::WITE::profiler UNIQUENAME(wite_function_profiler) (::WITE::profiler::hash(__FILE__, __func__, __LINE__, MSG), __FILE__, __func__, __LINE__, MSG)
+#define PROFILE_DUMP ::WITE::profiler::printProfileData();
 #else
 #define PROFILEME
 #define PROFILEME_MSG(MSG)
+#define PROFILE_DUMP
 #endif
 
 namespace WITE {

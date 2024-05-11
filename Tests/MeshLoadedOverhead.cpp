@@ -195,7 +195,7 @@ const float fov = 45;
 //conclusion: local parallelism does not impact mesh overhead, workgroup count has a major impact BUT is still proportionately very fast (>4,000,000 times the work in only <17 times as long)
 int main(int argc, char** argv) {
   WITE::configuration::setOptions(argc, argv);
-  WITE::gpu::init("Input and combined procedural and traditional render test", {}, {}, {"VK_EXT_mesh_shader"});
+  WITE::gpu::init("test", {}, {}, {"VK_EXT_mesh_shader"});
   WITE::winput::initInput();
   primaryOnion = std::make_unique<onion_t>();
   auto camera = primaryOnion->create<OL_camera.id>();

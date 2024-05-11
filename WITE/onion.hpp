@@ -1225,6 +1225,7 @@ namespace WITE {
 	  static constexpr sourceLayout SL = SLS[0];
 	  static constexpr bool isMesh = containsStage<GSR.modules, vk::ShaderStageFlagBits::eMeshEXT>();
 	  // WARN("  using source ", SL.id);
+	  // WARN("  isMesh ", isMesh);
 	  if constexpr(satisfies(SL.resources, GSR.sourceProvidedResources)) {
 	    //for now (at least), only one vertex binding of each input rate type. Source only.
 	    static_assert(GSR.sourceProvidedResources.countWhereCE(findVB<SL.resources>()) <= 1);
@@ -1381,10 +1382,13 @@ namespace WITE {
 		  // WARN("Drew mesh indirect ", drawCount);
 		} else {
 		  // WARN("Drew mesh ", GSR.meshGroupCountX, ", ", GSR.meshGroupCountY, ", ", GSR.meshGroupCountZ);
+		  static_assert(GSR.meshGroupCountX * GSR.meshGroupCountY * GSR.meshGroupCountZ > 0);
 		  cmd.drawMeshTasksEXT(GSR.meshGroupCountX, GSR.meshGroupCountY, GSR.meshGroupCountZ);
 		}
 	      }
 	    }
+	  // } else {
+	  //   WARN("skipping shader ", GSR.id, " for source ", SL.id);
 	  }
 	}
 	recordRenders<TL, RP, GSR, SLS.sub(1)>(target, ptl, ptlps, targetDescriptors, rp, cmd);

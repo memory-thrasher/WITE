@@ -220,6 +220,26 @@ namespace WITE {
     };
   };
 
+#define defineIndirectMeshConsumer() ::WITE::indirectMeshConsumer<__LINE__>::value
+  template<uint64_t ID> struct indirectMeshConsumer {
+    static constexpr resourceConsumer value {
+      .id = ID,
+      .stages = vk::ShaderStageFlagBits::eMeshEXT | vk::ShaderStageFlagBits::eTaskEXT,
+      .access = vk::AccessFlagBits2::eIndirectCommandRead,
+      .usage = resourceUsageType::eIndirect,
+    };
+  };
+
+#define defineIndirectMeshCountConsumer() ::WITE::indirectMeshCountConsumer<__LINE__>::value
+  template<uint64_t ID> struct indirectMeshCountConsumer {
+    static constexpr resourceConsumer value {
+      .id = ID,
+      .stages = vk::ShaderStageFlagBits::eMeshEXT | vk::ShaderStageFlagBits::eTaskEXT,
+      .access = vk::AccessFlagBits2::eIndirectCommandRead,
+      .usage = resourceUsageType::eIndirectCount,
+    };
+  };
+
   //often, a specialization is quite simple, like a single constant or struct.
 #define defineShaderSpecialization(T, D, N) typedef ::WITE::shaderSpecializationWrapper_t<T, D> N;
 #define forwardShaderSpecialization(N) N ::map, (void*)& N ::value, sizeof(N ::value_t)

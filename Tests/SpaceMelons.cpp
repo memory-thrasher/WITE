@@ -247,6 +247,7 @@ int main(int argc, char** argv) {
   // spacemelon1->get<RS_spacemelon_highdetail_indirect.id>().slowOutOfBandSet(spacemelon_highdetail_indirect);
   float az = 1.5f, inc = 0.5f, dist = 12;
   WITE::winput::compositeInputData cid;
+  constexpr float incLimit = ::glm::pi<float>()/2-glm::epsilon<float>();
   while(!WITE::shutdownRequested()) {
   // for(size_t i = 0;i < 10 && !WITE::shutdownRequested();i++) {
     WITE::winput::pollInput();
@@ -254,6 +255,7 @@ int main(int argc, char** argv) {
       WITE::winput::getInput(WITE::winput::mouse, cid);
       az += cid.axes[0].delta * 0.01f;
       inc += cid.axes[1].delta * 0.01f;
+      inc = glm::clamp(inc, -incLimit, incLimit);
     }
     WITE::winput::getInput(WITE::winput::mouseWheel, cid);
     dist -= cid.axes[1].numPositive - cid.axes[1].numNegative;//Normal mouse wheel is y-axis. Some mice have an x-axis.

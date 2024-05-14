@@ -17,6 +17,8 @@ layout(std140, set = 1, binding = 1) uniform tt_t {
   mat4 transform;
 } targetTrans;
 
+layout(location = 0) out float out_type[];//0=stem 1=flesh
+
 const float PI = 3.1415926535897932384626f;
 const float segmentTiltAngle = 15*PI/180;
 const uint vertsPerNode = 45, facesPerNode = 50, finalSegmentVerts = 44, finalSegmentFaces = 45;
@@ -67,23 +69,31 @@ void main() {
     if(faceId == 0) {
       gl_MeshVerticesEXT[baseVertIdx].gl_Position = project(q);
       gl_MeshVerticesEXT[baseVertIdx+17].gl_Position = project(q * vec4(1, 1, -1, 1));
+      out_type[baseVertIdx] = 0;
+      out_type[baseVertIdx+17] = 0;
     }
     gl_MeshVerticesEXT[baseVertIdx + faceId + 1].gl_Position = project(p);
     gl_MeshVerticesEXT[baseVertIdx + faceId + 18].gl_Position = project(p * vec4(1, 1, -1, 1));
+    out_type[baseVertIdx + faceId + 18] = out_type[baseVertIdx + faceId + 1] = faceId == 0 ? 0 : faceId == 8 ? 0.1f : 1;
     gl_PrimitiveTriangleIndicesEXT[baseFaceIdx + faceId] = uvec3(0, faceId == 15 ? 1 : faceId+2, faceId+1) +
       uvec3(1, 1, 1) * baseVertIdx;
     gl_PrimitiveTriangleIndicesEXT[baseFaceIdx + faceId + 16] = uvec3(0, faceId == 15 ? 1 : faceId+2, faceId+1) +
       uvec3(1, 1, 1) * (baseVertIdx + 17);
   } else if(gl_LocalInvocationID.x == 4) {//endcap
     if(faceId < 22) {
-      if(faceId == 16)
+      if(faceId == 16) {
 	gl_MeshVerticesEXT[baseVertIdx + 34].gl_Position = project(vec3(iterOffset(gl_LocalInvocationID.x) - 1, -sin(segmentTiltAngle), 0));
+	out_type[baseVertIdx + 34] = 0;
+      }
       if(faceId > 16) {
 	const float y = (21 - faceId) / 5.0f;
 	const vec3 interp = p.xyz * vec3(1, 1, y) + vec3(((y*y)-1)*0.5f, (~faceId&1) * 0.05f, 0);
 	gl_MeshVerticesEXT[baseVertIdx + faceId + 18].gl_Position = project(interp);
-	if(faceId < 24)
+	out_type[baseVertIdx + faceId + 18] = 0.5f;
+	if(faceId < 24) {
 	  gl_MeshVerticesEXT[baseVertIdx + faceId + 23].gl_Position = project(interp * vec3(1, 1, -1));
+	  out_type[baseVertIdx + faceId + 23] = 0.5f;
+	}
       }
       gl_PrimitiveTriangleIndicesEXT[baseFaceIdx + faceId + 16] =
 	uvec3(baseVertIdx + 34,
@@ -95,8 +105,10 @@ void main() {
 	      baseVertIdx + (faceId == 16 ? 18 : faceId < 24 ? faceId + 23 : 39));
     }
   } else {
-    if(faceId == 16)
+    if(faceId == 16) {
       gl_MeshVerticesEXT[baseVertIdx + 34].gl_Position = project(vec3(iterOffset(gl_LocalInvocationID.x) - 1, -sin(segmentTiltAngle), 0));
+      out_type[baseVertIdx + 34] = 0;
+    }
     if(faceId > 16 && faceId < 22) {
       const float nextScale = 25.0f/(pow(gl_LocalInvocationID.x + 1, 2) + 25),
 	a = (faceId - 16.0f) / 6;
@@ -106,6 +118,8 @@ void main() {
 	cross(nodeConDelta, vec3(0, 0, 1)) * ((faceId&1) * 0.05f);
       gl_MeshVerticesEXT[baseVertIdx + faceId + 18].gl_Position = project(interp);
       gl_MeshVerticesEXT[baseVertIdx + faceId + 23].gl_Position = project(interp * vec3(1, 1, -1));
+      out_type[baseVertIdx + faceId + 18] = 0.8f;
+      out_type[baseVertIdx + faceId + 23] = 0.8f;
     }
     gl_PrimitiveTriangleIndicesEXT[baseFaceIdx + faceId + 16] =
       uvec3(baseVertIdx + (faceId < 22 ? 34 : faceId + 15),

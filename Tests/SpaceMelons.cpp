@@ -242,7 +242,7 @@ int main(int argc, char** argv) {
   cameraData.clip.y = 100;
   cameraData.clip.z = glm::cot(glm::radians(fov/2));
   auto spacemelon1 = primaryOnion->create<OL_spacemelon.id>();
-  spacemelonSharedData_t spacemelon1data = { glm::translate(glm::mat4(1), glm::vec3(-10, 0, 0)) };
+  spacemelonSharedData_t spacemelon1data = { glm::translate(glm::mat4(1), glm::vec3(-5, 0, 0)) };
   // spacemelon_highdetail_indirect_t spacemelon_highdetail_indirect { {1, 1, 1} };
   // spacemelon1->get<RS_spacemelon_highdetail_indirect.id>().slowOutOfBandSet(spacemelon_highdetail_indirect);
   float az = 1.5f, inc = 0.5f, dist = 12;

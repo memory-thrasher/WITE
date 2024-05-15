@@ -17,27 +17,36 @@ layout(std140, set = 1, binding = 1) uniform tt_t {
   mat4 transform;
 } targetTrans;
 
-layout(location = 0) out float out_type[];//0=stem 1=flesh
+layout(location = 0) out vec4 out_data[];//packed: xyz=normal, w: 0=stem 1=flesh
 
 const float PI = 3.1415926535897932384626f;
-const float segmentTiltAngle = 15*PI/180;
+const float segmentTiltAngle = 20*PI/180;
 const uint vertsPerNode = 45, facesPerNode = 50, finalSegmentVerts = 44, finalSegmentFaces = 47;
 
-vec4 project(vec3 pos) {
-  const vec4 worldPos = source.trans * vec4(pos, 1);
+vec4 project(vec4 pos) {
+  const vec4 worldPos = source.trans * pos;
   const vec3 camPos = (targetTrans.transform * worldPos).xyz;
   return vec4(camPos.xy * target.clip.wz * vec2(-1, 1) / -abs(camPos.z), (-camPos.z - target.clip.x) / (target.clip.y - target.clip.x), 1);
 }
 
-vec4 project(vec4 pos) {
-  return project(pos.xyz);
+vec4 project(vec3 pos) {
+  return project(vec4(pos, 1));
 }
 
-float iterOffset(uint iter) {
+vec3 projectNormal(vec3 pos) {
+  //normals use world space not camera space
+  return (source.trans * vec4(pos, 0)).xyz;
+}
+
+float iterOffset(int iter) {
   return 2.5f*iter;
 }
 
-vec4 transformFor(vec3 p, uint iter) {
+float iterOffset(uint iter) {
+  return iterOffset(int(iter));
+}
+
+vec4 transformFor(vec3 p, int iter) {
   const float scale = 25.0f/(iter * iter + 25);
   return mat4(cos(segmentTiltAngle)*sqrt(2)/2*scale, sin(segmentTiltAngle), sqrt(2)/2*scale, 0,
 	      -sin(segmentTiltAngle)*scale, cos(segmentTiltAngle), 0, 0,
@@ -45,7 +54,19 @@ vec4 transformFor(vec3 p, uint iter) {
 	      iterOffset(iter), 0, scale*2, 1) * vec4(p, 1);
 }
 
-vec4 pForFaceId(uint pointId, uint iter) {
+vec3 transformNormalFor(vec3 p, int iter) {
+  const float scale = 25.0f/(iter * iter + 25);
+  return (mat4(cos(segmentTiltAngle)*sqrt(2)/2*scale, sin(segmentTiltAngle), sqrt(2)/2*scale, 0,
+	       -sin(segmentTiltAngle)*scale, cos(segmentTiltAngle), 0, 0,
+	       -sqrt(2)/2*scale, 0, sqrt(2)/2*scale, 0,
+	       0, 0, 0, 0) * vec4(p, 0)).xyz;
+}
+
+vec3 transformNormalFor(vec3 p, uint iter) {
+  return transformNormalFor(p, int(iter));
+}
+
+vec4 pForFaceId(uint pointId, int iter) {
   vec3 p;
   if(pointId == 0)
     p = vec3(0, -0.25f, 0);
@@ -57,6 +78,10 @@ vec4 pForFaceId(uint pointId, uint iter) {
   return transformFor(p, iter);
 }
 
+vec4 pForFaceId(uint pointId, uint iter) {
+  return pForFaceId(pointId, int(iter));
+}
+
 void main() {
   SetMeshOutputsEXT(vertsPerNode*4 + finalSegmentVerts, facesPerNode*4 + finalSegmentFaces);
   const uint faceId = gl_LocalInvocationID.y;
@@ -66,23 +91,29 @@ void main() {
   const vec4 q = pForFaceId(faceId < 16 ? 0 : 2, gl_LocalInvocationID.x + (faceId < 16 ? 0 : 1));
   if(faceId < 16) {//consumes 16 of every 25 invocations, 34 of every 50 vertices, and 32 of every 50 triangles
     //each invocation draws two triangles, mirrored across the XZ plane
+    const vec3 cn = transformNormalFor(vec3(0, 1, 0), gl_LocalInvocationID.x);
     if(faceId == 0) {
       gl_MeshVerticesEXT[baseVertIdx].gl_Position = project(q);
       gl_MeshVerticesEXT[baseVertIdx+17].gl_Position = project(q * vec4(1, 1, -1, 1));
-      out_type[baseVertIdx] = 0;
-      out_type[baseVertIdx+17] = 0;
+      out_data[baseVertIdx] = vec4(projectNormal(cn), 0);
+      out_data[baseVertIdx+17] = vec4(projectNormal(cn * vec3(1, 1, -1)), 0);
     }
     gl_MeshVerticesEXT[baseVertIdx + faceId + 1].gl_Position = project(p);
     gl_MeshVerticesEXT[baseVertIdx + faceId + 18].gl_Position = project(p * vec4(1, 1, -1, 1));
-    out_type[baseVertIdx + faceId + 18] = out_type[baseVertIdx + faceId + 1] = faceId == 0 ? 0 : faceId == 8 ? 0.1f : 1;
+    const vec3 d = (p-q).xyz;
+    const vec3 n = normalize(cross(cross(d, cn), d));
+    out_data[baseVertIdx + faceId + 1] = vec4(projectNormal(n), faceId == 0 ? 0 : faceId == 8 ? 0.1f : 1);
+    out_data[baseVertIdx + faceId + 18] = vec4(projectNormal(n * vec3(1, 1, -1)), faceId == 0 ? 0 : faceId == 8 ? 0.1f : 1);
     gl_PrimitiveTriangleIndicesEXT[baseFaceIdx + faceId] = uvec3(0, faceId == 15 ? 1 : faceId+2, faceId+1) +
       uvec3(1, 1, 1) * baseVertIdx;
     gl_PrimitiveTriangleIndicesEXT[baseFaceIdx + faceId + 16] = uvec3(0, faceId == 15 ? 1 : faceId+2, faceId+1) +
       uvec3(1, 1, 1) * (baseVertIdx + 17);
   } else {
+    const vec3 bp = vec3(iterOffset(gl_LocalInvocationID.x) - 1.5f, pow(gl_LocalInvocationID.x * 0.2f, 2) - 0.8f, 0);
+    const vec3 cn = normalize(vec3(pow((int(gl_LocalInvocationID.x) - 1) * 0.2f, 2) - pow((gl_LocalInvocationID.x + 1) * 0.2f, 2), iterOffset(gl_LocalInvocationID.x + 1) - iterOffset(int(gl_LocalInvocationID.x) - 1), 0));
     if(faceId == 16) {
-      gl_MeshVerticesEXT[baseVertIdx + 34].gl_Position = project(vec3(iterOffset(gl_LocalInvocationID.x) - 1.5f, pow(gl_LocalInvocationID.x * 0.2f, 2) - 0.8f, 0));
-      out_type[baseVertIdx + 34] = 0;
+      gl_MeshVerticesEXT[baseVertIdx + 34].gl_Position = project(bp);
+      out_data[baseVertIdx + 34] = vec4(projectNormal(cn), 0);
     }
     if(gl_LocalInvocationID.x == 4) {//endcap
       if(faceId < 23) {
@@ -90,10 +121,12 @@ void main() {
 	  const float y = (21 - faceId) / 5.0f;
 	  const vec3 interp = p.xyz * vec3(1, 1, y) + vec3(((y*y)-1)*0.5f, (~faceId&1) * 0.05f, 0);
 	  gl_MeshVerticesEXT[baseVertIdx + faceId + 18].gl_Position = project(interp);
-	  out_type[baseVertIdx + faceId + 18] = 0.5f;
+	  const vec3 d = interp-bp;
+	  const vec3 n = normalize(cross(cross(d, cn), d));
+	  out_data[baseVertIdx + faceId + 18] = vec4(projectNormal(n), 0.5f);
 	  if(faceId < 24) {
 	    gl_MeshVerticesEXT[baseVertIdx + faceId + 23].gl_Position = project(interp * vec3(1, 1, -1));
-	    out_type[baseVertIdx + faceId + 23] = 0.5f;
+	    out_data[baseVertIdx + faceId + 23] = vec4(projectNormal(n * vec3(1, 1, -1)), 0.5f);
 	  }
 	}
 	gl_PrimitiveTriangleIndicesEXT[baseFaceIdx + faceId + 16] =
@@ -114,8 +147,10 @@ void main() {
 	  cross(nodeConDelta, vec3(0, 0, 1)) * ((faceId&1) * 0.05f);
 	gl_MeshVerticesEXT[baseVertIdx + faceId + 18].gl_Position = project(interp);
 	gl_MeshVerticesEXT[baseVertIdx + faceId + 23].gl_Position = project(interp * vec3(1, 1, -1));
-	out_type[baseVertIdx + faceId + 18] = 0.8f;
-	out_type[baseVertIdx + faceId + 23] = 0.8f;
+	const vec3 d = interp-bp;
+	const vec3 n = normalize(cross(cross(d, cn), d));
+	out_data[baseVertIdx + faceId + 18] = vec4(projectNormal(n), 0.8f);
+	out_data[baseVertIdx + faceId + 23] = vec4(projectNormal(n * vec3(1, 1, -1)), 0.8f);
       }
       gl_PrimitiveTriangleIndicesEXT[baseFaceIdx + faceId + 16] =
 	uvec3(baseVertIdx + (faceId < 22 ? 34 : faceId + 15),

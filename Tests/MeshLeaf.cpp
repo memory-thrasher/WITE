@@ -9,93 +9,93 @@ constexpr uint64_t RC_ID_present_color = __LINE__,
 	    RC_ID_RP_1_color = __LINE__,
 	    RC_ID_RP_1_depth = __LINE__;
 
-//begin spacemelon
-constexpr WITE::objectLayout OL_spacemelon = { .id = __LINE__ };
+//begin meshleaf
+constexpr WITE::objectLayout OL_meshleaf = { .id = __LINE__ };
 
-struct spacemelonSharedData_t {
+struct meshleafSharedData_t {
   glm::mat4 transform;
 };
 
-constexpr WITE::bufferRequirements BR_spacemelonSharedData = defineSimpleUniformBuffer(gpuId, sizeof(spacemelonSharedData_t)),
-	    BR_S_spacemelonSharedData = NEW_ID(stagingRequirementsFor(BR_spacemelonSharedData, 2));
+constexpr WITE::bufferRequirements BR_meshleafSharedData = defineSimpleUniformBuffer(gpuId, sizeof(meshleafSharedData_t)),
+	    BR_S_meshleafSharedData = NEW_ID(stagingRequirementsFor(BR_meshleafSharedData, 2));
 
-constexpr WITE::resourceSlot RS_spacemelonSharedData = {
+constexpr WITE::resourceSlot RS_meshleafSharedData = {
   .id = __LINE__,
-  .requirementId = BR_spacemelonSharedData.id,
-  .objectLayoutId = OL_spacemelon.id,
-}, RS_S_spacemelonSharedData = {
+  .requirementId = BR_meshleafSharedData.id,
+  .objectLayoutId = OL_meshleaf.id,
+}, RS_S_meshleafSharedData = {
   .id = __LINE__,
-  .requirementId = BR_S_spacemelonSharedData.id,
-  .objectLayoutId = OL_spacemelon.id,
-}, RS_L_spacemelonShared[] = {
-  RS_spacemelonSharedData,
-  RS_S_spacemelonSharedData,
+  .requirementId = BR_S_meshleafSharedData.id,
+  .objectLayoutId = OL_meshleaf.id,
+}, RS_L_meshleafShared[] = {
+  RS_meshleafSharedData,
+  RS_S_meshleafSharedData,
 };
 
-//begin spacemelon/high detail mesh
+//begin meshleaf/high detail mesh
 
-// struct spacemelon_highdetail_indirect_t {
+// struct meshleaf_highdetail_indirect_t {
 //   vk::DrawMeshTasksIndirectCommandEXT task;
 // };
 
-// constexpr WITE::bufferRequirements BR_spacemelon_highdetail_indirect = {
+// constexpr WITE::bufferRequirements BR_meshleaf_highdetail_indirect = {
 //   .deviceId = gpuId,
 //   .id = __LINE__,
 //   .usage = vk::BufferUsageFlagBits::eTransferDst /*StorageBuffer*/ | vk::BufferUsageFlagBits::eIndirectBuffer,//compute->vertex
-//   .size = sizeof(spacemelon_highdetail_indirect_t),
+//   .size = sizeof(meshleaf_highdetail_indirect_t),
 //   .frameswapCount = 1,
 //   .hostVisible = false,
 // };
 
-// constexpr WITE::resourceSlot RS_spacemelon_highdetail_indirect = {
+// constexpr WITE::resourceSlot RS_meshleaf_highdetail_indirect = {
 //   .id = __LINE__,
-//   .requirementId = BR_spacemelon_highdetail_indirect.id,
-//   .objectLayoutId = OL_spacemelon.id,
-// }, RS_L_spacemelon_highdetail[] = {
-//   RS_spacemelon_highdetail_indirect,
+//   .requirementId = BR_meshleaf_highdetail_indirect.id,
+//   .objectLayoutId = OL_meshleaf.id,
+// }, RS_L_meshleaf_highdetail[] = {
+//   RS_meshleaf_highdetail_indirect,
 // };
 
-#include "Tests/spacemelon_highdetail.mesh.spv.h"
-#include "Tests/spacemelon_highdetail.frag.spv.h"
+#include "Tests/meshleaf_highdetail.mesh.spv.h"
+#include "Tests/meshleaf_highdetail.frag.spv.h"
 
-constexpr WITE::resourceConsumer //RC_S_spacemelon_highdetail_indirect = defineIndirectMeshConsumer(),
-RC_S_spacemelon_highdetail_sharedData = defineUBConsumer(MeshEXT),
-	    RC_L_S_spacemelon_highdetail_source[] = {
-	      // RC_S_spacemelon_highdetail_indirect,
-	      RC_S_spacemelon_highdetail_sharedData
+constexpr WITE::resourceConsumer //RC_S_meshleaf_highdetail_indirect = defineIndirectMeshConsumer(),
+RC_S_meshleaf_highdetail_sharedData = defineUBConsumer(MeshEXT),
+	    RC_L_S_meshleaf_highdetail_source[] = {
+	      // RC_S_meshleaf_highdetail_indirect,
+	      RC_S_meshleaf_highdetail_sharedData
 	    };
 
-constexpr WITE::resourceConsumer RC_S_spacemelon_highdetail_cameraTrans = defineUBConsumer(MeshEXT),
-	    RC_S_spacemelon_highdetail_cameraData = defineUBConsumer(MeshEXT),
-	    RC_L_S_spacemelon_highdetail_target[] = { RC_S_spacemelon_highdetail_cameraData, RC_S_spacemelon_highdetail_cameraTrans };
+constexpr WITE::resourceConsumer RC_S_meshleaf_highdetail_cameraTrans = defineUBConsumer(MeshEXT),
+	    RC_S_meshleaf_highdetail_cameraData = defineUBConsumer(MeshEXT),
+	    RC_L_S_meshleaf_highdetail_target[] = { RC_S_meshleaf_highdetail_cameraData, RC_S_meshleaf_highdetail_cameraTrans };
 
-constexpr WITE::shaderModule SM_L_spacemelon_highdetail[] = {
-  { spacemelon_highdetail_mesh, sizeof(spacemelon_highdetail_mesh), vk::ShaderStageFlagBits::eMeshEXT },
-  { spacemelon_highdetail_frag, sizeof(spacemelon_highdetail_frag), vk::ShaderStageFlagBits::eFragment },
+constexpr WITE::shaderModule SM_L_meshleaf_highdetail[] = {
+  { meshleaf_highdetail_mesh, sizeof(meshleaf_highdetail_mesh), vk::ShaderStageFlagBits::eMeshEXT },
+  { meshleaf_highdetail_frag, sizeof(meshleaf_highdetail_frag), vk::ShaderStageFlagBits::eFragment },
 };
 
-constexpr WITE::graphicsShaderRequirements S_spacemelon_highdetail {
+constexpr WITE::graphicsShaderRequirements S_meshleaf_highdetail {
   .id = __LINE__,
-  .modules = SM_L_spacemelon_highdetail,
-  .targetProvidedResources = RC_L_S_spacemelon_highdetail_target,
-  .sourceProvidedResources = RC_L_S_spacemelon_highdetail_source,
+  .modules = SM_L_meshleaf_highdetail,
+  .targetProvidedResources = RC_L_S_meshleaf_highdetail_target,
+  .sourceProvidedResources = RC_L_S_meshleaf_highdetail_source,
   .cullMode = vk::CullModeFlagBits::eNone,
   .meshGroupCountX = 1,
   .meshGroupCountY = 1,
   .meshGroupCountZ = 1,//160: all mesh implementations are gauranteed to support up to 2^22 total and 2^16 in each dimension
 };
 
-constexpr WITE::resourceReference RR_L_spacemelon_highdetail[] = {
-  // { .resourceConsumerId = RC_S_spacemelon_highdetail_indirect.id, .resourceSlotId = RS_spacemelon_highdetail_indirect.id },
-  { .resourceConsumerId = CP_transform.src, .resourceSlotId = RS_S_spacemelonSharedData.id },//TODO move to compute
-  { .resourceConsumerId = CP_transform.dst, .resourceSlotId = RS_spacemelonSharedData.id },//TODO move to compute
-  { RC_S_spacemelon_highdetail_sharedData.id, RS_spacemelonSharedData.id },
+constexpr WITE::resourceReference RR_L_meshleaf_highdetail[] = {
+  // { .resourceConsumerId = RC_S_meshleaf_highdetail_indirect.id, .resourceSlotId = RS_meshleaf_highdetail_indirect.id },
+  { .resourceConsumerId = CP_transform.src, .resourceSlotId = RS_S_meshleafSharedData.id },//TODO move to compute
+  { .resourceConsumerId = CP_transform.dst, .resourceSlotId = RS_meshleafSharedData.id },//TODO move to compute
+  { RC_S_meshleaf_highdetail_sharedData.id, RS_meshleafSharedData.id },
 };
 
-constexpr WITE::sourceLayout SL_spacemelon_highdetail = {
+constexpr WITE::sourceLayout SL_meshleaf_highdetail = {
   .id = __LINE__,
-  .objectLayoutId = OL_spacemelon.id,
-  .resources = RR_L_spacemelon_highdetail,
+  .objectLayoutId = OL_meshleaf.id,
+  .resources = RR_L_meshleaf_highdetail,
 };
 
 //begin camera
@@ -155,8 +155,8 @@ constexpr WITE::resourceReference RR_L_camera[] = {
   { .resourceConsumerId = CP_camera_cameraData.dst, .resourceSlotId = RS_camera_cameraData.id },
   { .resourceConsumerId = CP_transform.src, .resourceSlotId = RS_camera_trans_staging.id },
   { .resourceConsumerId = CP_transform.dst, .resourceSlotId = RS_camera_trans.id },
-  { .resourceConsumerId = RC_S_spacemelon_highdetail_cameraData.id, .resourceSlotId = RS_camera_cameraData.id },
-  { .resourceConsumerId = RC_S_spacemelon_highdetail_cameraTrans.id, .resourceSlotId = RS_camera_trans.id },
+  { .resourceConsumerId = RC_S_meshleaf_highdetail_cameraData.id, .resourceSlotId = RS_camera_cameraData.id },
+  { .resourceConsumerId = RC_S_meshleaf_highdetail_cameraTrans.id, .resourceSlotId = RS_camera_trans.id },
   { .resourceConsumerId = RC_ID_RP_1_depth, .resourceSlotId = RS_camera_depth.id },
   { .resourceConsumerId = RC_ID_RP_1_color, .resourceSlotId = RS_camera_color.id },
   { .resourceConsumerId = RC_ID_present_color, .resourceSlotId = RS_camera_color.id },
@@ -169,7 +169,7 @@ constexpr WITE::targetLayout TL_camera = {
 };
 
 constexpr WITE::graphicsShaderRequirements S_L_RP1[] = {
-  S_spacemelon_highdetail,
+  S_meshleaf_highdetail,
 };
 
 constexpr WITE::renderPassRequirements RP_1 = {
@@ -195,23 +195,23 @@ constexpr WITE::layerRequirements LRS[] = {
 constexpr WITE::bufferRequirements allBRS[] = {
   BR_S_cameraData,
   BR_cameraData,
-  // BR_spacemelon_highdetail_indirect,
+  // BR_meshleaf_highdetail_indirect,
   BR_S_singleTransform,
   BR_singleTransform,
-  BR_spacemelonSharedData,
-  BR_S_spacemelonSharedData,
+  BR_meshleafSharedData,
+  BR_S_meshleafSharedData,
 };
 
-constexpr auto RS_all = WITE::concat<WITE::resourceSlot, // RS_L_spacemelon_highdetail, 
-	    RS_L_spacemelonShared, RS_L_camera>();
+constexpr auto RS_all = WITE::concat<WITE::resourceSlot, // RS_L_meshleaf_highdetail, 
+	    RS_L_meshleafShared, RS_L_camera>();
 
 constexpr WITE::copyStep CP_all[] = { CP_camera_cameraData, CP_transform };
 
-constexpr WITE::objectLayout allOLS[] = { OL_spacemelon, OL_camera };
+constexpr WITE::objectLayout allOLS[] = { OL_meshleaf, OL_camera };
 
 constexpr WITE::imageRequirements IR_all[] = { IR_standardColor, IR_standardDepth };
 
-constexpr auto SL_L_all = WITE::concat<WITE::sourceLayout, SL_spacemelon_highdetail>();
+constexpr auto SL_L_all = WITE::concat<WITE::sourceLayout, SL_meshleaf_highdetail>();
 
 constexpr WITE::onionDescriptor od = {
   .IRS = IR_all,
@@ -241,15 +241,15 @@ int main(int argc, char** argv) {
   cameraData.clip.x = 0.1f;
   cameraData.clip.y = 100;
   cameraData.clip.z = glm::cot(glm::radians(fov/2));
-  auto spacemelon1 = primaryOnion->create<OL_spacemelon.id>();
-  spacemelonSharedData_t spacemelon1data = { glm::translate(glm::mat4(1), glm::vec3(-5, 0, 0)) };
-  // spacemelon_highdetail_indirect_t spacemelon_highdetail_indirect { {1, 1, 1} };
-  // spacemelon1->get<RS_spacemelon_highdetail_indirect.id>().slowOutOfBandSet(spacemelon_highdetail_indirect);
+  auto meshleaf1 = primaryOnion->create<OL_meshleaf.id>();
+  meshleafSharedData_t meshleaf1data = { glm::translate(glm::mat4(1), glm::vec3(0, 0, 0)) };
+  // meshleaf_highdetail_indirect_t meshleaf_highdetail_indirect { {1, 1, 1} };
+  // meshleaf1->get<RS_meshleaf_highdetail_indirect.id>().slowOutOfBandSet(meshleaf_highdetail_indirect);
   float az = 1.5f, inc = 0.5f, dist = 12;
   WITE::winput::compositeInputData cid;
   constexpr float incLimit = ::glm::pi<float>()/2-glm::epsilon<float>();
-  while(!WITE::shutdownRequested()) {
-  // for(size_t i = 0;i < 10 && !WITE::shutdownRequested();i++) {
+  // while(!WITE::shutdownRequested()) {
+  for(size_t i = 0;i < 100000 && !WITE::shutdownRequested();i++) {
     WITE::winput::pollInput();
     if(WITE::winput::getButton(WITE::winput::rmb)) {
       WITE::winput::getInput(WITE::winput::mouse, cid);
@@ -264,7 +264,7 @@ int main(int argc, char** argv) {
     cameraData.clip.w = cameraData.clip.z * size.y / size.x;
     camera->write<RS_camera_trans_staging.id>(glm::lookAt(loc, glm::vec3(0), glm::vec3(0, 1, 0)));
     camera->write<RS_camera_cameraData_staging.id>(cameraData);
-    spacemelon1->write<RS_S_spacemelonSharedData.id>(spacemelon1data);
+    meshleaf1->write<RS_S_meshleafSharedData.id>(meshleaf1data);
     primaryOnion->render();
   }
   WARN("NOTE: done rendering (any validation whining after here is in cleanup)");

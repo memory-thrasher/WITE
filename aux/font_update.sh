@@ -6,6 +6,8 @@ cppname="${filename%.*}.cpp"
 outname="../build/shared/font.hpp"
 inname="../shared/font/font.obj"
 
+mkdir -p ../build/aux ../build/shared
+
 if ! [ -f "${inname}" ] || ! [ -f "${cppname}" ]; then
     echo missing input files >&2
     if ! [ -f "${inname}" ]; then

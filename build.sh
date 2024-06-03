@@ -1,9 +1,11 @@
 BUILDLIBS="WITE"
 BUILDTESTS="Tests"
 BUILDAPP=""
-vk_lib_path="$(cat ../path_to_debug_vulkan)"
+vk_lib_path="$(cat ../path_to_debug_vulkan 2>/dev/null)"
 if [ -n "$vk_lib_path" ]; then
     PATH="$vk_lib_path:$PATH"
+else
+    echo "warning: debug vulkan not specific, attempting to use system-provided vulkan library"
 fi;
 LINKOPTS="-L${vk_lib_path} -lrt -latomic -lvulkan -lSDL2"
 BOTHOPTS="-DDEBUG -g -DVK_NO_PROTOTYPES"
@@ -25,7 +27,7 @@ fi
 COMPILER=clang++
 WORKNICE="nice -n10"
 GLCOMPILER=glslangValidator
-TESTOPTIONS="nogpuid=2 extent=0,0,3840,2160 presentmode=immediate" #skips llvme pipe on my test system, renders to left monitor
+TESTOPTIONS="nogpuid=1,2 extent=0,0,3840,2160 presentmode=immediate" #skips llvme pipe on my test system, renders to left monitor
 if [ -z "$VK_INCLUDE" -a ! -z "$VK_SDK_PATH" ]; then
     VK_INCLUDE="-I${VK_SDK_PATH}/Include -I${VK_SDK_PATH}/Third-Party/Include"
 fi
@@ -43,6 +45,8 @@ if ! [ -f "${ERRLOG}" ] || [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
     find $BUILDAPP $BUILDTESTS -iname '*.glsl' -type f -print0 |
 	while IFS= read -d '' SRCFILE && [ $(cat ${ERRLOGBITDIR}/*-${ERRLOGBIT} 2>/dev/null | wc -l) -eq 0 ]; do
 	    DSTFILE="${OUTDIR}/${SRCFILE%.*}.spv.h"
+	    DSTDIR="$(dirname "$DSTFILE")"
+	    test -d "$DSTDIR" || mkdir "$DSTDIR"
 	    VARNAME="$(basename "${SRCFILE}" | sed -r 's,/,_,g;s/\.([^.]*)\.glsl$/_\1/')"
 	    #TODO are imports or other dependencies possible?
 	    THISERRLOG="${ERRLOGBITDIR}/$(echo "${SRCFILE}" | tr '/' '-')-${ERRLOGBIT}"
@@ -62,6 +66,8 @@ if ! [ -f "${ERRLOG}" ] || [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
     find $BUILDLIBS $BUILDAPP $BUILDTESTS -name '*.cpp' -type f -print0 |
 	while IFS= read -d '' SRCFILE && [ $(cat ${ERRLOGBITDIR}/*-${ERRLOGBIT} 2>/dev/null | wc -l) -eq 0 ]; do
 	    DSTFILE="${OUTDIR}/${SRCFILE%.*}.o"
+	    DSTDIR="$(dirname "$DSTFILE")"
+	    test -d "$DSTDIR" || mkdir "$DSTDIR"
 	    DEPENDENCIES="${OUTDIR}/${SRCFILE%.*}.d"
 	    THISERRLOG="${ERRLOGBITDIR}/$(echo "${SRCFILE}" | tr '/' '-')-${ERRLOGBIT}"
 	    rm "${THISERRLOG}" 2>/dev/null
@@ -122,7 +128,7 @@ if ! [ -f "${ERRLOG}" ] || [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
 	    while IFS= read -d '' OFILE; do
 		TESTNAME="${OFILE%.*}"
 		#test -f "${TESTNAME}" && cp "${TESTNAME}" "${TESTNAME}.bak.$(date '+%y%m%d%H%M')"
-		rm "$TESTNAME"
+		rm "$TESTNAME" 2>/dev/null
 		$WORKNICE $COMPILER "$OFILE" -o "$TESTNAME" -L "${OUTDIR}" "-Wl,-rpath,$OUTDIR" $BUILTLIBS $LINKOPTS $BOTHOPTS 2>>"${ERRLOG}" >>"${LOGFILE}"
 		grep -qxF "$(basename "${TESTNAME#*/}")" test_skips.txt && continue;
 		echo running test "${TESTNAME}" >>"${LOGFILE}"

@@ -83,6 +83,7 @@ namespace WITE {
     static thread* current();
     static thread* get(tid_t tid);
     static void sleep(uint64_t ns = 0);
+    static void sleepSeconds(uint64_t s);//mostly for test cases (more readable 10000000000 ns)
     static void sleepShort();//for non-busy wait, wait aa very small amount of time
     static void sleepShort(uint32_t& counter, uint32_t busyCount = 128);//dynamically shifts from busy to non-busy wait based on iteration count
     static int32_t guessCpuCount();

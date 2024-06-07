@@ -3,7 +3,7 @@
 #include <time.h>
 #include <stdint.h>
 
-namespace WITE::Util {
+namespace WITE {
 
   timespec now();
   timespec since(const timespec&);

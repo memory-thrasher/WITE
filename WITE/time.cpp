@@ -1,6 +1,6 @@
 #include "time.hpp"
 
-namespace WITE::Util {
+namespace WITE {
 
   constexpr int64_t NS_PER_SEC = 1000000000;
 

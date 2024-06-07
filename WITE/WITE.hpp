@@ -13,8 +13,9 @@
 #include "window.hpp"
 #include "templateHelpers.hpp"
 #include "winput.hpp"
-#include "wsound.hpp"
+#include "synth.hpp"
 #include "shutdown.hpp"
 #include "configuration.hpp"
 #include "database.hpp"
+#include "time.hpp"
 

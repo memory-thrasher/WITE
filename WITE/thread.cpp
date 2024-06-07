@@ -58,8 +58,8 @@ namespace WITE {
     std::this_thread::sleep_for(std::chrono::nanoseconds(ns));
   };
 
-  void thread::sleepSeconds(uint64_t s) {//static
-    std::this_thread::sleep_for(std::chrono::seconds(s));
+  void thread::sleepSeconds(float s) {//static
+    std::this_thread::sleep_for(std::chrono::nanoseconds((uint64_t)(s * 1000000000)));
   };
 
   void thread::sleepShort() {//static

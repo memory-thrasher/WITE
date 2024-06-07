@@ -14,7 +14,14 @@ namespace WITE::wsound {
     const sample* data;
   };
 
-  typedefCB(soundCB, void, uint64_t, int, sample*, int);//uint64_t startSampleFrame, int freq, sample* inout, int outlen //new data should be mixed in
+  struct outputDescriptor {
+    uint64_t startFrame;
+    int samplingFreq;
+    sample* inout;
+    int samples;
+  };
+
+  typedefCB(soundCB, void, outputDescriptor&);
 
   void initSound();
   inline const SDL_AudioSpec& getAudioFormat() { return *audioFormatPtr; };

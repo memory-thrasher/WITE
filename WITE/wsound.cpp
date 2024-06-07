@@ -25,9 +25,10 @@ namespace WITE::wsound {
       if(c >= combinedSoundsSamples)
 	c -= combinedSoundsSamples;
     }
+    struct outputDescriptor od { framesPlayedPreviously, audioFormat.freq, reinterpret_cast<sample*>(out), outSamples/2 };
     for(size_t i = 0;i < continuousSoundCount;i++)
       if(continuousSounds[i])
-	continuousSounds[i](framesPlayedPreviously, audioFormat.freq, reinterpret_cast<sample*>(out), outSamples/2);
+	continuousSounds[i](od);
   };
 
   constexpr SDL_AudioSpec idealAudioFormat {

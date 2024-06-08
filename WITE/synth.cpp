@@ -24,4 +24,30 @@ namespace WITE::wsound {
     }
   };
 
+  void record(const voice& instrument, const note& n, const synthParameters& vol, outputDescriptor& out) {
+    float startFrameWrapped = fmod(out.startFrame, out.samplingFreq / n.fundamentalFreq);//subharmonics will not mind this modulus because they are multiples of that divisor. This improves precision on the float conversion below by saving significant bits for the subsecond parts.
+    int noteStartsOnSample = static_cast<int>(static_cast<int64_t>(n.startTimeNsAfterEpoch - out.startTimeNs) *
+					      out.samplingFreq / 1000000000);
+    int noteSampleLength = n.lengthSeconds * out.samplingFreq;
+    int noteSampleEnd = noteSampleLength + noteStartsOnSample;
+    for(int sample = std::max(0, noteStartsOnSample);sample < std::min(out.samples, noteSampleEnd);sample++) {
+      float v = 0;
+      int i = 0;
+      for(const periodicMember& m : instrument.members)
+	v += m.amplitude * sin((sample + startFrameWrapped) * (pi2 * n.fundamentalFreq * ++i / out.samplingFreq) + m.offsetRadians);
+      for(const rampPhase& r : instrument.ramps) {
+	if(r.lengthSeconds > 0) {
+	  float startSample = (r.startSeconds + (r.startSeconds < 0 ? r.lengthSeconds : 0)) *
+	    out.samplingFreq + noteStartsOnSample;
+	  float endSample = startSample + r.lengthSeconds * out.samplingFreq;
+	  if(sample > startSample && sample < endSample)
+	    v *= std::lerp(r.initialVolume, r.finalVolume, (sample - startSample) / (endSample - startSample));
+	  //TODO interpolation curve ?
+	}
+      }
+      out.inout[sample].left += vol.leftVol * v;
+      out.inout[sample].right += vol.rightVol * v;
+    }
+  };
+
 }

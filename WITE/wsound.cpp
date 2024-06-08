@@ -3,6 +3,7 @@
 #include "wsound.hpp"
 #include "DEBUG.hpp"
 #include "configuration.hpp"
+#include "time.hpp"
 
 namespace WITE::wsound {
 
@@ -14,6 +15,7 @@ namespace WITE::wsound {
   constexpr size_t maxContinuousSounds = 10;
   soundCB continuousSounds[maxContinuousSounds];
   std::atomic_size_t continuousSoundCount;
+  uint64_t initTime;
 
   void SDLCALL sdlCallback(void*, Uint8* outRaw, int outBytes) {
     float* out = reinterpret_cast<float*>(outRaw);
@@ -25,7 +27,7 @@ namespace WITE::wsound {
       if(c >= combinedSoundsSamples)
 	c -= combinedSoundsSamples;
     }
-    struct outputDescriptor od { framesPlayedPreviously, audioFormat.freq, reinterpret_cast<sample*>(out), outSamples/2 };
+    struct outputDescriptor od { framesPlayedPreviously, initTime + framesPlayedPreviously * 1000000000 / audioFormat.freq, audioFormat.freq, reinterpret_cast<sample*>(out), outSamples/2 };
     for(size_t i = 0;i < continuousSoundCount;i++)
       if(continuousSounds[i])
 	continuousSounds[i](od);
@@ -43,6 +45,10 @@ namespace WITE::wsound {
   static_assert(sizeof(float) == 4);//using float literal for sample data.
   static_assert((idealAudioFormat.format & 0xFF) == 32);
 
+  uint64_t getInitTimeNs() {
+    return initTime;
+  };
+
   void initSound() {
     framesPlayed = 0;
     continuousSoundCount = 0;
@@ -51,6 +57,7 @@ namespace WITE::wsound {
     ASSERT_TRAP(adev > 0, "failed to create audio device, with error: ", SDL_GetError());
     ASSERT_TRAP(audioFormat.format == idealAudioFormat.format, "unauthorized format change. Asked: ", idealAudioFormat.format, " Actual: ", audioFormat.format);
     combinedSoundsSamples = audioFormat.freq * configuration::getOption("audiobufferlengthms", 10000) / 500;//x/500=x*2/1000
+    initTime = WITE::toNS(WITE::now());
     SDL_PauseAudioDevice(adev, 0);
     combinedSounds = reinterpret_cast<std::atomic<float>*>(malloc(combinedSoundsSamples * sizeof(float)));
   };

@@ -4,23 +4,12 @@
 namespace WITE::wsound {
 
   constexpr float pi2 = 2*std::numbers::pi_v<float>;
-  constexpr size_t periodicMemberCount = 10,
+  constexpr size_t sinusoidCount = 32,
 	      rampPhaseCount = 5;//generally 3: attack ramp up, then ramp down to sustained volume, and finally a ramp down at the end
 
   struct sinusoid {
     //amplitude*sin(freq*2pi*lcv + offset)
-    float amplitude, freq, offsetRadians;
-  };
-
-  struct periodicMember {
-    //see periodicSeries. frequency derived from fundamental and membership index.
-    float amplitude, offsetRadians;
-  };
-
-  struct periodicSeries {
-    //A0 + [𝚺 An*sin(n*fund*2pi*lcv + On)]
-    float fundamental;//, average; average (A0) probably not helpful
-    literalList<periodicMember> members;
+    float amplitude = 0, fundMult, offsetRadians, decayRate = 1;//decayRate = multiple per second, 1 => no decay
   };
 
   struct synthParameters {
@@ -35,23 +24,23 @@ namespace WITE::wsound {
     //curve: difference between desired amplitude and what linear amplitude would be at the midpoint. 0 for linear. Positive for higher amplitude at the midpoint.
     float startSeconds, lengthSeconds = 0, initialVolume, finalVolume, interpolationCurve;
     //MAYBE future extension, if attack noise is desired:
-    // periodicMember additionalHarmonics[10];
+    // sinusoid additionalHarmonics[sinusoidCount];
     // float additionalHarmonicsFundamentalMultiplier, additionalHarmonicsInitialVolume, additionalHarmonicsFinalVolume;
     // rampShape_t additionalHarmonicsShape;
   };
 
   struct voice {//defines an instrument, not any specific note
-    periodicMember members[periodicMemberCount];
+    sinusoid members[sinusoidCount];
     rampPhase ramps[rampPhaseCount];//generally three will be used, but future expansion
   };
 
   struct note {
     float fundamentalFreq, lengthSeconds;
     uint64_t startTimeNsAfterEpoch;
+    // float blanketFundamental, blanketStrength = 0;
   };
 
-  void record(const sinusoid& s, const synthParameters& vol, outputDescriptor& out);
-  void record(const periodicSeries& s, const synthParameters& vol, outputDescriptor& out);
+  void record(const sinusoid& s, const synthParameters& vol, outputDescriptor& out);//NOTE: does not decay
   void record(const voice& v, const note& n, const synthParameters& vol, outputDescriptor& out);
 
 }

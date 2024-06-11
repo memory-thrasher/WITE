@@ -4,8 +4,8 @@ BUILDAPP=""
 vk_lib_path="$(cat ../path_to_debug_vulkan 2>/dev/null)"
 if [ -n "$vk_lib_path" ]; then
     PATH="$vk_lib_path:$PATH"
-else
-    echo "warning: debug vulkan not specific, attempting to use system-provided vulkan library"
+# else
+#     echo "warning: debug vulkan not specific, attempting to use system-provided vulkan library"
 fi;
 LINKOPTS="-L${vk_lib_path} -lrt -latomic -lvulkan -lSDL2"
 BOTHOPTS="-DDEBUG -g -DVK_NO_PROTOTYPES"

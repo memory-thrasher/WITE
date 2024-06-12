@@ -26,15 +26,7 @@ namespace WITE::wsound {
 	if(m.amplitude) [[likely]]
 	  v += m.amplitude * (m.decayRate < 1 ? pow(m.decayRate, ((float)(sample - noteStartsOnSample))/out.samplingFreq) : 1) *
 	    sin((sample + startFrameWrapped) * (pi2 * n.fundamentalFreq * m.fundMult / out.samplingFreq) + m.offsetRadians);
-	// if(sample == out.samples-1)
-	//   WARN(m.decayRate, " -> ", (m.decayRate < 1 ? pow(m.decayRate, ((float)sample)/out.samplingFreq) : 1));
       }
-      // if(n.blanketStrength > 0) {
-      // 	float blankedStartFrameWrapped = fmod(out.startFrame, out.samplingFreq / n.blanketFundamental);
-      // 	int blanketCount = (int)(out.samplingFreq / (4*n.blanketFundamental));
-      // 	for(int i = 0;i < blanketCount;i++)
-      // 	  v += (n.blanketStrength * 2 / blanketCount) * sin((sample + blankedStartFrameWrapped) * (pi2 * n.blanketFundamental * i / out.samplingFreq));
-      // }
       for(const rampPhase& r : instrument.ramps) {
 	if(r.lengthSeconds > 0) {
 	  float startSample = (r.startSeconds + (r.startSeconds < -0 ? n.lengthSeconds : 0)) *

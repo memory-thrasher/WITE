@@ -15,16 +15,17 @@ constexpr uint64_t arbitraryAlienTradition = 15,
 	    notesPerMeasure = arbitraryAlienTradition,
 	    beatLengthNs = 54568889,
 	    measureNs = notesPerMeasure * beatLengthNs,
-	    concurrentTracks = 6,
+	    concurrentTracks = 5,
 	    newTrackEveryMeasures = 3,
 	    newTrackEveryNs = newTrackEveryMeasures * measureNs,
 	    trackLifetimeMeasures = concurrentTracks * newTrackEveryMeasures,
 	  //	    trackLifetimeNs = trackLifetimeMeasures * measureNs,
 	    notesPerOctive = arbitraryAlienTradition,
-	    octives = 8;
+	    octives = 6;
 	  //	    notes = octives * notesPerOctive;
 
-constexpr float firstNote = arbitraryAlienTradition;//hz
+constexpr float firstNote = 30,//hz
+	    globalVolumeMultiplier = 1.0f/concurrentTracks;
 
 const float noteBase = pow(2, 1.0f/notesPerOctive);//would be constexpr if pow was (c++2026 draft feature)
 
@@ -54,7 +55,7 @@ inline float randFloat(uint64_t in, uint64_t in2) {//[0-1)
 //string or horn:
 inline void randomPeriodicInstrument(uint64_t in, sound::voice& out) {
   constexpr uint64_t ampSeed = 31727, offsetSeed = 262153;//prime
-  float remainingAmp = 1;
+  float remainingAmp = globalVolumeMultiplier;
   int i = 1;
   for(sound::sinusoid& m : out.members) {
     m.amplitude = randFloat(in, ampSeed * i) * remainingAmp * 0.5f;
@@ -79,7 +80,7 @@ inline void randomPercussionInstrument(uint64_t in, sound::voice& out) {
       int i = (major-1)*8+minor;
       ASSERT_TRAP(i < sound::sinusoidCount, "index out of range");
       sound::sinusoid& m = out.members[i];
-      m.amplitude = randFloat(in, ampSeed * i) * 0.5f / major;
+      m.amplitude = randFloat(in, ampSeed * i) * globalVolumeMultiplier / major;
       m.fundMult = 1 + majorPitch * (major - 1) + minorPitch * minor;
       m.offsetRadians = 0;//randFloat(in, offsetSeed * i) * sound::pi2;
       m.decayRate = (randFloat(in, decaySeed * i) + 1) / (100 * major);
@@ -95,19 +96,21 @@ inline void randomTrack(uint64_t id, track& out) {
   //in keeping with the arbitrarilly chosen alien emulating theme of 15-based numbers, there are always 15 simultaneous tracks. 5 drums (melodic) tracks, 5 melodic periodic tracks, 5 corded periodic tracks
   //we don't want notes that are 17/30th or other obtuse values in lengths. Limit to factors of 30. Further limited by track type below.
   static constexpr uint64_t lengthPrime = 800009779,
-    notePrime = 17957,
-    maxLength = notesPerMeasure*2;
-  static constexpr uint8_t possibleLengthsMelody[] = { 1, 2, 3, 6, 6, 6, 6, 3, 3, 2 },
-    possibleLengthsChord[] = { 6, 10, 15, 30 },
-    possibleLengthsPercussion = { uint8_t(maxLength) };
+    notePrime = 17957;
+  //1, 2, 3, 5, 6, 10, 15, 30
+  // static constexpr uint8_t possibleLengthsMelody[] = { 1, 2, 3, 6, 6, 6, 6, 3, 3, 2 },
+  static constexpr uint8_t possibleLengthsMelody[] = { 5, 6, 10, 15, 6, 10, 10, 10, 15 },
+    // possibleLengthsChord[] = { 6, 10, 15, 30 },
+    possibleLengthsPercussion[] = { 10, 15, 30 };
   uint8_t minBaseNote = 0, maxBaseNote = 0, possibleLengthsCount;
   const uint8_t *possibleLengths;
   switch(id % concurrentTracks) {
   case 0:
+  case concurrentTracks/2:
     randomPercussionInstrument(id, out.voice);
     out.melody = true;
-    possibleLengthsCount = 1; //length means little for percussion, just give it time to peter out on its own decay model
-    possibleLengths = &possibleLengthsPercussion;
+    possibleLengthsCount = sizeof(possibleLengthsPercussion);
+    possibleLengths = possibleLengthsPercussion;
     minBaseNote = 0;
     maxBaseNote = notesPerOctive;
     break;
@@ -119,14 +122,14 @@ inline void randomTrack(uint64_t id, track& out) {
     minBaseNote = notesPerOctive * 2;
     maxBaseNote = notesPerOctive * octives;
     break;
-  case concurrentTracks/2:
-    randomPeriodicInstrument(id, out.voice);
-    out.melody = false;//chord
-    possibleLengthsCount = sizeof(possibleLengthsChord);
-    possibleLengths = possibleLengthsChord;
-    minBaseNote = 0;
-    maxBaseNote = notesPerOctive * 2;
-    break;
+  // case concurrentTracks/2:
+  //   randomPeriodicInstrument(id, out.voice);
+  //   out.melody = false;//chord
+  //   possibleLengthsCount = sizeof(possibleLengthsChord);
+  //   possibleLengths = possibleLengthsChord;
+  //   minBaseNote = 0;
+  //   maxBaseNote = notesPerOctive * 2;
+  //   break;
   }
   out.noteLengthHalfBeats = possibleLengths[dualSeedRand(id, lengthPrime) % possibleLengthsCount];
   const uint8_t stride = (out.noteLengthHalfBeats + 1)/2;
@@ -176,9 +179,10 @@ int main(int argc, char** argv) {
   sound::initSound();
   sound::addContinuousSound(sound::soundCB_F::make(mkMusic));
   WITE::winput::initInput();
-  for(size_t i = 0;i < 60*10 && !WITE::shutdownRequested();i++) {
+  // for(size_t i = 0;i < 60*1 && !WITE::shutdownRequested();i++) {
+  while(!WITE::shutdownRequested()) {
     WITE::winput::pollInput();
-    WITE::thread::sleepSeconds(1);
+    WITE::thread::sleepSeconds(0.1f);
   }
   return 0;
 }

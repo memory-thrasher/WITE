@@ -13,18 +13,18 @@ kept human traditions: concept of certain instruments (string, horn, membrain dr
 
 constexpr uint64_t arbitraryAlienTradition = 15,
 	    notesPerMeasure = arbitraryAlienTradition,
-	    beatLengthNs = 54568889,
+	    beatLengthNs = 85009283,
 	    measureNs = notesPerMeasure * beatLengthNs,
-	    concurrentTracks = 5,
+	    concurrentTracks = 4,
 	    newTrackEveryMeasures = 3,
 	    newTrackEveryNs = newTrackEveryMeasures * measureNs,
 	    trackLifetimeMeasures = concurrentTracks * newTrackEveryMeasures,
-	  //	    trackLifetimeNs = trackLifetimeMeasures * measureNs,
+	    // trackLifetimeNs = trackLifetimeMeasures * measureNs,
 	    notesPerOctive = arbitraryAlienTradition,
-	    octives = 6;
+	    octives = 4;
 	  //	    notes = octives * notesPerOctive;
 
-constexpr float firstNote = 30,//hz
+constexpr float firstNote = 60,//hz
 	    globalVolumeMultiplier = 1.0f/concurrentTracks;
 
 const float noteBase = pow(2, 1.0f/notesPerOctive);//would be constexpr if pow was (c++2026 draft feature)
@@ -60,7 +60,9 @@ inline void randomPeriodicInstrument(uint64_t in, sound::voice& out) {
   for(sound::sinusoid& m : out.members) {
     m.amplitude = randFloat(in, ampSeed * i) * remainingAmp * 0.5f;
     remainingAmp -= m.amplitude;
+    m.fundMult = i;
     m.offsetRadians = randFloat(in, offsetSeed * i) * sound::pi2;
+    m.decayRate = 1;
     i++;
   }
   out.ramps[0] = { 0, 0.01f, 0, 1, 0 };
@@ -73,11 +75,12 @@ inline void randomPercussionInstrument(uint64_t in, sound::voice& out) {
     // offsetSeed = 262153,
     decaySeed = 9551,
     slopeSeed = 10900063;//prime
+  constexpr int MAJORS = 4, MINORS = 8;
   const float majorPitch = randFloat(in, slopeSeed) + 1.0f;
-  for(int major = 1;major <= 4;major++) {
+  for(int major = 1;major <= MAJORS;major++) {
     const float minorPitch = randFloat(in, slopeSeed * (major+1)) * 0.5f + 0.25f;
-    for(int minor = 0;minor < 8;minor++) {
-      int i = (major-1)*8+minor;
+    for(int minor = 0;minor < MINORS;minor++) {
+      int i = (major-1)*MINORS+minor;
       ASSERT_TRAP(i < sound::sinusoidCount, "index out of range");
       sound::sinusoid& m = out.members[i];
       m.amplitude = randFloat(in, ampSeed * i) * globalVolumeMultiplier / major;
@@ -86,41 +89,42 @@ inline void randomPercussionInstrument(uint64_t in, sound::voice& out) {
       m.decayRate = (randFloat(in, decaySeed * i) + 1) / (100 * major);
     }
   }
+  static_assert(MAJORS * MINORS == sound::sinusoidCount);
   out.ramps[0] = { 0, 0.01f, 0, 1, 0 };
   out.ramps[1] = { 0.01f, 0.065f, 1, 0.2f, 0 };
   out.ramps[2] = { 0.075f, 0.425f, 0.2f, 0, 0 };
-  out.ramps[3].lengthSeconds = out.ramps[4].lengthSeconds = 0;
+  out.ramps[3] = { 0.425f, 5, 0, 0, 0 };
+  out.ramps[4].lengthSeconds = 0;
 };
 
 inline void randomTrack(uint64_t id, track& out) {
   //in keeping with the arbitrarilly chosen alien emulating theme of 15-based numbers, there are always 15 simultaneous tracks. 5 drums (melodic) tracks, 5 melodic periodic tracks, 5 corded periodic tracks
   //we don't want notes that are 17/30th or other obtuse values in lengths. Limit to factors of 30. Further limited by track type below.
   static constexpr uint64_t lengthPrime = 800009779,
-    notePrime = 17957;
+    notePrime = 17957,
+    skipPrime = 85009273;
   //1, 2, 3, 5, 6, 10, 15, 30
-  // static constexpr uint8_t possibleLengthsMelody[] = { 1, 2, 3, 6, 6, 6, 6, 3, 3, 2 },
-  static constexpr uint8_t possibleLengthsMelody[] = { 5, 6, 10, 15, 6, 10, 10, 10, 15 },
+  static constexpr uint8_t possibleLengthsMelody[] = { 3, 5, 10, 15 },
     // possibleLengthsChord[] = { 6, 10, 15, 30 },
-    possibleLengthsPercussion[] = { 10, 15, 30 };
+    possibleLengthsPercussion[] = { 10, 15 };
   uint8_t minBaseNote = 0, maxBaseNote = 0, possibleLengthsCount;
   const uint8_t *possibleLengths;
-  switch(id % concurrentTracks) {
+  switch(id % 2) {
   case 0:
-  case concurrentTracks/2:
     randomPercussionInstrument(id, out.voice);
     out.melody = true;
     possibleLengthsCount = sizeof(possibleLengthsPercussion);
     possibleLengths = possibleLengthsPercussion;
     minBaseNote = 0;
-    maxBaseNote = notesPerOctive;
+    maxBaseNote = notesPerOctive * 3;
     break;
-  default:
+  case 1:
     randomPeriodicInstrument(id, out.voice);
     out.melody = true;
     possibleLengthsCount = sizeof(possibleLengthsMelody);
     possibleLengths = possibleLengthsMelody;
-    minBaseNote = notesPerOctive * 2;
-    maxBaseNote = notesPerOctive * octives;
+    minBaseNote = notesPerOctive * 1;
+    maxBaseNote = notesPerOctive * (octives - 1);
     break;
   // case concurrentTracks/2:
   //   randomPeriodicInstrument(id, out.voice);
@@ -135,7 +139,8 @@ inline void randomTrack(uint64_t id, track& out) {
   const uint8_t stride = (out.noteLengthHalfBeats + 1)/2;
   const uint8_t baseNote = minBaseNote + dualSeedRand(id, notePrime) % (maxBaseNote - minBaseNote);
   for(uint8_t i = 0;i < notesPerMeasure;++i) {
-    out.noteId[i] = (i % stride) == 0 ? dualSeedRand(id, notePrime * (i + 11)) % notesPerOctive : 0;
+    out.noteId[i] = (i % stride) == 0 && (dualSeedRand(id, skipPrime * i) % 3) != 0 ?
+      dualSeedRand(id, notePrime * (i + 11)) % notesPerOctive : 0;
     if(out.noteId[i] != 0) [[likely]] out.noteId[i] += baseNote;
   }
 };
@@ -143,10 +148,9 @@ inline void randomTrack(uint64_t id, track& out) {
 void mkMusic(sound::outputDescriptor& out) {
   const sound::synthParameters params { 0.3f, 0.3f };//full volume
   const uint64_t endInstrument = (out.startTimeNs + out.samples * 1000000000 / out.samplingFreq) / newTrackEveryNs + 1,
-    startInstrument = out.startTimeNs / newTrackEveryNs - concurrentTracks,
+    startInstrument = out.startTimeNs / newTrackEveryNs - concurrentTracks - 1,
     firstMeasureId = out.startTimeNs / measureNs,
     lastMeasureId = (out.startTimeNs + out.samples * 1000000000 / out.samplingFreq) / measureNs + 1;
-  // WARN("tracks present on this frame: ", endInstrument - startInstrument + 1);
   sound::note note;
   track t;
   for(uint64_t instrumentId = startInstrument;instrumentId <= endInstrument;++instrumentId) {
@@ -156,7 +160,7 @@ void mkMusic(sound::outputDescriptor& out) {
       if(t.noteId[noteId] == 0) [[unlikely]] continue;
       note.fundamentalFreq = firstNote * pow(noteBase, t.noteId[noteId]);
       uint64_t firstMeasureForTrack = instrumentId * newTrackEveryMeasures,
-	lastMeasureForTrack = firstMeasureForTrack + trackLifetimeMeasures;
+	lastMeasureForTrack = firstMeasureForTrack + trackLifetimeMeasures - 1;
       for(uint64_t measureId = std::max(firstMeasureId, firstMeasureForTrack);measureId <= std::min(lastMeasureId, lastMeasureForTrack);++measureId) {
 	note.startTimeNsAfterEpoch = measureId * measureNs + noteId * t.melody * beatLengthNs;
 	record(t.voice, note, params, out);

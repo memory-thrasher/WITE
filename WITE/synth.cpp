@@ -14,7 +14,6 @@ namespace WITE::wsound {
   };
 
   void record(const voice& instrument, const note& n, const synthParameters& vol, outputDescriptor& out) {
-    float startFrameWrapped = fmod(out.startFrame, out.samplingFreq / n.fundamentalFreq);//subharmonics will not mind this modulus because they are multiples of that divisor. This improves precision on the float conversion below by saving significant bits for the subsecond parts.
     int noteStartsOnSample = static_cast<int>(static_cast<int64_t>(n.startTimeNsAfterEpoch - out.startTimeNs) *
 					      out.samplingFreq / 1000000000);
     int noteSampleLength = n.lengthSeconds * out.samplingFreq;
@@ -25,7 +24,7 @@ namespace WITE::wsound {
 	//decay rate: [sampleDecayRate]^[sampleRate]=[decayRate]
 	if(m.amplitude) [[likely]]
 	  v += m.amplitude * (m.decayRate < 1 ? pow(m.decayRate, ((float)(sample - noteStartsOnSample))/out.samplingFreq) : 1) *
-	    sin((sample + startFrameWrapped) * (pi2 * n.fundamentalFreq * m.fundMult / out.samplingFreq) + m.offsetRadians);
+	    sin((sample + out.startFrame) * (pi2 * n.fundamentalFreq * m.fundMult / out.samplingFreq) + m.offsetRadians);
       }
       for(const rampPhase& r : instrument.ramps) {
 	if(r.lengthSeconds > 0) {

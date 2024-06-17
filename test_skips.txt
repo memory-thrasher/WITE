@@ -9,4 +9,5 @@ GeometryIcoSphere
 HelloWorld
 MeshLoadedOverhead
 MeshLeaf
+proceduralMusic
 

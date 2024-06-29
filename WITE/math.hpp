@@ -15,8 +15,10 @@ Stable and intermediate releases may be made continually. For this reason, a yea
 #pragma once
 
 #include <glm/glm.hpp>
+#include <cmath>
 
 #include "stdExtensions.hpp"
+#include "DEBUG.hpp"
 
 namespace WITE {
   
@@ -167,6 +169,17 @@ namespace WITE {
 	if(n-- == 0)
 	  return i;
     return ~1;
+  };
+
+  //floats have precision issues with too many significant digits left of the decimal. This helps with those cases.
+  inline float intModFloat(uint64_t numerator, float denominator) {
+    if(denominator < 0) [[unlikely]] denominator *= -1;
+    float numeratorFloatPart = 0;
+    float tempIntPart = 0;
+    float tempDenom = denominator * (1 << (int)std::log2(numerator / denominator));//* power of 2 does not loose precision
+    numeratorFloatPart -= std::modf(tempDenom, &tempIntPart);//- multiple of denominator does not change correct answer
+    numerator -= static_cast<uint64_t>(tempIntPart + 0.1f);
+    return std::fmod(numerator + numeratorFloatPart, denominator);
   };
 
 };

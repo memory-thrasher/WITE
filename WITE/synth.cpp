@@ -14,6 +14,7 @@ Stable and intermediate releases may be made continually. For this reason, a yea
 
 #include "synth.hpp"
 #include "DEBUG.hpp"
+#include "math.hpp"
 
 namespace WITE::wsound {
 
@@ -36,9 +37,11 @@ namespace WITE::wsound {
       float v = 0;
       for(const sinusoid& m : instrument.members) {
 	//decay rate: [sampleDecayRate]^[sampleRate]=[decayRate]
-	if(m.amplitude) [[likely]]
+	if(m.amplitude) [[likely]] {
+	  const float period = n.fundamentalFreq * m.fundMult / out.samplingFreq;
 	  v += m.amplitude * (m.decayRate < 1 ? pow(m.decayRate, ((float)(sample - noteStartsOnSample))/out.samplingFreq) : 1) *
-	    sin((sample + out.startFrame) * (pi2 * n.fundamentalFreq * m.fundMult / out.samplingFreq) + m.offsetRadians);
+	    sin(intModFloat(sample + out.startFrame, 1 / period) * (pi2 * period) + m.offsetRadians);
+	}
       }
       for(const rampPhase& r : instrument.ramps) {
 	if(r.lengthSeconds > 0) {

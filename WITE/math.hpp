@@ -15,7 +15,6 @@ Stable and intermediate releases may be made continually. For this reason, a yea
 #pragma once
 
 #include <glm/glm.hpp>
-#include <cmath>
 
 #include "stdExtensions.hpp"
 #include "DEBUG.hpp"
@@ -174,12 +173,32 @@ namespace WITE {
   //floats have precision issues with too many significant digits left of the decimal. This helps with those cases.
   inline float intModFloat(uint64_t numerator, float denominator) {
     if(denominator < 0) [[unlikely]] denominator *= -1;
-    float numeratorFloatPart = 0;
-    float tempIntPart = 0;
-    float tempDenom = denominator * (1 << (int)std::log2(numerator / denominator));//* power of 2 does not loose precision
-    numeratorFloatPart -= std::modf(tempDenom, &tempIntPart);//- multiple of denominator does not change correct answer
-    numerator -= static_cast<uint64_t>(tempIntPart + 0.1f);
-    return std::fmod(numerator + numeratorFloatPart, denominator);
+    float numeratorFloatPart = 0, tempIntPart = 0;
+    float ret = numerator;
+    while(ret >= denominator) {
+      //multiplying a float by a power of 2 does not loose precision
+      int exp = (int)std::log2f((ret) / denominator);
+      float tempDenom = denominator * (1 << exp);
+      if(tempDenom >= ret) [[unlikely]] {//precision loss leading into log2f
+	--exp;
+	tempDenom = denominator * (1 << exp);
+      }
+      if(exp < 0) [[unlikely]] break;
+      ASSERT_TRAP(tempDenom > 0, "denominator too small?");
+      ASSERT_TRAP(tempDenom < ret, "modulus overrun");
+      //subtracting a multiple of the denominator does not change the modulus
+      numeratorFloatPart -= std::modf(tempDenom, &tempIntPart);
+      numerator -= static_cast<uint64_t>(tempIntPart + 0.1f);//+0.1f: avoid rounding 0.9999f down (result "should be" an int)
+      if(numeratorFloatPart < -1) {
+	ASSERT_TRAP(numerator + numeratorFloatPart > 0, "numerator parts too diverged");
+	numeratorFloatPart = std::modf(numeratorFloatPart, &tempIntPart);
+	numerator += static_cast<uint64_t>(tempIntPart - 0.1f);
+      }
+      ret = numerator + numeratorFloatPart;
+    }
+    if(ret == denominator) [[unlikely]] ret = 0;//yes this happens
+    ASSERT_TRAP(ret >= 0 && ret < denominator, "modulus fail");
+    return ret;
   };
 
 };

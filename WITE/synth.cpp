@@ -33,15 +33,23 @@ namespace WITE::wsound {
 					      out.samplingFreq / 1000000000);
     int noteSampleLength = n.lengthSeconds * out.samplingFreq;
     int noteSampleEnd = noteSampleLength + noteStartsOnSample;
+    float offsetBySinusoid[sinusoidCount];
+    float periodBySinusoid[sinusoidCount];
+    for(int i = 0;i < sinusoidCount;i++) {
+      const sinusoid& m = instrument.members[i];
+      if(m.amplitude) [[likely]] {
+	periodBySinusoid[i] = n.fundamentalFreq * m.fundMult / out.samplingFreq;
+	offsetBySinusoid[i] = intModFloat(out.startFrame, 1 / periodBySinusoid[i]);
+      }
+    }
     for(int sample = std::max(0, noteStartsOnSample);sample < std::min(out.samples, noteSampleEnd);sample++) {
       float v = 0;
-      for(const sinusoid& m : instrument.members) {
+      for(int i = 0;i < sinusoidCount;i++) {
+	const sinusoid& m = instrument.members[i];
 	//decay rate: [sampleDecayRate]^[sampleRate]=[decayRate]
-	if(m.amplitude) [[likely]] {
-	  const float period = n.fundamentalFreq * m.fundMult / out.samplingFreq;
+	if(m.amplitude) [[likely]]
 	  v += m.amplitude * (m.decayRate < 1 ? pow(m.decayRate, ((float)(sample - noteStartsOnSample))/out.samplingFreq) : 1) *
-	    sin(intModFloat(sample + out.startFrame, 1 / period) * (pi2 * period) + m.offsetRadians);
-	}
+	    sin((sample + offsetBySinusoid[i]) * (pi2 * periodBySinusoid[i]) + m.offsetRadians);
       }
       for(const rampPhase& r : instrument.ramps) {
 	if(r.lengthSeconds > 0) {

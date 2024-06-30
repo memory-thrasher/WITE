@@ -149,9 +149,9 @@ namespace WITE {
     };
 
     //provided for convenience but NOT used internally. Caller must ensure thread safety in access of individual rows.
-    inline scopeLock&& lock(uint64_t rowIdx) {
-      return std::move(scopeLock(mutexFor(rowIdx)));
-    };
+    // inline scopeLock&& lock(uint64_t rowIdx) {
+    //   return std::move(scopeLock(mutexFor(rowIdx)));
+    // };
 
     //only blocks if underlaying file is busy
     uint64_t allocate(uint64_t frame, R* data) {

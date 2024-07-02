@@ -60,14 +60,14 @@ Stable and intermediate releases may be made continually. For this reason, a yea
 #define LOG1(msg) { std::cout << msg; }
 // " tid: ", ::WITE::Platform::Thread::getCurrentTid(),
 #define WARN(...) { ::WITE::scopeLock lock(LOG_MUTEX()); MAP(WARN1, __VA_ARGS__, " (", std::dec, __FILE__, ": ", __LINE__, ")", std::endl, std::flush); }
-#define ERROR(...) { WARN(__VA_ARGS__); asm("INT3"); }//TODO set global failure flag that db should read to graceful stop
-#define ASSERT_TRAP(cond, ...) { if(!(cond)) { ERROR(__VA_ARGS__); } }
+#define WITE_ERROR(...) { WARN(__VA_ARGS__); asm("INT3"); }//TODO set global failure flag that db should read to graceful stop
+#define ASSERT_TRAP(cond, ...) { if(!(cond)) { WITE_ERROR(__VA_ARGS__); } }
 #define LOG(...) { ::WITE::scopeLock lock(LOG_MUTEX()); MAP(LOG1, __VA_ARGS__, " (", std::dec, __FILE__, ": ", __LINE__, ")", std::endl, std::flush); }
 #define DEBUG_TERNARY(debug, release) debug
 
 #else //release
 
-#define ERROR(str) TODO gui error box
+#define WITE_ERROR(str) TODO gui error box
 #define WARN(str) TODO log file
 #define ASSERT_TRAP() {}
 #define DEBUG_TERNARY(debug, release) release
@@ -98,10 +98,10 @@ Stable and intermediate releases may be made continually. For this reason, a yea
 #define WITE_DEBUG_DB_MASTER(A) {}
 #endif
 
-#define CRASH_PREINIT(...) { ERROR(__VA_ARGS__); exit(EXIT_FAILURE); }
-#define CRASH(...) { ERROR(__VA_ARGS__); } //TODO set a global flag for dbs to graceul down
+#define CRASH_PREINIT(...) { WITE_ERROR(__VA_ARGS__); exit(EXIT_FAILURE); }
+#define CRASH(...) { WITE_ERROR(__VA_ARGS__); } //TODO set a global flag for dbs to graceul down
 #define CRASHRET(ret, ...) { CRASH(__VA_ARGS__); return ret; } //return will never happen but it satisfies the compiler
-#define CRASHRET_PREINIT(ret, ...) { ERROR(__VA_ARGS__); exit(EXIT_FAILURE); return ret; }
+#define CRASHRET_PREINIT(ret, ...) { WITE_ERROR(__VA_ARGS__); exit(EXIT_FAILURE); return ret; }
 
 #define VK_ASSERT(cmd, ...) { auto _r = (cmd); if(_r != vk::Result::eSuccess) CRASH(__VA_ARGS__, " ", _r); }
 #define VK_ASSERT_TUPLE(out, cmd, ...) { vk::Result _r; std::tie(_r, out) = (cmd); if(_r != vk::Result::eSuccess) CRASH(__VA_ARGS__, _r); }

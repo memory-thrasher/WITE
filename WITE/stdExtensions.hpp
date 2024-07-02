@@ -20,7 +20,6 @@ Stable and intermediate releases may be made continually. For this reason, a yea
 #include <string>
 #include <map>
 #include <atomic>
-#include <unistd.h>
 
 namespace WITE {
 
@@ -53,18 +52,6 @@ namespace WITE {
   }
 
   std::string concat(const std::initializer_list<const std::string> strings);
-
-  template<class T> ssize_t write(int fd, const T* data) {
-    return ::write(fd, reinterpret_cast<const void*>(data), sizeof(T));
-  };
-
-  template<class T, size_t CNT> ssize_t writeArray(int fd, const T data[CNT]) {
-    return ::write(fd, reinterpret_cast<const void*>(data), CNT*sizeof(T));
-  };
-
-  template<class T> ssize_t writeArray(int fd, const T* data, size_t cnt) {
-    return ::write(fd, reinterpret_cast<const void*>(data), cnt*sizeof(T));
-  };
 
   template<class T, class U, class V> void uniq(T src, U p, V& out) {
     for(auto it = src.begin();it != src.end();it++) {
@@ -215,11 +202,11 @@ namespace WITE {
   // inline T auto_cast(U i) { return reinterpret_cast<T>(i); };
   //TODO more as needed (non-ptr with caution)
 
-  template<ssize_t start, ssize_t stride, size_t... S> inline constexpr auto mkSequence(std::index_sequence<S...>) {
+  template<int64_t start, int64_t stride, size_t... S> inline constexpr auto mkSequence(std::index_sequence<S...>) {
     return std::index_sequence<(S * stride + start)...>();
   }
 
-  template<ssize_t start, size_t count, ssize_t stride = 1> inline constexpr auto mkSequence() {
+  template<int64_t start, size_t count, int64_t stride = 1> inline constexpr auto mkSequence() {
     return mkSequence<start, stride>(std::make_index_sequence<count>());
   }
 

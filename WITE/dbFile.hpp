@@ -14,19 +14,7 @@ Stable and intermediate releases may be made continually. For this reason, a yea
 
 #pragma once
 
-#include <string>
 #include <cstring> //memcpy
-#include <sys/mman.h>
-#include <sys/resource.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <sys/mman.h>
-#include <sys/file.h>
-#include <filesystem>
-#include <iterator>
-//TODO see if these are all needed
 
 #ifdef DEBUG
 #include <set>
@@ -35,6 +23,7 @@ Stable and intermediate releases may be made continually. For this reason, a yea
 #include "syncLock.hpp"
 #include "DEBUG.hpp"
 #include "shared.hpp"
+#include "mmap.hpp"
 
 namespace WITE {
 
@@ -60,7 +49,7 @@ namespace WITE {
     syncLock fileMutex, blocksMutex, allocationMutex;
     header_t* header;
     std::vector<au_t*> blocks;//these are mmaped regions (or subdivisions thereof)
-    int fd;
+    fileHandle fd;
     const std::filesystem::path filename;
 #if DEBUG
     std::set<uint64_t> freeSpaceBitmap;//sanity check for debugging only, duplicates the on-disk allocation queue
@@ -103,26 +92,21 @@ namespace WITE {
       if(!std::filesystem::exists(dir))
 	ASSERT_TRAP(std::filesystem::create_directories(dir, ec), "create dir failed ", ec);
       ASSERT_TRAP(std::filesystem::is_directory(dir, ec), "not a directory ", ec);
-      fd = open(filename.c_str(), O_RDWR | O_CREAT | O_NOFOLLOW | O_LARGEFILE | (clobber ? O_TRUNC : 0), 0660);
-      ASSERT_TRAP(fd > 0, "failed to open file ", filename, " with errno: ", errno);
-      ASSERT_TRAP(flock(fd, LOCK_EX | LOCK_NB) == 0, "failed to lock file ", filename, " with errno: ", errno); //lock will be closed when fd is closed
-      struct stat fst;
-      size_t size = 0;
-      ASSERT_TRAP(fstat(fd, &fst) == 0, "file creation failed");
-      ASSERT_TRAP((fst.st_mode & S_IFMT) == S_IFREG, "attempted to open a file that exists but is not a regular file");
-      size = static_cast<size_t>(fst.st_size);
+      fd = WITE::openFile(filename, true, clobber);
+      ASSERT_TRAP(WITE::lockFile(fd), "failed to lock file ", filename); //lock will be closed when fd is closed
+      size_t size = static_cast<size_t>(std::filesystem::file_size(filename));
       size_t existingAUs = size ? (size - sizeof(header_t)) / au_size : 0;
       if(existingAUs) [[likely]] {//load
 	ASSERT_TRAP((size - sizeof(header_t)) % au_size == 0, "attempted to load file with invalid size");
-	lseek(fd, 0, SEEK_END);
+	WITE::seekFileEnd(fd);
       } else {//init
 	header_t temph;
-	write(fd, &temph);
-	writeArray(fd, plug, au_size);
+	writeFile(fd, &temph);
+	writeArrayFile(fd, plug, au_size);
 	size = au_size + sizeof(header_t);
       }
-      void* mm = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-      ASSERT_TRAP(mm && mm != MAP_FAILED, "mmap fail ", errno);
+      //TODO maximum size?
+      void* mm = WITE::mmapFile(fd, 0, size);
       header = reinterpret_cast<header_t*>(mm);
       blocks.emplace_back(reinterpret_cast<au_t*>(reinterpret_cast<uint8_t*>(mm) + sizeof(header_t)));
       if(existingAUs) [[likely]] {
@@ -147,10 +131,10 @@ namespace WITE {
 
     void close() {
       scopeLock fl(&fileMutex), bm(&blocksMutex), am(&allocationMutex);
-      msync(reinterpret_cast<void*>(header), sizeof(header_t), MS_SYNC);
+      WITE::closeMmapFile(reinterpret_cast<void*>(header), sizeof(header_t));
       for(au_t* b : blocks)
-	msync(reinterpret_cast<void*>(b), au_size, MS_SYNC);
-      ::close(fd);
+	WITE::closeMmapFile(reinterpret_cast<void*>(b), au_size);
+      WITE::closeFile(fd);
     };
 
     uint64_t allocate() {
@@ -160,9 +144,8 @@ namespace WITE {
       if(!header->freeSpaceLen) [[unlikely]] {
 	scopeLock fl(&fileMutex), bm(&blocksMutex);
 	uint64_t auId = blocks.size();
-	writeArray(fd, plug, au_size);
-	void* mm = mmap(NULL, au_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, auId * au_size);
-	ASSERT_TRAP(mm && mm != MAP_FAILED, "mmap fail", errno);
+	writeArrayFile(fd, plug, au_size);
+	void* mm = WITE::mmapFile(fd, auId * au_size + sizeof(header_t), au_size);
 	blocks.emplace_back(reinterpret_cast<au_t*>(mm));
 	initialize(auId);
       }

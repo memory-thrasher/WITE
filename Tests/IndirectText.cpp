@@ -230,7 +230,7 @@ void onion_printf(onion_t::object_t<OL_text.id>* text, const char* fmt, ...) {
   memset(buf.ptr(), ' ', 1024);//pad with spaces removes some otherwise wasted compute shader time
   va_list args;
   va_start(args, fmt);
-  vsprintf(buf.ptr(), fmt, args);
+  WITE::vsprintf(buf.ptr(), 1024, fmt, args);
   va_end(args);
   text->write<RS_text_S_string.id>(buf);
 };

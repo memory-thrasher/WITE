@@ -19,7 +19,7 @@ Stable and intermediate releases may be made continually. For this reason, a yea
 namespace WITE {
 
   void tempCmd::submit() {
-    cmd.end();
+    VK_ASSERT(cmd.end(), "failed to end command buffer recording");
     vk::CommandBufferSubmitInfo cmdSubmitInfo(cmd);
     vk::SubmitInfo2 submit({}, 0, NULL, 1, &cmdSubmitInfo, 0, NULL);
     if(pool->dev.getFenceStatus(fence) == vk::Result::eSuccess)

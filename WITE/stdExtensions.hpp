@@ -53,6 +53,15 @@ namespace WITE {
 
   std::string concat(const std::initializer_list<const std::string> strings);
 
+  void strcpy(char* dst, const char* src, size_t dstLen = ~0);//windows thinks it can deprecate strcpy
+
+  void vsprintf(char* dst, size_t dstLen, const char* src, va_list vl);//windows thinks it can deprecate vsprintf
+
+  template<class I> inline auto ffs(I i) {
+    //might need a ifdef if we ever port to msvc compiler (as if)
+    return __builtin_ffs(i);
+  }
+
   template<class T, class U, class V> void uniq(T src, U p, V& out) {
     for(auto it = src.begin();it != src.end();it++) {
       auto u = p(*it);

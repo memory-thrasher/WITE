@@ -43,7 +43,7 @@ namespace WITE {
 	  flags = vk::MemoryPropertyFlagBits::eDeviceLocal;
 	}
 	dev.allocate(mrs[i], flags, &rams[i]);
-	dev.getVkDevice().bindBufferMemory(vkBuffer[i], rams[i].handle, 0);
+	VK_ASSERT(dev.getVkDevice().bindBufferMemory(vkBuffer[i], rams[i].handle, 0), "failed to bind buffer memory");
 	// WARN("bound ram ", rams[i].handle, " to buffer ", vkBuffer[i]);
       }
     };

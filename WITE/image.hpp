@@ -56,7 +56,7 @@ namespace WITE {
 #endif
 	dev.getVkDevice().getImageMemoryRequirements(vkImage[i], &mrs[i]);
 	dev.allocate(mrs[i], flags, &rams[i]);
-	dev.getVkDevice().bindImageMemory(vkImage[i], rams[i].handle, 0);
+	VK_ASSERT(dev.getVkDevice().bindImageMemory(vkImage[i], rams[i].handle, 0), "failed to bind image memory");
 	frameImageExtent[i] = ci.extent;
 	frameImageCreated[i] = 0;
 	ASSERT_TRAP(frameImageCreated[i] == 0, "assignment fail");//yes, this has triggered. ASM for assignment above seemed missing. Compiler bug?
@@ -109,7 +109,7 @@ namespace WITE {
 	VK_ASSERT(gpu::get(R.deviceId).getVkDevice().createImage(&ci, ALLOCCB, &vkImage[idx]), "failed to allocate image");
 	dev.getVkDevice().getImageMemoryRequirements(vkImage[idx], &mrs[idx]);
 	dev.allocate(mrs[idx], flags, &rams[idx]);
-	dev.getVkDevice().bindImageMemory(vkImage[idx], rams[idx].handle, 0);
+	VK_ASSERT(dev.getVkDevice().bindImageMemory(vkImage[idx], rams[idx].handle, 0), "failed to bind image memory");
 	static constexpr vk::ImageMemoryBarrier2 oldToSrc = getBarrierSimple<R>(layout, vk::ImageLayout::eTransferSrcOptimal),
 	  newToDst = getBarrierSimple<R>(vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal),
 	  newToOut = getBarrierSimple<R>(vk::ImageLayout::eTransferDstOptimal, layout);

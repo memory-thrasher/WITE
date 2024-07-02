@@ -119,7 +119,7 @@ namespace WITE {
 	clamp(w, surfCaps.minImageExtent.width,  surfCaps.maxImageExtent.width),
 	clamp(h, surfCaps.minImageExtent.height, surfCaps.maxImageExtent.height)
       });
-    swapCI.setCompositeAlpha(static_cast<vk::CompositeAlphaFlagBitsKHR>(1 << (ffs(static_cast<vk::CompositeAlphaFlagsKHR::MaskType>(surfCaps.supportedCompositeAlpha)) - 1)));
+    swapCI.setCompositeAlpha(static_cast<vk::CompositeAlphaFlagBitsKHR>(1 << (WITE::ffs(static_cast<vk::CompositeAlphaFlagsKHR::MaskType>(surfCaps.supportedCompositeAlpha)) - 1)));
     auto dev = g.getVkDevice();
     VK_ASSERT(dev.createSwapchainKHR(&swapCI, ALLOCCB, &swap), "could not create swapchain");
     VK_ASSERT(dev.getSwapchainImagesKHR(swap, &swapImageCount, NULL), "Could not count swapchain images.");
@@ -266,7 +266,7 @@ namespace WITE {
       di.pImageMemoryBarriers = &barrier2;
       cmd.pipelineBarrier2(&di);
       WITE_DEBUG_IB(barrier2, cmd);
-      cmd.end();
+      VK_ASSERT(cmd.end(), "failed to end a command buffer");
     }
     vk::SemaphoreSubmitInfo waits[2] = {
       renderWaitSem,

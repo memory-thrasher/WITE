@@ -1831,7 +1831,7 @@ namespace WITE {
       VK_ASSERT(cmd.begin(&begin), "failed to begin a command buffer");
       doPrerender<OD.OLS>(cmd);
       renderFrom<0>(cmd);
-      cmd.end();
+      VK_ASSERT(cmd.end(), "failed to end a command buffer");
       size_t fenceIdx = frame % cmdFrameswapCount;
       vk::Fence fence = fences[fenceIdx];
 #ifdef WITE_DEBUG_FENCES

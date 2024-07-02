@@ -14,14 +14,14 @@
 BUILDLIBS="WITE"
 BUILDTESTS="Tests"
 BUILDAPP=""
-vk_lib_path="$(cat ../path_to_debug_vulkan 2>/dev/null)"
-if [ -n "$vk_lib_path" ]; then
-    PATH="$vk_lib_path:$PATH"
-# else
-#     echo "warning: debug vulkan not specific, attempting to use system-provided vulkan library"
+site_configs="../configs/wite"
+WIN_COMPILER= #enable in site_configs by setting to a compiler
+if [ -f "$site_configs" ]; then
+    source "$site_configs"
+else
+    echo "warning: site configs not found"
 fi;
-LINKOPTS="-L${vk_lib_path} -lrt -latomic -lvulkan -lSDL2"
-BOTHOPTS="-DDEBUG -g -DVK_NO_PROTOTYPES"
+BOTHOPTS="-DDEBUG -g -DVK_NO_PROTOTYPES -DVULKAN_HPP_NO_EXCEPTIONS"
 # -DDO_PROFILE
 # -DWITE_DEBUG_IMAGE_BARRIERS
 # -DWITE_DEBUG_FENCES
@@ -34,16 +34,21 @@ ERRLOGBIT="errors.txt"
 ERRLOGBITDIR="${OUTDIR}/file_errors"
 rm "${LOGFILE}" "${ERRLOG}" ${ERRLOGBITDIR}/*-${ERRLOGBIT} 2>/dev/null
 mkdir -p "${OUTDIR}" "${ERRLOGBITDIR}" 2>/dev/null
-if [ -z "${VK_SDK_PATH}" ]; then
-    VK_SDK_PATH="${VULKAN_SDK}"
-fi
 COMPILER=clang++
 WORKNICE="nice -n10"
 GLCOMPILER=glslangValidator
 TESTOPTIONS="nogpuid=1,2 extent=0,0,3840,2160 presentmode=immediate" #skips llvme pipe on my test system, renders to left monitor
-if [ -z "$VK_INCLUDE" -a ! -z "$VK_SDK_PATH" ]; then
-    VK_INCLUDE="-I${VK_SDK_PATH}/Include -I${VK_SDK_PATH}/Third-Party/Include"
+if [ -z "${VK_SDK_PATH}" ]; then
+    VK_SDK_PATH="${VULKAN_SDK}"
 fi
+if [ -z "$VK_INCLUDE" -a -n "$VK_SDK_PATH" ]; then
+    VK_INCLUDE="-I${VK_SDK_PATH}/include"
+fi
+if [ -n "$vk_lib_path" ]; then
+    PATH="$vk_lib_path:$PATH"
+fi;
+LINKOPTS="-lrt -latomic -lvulkan -lSDL2"
+#-L${vk_lib_path}
 
 find "${OUTDIR}" -type f -iname '*.o' -print0 |
     while IFS= read -d '' OFILE; do
@@ -80,13 +85,17 @@ if ! [ -f "${ERRLOG}" ] || [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
 	while IFS= read -d '' SRCFILE && [ $(cat ${ERRLOGBITDIR}/*-${ERRLOGBIT} 2>/dev/null | wc -l) -eq 0 ]; do
 	    DSTFILE="${OUTDIR}/${SRCFILE%.*}.o"
 	    DSTDIR="$(dirname "$DSTFILE")"
-	    test -d "$DSTDIR" || mkdir "$DSTDIR"
+	    test -d "$DSTDIR" || mkdir -p "$DSTDIR"
+	    WINDSTFILE="${OUTDIR}/windows/${SRCFILE%.*}.o"
 	    DEPENDENCIES="${OUTDIR}/${SRCFILE%.*}.d"
 	    THISERRLOG="${ERRLOGBITDIR}/$(echo "${SRCFILE}" | tr '/' '-')-${ERRLOGBIT}"
 	    rm "${THISERRLOG}" 2>/dev/null
-	    mkdir -p "$(dirname "$DSTFILE")";
 	    (
-		if [ -f "${DSTFILE}" ] && [ "${DSTFILE}" -nt "$0" ] && [ "${DSTFILE}" -nt "${SRCFILE}" ]; then
+		#if either target needs recompiled, do them both just for a sanity check
+		if [ -f "${DSTFILE}" -a "${DSTFILE}" -nt "$0" -a "${DSTFILE}" -nt "${SRCFILE}" -a \
+		     '(' -z "$WIN_COMPILER" -o \
+		       '(' -f "${WINDSTFILE}" -a "${WINDSTFILE}" -nt "$0" -a "${WINDSTFILE}" -nt "${SRCFILE}" ')' ')' ]; then
+		    #note: this does not check the win sdk for changes
 		    while read depend; do
 			if ! [ -f "${depend}" ]; then
 			    echo "rebuilding ${SRCFILE} because ${depend} not found (dependencies: ${DEPENDENCIES})";
@@ -103,22 +112,30 @@ if ! [ -f "${ERRLOG}" ] || [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
 		if ! $WORKNICE $COMPILER $VK_INCLUDE -I "${OUTDIR}" --std=c++20 -fPIC $BOTHOPTS -Werror -Wall "${SRCFILE}" -c -o "${DSTFILE}" >>"${LOGFILE}" 2>>"${THISERRLOG}"; then # -D_POSIX_C_SOURCE=200112L
 		    rm "${DSTFILE}" 2>/dev/null
 		    echo "Failed Build: ${SRCFILE}" >>"${THISERRLOG}"
-		    #echo "Failed Build: ${SRCFILE}"
-		    #else
-		    #echo "Built: ${SRCFILE}"
+		elif [ -n "$WIN_COMPILER" ]; then
+		    DSTFILE="${WINDSTFILE}"
+		    DSTDIR="$(dirname "$DSTFILE")"
+		    test -d "$DSTDIR" || mkdir -p "$DSTDIR"
+		    THISERRLOG="${ERRLOGBITDIR}/$(echo "${SRCFILE}" | tr '/' '-')-windows-${ERRLOGBIT}"
+		    rm "${THISERRLOG}" 2>/dev/null
+		    # -I "${OUTDIR}" is for shaders which get turned into headers
+		    if ! $WORKNICE $WIN_COMPILER $VK_INCLUDE -I "${OUTDIR}" $BOTHOPTS -Werror "${SRCFILE}" -c -o "${DSTFILE}" >>"${LOGFILE}" 2>>"${THISERRLOG}"; then # -D_POSIX_C_SOURCE=200112L
+			rm "${DSTFILE}" 2>/dev/null
+			echo "[cross compile for windows] Failed Build: ${SRCFILE}" >>"${THISERRLOG}"
+		    fi
 		fi
 	    ) &
 	done
 fi
 
 let nocompiles=0;
-while [ $nocompiles -lt 4 ]; do
-    if pgrep "$COMPILER" &>/dev/null; then
+while [ $nocompiles -lt 100 ]; do
+    if [ \( -n "$WIN_COMPILER" -a $(pgrep -c "$WIN_COMPILER_RUNNIG_TEST") -gt 0 \) -o $(pgrep -c "$COMPILER") -gt 0 ]; then
 	let nocompiles=0;
     else
 	let nocompiles++;
     fi;
-    sleep 0.05s;
+    sleep 0.01s;
 done
 cat ${ERRLOGBITDIR}/*-${ERRLOGBIT} >>"${ERRLOG}"
 

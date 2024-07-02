@@ -13,12 +13,12 @@ Stable and intermediate releases may be made continually. For this reason, a yea
 */
 
 #include <vector>
-#include <string>
 #include <cstring>
 #include <memory>
 
 #include "DEBUG.hpp"
 #include "configuration.hpp"
+#include "stdExtensions.hpp"
 
 namespace WITE::configuration {
 
@@ -26,8 +26,9 @@ namespace WITE::configuration {
 
   void setOptions(int argc, char** argv) {//static
     for(int i = 0;i < argc;i++) {
-      char* temp = new char[std::strlen(argv[i]) + 1];
-      std::strcpy(temp, argv[i]);
+      size_t len = std::strlen(argv[i]) + 1;
+      char* temp = new char[len];
+      WITE::strcpy(temp, argv[i], len);
       WARN("CLI option: ", temp);
       options.emplace_back(temp);//constructs unique_pointer around char array
     }

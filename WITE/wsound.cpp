@@ -13,11 +13,11 @@ Stable and intermediate releases may be made continually. For this reason, a yea
 */
 
 #include <atomic>
+#include <chrono>
 
 #include "wsound.hpp"
 #include "DEBUG.hpp"
 #include "configuration.hpp"
-#include "time.hpp"
 
 namespace WITE::wsound {
 
@@ -71,7 +71,7 @@ namespace WITE::wsound {
     ASSERT_TRAP(adev > 0, "failed to create audio device, with error: ", SDL_GetError());
     ASSERT_TRAP(audioFormat.format == idealAudioFormat.format, "unauthorized format change. Asked: ", idealAudioFormat.format, " Actual: ", audioFormat.format);
     combinedSoundsSamples = audioFormat.freq * configuration::getOption("audiobufferlengthms", 10000) / 500;//x/500=x*2/1000
-    initTime = WITE::toNS(WITE::now());
+    initTime = std::chrono::time_point_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now()).time_since_epoch().count();
     SDL_PauseAudioDevice(adev, 0);
     combinedSounds = reinterpret_cast<std::atomic<float>*>(malloc(combinedSoundsSamples * sizeof(float)));
   };

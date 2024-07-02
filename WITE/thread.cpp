@@ -12,8 +12,13 @@ You should have received a copy of the GNU General Public License along with WIT
 Stable and intermediate releases may be made continually. For this reason, a year range is used in the above copyrihgt declaration. I intend to keep the "working copy" publicly visible, even if it is not functional. I consider every push to this publicly visible repository as a release. Releases intended to be stable will be marked as such via git tag or similar feature.
 */
 
+#ifndef iswindows //*nix way to get cpu core count (guess)
 #include <unistd.h>
 #include <sys/sysinfo.h>
+#else
+#include <windows.h>
+#endif
+
 #include <chrono>
 
 #include "thread.hpp"
@@ -90,11 +95,18 @@ namespace WITE {
 
   int32_t thread::guessCpuCount() {//static
     constexpr int64_t MIN = 4;//mostly to interpret 0 or -1 as failure
-    int64_t ret;
+    int64_t ret = MIN;
+#ifndef iswindows
     ret = sysconf(_SC_NPROCESSORS_CONF);
     if(ret <= MIN) ret = get_nprocs_conf();
     if(ret <= MIN) ret = sysconf(_SC_NPROCESSORS_ONLN);
     if(ret <= MIN) ret = get_nprocs();
+#else
+    SYSTEM_INFO sysinfo;
+    GetSystemInfo(&sysinfo);
+    ret = sysinfo.dwNumberOfProcessors;
+#endif
+    if(ret <= MIN) ret = std::thread::hardware_concurrency();
     //TODO other methods to guess here
     if(ret <= MIN) ret = MIN;
     return int32_t(ret);

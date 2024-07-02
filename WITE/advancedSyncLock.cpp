@@ -12,7 +12,6 @@ You should have received a copy of the GNU General Public License along with WIT
 Stable and intermediate releases may be made continually. For this reason, a year range is used in the above copyrihgt declaration. I intend to keep the "working copy" publicly visible, even if it is not functional. I consider every push to this publicly visible repository as a release. Releases intended to be stable will be marked as such via git tag or similar feature.
 */
 
-#include "time.hpp"
 #include "advancedSyncLock.hpp"
 #include "DEBUG.hpp"
 
@@ -27,7 +26,7 @@ namespace WITE {
   };
 
   bool advancedSyncLock::acquire(uint64_t timeoutNS) {
-    timespec startTime = now();
+    auto endTime = std::chrono::steady_clock::now() + std::chrono::nanoseconds(timeoutNS);
     auto tid = thread::getCurrentTid();
     uint32_t sleepCnt = 0;
     do {
@@ -40,7 +39,7 @@ namespace WITE {
       lock.release();
       if(timeoutNS > 0)
 	thread::sleepShort(sleepCnt);
-    } while(toNS(since(startTime)) < timeoutNS);
+    } while(std::chrono::steady_clock::now() < endTime);
     return false;
   };
 

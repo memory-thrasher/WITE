@@ -17,9 +17,6 @@ Stable and intermediate releases may be made continually. For this reason, a yea
 #include <atomic>
 #include <mutex> //not using SyncLock because we want to profile it too
 #include <map>
-#include <sys/time.h>
-#include <sys/resource.h>
-#include <signal.h>
 
 #ifdef DO_PROFILE
 #define PROFILEME ::WITE::profiler UNIQUENAME(wite_function_profiler) (::WITE::profiler::hash(__FILE__, __func__, __LINE__, ""), __FILE__, __func__, __LINE__, "")
@@ -44,8 +41,6 @@ namespace WITE {
     static std::map<hash_t, ProfileData> allProfiles;
     static std::mutex allProfiles_mutex;
     static std::atomic_uint64_t allProfilesMutexTime, allProfilesExecutions;
-    static timer_t timer;
-    static bool initDone;
     static uint64_t getNs();
     char identifier[4096];
     uint64_t startTime;

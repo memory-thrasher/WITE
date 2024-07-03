@@ -351,7 +351,7 @@ int main(int argc, char** argv) {
   const float r = 1.3;
   float az = 1.5f, inc = 0.5f, dist = 12;
   winput::compositeInputData cid;
-  while(!shutdownRequested()) {
+  for(size_t i = 0;i < 10000 && !WITE::shutdownRequested();i++) {
     winput::pollInput();
     if(winput::getButton(winput::rmb)) {
       winput::getInput(winput::mouse, cid);

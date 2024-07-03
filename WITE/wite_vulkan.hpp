@@ -22,6 +22,7 @@ Stable and intermediate releases may be made continually. For this reason, a yea
 #include <vulkan/vulkan.hpp>
 #include <glm/glm.hpp>
 #include <glm/ext.hpp>
+#include <iostream>
 
 #define ALLOCCB (static_cast<const VULKAN_HPP_NAMESPACE::AllocationCallbacks*>(NULL)) //might actually use this later, so pass it everywhere
 
@@ -37,9 +38,7 @@ namespace WITE {
     return s;
   };
 
-  std::ostream& operator<<(std::ostream& s, vk::Result r) {
-    return s << vk::to_string(r);
-  };
+  std::ostream& operator<<(std::ostream& s, vk::Result r);
 
 }
 

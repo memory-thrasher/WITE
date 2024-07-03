@@ -213,8 +213,8 @@ int main(int argc, char** argv) {
   sphereData_t sphereData { {1, 0, 0, 1} };
   float az = 1.5f, inc = 0.5f, dist = 12;
   WITE::winput::compositeInputData cid;
-  // for(size_t i = 0;i < 100000 && !WITE::shutdownRequested();i++) {
-  while(!WITE::shutdownRequested()) {
+  for(size_t i = 0;i < 100000 && !WITE::shutdownRequested();i++) {
+  // while(!WITE::shutdownRequested()) {
     WITE::winput::pollInput();
     if(WITE::winput::getButton(WITE::winput::rmb)) {
       WITE::winput::getInput(WITE::winput::mouse, cid);

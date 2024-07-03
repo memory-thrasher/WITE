@@ -21,7 +21,7 @@ if [ -f "$site_configs" ]; then
 else
     echo "warning: site configs not found"
 fi;
-BOTHOPTS="-DDEBUG -g -DVK_NO_PROTOTYPES -DVULKAN_HPP_NO_EXCEPTIONS"
+BOTHOPTS="-DDEBUG -DVK_NO_PROTOTYPES -DVULKAN_HPP_NO_EXCEPTIONS"
 # -DDO_PROFILE
 # -DWITE_DEBUG_IMAGE_BARRIERS
 # -DWITE_DEBUG_FENCES
@@ -47,7 +47,7 @@ fi
 if [ -n "$vk_lib_path" ]; then
     PATH="$vk_lib_path:$PATH"
 fi;
-LINKOPTS="-lrt -latomic -lvulkan -lSDL2"
+LINKOPTS="-fuse-ld=lld -lrt -latomic -lvulkan -lSDL2"
 #-L${vk_lib_path}
 
 find "${OUTDIR}" -type f -iname '*.o' -print0 |
@@ -119,7 +119,7 @@ if ! [ -f "${ERRLOG}" ] || [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
 		    THISERRLOG="${ERRLOGBITDIR}/$(echo "${SRCFILE}" | tr '/' '-')-windows-${ERRLOGBIT}"
 		    rm "${THISERRLOG}" 2>/dev/null
 		    # -I "${OUTDIR}" is for shaders which get turned into headers
-		    if ! $WORKNICE $WIN_COMPILER $VK_INCLUDE -I "${OUTDIR}" $BOTHOPTS -Werror "${SRCFILE}" -c -o "${DSTFILE}" >>"${LOGFILE}" 2>>"${THISERRLOG}"; then # -D_POSIX_C_SOURCE=200112L
+		    if ! $WORKNICE $WIN_COMPILER $VK_INCLUDE -I "${OUTDIR}" $BOTHOPTS -Werror "${SRCFILE}" -o "${DSTFILE}" >>"${LOGFILE}" 2>>"${THISERRLOG}"; then # -D_POSIX_C_SOURCE=200112L
 			rm "${DSTFILE}" 2>/dev/null
 			echo "[cross compile for windows] Failed Build: ${SRCFILE}" >>"${THISERRLOG}"
 		    fi
@@ -145,9 +145,14 @@ if ! [ -f "${ERRLOG}" ] || [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
     for DIRNAME in $BUILDLIBS; do
 	BUILTLIBS="${BUILTLIBS} -l:${DIRNAME}.so"
 	LIBNAME="$OUTDIR/$(basename "${DIRNAME}").so"
-	if [ -f "$LIBNAME" ] && [ $(find "$OUTDIR/$DIRNAME" -iname '*.o' -newer "$LIBNAME" | wc -l) -eq 0 ]; then continue; fi;
+	WINLIBNAME="$OUTDIR/windows/$(basename "${DIRNAME}").dll"
+	if ! [ -f "$LIBNAME" -a $(find "$OUTDIR/$DIRNAME" -iname '*.o' -newer "$LIBNAME" | wc -l) -eq 0 ]; then
 	#echo "Linking $LIBNAME"
-	$WORKNICE $COMPILER -shared $BOTHOPTS $LINKOPTS $(find "$OUTDIR/$DIRNAME" -name '*.o') -o $LIBNAME >>"${LOGFILE}" 2>>"${ERRLOG}"
+	    $WORKNICE $COMPILER -shared $BOTHOPTS $LINKOPTS $(find "$OUTDIR/$DIRNAME" -name '*.o') -o $LIBNAME >>"${LOGFILE}" 2>>"${ERRLOG}"
+	fi;
+	if [ -n "$WIN_COMPILER" -a ! \( -f "$WINLIBNAME" -a $(find "$OUTDIR/windows/$DIRNAME" -iname '*.o' -newer "$WINLIBNAME" | wc -l) -eq 0 \) ]; then
+	    $WORKNICE $WIN_LINKER $BOTHOPTS $(find "$OUTDIR/windows/$DIRNAME" -name '*.o') -o $WINLIBNAME >>"${LOGFILE}" 2>>"${ERRLOG}"
+	fi
     done
 fi
 

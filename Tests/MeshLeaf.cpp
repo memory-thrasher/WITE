@@ -263,7 +263,7 @@ int main(int argc, char** argv) {
   WITE::winput::compositeInputData cid;
   constexpr float incLimit = ::glm::pi<float>()/2-glm::epsilon<float>();
   // while(!WITE::shutdownRequested()) {
-  for(size_t i = 0;i < 100000 && !WITE::shutdownRequested();i++) {
+  for(size_t i = 0;i < 10000 && !WITE::shutdownRequested();i++) {
     WITE::winput::pollInput();
     if(WITE::winput::getButton(WITE::winput::rmb)) {
       WITE::winput::getInput(WITE::winput::mouse, cid);

@@ -215,7 +215,8 @@ if ! [ -f "${ERRLOG}" ] || [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
 	    while IFS= read -d '' OFILE; do
 		TESTNAME="${OFILE%.*}"
 		rm "$TESTNAME" 2>/dev/null
-		$WORKNICE $WIN_LINKER "$OFILE" $WINLIBOBJS $WINLINKOPTS "/out:${TESTNAME}.exe" 2>>"${ERRLOG}" >>"${LOGFILE}"
+		#entry mainCRTStartup calls main, so the application (test or real) need not handle main vs wmain
+		$WORKNICE $WIN_LINKER /subsystem:windows /entry:mainCRTStartup "$OFILE" $WINLIBOBJS $WINLINKOPTS "/out:${TESTNAME}.exe" 2>>"${ERRLOG}" >>"${LOGFILE}"
 	    done
     done
 fi

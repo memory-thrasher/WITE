@@ -169,7 +169,7 @@ optional members:
       bool t = false;
       std::error_code ec;
       if(!std::filesystem::exists(outdir))
-	ASSERT_TRAP(std::filesystem::create_directories(outdir, ec), "create dir failed ", ec);
+	ASSERT_TRAP_OR_RUN(std::filesystem::create_directories(outdir, ec), "create dir failed ", ec);
       ASSERT_TRAP(std::filesystem::is_directory(outdir, ec), "not a directory ", ec);
       if(backupInProgress.compare_exchange_strong(t, true, std::memory_order_acq_rel)) {
 	tablesBackedUp.store(0, std::memory_order_relaxed);

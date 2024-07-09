@@ -16,8 +16,7 @@ Stable and intermediate releases may be made continually. For this reason, a yea
 
 #define VULKAN_HPP_FLAGS_MASK_TYPE_AS_PUBLIC //makes vk::Flags<T> qualify as "structural" so it can be used in templates
 #define VULKAN_HPP_USE_REFLECT // adds reflect() that makes a tuple of any vk struct
-#define VULKAN_HPP_STORAGE_SHARED
-//vulkan instance and dispatcher storage are provided in gpu.cpp
+//vulkan instance and dispatcher storage are provided in wite_vulkan.cpp
 
 #include <vulkan/vulkan.hpp>
 #include <glm/glm.hpp>

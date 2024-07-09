@@ -64,9 +64,7 @@ namespace WITE {
 	freeSpaceLEA(header->freeSpaceLen) = j;
 	WITE_DEBUG_DB_FREESPACE(header->freeSpaceLen);
 	header->freeSpaceLen++;
-#if DEBUG
 	ASSERT_TRAP(freeSpaceBitmap.insert(j).second, "duplicate entity found in free space queue ", j);
-#endif
       }
       WITE_DEBUG_DB_HEADER;
     };
@@ -90,10 +88,10 @@ namespace WITE {
       const std::filesystem::path dir = filename.parent_path();
       std::error_code ec;
       if(!std::filesystem::exists(dir))
-	ASSERT_TRAP(std::filesystem::create_directories(dir, ec), "create dir failed ", ec);
+	ASSERT_TRAP_OR_RUN(std::filesystem::create_directories(dir, ec), "create dir failed ", ec);
       ASSERT_TRAP(std::filesystem::is_directory(dir, ec), "not a directory ", ec);
       fd = WITE::openFile(filename, true, clobber);
-      ASSERT_TRAP(WITE::lockFile(fd), "failed to lock file ", filename); //lock will be closed when fd is closed
+      ASSERT_TRAP_OR_RUN(WITE::lockFile(fd), "failed to lock file ", filename); //lock will be closed when fd is closed
       size_t size = static_cast<size_t>(std::filesystem::file_size(filename));
       size_t existingAUs = size ? (size - sizeof(header_t)) / au_size : 0;
       if(existingAUs) [[likely]] {//load

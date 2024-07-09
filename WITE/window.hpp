@@ -18,10 +18,7 @@ Stable and intermediate releases may be made continually. For this reason, a yea
 #include <memory>
 
 #include "wite_vulkan.hpp"
-// #include "onionTemplateStructs.hpp"
-// #include "onionUtils.hpp"
 #include "math.hpp"
-// #include "image.hpp"
 
 class SDL_Window;//prototype for handle
 

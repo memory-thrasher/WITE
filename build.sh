@@ -21,7 +21,7 @@ if [ -f "$site_configs" ]; then
 else
     echo "warning: site configs not found"
 fi;
-BOTHOPTS="-DDEBUG -DVK_NO_PROTOTYPES -DVULKAN_HPP_NO_EXCEPTIONS"
+BOTHOPTS="-DVK_NO_PROTOTYPES -DVULKAN_HPP_NO_EXCEPTIONS"
 # -DDO_PROFILE
 # -DWITE_DEBUG_IMAGE_BARRIERS
 # -DWITE_DEBUG_FENCES
@@ -48,6 +48,7 @@ if [ -n "$vk_lib_path" ]; then
     PATH="$vk_lib_path:$PATH"
 fi;
 LINKOPTS="-fuse-ld=lld -lrt -latomic -lvulkan -lSDL2"
+WINLINKOPTS=" /defaultlib:SDL2" #/defaultlib:vulkan
 #-L${vk_lib_path}
 
 find "${OUTDIR}" -type f -iname '*.o' -print0 |
@@ -87,14 +88,20 @@ if ! [ -f "${ERRLOG}" ] || [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
 	    DSTDIR="$(dirname "$DSTFILE")"
 	    test -d "$DSTDIR" || mkdir -p "$DSTDIR"
 	    WINDSTFILE="${OUTDIR}/windows/${SRCFILE%.*}.o"
+	    WINDSTDIR="$(dirname "$WINDSTFILE")"
+	    test -n "$WIN_COMPILER" -a '!' -d "$WINDSTDIR" && mkdir -p "$WINDSTDIR"
+	    RELDSTFILE="${OUTDIR}/release/${SRCFILE%.*}.o"
+	    RELDSTDIR="$(dirname "$RELDSTFILE")"
+	    test -d "$RELDSTDIR" || mkdir -p "$RELDSTDIR"
 	    DEPENDENCIES="${OUTDIR}/${SRCFILE%.*}.d"
 	    THISERRLOG="${ERRLOGBITDIR}/$(echo "${SRCFILE}" | tr '/' '-')-${ERRLOGBIT}"
 	    rm "${THISERRLOG}" 2>/dev/null
 	    (
-		#if either target needs recompiled, do them both just for a sanity check
+		#if any target needs recompiled, do them all just for a sanity check
 		if [ -f "${DSTFILE}" -a "${DSTFILE}" -nt "$0" -a "${DSTFILE}" -nt "${SRCFILE}" -a \
-		     '(' -z "$WIN_COMPILER" -o \
-		       '(' -f "${WINDSTFILE}" -a "${WINDSTFILE}" -nt "$0" -a "${WINDSTFILE}" -nt "${SRCFILE}" ')' ')' ]; then
+			-f "${RELDSTFILE}" -a "${DSTFILE}" -nt "$0" -a "${RELDSTFILE}" -nt "${SRCFILE}" -a \
+			'(' -z "$WIN_COMPILER" -o \
+			'(' -f "${WINDSTFILE}" -a "${WINDSTFILE}" -nt "$0" -a "${WINDSTFILE}" -nt "${SRCFILE}" ')' ')' ]; then
 		    #note: this does not check the win sdk for changes
 		    while read depend; do
 			if ! [ -f "${depend}" ]; then
@@ -109,18 +116,15 @@ if ! [ -f "${ERRLOG}" ] || [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
 		    $WORKNICE $COMPILER $VK_INCLUDE -I "${OUTDIR}" -E -o /dev/null -w -ferror-limit=1 -H "${SRCFILE}" 2>&1 | grep '^\.' | grep -o '[^[:space:]]*$' | sort -u >"${DEPENDENCIES}"
 		fi
 		# -I "${OUTDIR}" is for shaders which get turned into headers
-		if ! $WORKNICE $COMPILER $VK_INCLUDE -I "${OUTDIR}" --std=c++20 -fPIC $BOTHOPTS -Werror -Wall "${SRCFILE}" -c -o "${DSTFILE}" >>"${LOGFILE}" 2>>"${THISERRLOG}"; then # -D_POSIX_C_SOURCE=200112L
+		if ! $WORKNICE $COMPILER $VK_INCLUDE -I "${OUTDIR}" --std=c++20 -fPIC -DDEBUG -g $BOTHOPTS -Werror -Wall "${SRCFILE}" -c -o "${DSTFILE}" >>"${LOGFILE}" 2>>"${THISERRLOG}"; then # -D_POSIX_C_SOURCE=200112L
 		    rm "${DSTFILE}" 2>/dev/null
 		    echo "Failed Build: ${SRCFILE}" >>"${THISERRLOG}"
+		elif ! $WORKNICE $COMPILER $VK_INCLUDE -I "${OUTDIR}" --std=c++20 -fPIC $BOTHOPTS -Werror -Wall "${SRCFILE}" -c -o "${RELDSTFILE}" >>"${LOGFILE}" 2>>"${THISERRLOG}"; then # -D_POSIX_C_SOURCE=200112L
+		    rm "${RELDSTFILE}" 2>/dev/null
+		    echo "[release build] Failed Build: ${SRCFILE}" >>"${THISERRLOG}"
 		elif [ -n "$WIN_COMPILER" ]; then
-		    DSTFILE="${WINDSTFILE}"
-		    DSTDIR="$(dirname "$DSTFILE")"
-		    test -d "$DSTDIR" || mkdir -p "$DSTDIR"
-		    THISERRLOG="${ERRLOGBITDIR}/$(echo "${SRCFILE}" | tr '/' '-')-windows-${ERRLOGBIT}"
-		    rm "${THISERRLOG}" 2>/dev/null
-		    # -I "${OUTDIR}" is for shaders which get turned into headers
-		    if ! $WORKNICE $WIN_COMPILER $VK_INCLUDE -I "${OUTDIR}" $BOTHOPTS -Werror "${SRCFILE}" -o "${DSTFILE}" >>"${LOGFILE}" 2>>"${THISERRLOG}"; then # -D_POSIX_C_SOURCE=200112L
-			rm "${DSTFILE}" 2>/dev/null
+		    if ! $WORKNICE $WIN_COMPILER /std:c++20 -Diswindows $VK_INCLUDE -I "${OUTDIR}" $BOTHOPTS -c "${SRCFILE}" -o "${WINDSTFILE}" >>"${LOGFILE}" 2>>"${THISERRLOG}"; then # -D_POSIX_C_SOURCE=200112L
+			rm "${WINDSTFILE}" 2>/dev/null
 			echo "[cross compile for windows] Failed Build: ${SRCFILE}" >>"${THISERRLOG}"
 		    fi
 		fi
@@ -141,20 +145,35 @@ cat ${ERRLOGBITDIR}/*-${ERRLOGBIT} >>"${ERRLOG}"
 
 #libs
 if ! [ -f "${ERRLOG}" ] || [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
-    BUILTLIBS=
+    LIBBUILDDIRS=
+    RELLIBBUILDDIRS=
+    WINLIBBUILDDIRS=
     for DIRNAME in $BUILDLIBS; do
-	BUILTLIBS="${BUILTLIBS} -l:${DIRNAME}.so"
-	LIBNAME="$OUTDIR/$(basename "${DIRNAME}").so"
-	WINLIBNAME="$OUTDIR/windows/$(basename "${DIRNAME}").dll"
-	if ! [ -f "$LIBNAME" -a $(find "$OUTDIR/$DIRNAME" -iname '*.o' -newer "$LIBNAME" | wc -l) -eq 0 ]; then
-	#echo "Linking $LIBNAME"
-	    $WORKNICE $COMPILER -shared $BOTHOPTS $LINKOPTS $(find "$OUTDIR/$DIRNAME" -name '*.o') -o $LIBNAME >>"${LOGFILE}" 2>>"${ERRLOG}"
-	fi;
-	if [ -n "$WIN_COMPILER" -a ! \( -f "$WINLIBNAME" -a $(find "$OUTDIR/windows/$DIRNAME" -iname '*.o' -newer "$WINLIBNAME" | wc -l) -eq 0 \) ]; then
-	    $WORKNICE $WIN_LINKER $BOTHOPTS $(find "$OUTDIR/windows/$DIRNAME" -name '*.o') -o $WINLIBNAME >>"${LOGFILE}" 2>>"${ERRLOG}"
-	fi
+	LIBBUILDDIRS="${LIBBUILDDIRS} ${OUTDIR}/${DIRNAME}"
+	WINLIBBUILDDIRS="${WINLIBBUILDDIRS} ${OUTDIR}/windows/${DIRNAME}"
+	RELLIBBUILDDIRS="${RELLIBBUILDDIRS} ${OUTDIR}/release/${DIRNAME}"
     done
+    LIBOBJS=$(find $LIBBUILDDIRS -name '*.o')
+    WINLIBOBJS=$(find $WINLIBBUILDDIRS -name '*.o')
+    RELLIBOBJS=$(find $RELLIBBUILDDIRS -name '*.o')
 fi
+
+# #libs
+# if ! [ -f "${ERRLOG}" ] || [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
+#     BUILTLIBS=
+#     for DIRNAME in $BUILDLIBS; do
+# 	BUILTLIBS="${BUILTLIBS} -l:${DIRNAME}.so"
+# 	LIBNAME="$OUTDIR/$(basename "${DIRNAME}").so"
+# 	WINLIBNAME="$OUTDIR/windows/$(basename "${DIRNAME}").dll"
+# 	if ! [ -f "$LIBNAME" -a $(find "$OUTDIR/$DIRNAME" -iname '*.o' -newer "$LIBNAME" | wc -l) -eq 0 ]; then
+# 	#echo "Linking $LIBNAME"
+# 	    $WORKNICE $COMPILER -shared $BOTHOPTS $LINKOPTS $(find "$OUTDIR/$DIRNAME" -name '*.o') -o $LIBNAME >>"${LOGFILE}" 2>>"${ERRLOG}"
+# 	fi;
+# 	if [ -n "$WIN_COMPILER" -a ! \( -f "$WINLIBNAME" -a $(find "$OUTDIR/windows/$DIRNAME" -iname '*.o' -newer "$WINLIBNAME" | wc -l) -eq 0 \) ]; then
+# 	    $WORKNICE $WIN_LINKER /dll $(find "$OUTDIR/windows/$DIRNAME" -name '*.o') "/out:$WINLIBNAME" >>"${LOGFILE}" 2>>"${ERRLOG}"
+# 	fi
+#     done
+# fi
 
 #tests
 if ! [ -f "${ERRLOG}" ] || [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
@@ -164,7 +183,7 @@ if ! [ -f "${ERRLOG}" ] || [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
 		TESTNAME="${OFILE%.*}"
 		#test -f "${TESTNAME}" && cp "${TESTNAME}" "${TESTNAME}.bak.$(date '+%y%m%d%H%M')"
 		rm "$TESTNAME" 2>/dev/null
-		$WORKNICE $COMPILER "$OFILE" -o "$TESTNAME" -L "${OUTDIR}" "-Wl,-rpath,$OUTDIR" $BUILTLIBS $LINKOPTS $BOTHOPTS 2>>"${ERRLOG}" >>"${LOGFILE}"
+		$WORKNICE $COMPILER -DDEBUG "$OFILE" $LIBOBJS -o "$TESTNAME" "-Wl,-rpath,$OUTDIR" $LINKOPTS $BOTHOPTS 2>>"${ERRLOG}" >>"${LOGFILE}"
 		grep -qxF "$(basename "${TESTNAME#*/}")" test_skips.txt && continue;
 		echo running test "${TESTNAME}" >>"${LOGFILE}"
 		# md5sum $TESTNAME >>"${LOGFILE}"
@@ -173,6 +192,30 @@ if ! [ -f "${ERRLOG}" ] || [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
 		code=$?
 		if [ $code -ne 0 ]; then echo "Exit code: " $code >>"${ERRLOG}"; fi;
 		#test -f "${TESTNAME}.bak" && ! test -f "${TESTNAME}" && cp "${TESTNAME}.bak" "${TESTNAME}"
+	    done
+    done
+fi
+
+#tests with release build (not ran, available for benchmarking)
+if ! [ -f "${ERRLOG}" ] || [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
+    for DIRNAME in $BUILDTESTS; do
+	find "$OUTDIR/release/$DIRNAME" -iname '*.o' -print0 |
+	    while IFS= read -d '' OFILE; do
+		TESTNAME="${OFILE%.*}"
+		rm "$TESTNAME" 2>/dev/null
+		$WORKNICE $COMPILER -O3 "$OFILE" $RELLIBOBJS -o "$TESTNAME" "-Wl,-rpath,$OUTDIR" $LINKOPTS $BOTHOPTS 2>>"${ERRLOG}" >>"${LOGFILE}"
+	    done
+    done
+fi
+
+#win tests (compile but dont run for obvious reasons)
+if ! [ -f "${ERRLOG}" ] || [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
+    for DIRNAME in $BUILDTESTS; do
+	find "$OUTDIR/windows/$DIRNAME" -iname '*.o' -print0 |
+	    while IFS= read -d '' OFILE; do
+		TESTNAME="${OFILE%.*}"
+		rm "$TESTNAME" 2>/dev/null
+		$WORKNICE $WIN_LINKER "$OFILE" $WINLIBOBJS $WINLINKOPTS "/out:${TESTNAME}.exe" 2>>"${ERRLOG}" >>"${LOGFILE}"
 	    done
     done
 fi
@@ -189,10 +232,11 @@ if ! [ -f "${ERRLOG}" ] || [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
 fi
 
 if [ -f "${ERRLOG}" ] && [ "$(stat -c %s "${ERRLOG}")" -gt 0 ]; then
-    #echo "${ERRLOG}"
+    echo "${ERRLOG}"
     cat "${ERRLOG}"
+    #echo Failed
 else
     echo "Success"
-    tail "${LOGFILE}"
+    #tail "${LOGFILE}"
 fi
 

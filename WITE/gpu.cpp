@@ -18,16 +18,12 @@ Stable and intermediate releases may be made continually. For this reason, a yea
 #include <cstring>
 #include <cstdlib>
 
-#define VULKAN_HPP_STORAGE_SHARED_EXPORT
-
 #include "gpu.hpp"
 #include "bitmaskIterator.hpp"
 #include "math.hpp"
 #include "DEBUG.hpp"
 #include "window.hpp"
 #include "configuration.hpp"
-
-VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE;
 
 const std::map<vk::MemoryPropertyFlags, int64_t> memoryScoreByFlag = {
   { vk::MemoryPropertyFlagBits::eDeviceLocal      ,   256 },

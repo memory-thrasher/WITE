@@ -82,7 +82,7 @@ namespace WITE {
     gpu& g = gpu::get(gpuIdx);
     auto phys = g.getPhysical();
     VkSurfaceKHR vksurface;
-    ASSERT_TRAP(SDL_Vulkan_CreateSurface(sdlWindow, gpu::getVkInstance(), &vksurface), "Failed to create vk surface");
+    ASSERT_TRAP_OR_RUN(SDL_Vulkan_CreateSurface(sdlWindow, gpu::getVkInstance(), &vksurface), "Failed to create vk surface");
     surface = vksurface;
     uint32_t presentModeCount = 10;
     vk::PresentModeKHR presentModes[10];//skipping a call to save a malloc, there are only 5 present modes in existance atm
@@ -163,9 +163,9 @@ namespace WITE {
     PROFILEME;
     auto tempWin = SDL_CreateWindow("surface probe", 0, 0, 100, 100, SDL_WINDOW_VULKAN | SDL_WINDOW_HIDDEN);
     unsigned int cnt = 0;
-    ASSERT_TRAP(SDL_Vulkan_GetInstanceExtensions(tempWin, &cnt, NULL), "failed to count vk extensions required by sdl");
+    ASSERT_TRAP_OR_RUN(SDL_Vulkan_GetInstanceExtensions(tempWin, &cnt, NULL), "failed to count vk extensions required by sdl");
     const char**names = new const char*[cnt];
-    ASSERT_TRAP(SDL_Vulkan_GetInstanceExtensions(tempWin, &cnt, names), "failed to list vk extensions required by sdl");
+    ASSERT_TRAP_OR_RUN(SDL_Vulkan_GetInstanceExtensions(tempWin, &cnt, names), "failed to list vk extensions required by sdl");
     SDL_DestroyWindow(tempWin);
     extensions.reserve(extensions.size() + cnt);
     for(size_t i = 0;i < cnt;i++)

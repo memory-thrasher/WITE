@@ -48,31 +48,42 @@ Stable and intermediate releases may be made continually. For this reason, a yea
  */
 #define MAP_LIST(f, ...) EVAL(MAP_LIST1(f, __VA_ARGS__, ()()(), ()()(), ()()(), 0))
 
-#ifdef DEBUG
-
 #include <iostream>
-#include "syncLock.hpp"
-//#include "Thread.hpp"
 
-::WITE::syncLock* LOG_MUTEX();
+#include "syncLock.hpp"
+
+namespace WITE {
+  void constexprAssertFailed();//note: NOT constexpr
+  syncLock* LOG_MUTEX();
+}
+
+#ifdef DEBUG
 
 #define WARN1(msg) { std::cerr << msg; }
 #define LOG1(msg) { std::cout << msg; }
-// " tid: ", ::WITE::Platform::Thread::getCurrentTid(),
-#define WARN(...) { ::WITE::scopeLock lock(LOG_MUTEX()); MAP(WARN1, __VA_ARGS__, " (", std::dec, __FILE__, ": ", __LINE__, ")", std::endl, std::flush); }
 #define WITE_ERROR(...) { WARN(__VA_ARGS__); asm("INT3"); }//TODO set global failure flag that db should read to graceful stop
 #define ASSERT_TRAP(cond, ...) { if(!(cond)) { WITE_ERROR(__VA_ARGS__); } }
-#define LOG(...) { ::WITE::scopeLock lock(LOG_MUTEX()); MAP(LOG1, __VA_ARGS__, " (", std::dec, __FILE__, ": ", __LINE__, ")", std::endl, std::flush); }
+#define ASSERT_TRAP_OR_RUN(cond, ...) { if(!(cond)) { WITE_ERROR(__VA_ARGS__); } }
 #define DEBUG_TERNARY(debug, release) debug
 
 #else //release
 
-#define WITE_ERROR(str) TODO gui error box
-#define WARN(str) TODO log file
-#define ASSERT_TRAP() {}
+namespace WITE {
+  void errorBox();
+  std::basic_ostream<char>& errorLog();
+};
+
+#define WARN1(...) { ::WITE::errorLog() << __VA_ARGS__; }
+#define LOG1(...) { WARN1(__VA_ARGS__); }
+#define WITE_ERROR(...) { WARN(__VA_ARGS__); ::WITE::errorBox(); asm("INT3"); }
+#define ASSERT_TRAP(...) {}
+#define ASSERT_TRAP_OR_RUN(cond, ...) { cond; }
 #define DEBUG_TERNARY(debug, release) release
 
 #endif
+
+#define WARN(...) { ::WITE::scopeLock lock(::WITE::LOG_MUTEX()); MAP(WARN1, __VA_ARGS__, " (", std::dec, __FILE__, ": ", __LINE__, ")", std::endl); }
+#define LOG(...) { ::WITE::scopeLock lock(::WITE::LOG_MUTEX()); MAP(LOG1, __VA_ARGS__, " (", std::dec, __FILE__, ": ", __LINE__, ")", std::endl, std::flush); }
 
 #ifdef WITE_DEBUG_IMAGE_BARRIERS
 #define WITE_DEBUG_IB(B, C) { WARN("barrier: command buffer: ", std::hex, C, ", image: ", B.image, std::dec, ", layout: ", (int)B.oldLayout, "->", (int)B.newLayout) }
@@ -106,8 +117,7 @@ Stable and intermediate releases may be made continually. For this reason, a yea
 #define VK_ASSERT(cmd, ...) { auto _r = (cmd); if(_r != vk::Result::eSuccess) CRASH(__VA_ARGS__, " ", _r); }
 #define VK_ASSERT_TUPLE(out, cmd, ...) { vk::Result _r; std::tie(_r, out) = (cmd); if(_r != vk::Result::eSuccess) CRASH(__VA_ARGS__, _r); }
 
-void constexprAssertFailed();//note: NOT constexpr
-#define ASSERT_CONSTEXPR(X) { if(!(X)) ::constexprAssertFailed(); }
+#define ASSERT_CONSTEXPR(X) { if(!(X)) ::WITE::constexprAssertFailed(); }
 //alternate syntax that resembles static_assert
 #define constexpr_assert(X) ASSERT_CONSTEXPR(X)
 #define ASSERT_CONSTEXPR_RET(X, RET) { if(!(X)) { ::constexprAssertFailed(); return RET; } }

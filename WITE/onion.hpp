@@ -417,20 +417,20 @@ namespace WITE {
 	return ret;
       };
 
-      template<uint64_t FS> inline void preRender(uint64_t frame, vk::CommandBuffer cmd, garbageCollector& gc) {
+      template<uint64_t FS> inline void preRender_l2(uint64_t frame, vk::CommandBuffer cmd, garbageCollector& gc) {
 	PROFILEME;
 	if constexpr(RT::isImage) {
 	  static constexpr resourceConsumer RC = findFinalUsagePerFrame<RS.id, RT::IR>()[FS].usage;
 	  at().template applyPendingResize<RS.resizeBehavior, RC.access>(frame + FS, cmd, gc);
 	  if constexpr(FS < RT::IR.frameswapCount-1)
-	    preRender<FS+1>(frame, cmd, gc);
+	    preRender_l2<FS+1>(frame, cmd, gc);
 	}
       }
 
       inline void preRender(uint64_t frame, vk::CommandBuffer cmd, garbageCollector& gc) {
 	PROFILEME;
 	if constexpr(RT::isImage)
-	  preRender<0>(frame, cmd, gc);
+	  preRender_l2<0>(frame, cmd, gc);
 	if constexpr(idx < RSS.len - 1)
 	  rest.preRender(frame, cmd, gc);
       };
@@ -1101,7 +1101,7 @@ namespace WITE {
       recordBarriers<BTS, BT>(cmd);
     };
 
-    template<copyStep CS, literalList<uint64_t> XLS> inline void recordCopies(vk::CommandBuffer cmd) {
+    template<copyStep CS, literalList<uint64_t> XLS> inline void recordCopies_l2(vk::CommandBuffer cmd) {
       if constexpr(XLS.len) {
 	{
 	  PROFILEME;
@@ -1146,19 +1146,19 @@ namespace WITE {
 	    }
 	  }
 	}
-	recordCopies<CS, XLS.sub(1)>(cmd);
+	recordCopies_l2<CS, XLS.sub(1)>(cmd);
       }
     };
 
     template<literalList<uint64_t> CSIDS> inline void recordCopies(vk::CommandBuffer cmd) {
       if constexpr(CSIDS.len) {
 	static constexpr copyStep CS = findById(OD.CSS, CSIDS[0]);
-	recordCopies<CS, allLayoutIds>(cmd);
+	recordCopies_l2<CS, allLayoutIds>(cmd);
 	recordCopies<CSIDS.sub(1)>(cmd);
       }
     };
 
-    template<clearStep CS, literalList<uint64_t> XLS> inline void recordClears(vk::CommandBuffer cmd) {
+    template<clearStep CS, literalList<uint64_t> XLS> inline void recordClears_l2(vk::CommandBuffer cmd) {
       if constexpr(XLS.len) {
 	{
 	  PROFILEME;
@@ -1179,14 +1179,14 @@ namespace WITE {
 	    }
 	  }
 	}
-	recordClears<CS, XLS.sub(1)>(cmd);
+	recordClears_l2<CS, XLS.sub(1)>(cmd);
       }
     };
 
     template<literalList<uint64_t> CLIDS> inline void recordClears(vk::CommandBuffer cmd) {
       if constexpr(CLIDS.len) {
 	static constexpr clearStep CS = findById(OD.CLS, CLIDS[0]);
-	recordClears<CS, allLayoutIds>(cmd);
+	recordClears_l2<CS, allLayoutIds>(cmd);
 	recordClears<CLIDS.sub(1)>(cmd);
       }
     };
@@ -1232,7 +1232,7 @@ namespace WITE {
     //MAYBE match like clusters of shaders, sources, and targets so they can share layouts and descriptor pools?
 
     template<targetLayout TL, renderPassRequirements RP, graphicsShaderRequirements GSR, literalList<sourceLayout> SLS>
-    inline void recordRenders(auto& target, perTargetLayout& ptl, perTargetLayoutPerShader& ptlps, descriptorUpdateData_t<GSR.targetProvidedResources.len>& targetDescriptors, vk::RenderPass rp, vk::CommandBuffer cmd) {
+    inline void recordRenders_l5(auto& target, perTargetLayout& ptl, perTargetLayoutPerShader& ptlps, descriptorUpdateData_t<GSR.targetProvidedResources.len>& targetDescriptors, vk::RenderPass rp, vk::CommandBuffer cmd) {
       if constexpr(SLS.len) {
 	{
 	  PROFILEME;
@@ -1405,7 +1405,7 @@ namespace WITE {
 	  //   WARN("skipping shader ", GSR.id, " for source ", SL.id);
 	  }
 	}
-	recordRenders<TL, RP, GSR, SLS.sub(1)>(target, ptl, ptlps, targetDescriptors, rp, cmd);
+	recordRenders_l5<TL, RP, GSR, SLS.sub(1)>(target, ptl, ptlps, targetDescriptors, rp, cmd);
       }
     };
 
@@ -1452,7 +1452,7 @@ namespace WITE {
     };
 
     template<targetLayout TL, renderPassRequirements RP, literalList<graphicsShaderRequirements> GSRS>
-    inline void recordRenders(auto& target, perTargetLayout& ptl, vk::RenderPass rp, vk::CommandBuffer cmd) {
+    inline void recordRenders_l4(auto& target, perTargetLayout& ptl, vk::RenderPass rp, vk::CommandBuffer cmd) {
       if constexpr(GSRS.len) {
 	{
 	  PROFILEME;
@@ -1468,17 +1468,17 @@ namespace WITE {
 	    prepareDescriptors<object_t<TL.objectLayoutId>::RSS, TL.resources, GSR.targetProvidedResources>
 	      (descriptorBundle, ptlps.descriptorPool, *target.allObjectResources, frameMod);
 	    if constexpr(GSR.sourceProvidedResources.len)
-	      recordRenders<TL, RP, GSR, OD.SLS>(target, ptl, ptlps, descriptorBundle, rp, cmd);
+	      recordRenders_l5<TL, RP, GSR, OD.SLS>(target, ptl, ptlps, descriptorBundle, rp, cmd);
 	    else
 	      recordRenders_targetOnly<RP, GSR>(target, ptl, ptlps, descriptorBundle, rp, cmd);
 	  }
 	}
-	recordRenders<TL, RP, GSRS.sub(1)>(target, ptl, rp, cmd);
+	recordRenders_l4<TL, RP, GSRS.sub(1)>(target, ptl, rp, cmd);
       }
     };
 
     template<renderPassRequirements RP, targetLayout TL>
-    inline void recordRenders(auto& target, perTargetLayout& ptl, vk::CommandBuffer cmd) {
+    inline void recordRenders_l3(auto& target, perTargetLayout& ptl, vk::CommandBuffer cmd) {
       static constexpr const resourceReference* colorRR = findResourceReferenceToConsumer(TL.resources, RP.color),
 	*depthRR = findResourceReferenceToConsumer(TL.resources, RP.depth);
       if constexpr(colorRR != NULL && (depthRR != NULL || RP.depth == NONE)) {
@@ -1534,7 +1534,7 @@ namespace WITE {
 	vk::RenderPassBeginInfo rpBegin(rp, fbb.fb, size, (uint32_t)RP.clearColor + (uint32_t)RP.clearDepth, RP.clearColor ? clears : clears+1);
 	cmd.beginRenderPass(&rpBegin, vk::SubpassContents::eInline);
 	// WARN("RP begin");
-	recordRenders<TL, RP, RP.shaders>(target, ptl, rp, cmd);
+	recordRenders_l4<TL, RP, RP.shaders>(target, ptl, rp, cmd);
 	cmd.endRenderPass();
       // } else {
       // 	if(frame == 1) [[unlikely]] WARN("Warning: skipping rp ", RP.id, " on TL ", TL.id);
@@ -1542,14 +1542,14 @@ namespace WITE {
     };
 
     template<renderPassRequirements RP, literalList<targetLayout> TLS>
-    inline void recordRenders(vk::CommandBuffer cmd) {
+    inline void recordRenders_l2(vk::CommandBuffer cmd) {
       if constexpr(TLS.len) {
 	PROFILEME;
 	static constexpr targetLayout TL = TLS[0];
 	perTargetLayout& ptl = od.perTL[TL.id];
 	for(auto* target : allTargets.template ofLayout<TL.id>())
-	  recordRenders<RP, TL>(*target, ptl, cmd);
-	recordRenders<RP, TLS.sub(1)>(cmd);
+	  recordRenders_l3<RP, TL>(*target, ptl, cmd);
+	recordRenders_l2<RP, TLS.sub(1)>(cmd);
       }
     };
 
@@ -1559,7 +1559,7 @@ namespace WITE {
 	PROFILEME;
 	static constexpr renderPassRequirements RP = findById(OD.RPRS, RPIDS[0]);
 	recordBarriersForTime<resourceBarrierTiming { .layerIdx = layerIdx, .substep = substep_e::render, .passId = RP.id, .shaderId = NONE }>(cmd);
-	recordRenders<RP, OD.TLS>(cmd);
+	recordRenders_l2<RP, OD.TLS>(cmd);
 	recordRenders<layerIdx, RPIDS.sub(1)>(cmd);
       }
     };
@@ -1654,7 +1654,7 @@ namespace WITE {
     };
 
     template<computeShaderRequirements CS, targetLayout TL, literalList<sourceLayout> SLS>
-    inline void recordComputeDispatches_nested(target_t<TL.id>* target, perTargetLayoutPerShader& ptlps, descriptorUpdateData_t<CS.targetProvidedResources.len>& perShader, vk::CommandBuffer cmd) {
+    inline void recordComputeDispatches_nested_l2(target_t<TL.id>* target, perTargetLayoutPerShader& ptlps, descriptorUpdateData_t<CS.targetProvidedResources.len>& perShader, vk::CommandBuffer cmd) {
       if constexpr(SLS.len) {
 	{
 	  PROFILEME;
@@ -1698,7 +1698,7 @@ namespace WITE {
 	    }
 	  }
 	}
-	recordComputeDispatches_nested<CS, TL, SLS.sub(1)>(target, ptlps, perShader, cmd);
+	recordComputeDispatches_nested_l2<CS, TL, SLS.sub(1)>(target, ptlps, perShader, cmd);
       }
     };
 
@@ -1715,7 +1715,7 @@ namespace WITE {
 	      auto& descriptorBundle = target->perShaderByIdByFrame[frameMod].template get<CS.id>();
 	      prepareDescriptors<object_t<TL.objectLayoutId>::RSS, TL.resources, CS.targetProvidedResources>
 		(descriptorBundle, ptlps.descriptorPool, target->resources, frameMod);
-	      recordComputeDispatches_nested<CS, TL, SLS>(target, ptlps, descriptorBundle, cmd);
+	      recordComputeDispatches_nested_l2<CS, TL, SLS>(target, ptlps, descriptorBundle, cmd);
 	    }
 	  }
 	}

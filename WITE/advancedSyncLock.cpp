@@ -45,9 +45,11 @@ namespace WITE {
 
   void advancedSyncLock::release() {
     scopeLock lock(&mutex);
+#ifdef DEBUG
     auto tid = thread::getCurrentTid();
     ASSERT_TRAP(holds > 0, "Mutex hold underflow!");
     ASSERT_TRAP(currentOwner == tid, "Mutex Failure!!! tid: ", tid, " owner: ", currentOwner, " holds: ", holds);
+#endif
     --holds;
   };
 

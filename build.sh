@@ -99,7 +99,7 @@ if ! [ -f "${ERRLOG}" ] || [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
 	    (
 		#if any target needs recompiled, do them all just for a sanity check
 		if [ -f "${DSTFILE}" -a "${DSTFILE}" -nt "$0" -a "${DSTFILE}" -nt "${SRCFILE}" -a \
-			-f "${RELDSTFILE}" -a "${DSTFILE}" -nt "$0" -a "${RELDSTFILE}" -nt "${SRCFILE}" -a \
+			-f "${RELDSTFILE}" -a "${RELDSTFILE}" -nt "$0" -a "${RELDSTFILE}" -nt "${SRCFILE}" -a \
 			'(' -z "$WIN_COMPILER" -o \
 			'(' -f "${WINDSTFILE}" -a "${WINDSTFILE}" -nt "$0" -a "${WINDSTFILE}" -nt "${SRCFILE}" ')' ')' ]; then
 		    #note: this does not check the win sdk for changes
@@ -119,11 +119,11 @@ if ! [ -f "${ERRLOG}" ] || [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
 		if ! $WORKNICE $COMPILER $VK_INCLUDE -I "${OUTDIR}" --std=c++20 -fPIC -DDEBUG -g $BOTHOPTS -Werror -Wall "${SRCFILE}" -c -o "${DSTFILE}" >>"${LOGFILE}" 2>>"${THISERRLOG}"; then # -D_POSIX_C_SOURCE=200112L
 		    rm "${DSTFILE}" 2>/dev/null
 		    echo "Failed Build: ${SRCFILE}" >>"${THISERRLOG}"
-		elif ! $WORKNICE $COMPILER $VK_INCLUDE -I "${OUTDIR}" --std=c++20 -fPIC $BOTHOPTS -Werror -Wall "${SRCFILE}" -c -o "${RELDSTFILE}" >>"${LOGFILE}" 2>>"${THISERRLOG}"; then # -D_POSIX_C_SOURCE=200112L
+		elif ! $WORKNICE $COMPILER $VK_INCLUDE -O3 -I "${OUTDIR}" --std=c++20 -fPIC $BOTHOPTS -Werror -Wall "${SRCFILE}" -c -o "${RELDSTFILE}" >>"${LOGFILE}" 2>>"${THISERRLOG}"; then # -D_POSIX_C_SOURCE=200112L
 		    rm "${RELDSTFILE}" 2>/dev/null
 		    echo "[release build] Failed Build: ${SRCFILE}" >>"${THISERRLOG}"
 		elif [ -n "$WIN_COMPILER" ]; then
-		    if ! $WORKNICE $WIN_COMPILER /std:c++20 -Diswindows $VK_INCLUDE -I "${OUTDIR}" $BOTHOPTS -c "${SRCFILE}" -o "${WINDSTFILE}" >>"${LOGFILE}" 2>>"${THISERRLOG}"; then # -D_POSIX_C_SOURCE=200112L
+		    if ! $WORKNICE $WIN_COMPILER /O2 /std:c++20 -Diswindows $VK_INCLUDE -I "${OUTDIR}" $BOTHOPTS -c "${SRCFILE}" -o "${WINDSTFILE}" >>"${LOGFILE}" 2>>"${THISERRLOG}"; then # -D_POSIX_C_SOURCE=200112L
 			rm "${WINDSTFILE}" 2>/dev/null
 			echo "[cross compile for windows] Failed Build: ${SRCFILE}" >>"${THISERRLOG}"
 		    fi
@@ -216,7 +216,7 @@ if ! [ -f "${ERRLOG}" ] || [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
 		TESTNAME="${OFILE%.*}"
 		rm "$TESTNAME" 2>/dev/null
 		#entry mainCRTStartup calls main, so the application (test or real) need not handle main vs wmain
-		$WORKNICE $WIN_LINKER /subsystem:windows /entry:mainCRTStartup "$OFILE" $WINLIBOBJS $WINLINKOPTS "/out:${TESTNAME}.exe" 2>>"${ERRLOG}" >>"${LOGFILE}"
+		$WORKNICE $WIN_LINKER /opt:icf=4 /subsystem:windows /entry:mainCRTStartup "$OFILE" $WINLIBOBJS $WINLINKOPTS "/out:${TESTNAME}.exe" 2>>"${ERRLOG}" >>"${LOGFILE}"
 	    done
     done
 fi

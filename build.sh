@@ -183,7 +183,7 @@ if ! [ -f "${ERRLOG}" ] || [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
 		TESTNAME="${OFILE%.*}"
 		#test -f "${TESTNAME}" && cp "${TESTNAME}" "${TESTNAME}.bak.$(date '+%y%m%d%H%M')"
 		rm "$TESTNAME" 2>/dev/null
-		$WORKNICE $COMPILER -DDEBUG "$OFILE" $LIBOBJS -o "$TESTNAME" "-Wl,-rpath,$OUTDIR" $LINKOPTS $BOTHOPTS 2>>"${ERRLOG}" >>"${LOGFILE}"
+		$WORKNICE $COMPILER -DDEBUG -ffunction-sections -fdata-sections "$OFILE" $LIBOBJS -o "$TESTNAME" "-Wl,-rpath,$OUTDIR" $LINKOPTS $BOTHOPTS 2>>"${ERRLOG}" >>"${LOGFILE}"
 		grep -qxF "$(basename "${TESTNAME#*/}")" test_skips.txt && continue;
 		echo running test "${TESTNAME}" >>"${LOGFILE}"
 		# md5sum $TESTNAME >>"${LOGFILE}"
@@ -203,7 +203,7 @@ if ! [ -f "${ERRLOG}" ] || [ "$(stat -c %s "${ERRLOG}")" -eq 0 ]; then
 	    while IFS= read -d '' OFILE; do
 		TESTNAME="${OFILE%.*}"
 		rm "$TESTNAME" 2>/dev/null
-		$WORKNICE $COMPILER -O3 "$OFILE" $RELLIBOBJS -o "$TESTNAME" "-Wl,-rpath,$OUTDIR" $LINKOPTS $BOTHOPTS 2>>"${ERRLOG}" >>"${LOGFILE}"
+		$WORKNICE $COMPILER -O3 -ffunction-sections -fdata-sections "$OFILE" $RELLIBOBJS -o "$TESTNAME" "-Wl,-rpath,$OUTDIR" $LINKOPTS $BOTHOPTS 2>>"${ERRLOG}" >>"${LOGFILE}"
 	    done
     done
 fi

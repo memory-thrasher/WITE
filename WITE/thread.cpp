@@ -119,6 +119,8 @@ namespace WITE {
   void thread::join(){
     if(threadObj && threadObj->joinable())
       threadObj->join();
+    else
+      WARN("Not joining thread because it is not joinable");
   };
 
 }

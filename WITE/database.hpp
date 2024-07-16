@@ -23,11 +23,11 @@ namespace WITE {
     uint64_t typeId
     std::string dbFileId
 optional members:
-    update(uint64_t objectId) //called every frame
-    allocated(uint64_t objectId) //called when object is first created (should init persistent data)
-    freed(uint64_t objectId) //called when object is destroyed (rare, should free db children)
-    spunUp(uint64_t objectId) //called when object is created or loaded from disk (should set up any vulkan or other transients)
-    spunDown(uint64_t objectId) //called when the object is destroyed or when the game is closing (should clean up transients)
+    update(uint64_t objectId, void* db) //called every frame
+    allocated(uint64_t objectId, void* db) //called when object is first created (should init persistent data)
+    freed(uint64_t objectId, void* db) //called when object is destroyed (rare, should free db children)
+    spunUp(uint64_t objectId, void* db) //called when object is created or loaded from disk (should set up any vulkan or other transients)
+    spunDown(uint64_t objectId, void* db) //called when the object is destroyed or when the game is closing (should clean up transients)
    */
 
   //each type is stored as-is on disk (memcpy and mmap) so should be simple. POD except for static members is recommended.
@@ -92,7 +92,7 @@ optional members:
 	while(iter != end) {
 	  uint64_t oid = *(iter++);
 	  //NOTE: postfix operator, iterator MUST be incremented before update is called or else the iterator might be invalidadted if the object deletes itself in its own update (which is the recommended place to delete something).
-	  dbJobWrapper<A, A::update>(oid, threads);
+	  dbJobWrapper<A, A::update>(oid, this, threads);
 	}
       }
       if constexpr(sizeof...(REST) > 0)
@@ -102,7 +102,7 @@ optional members:
     template<class A, class... REST> inline void spinUpAll() {
       if constexpr(has_spunUp<A>::value)
 	for(uint64_t oid : bobby.template get<A::typeId>())
-	  dbJobWrapper<A, A::spunUp>(oid, threads);
+	  dbJobWrapper<A, A::spunUp>(oid, this, threads);
       if constexpr(sizeof...(REST) > 0)
 	spinUpAll<REST...>();
     };
@@ -110,7 +110,7 @@ optional members:
     template<class A, class... REST> inline void spinDownAll() {
       if constexpr(has_spunDown<A>::value)
 	for(uint64_t oid : bobby.template get<A::typeId>())
-	  dbJobWrapper<A, A::spunDown>(oid, threads);
+	  dbJobWrapper<A, A::spunDown>(oid, this, threads);
       if constexpr(sizeof...(REST) > 0)
 	spinDownAll<REST...>();
     };
@@ -195,7 +195,7 @@ optional members:
       deleteLogs<TYPES...>();
     }
 
-    void gracefulShutdownAndJoin() {
+    void gracefulShutdown() {
       ASSERT_TRAP(currentFrame > 0, "cannot shutdown a db on frame 0");
       threads.waitForAll();
       uint32_t sleepCnt = 0;
@@ -209,18 +209,18 @@ optional members:
     template<class A> uint64_t create(A* data) {
       uint64_t ret = bobby.template get<A::typeId>().allocate(currentFrame, data);
       if constexpr(has_allocated<A>::value)
-	A::allocated(ret);
+	A::allocated(ret, this);
       if constexpr(has_spunUp<A>::value)
-	A::spunUp(ret);
+	A::spunUp(ret, this);
       return ret;
     };
 
     template<class A> void destroy(uint64_t oid) {
       bobby.template get<A::typeId>().free(oid, currentFrame);
       if constexpr(has_spunDown<A>::value)
-	A::spunDown(oid);
+	A::spunDown(oid, this);
       if constexpr(has_freed<A>::value)
-	A::freed(oid);
+	A::freed(oid, this);
     };
 
     //true if object exists and was copied to `out`, false otherwise

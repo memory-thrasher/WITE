@@ -20,7 +20,7 @@ struct spawner {
   uint64_t spawnedCount = 0;
   uint8_t spawnDirection = 0;
   float locationX = 0, locationY = 0, deltaX = 0, deltaY = 0;
-  static void update(uint64_t oid);
+  static void update(uint64_t oid, void* db_unused);
 };
 
 struct unit {
@@ -29,17 +29,17 @@ struct unit {
   static std::atomic_uint64_t updates, allocates, frees, spunUps, spunDowns;
   float locationX = 0, locationY = 0, deltaX = 0, deltaY = 0;
   int ttl;
-  static void update(uint64_t oid);
-  static void allocated(uint64_t oid);
-  static void freed(uint64_t oid);
-  static void spunUp(uint64_t oid);
-  static void spunDown(uint64_t oid);
+  static void update(uint64_t oid, void* db_unused);
+  static void allocated(uint64_t oid, void* db_unused);
+  static void freed(uint64_t oid, void* db_unused);
+  static void spunUp(uint64_t oid, void* db_unused);
+  static void spunDown(uint64_t oid, void* db_unused);
 };
 
 struct timer {
   static constexpr uint64_t typeId = __LINE__;
   static constexpr std::string dbFileId = "timer";
-  static void update(uint64_t oid);
+  static void update(uint64_t oid, void* db_unused);
 };
 
 float boxWidth = 1080, boxHeight = 1920;
@@ -50,7 +50,7 @@ std::atomic_bool running;
 
 //having the function definitions out of line might seem odd in this context, but in reality they should be each in their own compilation unit (cpp file).
 
-void spawner::update(uint64_t oid) {
+void spawner::update(uint64_t oid, void* db_unused) {
   spawner s;
   if(!db->readCommitted<spawner>(oid, &s)) return;
   s.locationX += s.deltaX;
@@ -85,7 +85,7 @@ void spawner::update(uint64_t oid) {
 
 std::atomic_uint64_t unit::updates, unit::allocates, unit::frees, unit::spunUps, unit::spunDowns;
 
-void unit::update(uint64_t oid) {
+void unit::update(uint64_t oid, void* db_unused) {
   unit s;
   updates++;
   if(!db->readCommitted<unit>(oid, &s)) return;
@@ -114,23 +114,23 @@ void unit::update(uint64_t oid) {
   db->write<unit>(oid, &s);
 };
 
-void unit::allocated(uint64_t oid) {
+void unit::allocated(uint64_t oid, void* db_unused) {
   allocates++;
 };
 
-void unit::freed(uint64_t oid) {
+void unit::freed(uint64_t oid, void* db_unused) {
   frees++;
 };
 
-void unit::spunUp(uint64_t oid) {
+void unit::spunUp(uint64_t oid, void* db_unused) {
   spunUps++;
 };
 
-void unit::spunDown(uint64_t oid) {
+void unit::spunDown(uint64_t oid, void* db_unused) {
   spunDowns++;
 };
 
-void timer::update(uint64_t oid) {
+void timer::update(uint64_t oid, void* db_unused) {
   timer s;
   if(!db->readCommitted<timer>(oid, &s)) return;
   if(db->getFrame() > 5000)
@@ -155,8 +155,9 @@ int main(int argc, char** argv) {
     db->updateTick();
     db->endFrame();
   }
-  db->gracefulShutdownAndJoin();
+  db->gracefulShutdown();
   db->deleteFiles();
   std::cout << "updates: " << unit::updates << " allocates: " << unit::allocates << " frees: " << unit::frees << " spunUps: " << unit::spunUps << " spunDowns: " << unit::spunDowns << "\n";
+  db.reset();
 };
 

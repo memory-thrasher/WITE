@@ -40,7 +40,7 @@ optional members:
     threadPool threads;//dedicated thread pool so we can tell when all frame data is done
     std::atomic_bool backupInProgress;
     std::string backupTarget;
-    thread* backupThread;
+    thread* backupThread = NULL;
     std::atomic_uint64_t tablesBackedUp;
 
     template<class T, class... REST> inline void applyLogsThrough(uint64_t applyFrame) {
@@ -232,7 +232,7 @@ optional members:
     //true if object exists and was copied to `out`, false otherwise
     //locks the object
     template<class A> inline bool readCurrent(uint64_t oid, A* out) {
-      scopeLock lock = bobby.template get<A::typeId>().lock(oid);
+      scopeLock lock = bobby.template get<A::typeId>().mutexFor(oid);
       return read(oid, 0, out);
     };
 
@@ -246,6 +246,11 @@ optional members:
     //does NOT lock the row, externally lock if more than one write might happen in a frame.
     template<class A> inline void write(uint64_t oid, A* in) {
       return bobby.template get<A::typeId>().store(oid, currentFrame, in);
+    };
+
+    //returns a lock object representing the single object to ensure sequential io to that object
+    template<class A> inline syncLock* mutexFor(uint64_t oid) {
+      return bobby.template get<A::typeId>().mutexFor(oid);
     };
 
     inline uint64_t getFrame() {

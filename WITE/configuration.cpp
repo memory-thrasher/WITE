@@ -25,7 +25,7 @@ namespace WITE::configuration {
   std::vector<std::unique_ptr<char[]>> options;
 
   void setOptions(int argc, char** argv) {//static
-    for(int i = 0;i < argc;i++) {
+    for(int i = 1;i < argc;i++) {
       size_t len = std::strlen(argv[i]) + 1;
       char* temp = new char[len];
       WITE::strcpy(temp, argv[i], len);
@@ -42,6 +42,48 @@ namespace WITE::configuration {
 	return kvp+keyLen+1;//if no value given, this is a 0-length string (pointer to 0x00)
     }
     return NULL;
+  };
+
+  bool contains(const char* opt) {
+    for(const auto& up : options)
+      if(strcmp(opt, up.get()) == 0)
+	return true;//if no value given, this is a 0-length string (pointer to 0x00)
+    return false;
+  };
+
+  void appendOption(const char* opt) {
+    size_t len = std::strlen(opt) + 1;
+    char* temp = new char[len];
+    WITE::strcpy(temp, opt, len);
+    options.emplace_back(temp);
+  };
+
+  void trimOptions() {
+    size_t writeHead = 0;
+    for(size_t i = 0;i < options.size();++i) {
+      const char* test = options[i].get();
+      const char* testEquals = std::strchr(test, '=');
+      const size_t len = testEquals == NULL ? strlen(test) : static_cast<size_t>(testEquals - test);
+      bool found = false;
+      for(size_t j = 0;j < i && !found;j++) {
+	const char* kept = options[j].get();
+	if(kept && strlen(kept) >= len && strncmp(kept, test, len) == 0)
+	  found = true;
+      }
+      if(found) {
+	options[i].reset();
+      } else {
+	if(writeHead != i)
+	  options[writeHead].reset(options[i].release());
+	++writeHead;
+      }
+    }
+    options.resize(writeHead);
+  };
+
+  void dumpOptions(std::ostream& out) {
+    for(auto& up : options)
+      out << up.get() << "\n";
   };
 
   bool getOptionBool(const char* key) {

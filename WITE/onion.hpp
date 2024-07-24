@@ -378,18 +378,21 @@ namespace WITE {
       mappedResourceTuple<objectLayoutId, idx+1> rest;
       uint64_t frameLastUpdatedThisExternal = 0;
 
-#ifdef WITE_DEBUG_IMAGE_BARRIERS
       mappedResourceTuple() {
+	if constexpr(RS.external)
+	  data = NULL;
+#ifdef WITE_DEBUG_IMAGE_BARRIERS
 	if constexpr(RT::isImage)
 	  for(size_t i = 0;i < RT::IR.frameswapCount;i++)
 	    WARN("Created image with handle ", std::hex, at().frameImage(i), std::dec, " for resource slot ", RS.id);
-      };
 #endif
+      };
 
       template<size_t RSID = RS.id> inline auto& at() {
 	PROFILEME;
 	if constexpr(RSID == RS.id) {
 	  if constexpr(RS.external) {
+	    ASSERT_TRAP(data, "External resource not set before access");
 	    return *data;
 	  } else {
 	    return data;

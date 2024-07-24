@@ -87,6 +87,17 @@ namespace WITE {
     };
   };
 
+#define defineSwappedUniformBuffer(gpuId, size) ::WITE::simpleUB<gpuId, __LINE__, size>::value
+  template<size_t GPUID, uint64_t ID, uint32_t size> struct swappableUB {
+    static constexpr bufferRequirements value {
+      .deviceId = GPUID,
+      .id = ID,
+      .usage = vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eUniformBuffer,
+      .size = size,
+      .frameswapCount = 2,
+    };
+  };
+
 #define defineSimpleStorageBuffer(gpuId, size) ::WITE::simpleSB<gpuId, __LINE__, size>::value
   template<size_t GPUID, uint64_t ID, uint32_t size> struct simpleSB {
     static constexpr bufferRequirements value {

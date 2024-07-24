@@ -376,7 +376,7 @@ namespace WITE {
       typedef resourceTraits<RS> RT;
       RT::type data;
       mappedResourceTuple<objectLayoutId, idx+1> rest;
-      uint64_t frameLastUpdatedPtr = 0;
+      uint64_t frameLastUpdatedThisExternal = 0;
 
 #ifdef WITE_DEBUG_IMAGE_BARRIERS
       mappedResourceTuple() {
@@ -403,16 +403,27 @@ namespace WITE {
 	PROFILEME;
 	if constexpr(RSID == RS.id) {
 	  static_assert(RS.external);
-	  data = t;
-	  frameLastUpdatedPtr = currentFrame;
+	  if(data != t) {
+	    data = t;
+	    frameLastUpdatedThisExternal = currentFrame;
+	  }
 	} else {
 	  rest.template set<RSID>(t, currentFrame);
 	}
       };
 
+      template<size_t RSID = RS.id> inline uint64_t frameLastUpdatedExternal() {
+	PROFILEME;
+	if constexpr(RSID == RS.id) {
+	  return frameLastUpdatedThisExternal;
+	} else {
+	  return rest.template frameLastUpdatedExternal<RSID>();
+	}
+      };
+
       inline uint64_t frameLastUpdated(uint64_t currentFrame) {
 	PROFILEME;
-	uint64_t ret = max(at().frameUpdated(currentFrame), frameLastUpdatedPtr);
+	uint64_t ret = max(at().frameUpdated(currentFrame), frameLastUpdatedThisExternal);
 	if constexpr(idx < RSS.len - 1) {
 	  ret = max(ret, rest.frameLastUpdated(currentFrame));
 	}
@@ -900,7 +911,7 @@ namespace WITE {
 	     size_t descriptors, uint64_t objectId,
 	     uint64_t RCIDX = 0>
     inline void fillWrites(descriptorUpdateData_t<descriptors>& data, mappedResourceTuple<objectId>& rm, vk::DescriptorSet ds,
-			   uint64_t frameMod, uint64_t frameLastUpdated) {
+			   uint64_t frameMod, uint64_t frameLastUpdated, uint64_t* waitFrameOut) {
       if constexpr(RCIDX < RCS.len) {
 	{
 	  PROFILEME;
@@ -909,7 +920,9 @@ namespace WITE {
 	  static constexpr resourceSlot RS = findById(RSS, RR.resourceSlotId);
 	  if constexpr(RC.usage.type == resourceUsageType::eDescriptor) {
 	    auto& res = rm.template at<RS.id>();
-	    if(frameLastUpdated == NONE || frameLastUpdated < rm.frameLastUpdatedPtr || frameLastUpdated < res.frameUpdated(frameMod)) {
+	    if(frameLastUpdated == NONE ||
+	       frameLastUpdated < rm.template frameLastUpdatedExternal<RS.id>() ||
+	       frameLastUpdated < res.frameUpdated(frameMod)) {
 	      auto& w = data.writes[data.writeCount];
 	      w.dstSet = ds;
 	      w.dstBinding = data.writeCount + data.skipCount;
@@ -929,6 +942,8 @@ namespace WITE {
 		img.imageView = res.template createView<RR.subresource.viewType,
 							getSubresource(RS.requirementId, RR)>(frameMod);
 		img.imageLayout = imageLayoutFor(RC.access);
+		if(waitFrameOut) [[likely]]
+		  *waitFrameOut = max(*waitFrameOut, frame - findById(OD.IRS, RS.requirementId).frameswapCount);
 	      } else {
 		w.pImageInfo = NULL;
 		auto& buf = data.buffers[w.dstBinding];
@@ -936,7 +951,9 @@ namespace WITE {
 		buf.buffer = res.frameBuffer(frameMod);
 		buf.offset = RR.subresource.offset;
 		buf.range = RR.subresource.length ? RR.subresource.length : VK_WHOLE_SIZE;
-		WARN("wrote buffer descriptor ", buf.buffer, " to binding ", w.dstBinding, " on set ", ds);
+		if(waitFrameOut) [[likely]]
+		  *waitFrameOut = max(*waitFrameOut, frame - findById(OD.BRS, RS.requirementId).frameswapCount);
+		// WARN("wrote buffer descriptor ", buf.buffer, " to binding ", w.dstBinding, " on set ", ds);
 	      }
 	      data.writeCount++;
 	    } else {
@@ -944,7 +961,7 @@ namespace WITE {
 	    }
 	  }
 	}
-	fillWrites<RSS, RRS, RCS, descriptors, objectId, RCIDX+1>(data, rm, ds, frameMod, frameLastUpdated);
+	fillWrites<RSS, RRS, RCS, descriptors, objectId, RCIDX+1>(data, rm, ds, frameMod, frameLastUpdated, waitFrameOut);
       }
     };
 
@@ -962,12 +979,14 @@ namespace WITE {
 	  dpp.reset(new descriptorPoolPool<RCS, OD.GPUID>());
 	descriptorBundle.descriptorSet = dpp->allocate();
 	descriptorBundle.reset();
-	fillWrites<RSS, RRS, RCS, descriptors>(descriptorBundle, resources, descriptorBundle.descriptorSet, frameMod, NONE);
+	fillWrites<RSS, RRS, RCS, descriptors>(descriptorBundle, resources, descriptorBundle.descriptorSet, frameMod, NONE, NULL);
 	dev->getVkDevice().updateDescriptorSets(descriptorBundle.writeCount, descriptorBundle.writes, 0, NULL);
 	descriptorBundle.frameLastUpdated = frame;
       } else if(descriptorBundle.frameLastUpdated < resources.frameLastUpdated(frame)) [[unlikely]] {
 	descriptorBundle.reset();
-	fillWrites<RSS, RRS, RCS>(descriptorBundle, resources, descriptorBundle.descriptorSet, frameMod, descriptorBundle.frameLastUpdated);
+	uint64_t waitFrame = 0;
+	fillWrites<RSS, RRS, RCS>(descriptorBundle, resources, descriptorBundle.descriptorSet, frameMod, descriptorBundle.frameLastUpdated, &waitFrame);
+	waitForFrame(waitFrame);
 	dev->getVkDevice().updateDescriptorSets(descriptorBundle.writeCount, descriptorBundle.writes, 0, NULL);
 	descriptorBundle.frameLastUpdated = frame;
       }
@@ -1776,9 +1795,15 @@ namespace WITE {
       }
     };
 
-    void waitForFrame(uint64_t frame, uint64_t timeoutNS = 10000000000) {//default = 10 seconds
+    void waitForFrame(uint64_t frame, bool isJoining = false, uint64_t timeoutNS = 10000000000) {//default = 10 seconds
       PROFILEME;
-      if(frame < this->frame - cmdFrameswapCount) {
+      if(frame == 0) [[unlikely]] return;//first frame is 1
+      ASSERT_TRAP(frame < this->frame, "attempted to wait future frame");
+#ifdef DEBUG
+      if(frame == this->frame - 1 && !isJoining) [[unlikely]]
+	WARN("WARNING: waiting on the previous frame is a bad idea. Need more frameswap?");
+#endif
+      if(frame < this->frame - cmdFrameswapCount) [[unlikely]] {
 #ifdef WITE_DEBUG_FENCES
 	WARN("(not) waiting on ancient frame ", frame, " current frame is ", this->frame);
 #endif
@@ -1802,7 +1827,7 @@ namespace WITE {
 
     void join() {//as in thread join, block until all renderings are caught up, usually before exiting
       scopeLock lock(&mutex);//prevents more frames from being queued
-      waitForFrame(frame-1);
+      waitForFrame(frame-1, true);
       gcAll();
     };
 

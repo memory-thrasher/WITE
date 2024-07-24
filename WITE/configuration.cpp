@@ -60,7 +60,7 @@ namespace WITE::configuration {
 
   void trimOptions() {
     size_t writeHead = 0;
-    for(size_t i = 1;i < options.size();++i) {
+    for(size_t i = 0;i < options.size();++i) {
       const char* test = options[i].get();
       const char* testEquals = std::strchr(test, '=');
       const size_t len = testEquals == NULL ? strlen(test) : static_cast<size_t>(testEquals - test);

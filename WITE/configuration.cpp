@@ -60,12 +60,12 @@ namespace WITE::configuration {
 
   void trimOptions() {
     size_t writeHead = 0;
-    for(size_t i = 0;i < options.size();++i) {
+    for(size_t i = 1;i < options.size();++i) {
       const char* test = options[i].get();
       const char* testEquals = std::strchr(test, '=');
       const size_t len = testEquals == NULL ? strlen(test) : static_cast<size_t>(testEquals - test);
       bool found = false;
-      for(size_t j = 0;j < i && !found;j++) {
+      for(size_t j = 0;j < writeHead && !found;j++) {
 	const char* kept = options[j].get();
 	if(kept && strlen(kept) >= len && strncmp(kept, test, len) == 0)
 	  found = true;

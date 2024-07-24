@@ -376,6 +376,7 @@ namespace WITE {
       typedef resourceTraits<RS> RT;
       RT::type data;
       mappedResourceTuple<objectLayoutId, idx+1> rest;
+      uint64_t frameLastUpdatedPtr = 0;
 
 #ifdef WITE_DEBUG_IMAGE_BARRIERS
       mappedResourceTuple() {
@@ -398,19 +399,20 @@ namespace WITE {
 	}
       };
 
-      template<size_t RSID = RS.id> inline void set(auto* t) {
+      template<size_t RSID = RS.id> inline void set(auto* t, uint64_t currentFrame) {
 	PROFILEME;
 	if constexpr(RSID == RS.id) {
 	  static_assert(RS.external);
 	  data = t;
+	  frameLastUpdatedPtr = currentFrame;
 	} else {
-	  rest.template set<RSID>(t);
+	  rest.template set<RSID>(t, currentFrame);
 	}
       };
 
       inline uint64_t frameLastUpdated(uint64_t currentFrame) {
 	PROFILEME;
-	uint64_t ret = at().frameUpdated(currentFrame);
+	uint64_t ret = max(at().frameUpdated(currentFrame), frameLastUpdatedPtr);
 	if constexpr(idx < RSS.len - 1) {
 	  ret = max(ret, rest.frameLastUpdated(currentFrame));
 	}
@@ -585,13 +587,6 @@ namespace WITE {
 	get<resourceSlotId>().set(o->frame + hostAccessOffset, t);
       };
 
-      template<uint64_t resourceSlotId> void set(auto* t) {
-	PROFILEME;
-	static_assert(findResourceReferenceToSlot(TL.resources, resourceSlotId));//sanity check that this layout uses that slot
-	scopeLock lock(&o->mutex);
-	allObjectResources->template set<resourceSlotId>(t);
-      };
-
     };
 
     template<size_t IDX = 0> struct targetCollectionTuple {
@@ -661,13 +656,6 @@ namespace WITE {
 	PROFILEME;
 	scopeLock lock(&o->mutex);
 	get<resourceSlotId>().set(o->frame + hostAccessOffset, t);
-      };
-
-      template<uint64_t resourceSlotId> void set(auto* t) {
-	PROFILEME;
-	static_assert(findResourceReferenceToSlot(SL.resources, resourceSlotId));//sanity check that this layout uses that slot
-	scopeLock lock(&o->mutex);
-	allObjectResources->template set<resourceSlotId>(t);
       };
 
     };
@@ -813,7 +801,7 @@ namespace WITE {
       template<uint64_t resourceSlotId> void set(auto* t) {
 	PROFILEME;
 	scopeLock lock(&owner->mutex);
-	resources.template set<resourceSlotId>(t);
+	resources.template set<resourceSlotId>(t, owner->frame);
       };
 
       inline void preRender(vk::CommandBuffer cmd) {
@@ -921,7 +909,7 @@ namespace WITE {
 	  static constexpr resourceSlot RS = findById(RSS, RR.resourceSlotId);
 	  if constexpr(RC.usage.type == resourceUsageType::eDescriptor) {
 	    auto& res = rm.template at<RS.id>();
-	    if(frameLastUpdated == NONE || frameLastUpdated < res.frameUpdated(frameMod)) {
+	    if(frameLastUpdated == NONE || frameLastUpdated < rm.frameLastUpdatedPtr || frameLastUpdated < res.frameUpdated(frameMod)) {
 	      auto& w = data.writes[data.writeCount];
 	      w.dstSet = ds;
 	      w.dstBinding = data.writeCount + data.skipCount;
@@ -948,7 +936,7 @@ namespace WITE {
 		buf.buffer = res.frameBuffer(frameMod);
 		buf.offset = RR.subresource.offset;
 		buf.range = RR.subresource.length ? RR.subresource.length : VK_WHOLE_SIZE;
-		// WARN("wrote buffer descriptor ", buf.buffer, " to binding ", w.dstBinding, " on set ", ds);
+		WARN("wrote buffer descriptor ", buf.buffer, " to binding ", w.dstBinding, " on set ", ds);
 	      }
 	      data.writeCount++;
 	    } else {

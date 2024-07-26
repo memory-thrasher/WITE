@@ -19,8 +19,33 @@ Stable and intermediate releases may be made continually. For this reason, a yea
 #include "onionTemplateStructs.hpp"
 #include "udm.hpp"
 #include "stdExtensions.hpp"
+#include "thread.hpp"
+#include "onionUtils.hpp"
 
 namespace WITE {
+
+  template<bufferRequirements R> struct buffer;
+
+  struct perThreadStagingBuffer {
+    static constexpr uint32_t stagingBufferSize = 4096;
+    template<uint64_t gpuId> struct requirementsFor {
+      static constexpr bufferRequirements value {
+	.deviceId = gpuId,
+	.usage = vk::BufferUsageFlagBits::eTransferSrc,
+	.size = stagingBufferSize,
+	.frameswapCount = 1,
+	.hostVisible = true,
+      };
+    };
+    static threadResource<perThreadStagingBuffer> all;
+    std::map<uint64_t, void*> buffersByGpu;
+    template<uint64_t gpu> static buffer<requirementsFor<gpu>::value>& get() {
+      auto*& ret = *reinterpret_cast<buffer<requirementsFor<gpu>::value>**>(&all.get()->buffersByGpu[gpu]);
+      if(!ret)
+	ret = new buffer<requirementsFor<gpu>::value>();
+      return *ret;
+    };
+  };
 
   template<bufferRequirements R> struct buffer {
     static_assert_show(isValid(R), R);
@@ -105,18 +130,27 @@ namespace WITE {
 	  }
 	}
       } else {
-	static constexpr bufferRequirements tempBufferRequirements = stagingRequirementsFor(R);
-	static_assert(tempBufferRequirements.size == R.size);
-	static constexpr vk::BufferCopy copy(0, 0, R.size);
-	buffer<tempBufferRequirements> temp;
-	vk::Buffer src = temp.frameBuffer(0);
-	temp.set(0, t);
-	auto cmd = gpu::get(R.deviceId).getTempCmd();
-	for(uint8_t i = 0;i < R.frameswapCount;i++)
-	  if((1 << i) & frameMask)
-	    cmd->copyBuffer(src, frameBuffer(i), 1, &copy);
-	cmd.submit();
-	cmd.waitFor();
+	//mutex-free bc each thread gets its own staging area
+	auto& staging = perThreadStagingBuffer::get<R.deviceId>();
+	vk::BufferCopy copy;
+	copy.srcOffset = 0;
+	vk::Buffer vkStaging = staging.frameBuffer(0);
+	auto dev = gpu::get(R.deviceId).getVkDevice();
+	void* data;
+	for(uint32_t offset = 0;offset < sizeof(T);offset += perThreadStagingBuffer::stagingBufferSize) {
+	  uint32_t batchSize = min(sizeof(T) - offset, perThreadStagingBuffer::stagingBufferSize);
+	  VK_ASSERT(dev.mapMemory(staging.rams[0].handle, 0, batchSize, {}, &data), "Failed to map memory.");
+	  std::memcpy(data, (void*)((uint8_t*)&t + offset), batchSize);
+	  dev.unmapMemory(staging.rams[0].handle);
+	  copy.size = batchSize;
+	  copy.dstOffset = offset;
+	  auto cmd = gpu::get(R.deviceId).getTempCmd();
+	  for(uint8_t i = 0;i < R.frameswapCount;i++)
+	    if((1 << i) & frameMask)
+	      cmd->copyBuffer(vkStaging, frameBuffer(i), 1, &copy);
+	  cmd.submit();
+	  cmd.waitFor();
+	}
       }
     };
 

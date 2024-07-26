@@ -392,7 +392,7 @@ namespace WITE {
 	PROFILEME;
 	if constexpr(RSID == RS.id) {
 	  if constexpr(RS.external) {
-	    ASSERT_TRAP(data, "External resource not set before access");
+	    ASSERT_TRAP(data, "External resource not set before access OL: ", objectLayoutId, " ID: ", RSID);
 	    return *data;
 	  } else {
 	    return data;

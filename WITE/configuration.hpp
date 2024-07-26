@@ -30,5 +30,7 @@ namespace WITE::configuration {
   unsigned int getOption(const char* key, unsigned int def);
   unsigned long getOption(const char* key, unsigned long def);
   unsigned long long getOption(const char* key, unsigned long long def);
+  float getOption(const char* key, float def);
+  double getOption(const char* key, double def);
 
 };

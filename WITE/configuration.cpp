@@ -132,4 +132,16 @@ namespace WITE::configuration {
     else return def;
   };
 
+  float getOption(const char* key, float def) {
+    char* option = getOption(key);
+    if(option) return std::stod(option);
+    else return def;
+  };
+
+  double getOption(const char* key, double def) {
+    char* option = getOption(key);
+    if(option) return std::stof(option);
+    else return def;
+  };
+
 };

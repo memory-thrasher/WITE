@@ -63,11 +63,11 @@ namespace WITE::configuration {
     for(size_t i = 0;i < options.size();++i) {
       const char* test = options[i].get();
       const char* testEquals = std::strchr(test, '=');
-      const size_t len = testEquals == NULL ? strlen(test) : static_cast<size_t>(testEquals - test);
+      const size_t len = testEquals == NULL ? strlen(test) + 1 : static_cast<size_t>(testEquals - test);
       bool found = false;
       for(size_t j = 0;j < writeHead && !found;j++) {
 	const char* kept = options[j].get();
-	if(kept && strlen(kept) >= len && strncmp(kept, test, len) == 0)
+	if(kept && strncmp(kept, test, len) == 0)
 	  found = true;
       }
       if(found) {

@@ -254,7 +254,7 @@ std::unique_ptr<onion_t> primaryOnion;
 const float fov = 45;
 
 //2347fps on test system
-int main(int argc, char** argv) {
+int main(int argc, const char** argv) {
   configuration::setOptions(argc, argv);
   gpu::init("Simple render test");
   winput::initInput();

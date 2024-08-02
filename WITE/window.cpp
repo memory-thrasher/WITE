@@ -32,15 +32,21 @@ namespace WITE {
 
   intBox3D getDefaultSize() {//static
     PROFILEME;
-    char* cliExtent = configuration::getOption("extent");
-    if(cliExtent) {
+    const char* cliExtentRaw = configuration::getOption("extent=");
+    if(cliExtentRaw) {
+      char cliExtentStorage[64];//because strtoul offset output needs a mutable char*
+      char* cliExtent = cliExtentStorage;
+      ASSERT_TRAP(std::strlen(cliExtentRaw) < 64, "extent cli option has too many characters");
+      WITE::strcpy(cliExtent, cliExtentRaw, 64);
+      LOG("using requested extent ", cliExtent);
       unsigned long x = std::strtoul(cliExtent, &cliExtent, 10);
       unsigned long y = std::strtoul(cliExtent + 1, &cliExtent, 10);
       unsigned long w = std::strtoul(cliExtent + 1, &cliExtent, 10);
       unsigned long h = std::strtoul(cliExtent + 1, &cliExtent, 10);
       return intBox3D(x, w+x, y, h+y);
     } else {
-      char* cliScreen = configuration::getOption("screen");
+      LOG("no extent requested, using default");
+      const char* cliScreen = configuration::getOption("screen");
       auto wholeScreen = window::getScreenBounds(cliScreen ? std::strtoul(cliScreen, NULL, 10) : 0);
       auto center = wholeScreen.center();
       uint64_t w = max(192, wholeScreen.width()/4), h = w * 108 / 192;
@@ -51,7 +57,7 @@ namespace WITE {
   vk::PresentModeKHR window::getPreferredPresentMode() {//static
     //mailbox is the default preferred mode. User may pick another via cli argument.
     //If what is picked is not supported, fifo will be used.
-    char* v = configuration::getOption("presentmode");
+    const char* v = configuration::getOption("presentmode");
     if(v == NULL || strcmp(v, "mailbox") == 0)
       return vk::PresentModeKHR::eMailbox;//no tare, uncapped
     // if(strcmp(v, "sharedcontinuousrefresh") == 0)

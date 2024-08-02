@@ -235,7 +235,7 @@ void onion_printf(onion_t::object_t<OL_text.id>* text, const char* fmt, ...) {
   text->write<RS_text_S_string.id>(buf);
 };
 
-int main(int argc, char** argv) {
+int main(int argc, const char** argv) {
   WITE::configuration::setOptions(argc, argv);
   WITE::gpu::init("Input and combined procedural and traditional render test");
   WITE::winput::initInput();

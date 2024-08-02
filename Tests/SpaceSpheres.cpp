@@ -529,7 +529,7 @@ static_assert(onion_t::satisfies(TL_camera.resources, RC_L_S_sphere_target));
 const float fov = 45;
 
 //502fps
-int main(int argc, char** argv) {
+int main(int argc, const char** argv) {
   configuration::setOptions(argc, argv);
   gpu::init("test");
   winput::initInput();

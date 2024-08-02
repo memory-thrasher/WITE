@@ -138,7 +138,7 @@ void timer::update(uint64_t oid, void* db_unused) {
   db->write<timer>(oid, &s);
 };
 
-int main(int argc, char** argv) {
+int main(int argc, const char** argv) {
   WITE::configuration::setOptions(argc, argv);
   std::filesystem::path dirPath = std::filesystem::temp_directory_path() / "wite_db_test";
   db = std::make_unique<db_t>(dirPath.string(), true, true);//blow away any existing file

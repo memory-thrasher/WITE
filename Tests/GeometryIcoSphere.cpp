@@ -199,7 +199,7 @@ std::unique_ptr<onion_t> primaryOnion;
 
 const float fov = 45;
 
-int main(int argc, char** argv) {
+int main(int argc, const char** argv) {
   WITE::configuration::setOptions(argc, argv);
   WITE::gpu::init("Input and combined procedural and traditional render test");
   WITE::winput::initInput();

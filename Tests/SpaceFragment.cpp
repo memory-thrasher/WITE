@@ -404,7 +404,7 @@ std::unique_ptr<onion_t> primaryOnion;
 const float fov = 45;
 
 //540fps
-int main(int argc, char** argv) {
+int main(int argc, const char** argv) {
   configuration::setOptions(argc, argv);
   gpu::init("Input and combined procedural and traditional render test");
   winput::initInput();

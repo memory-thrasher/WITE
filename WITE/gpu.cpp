@@ -237,12 +237,18 @@ namespace WITE {
     VK_ASSERT(vkInstance.enumeratePhysicalDevices(&cnt, pds), "Failed to enumerate gpus");
     gpus = std::make_unique<gpu[]>(cnt);
     gpuCount = 0;
-    char* skipGpus = configuration::getOption("nogpuid");//csv list of indexes
+    const char* skipGpusRaw = configuration::getOption("nogpuid");//csv list of indexes
+    char skipGpus[128];
+    if(skipGpusRaw) {
+      ASSERT_TRAP(std::strlen(skipGpusRaw) < 128, "skip gpu list too long");
+      WITE::strcpy(skipGpus, skipGpusRaw, 128);
+    } else {
+      skipGpus[0] = 0;
+    }
     char* remaining;
-    bool skip;
     for(long i = 0;i < cnt;i++) {
-      skip = false;
-      if(skipGpus) {
+      bool skip = false;
+      if(skipGpus[0]) {
 	remaining = skipGpus;
 	while(!skip && *remaining) {
 	  long skipId = std::strtol(remaining, &remaining, 10);

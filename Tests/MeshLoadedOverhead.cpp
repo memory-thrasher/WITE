@@ -207,7 +207,7 @@ const float fov = 45;
 //100,000 frames with single workgroup of 32 invocations: 34.2 (2924 fps)
 //100,000 frames with single workgroup of 1 invocations: 34.27 (2918 fps)
 //conclusion: local parallelism does not impact mesh overhead, workgroup count has a major impact BUT is still proportionately very fast (>4,000,000 times the work in only <17 times as long)
-int main(int argc, char** argv) {
+int main(int argc, const char** argv) {
   WITE::configuration::setOptions(argc, argv);
   WITE::gpu::init("test", {}, {}, {"VK_EXT_mesh_shader"});
   WITE::winput::initInput();

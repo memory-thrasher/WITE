@@ -201,4 +201,16 @@ namespace WITE::winput {
     return cid.axes[0].current > 0.5f || cid.axes[0].numPositive > 0;
   };
 
+  bool getButtonDown(const inputIdentifier& ii) {
+    compositeInputData cid;
+    getInput(ii, cid);
+    return (cid.axes[0].current > 0.5f || cid.axes[0].numPositive > 0) && cid.axes[0].delta > 0;
+  };
+
+  bool getButtonUp(const inputIdentifier& ii) {
+    compositeInputData cid;
+    getInput(ii, cid);
+    return !(cid.axes[0].current > 0.5f || cid.axes[0].numPositive > 0) && cid.axes[0].delta < 0;
+  };
+
 }

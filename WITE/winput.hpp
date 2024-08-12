@@ -45,5 +45,7 @@ namespace WITE::winput {
   void pollInput();
   void getInput(const inputIdentifier&, compositeInputData&);
   bool getButton(const inputIdentifier&);
+  bool getButtonDown(const inputIdentifier&);//only true if the button was pressed since the last input poll
+  bool getButtonUp(const inputIdentifier&);
 
 }

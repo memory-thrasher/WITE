@@ -198,19 +198,31 @@ namespace WITE::winput {
   bool getButton(const inputIdentifier& ii) {
     compositeInputData cid;
     getInput(ii, cid);
-    return cid.axes[0].current > 0.5f || cid.axes[0].numPositive > 0;
+    return cid.axes[0].isPressed();
   };
 
-  bool getButtonDown(const inputIdentifier& ii) {
-    compositeInputData cid;
-    getInput(ii, cid);
-    return (cid.axes[0].current > 0.5f || cid.axes[0].numPositive > 0) && cid.axes[0].delta > 0;
+  bool compositeInputData::axis::isPressed() {
+    return current > 0.5f || numPositive > 0;
   };
 
-  bool getButtonUp(const inputIdentifier& ii) {
-    compositeInputData cid;
-    getInput(ii, cid);
-    return !(cid.axes[0].current > 0.5f || cid.axes[0].numPositive > 0) && cid.axes[0].delta < 0;
+
+  bool compositeInputData::axis::justChanged() {
+    return min != max;
+  };
+
+
+  bool compositeInputData::axis::justPressed() {
+    return isPressed() && delta > 0;
+  };
+
+
+  bool compositeInputData::axis::justReleased() {
+    return !isPressed() && delta < 0;
+  };
+
+
+  bool compositeInputData::axis::justClicked() {
+    return delta <= 0 && max > current;
   };
 
 }

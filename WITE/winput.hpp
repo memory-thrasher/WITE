@@ -28,6 +28,11 @@ namespace WITE::winput {
     struct axis {
       uint16_t numNegative, numPositive, numZero;
       float average, min, max, current, delta;
+      bool isPressed();//regardless of when
+      bool justChanged();//this is the first frame after a change
+      bool justPressed();
+      bool justReleased();
+      bool justClicked();//press and release on the same frame, unlikely
     };
     // syncLock mutex;
     uint32_t firstTime = 0, lastTime;
@@ -45,7 +50,5 @@ namespace WITE::winput {
   void pollInput();
   void getInput(const inputIdentifier&, compositeInputData&);
   bool getButton(const inputIdentifier&);
-  bool getButtonDown(const inputIdentifier&);//only true if the button was pressed since the last input poll
-  bool getButtonUp(const inputIdentifier&);
 
 }

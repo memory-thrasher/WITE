@@ -238,6 +238,7 @@ namespace WITE {
     gpus = std::make_unique<gpu[]>(cnt);
     gpuCount = 0;
     const char* skipGpusRaw = configuration::getOption("nogpuid");//csv list of indexes
+    bool allowNonDiscrete = configuration::contains("allowNonDiscreteGpu");
     char skipGpus[128];
     if(skipGpusRaw) {
       ASSERT_TRAP(std::strlen(skipGpusRaw) < 128, "skip gpu list too long");
@@ -256,6 +257,12 @@ namespace WITE {
 	  if(*remaining) remaining++;//skip delim
 	}
 	//TODO skip gpus that don't support one of the requested extensions
+      }
+      if(!skip && !allowNonDiscrete) {
+	vk::PhysicalDeviceProperties2 pvp;
+	pds[i].getProperties2(&pvp);
+	if(pvp.properties.deviceType != vk::PhysicalDeviceType::eDiscreteGpu)
+	  skip = true;
       }
       if(!skip) {
 	new(&gpus[gpuCount])gpu(gpuCount, pds[i], deviceExtensions.size(), deviceExtensions.data());

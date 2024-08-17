@@ -88,9 +88,15 @@ namespace WITE::validation {
 	pushCheck(RCids, X.depth, "resource consumers");
 	pushCheck(allIds, X.depth, "all ids");
       }
-      if(X.color != NONE) {
-	pushCheck(RCids, X.color, "resource consumers");
-	pushCheck(allIds, X.color, "all ids");
+      for(uint64_t id : X.color) {
+	if(id != NONE) {
+	  pushCheck(RCids, id, "resource consumers");
+	  pushCheck(allIds, id, "all ids");
+	}
+      }
+      for(uint64_t id : X.input) {
+	pushCheck(RCids, id, "resource consumers");
+	pushCheck(allIds, id, "all ids");
       }
       for(const auto& S : X.shaders) {
 	validateResourceConsumers(S.targetProvidedResources);

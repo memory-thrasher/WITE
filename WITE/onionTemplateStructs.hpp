@@ -171,9 +171,10 @@ namespace WITE {
   struct renderPassRequirements {
     uint64_t id;//unique among render passes
     //unique among copyStep.src/dst, resourceConsumer.id, clearStep.id, objectLayout.windowConsumerId, renderPassRequirements.depth/color
-    uint64_t depth = NONE, color; //MAYBE input attachment(s)  //ids for consumers that get generated with standard options
+    uint64_t depth = NONE;//ids for consumers that get generated with standard options
+    literalList<uint64_t> color, input;//location: all colors in order specified here, then all inputs, then the depth (if any)
     bool clearDepth = false, clearColor = false;
-    vk::ClearColorValue clearColorValue;
+    vk::ClearColorValue clearColorValue;//note: atm rp can only clear every color or none of them, and all to the same color
     vk::ClearDepthStencilValue clearDepthValue = { 1.0f, 0 };
     literalList<graphicsShaderRequirements> shaders;
   };

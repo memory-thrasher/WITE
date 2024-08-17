@@ -306,8 +306,8 @@ namespace WITE {
 
   struct frameBufferBundle {
     vk::Framebuffer fb;
-    vk::ImageView attachments[2];
-    vk::FramebufferCreateInfo fbci { {}, {}, 2, attachments };
+    std::unique_ptr<vk::ImageView[]> attachments;
+    vk::FramebufferCreateInfo fbci;
     uint64_t lastUpdatedFrame;
   };
 
@@ -372,6 +372,10 @@ namespace WITE {
 
   consteval resourceConsumer consumerForDepthAttachment(uint64_t id) {
     return { id, vk::ShaderStageFlagBits::eFragment, vk::AccessFlagBits2::eDepthStencilAttachmentWrite };
+  };
+
+  consteval resourceConsumer consumerForInputAttachment(uint64_t id) {
+    return { id, vk::ShaderStageFlagBits::eFragment, vk::AccessFlagBits2::eInputAttachmentRead };
   };
 
   consteval size_t calculateDescriptorCount(literalList<resourceConsumer> resources) {

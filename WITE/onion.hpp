@@ -142,6 +142,13 @@ namespace WITE {
       return true;
     };
 
+    static consteval bool satisfies(literalList<resourceReference> resources, literalList<uint64_t> consumers) {
+      for(uint64_t rc : consumers)
+	if(!findResourceReferenceToConsumer(resources, rc))
+	  return false;
+      return true;
+    };
+
     static WITE_DEBUG_IB_CE std::vector<resourceAccessTime> findUsages(uint64_t resourceSlotId) {
       std::vector<resourceAccessTime> ret;
       tempMap<uint64_t, resourceReference> referencesByConsumerId;
@@ -179,8 +186,12 @@ namespace WITE {
 	  const auto& pass = findById(OD.RPRS, passId);
 	  if(referencesByConsumerId.contains(pass.depth))
 	    ret.push_back({ layerIdx, substep_e::render, consumerForDepthAttachment(pass.depth), referencesByConsumerId[pass.depth].frameLatency, passIdx, passId });
-	  if(referencesByConsumerId.contains(pass.color))
-	    ret.push_back({ layerIdx, substep_e::render, consumerForColorAttachment(pass.color), referencesByConsumerId[pass.color].frameLatency, passIdx, passId });
+	  for(uint64_t color : pass.color)
+	    if(referencesByConsumerId.contains(color))
+	      ret.push_back({ layerIdx, substep_e::render, consumerForColorAttachment(color), referencesByConsumerId[color].frameLatency, passIdx, passId });
+	  for(uint64_t input : pass.input)
+	    if(referencesByConsumerId.contains(input))
+	      ret.push_back({ layerIdx, substep_e::render, consumerForInputAttachment(input), referencesByConsumerId[input].frameLatency, passIdx, passId });
 	  for(const graphicsShaderRequirements& gsr : pass.shaders) {
 	    for(const resourceConsumer& srr : gsr.targetProvidedResources)
 	      if(referencesByConsumerId.contains(srr.id))
@@ -1201,42 +1212,47 @@ namespace WITE {
       }
     };
 
-    template<renderPassRequirements, targetLayout> struct renderPassInfoBundle : std::false_type {};
-
-    template<renderPassRequirements RP, targetLayout TL> requires(RP.depth != NONE) struct renderPassInfoBundle<RP, TL> {
-      static constexpr resourceConsumer colorRC = consumerForColorAttachment(RP.color),
-	depthRC = consumerForDepthAttachment(RP.depth);
-      static constexpr const resourceReference colorRR = *findResourceReferenceToConsumer(TL.resources, colorRC.id),
-	depthRR = *findResourceReferenceToConsumer(TL.resources, depthRC.id);
-      static constexpr const resourceSlot colorRS = findById(OD.RSS, colorRR.resourceSlotId),
-	depthRS = findById(OD.RSS, depthRR.resourceSlotId);
-      static constexpr imageRequirements colorIR = findById(OD.IRS, colorRS.requirementId),
-	depthIR = findById(OD.IRS, depthRS.requirementId);
-      static constexpr vk::AttachmentReference colorRef { 0, imageLayoutFor(colorRC.access) },
-	depthRef { 1, imageLayoutFor(depthRC.access) };
-      static constexpr vk::SubpassDescription subpass { {}, vk::PipelineBindPoint::eGraphics, 0, NULL, 1, &colorRef, NULL, &depthRef };
-      static constexpr vk::AttachmentDescription attachments[2] = {//MAYBE variable attachments when inputs are allowed
-	{ {}, colorIR.format, vk::SampleCountFlagBits::e1, RP.clearColor ? vk::AttachmentLoadOp::eClear : vk::AttachmentLoadOp::eLoad, vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare, imageLayoutFor(colorRC.access), colorRef.layout },
-	{ {}, depthIR.format, vk::SampleCountFlagBits::e1, RP.clearDepth ? vk::AttachmentLoadOp::eClear : vk::AttachmentLoadOp::eLoad, vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eLoad, vk::AttachmentStoreOp::eStore, imageLayoutFor(depthRC.access), depthRef.layout }
-      };
-      //TODO multiview
-      //static constexpr vk::RenderPassMultiviewCreateInfo multiview {
-      static constexpr vk::RenderPassCreateInfo rpci { {}, 2, attachments, 1, &subpass, 0 };
+    template<resourceConsumer RC, const resourceReference* RR, bool clear, uint32_t idx> struct attachmentInfo {
+      static constexpr resourceSlot RS = findById(OD.RSS, RR->resourceSlotId);
+      static constexpr imageRequirements IR = findById(OD.IRS, RS.requirementId);
+      static constexpr vk::AttachmentReference AR { idx, imageLayoutFor(RC.access) };
+      static constexpr vk::AttachmentDescription AD { {}, IR.format, vk::SampleCountFlagBits::e1, clear ? vk::AttachmentLoadOp::eClear : vk::AttachmentLoadOp::eLoad, vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare, imageLayoutFor(RC.access), AR.layout };
+      static constexpr uint32_t len = 1;
     };
 
-    template<renderPassRequirements RP, targetLayout TL> requires(RP.depth == NONE) struct renderPassInfoBundle<RP, TL> {
-      static constexpr resourceConsumer colorRC = consumerForColorAttachment(RP.color);
-      static constexpr const resourceReference colorRR = *findResourceReferenceToConsumer(TL.resources, colorRC.id);
-      static constexpr const resourceSlot colorRS = findById(OD.RSS, colorRR.resourceSlotId);
-      static constexpr imageRequirements colorIR = findById(OD.IRS, colorRS.requirementId);
-      static constexpr vk::AttachmentReference colorRef { 0, imageLayoutFor(colorRC.access) };
-      static constexpr vk::SubpassDescription subpass { {}, vk::PipelineBindPoint::eGraphics, 0, NULL, 1, &colorRef, NULL, NULL };
-      static constexpr vk::AttachmentDescription attachments[1] = {//MAYBE variable attachments when inputs are allowed
-	{ {}, colorIR.format, vk::SampleCountFlagBits::e1, RP.clearColor ? vk::AttachmentLoadOp::eClear : vk::AttachmentLoadOp::eLoad, vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare, imageLayoutFor(colorRC.access), colorRef.layout }
+    template<resourceConsumer RC, const resourceReference* RR, bool clear, uint32_t idx> requires(RC.id == NONE || RR == NULL)
+      struct attachmentInfo<RC, RR, clear, idx> {
+	//for the depth member of depth-less RPs
+	static constexpr vk::AttachmentReference AR { };
+	static constexpr vk::AttachmentDescription AD { };
+	static constexpr uint32_t len = 0;
       };
+
+    template<literalList<uint64_t> RC_IDL, targetLayout TL, bool clear, uint32_t idx, vk::AccessFlagBits2 A> struct attachmentInfoTuple {
+      static constexpr uint64_t ID = RC_IDL[0];
+      typedef attachmentInfo<resourceConsumer(ID, vk::ShaderStageFlagBits::eFragment, A), findResourceReferenceToConsumer(TL.resources, ID), clear, idx> AI;
+      typedef attachmentInfoTuple<RC_IDL.sub(1), TL, clear, idx+1, A> rest;
+      static constexpr auto AR_all = concat<vk::AttachmentReference, AI::AR, rest::AR_all>();
+      static constexpr auto AD_all = concat<vk::AttachmentDescription, AI::AD, rest::AD_all>();
+    };
+
+    template<literalList<uint64_t> RC_IDL, targetLayout TL, bool clear, uint32_t idx, vk::AccessFlagBits2 A> requires(!RC_IDL)
+    struct attachmentInfoTuple<RC_IDL, TL, clear, idx, A> {
+      static constexpr copyableArray<vk::AttachmentReference, 0> AR_all;
+      static constexpr copyableArray<vk::AttachmentDescription, 0> AD_all;
+    };
+
+    template<renderPassRequirements RP, targetLayout TL> struct renderPassInfoBundle {
+      static constexpr size_t firstInput = RP.color.count(), firstDepth = RP.input.count() + RP.color.count();
+      typedef attachmentInfoTuple<RP.input, TL, false, firstInput, vk::AccessFlagBits2::eInputAttachmentRead> inputAIS;
+      typedef attachmentInfoTuple<RP.color, TL, RP.clearColor, 0, vk::AccessFlagBits2::eColorAttachmentRead> colorAIS;
+      typedef attachmentInfo<consumerForDepthAttachment(RP.depth), findResourceReferenceToConsumer(TL.resources, RP.depth), RP.clearDepth, firstDepth> depthAI;
+      static constexpr vk::SubpassDescription subpass { {}, vk::PipelineBindPoint::eGraphics, inputAIS::AR_all.len, inputAIS::AR_all.ptr(), colorAIS::AR_all.len, colorAIS::AR_all.ptr(), NULL, depthAI::len ? &depthAI::AR : NULL };
+      static constexpr literalList<vk::AttachmentDescription> depthWrapper = depthAI::len ? literalList<vk::AttachmentDescription>{depthAI::AD} : literalList<vk::AttachmentDescription>{};
+      static constexpr auto attachments = concat<vk::AttachmentDescription, colorAIS::AD_all, inputAIS::AD_all, depthWrapper>();
       //TODO multiview
       //static constexpr vk::RenderPassMultiviewCreateInfo multiview {
-      static constexpr vk::RenderPassCreateInfo rpci { {}, 1, attachments, 1, &subpass, 0 };
+      static constexpr vk::RenderPassCreateInfo rpci { {}, attachments.len, attachments.ptr(), 1, &subpass, 0 };
     };
 
     //MAYBE match like clusters of shaders, sources, and targets so they can share layouts and descriptor pools?
@@ -1488,51 +1504,89 @@ namespace WITE {
     };
 
     template<renderPassRequirements RP, targetLayout TL>
+    inline vk::Rect2D getRenderSize(auto& target) {
+      if constexpr(RP.depth == NONE) {
+	static constexpr const resourceReference* colorRR = findResourceReferenceToConsumer(TL.resources, RP.color[0]);
+	return target.template get<colorRR->resourceSlotId>().getSizeRect(frame + colorRR->frameLatency);
+      } else {
+	static constexpr const resourceReference* depthRR = findResourceReferenceToConsumer(TL.resources, RP.depth);
+	return target.template get<depthRR->resourceSlotId>().getSizeRect(frame + depthRR->frameLatency);
+      }
+    };
+
+    template<targetLayout TL, literalList<uint64_t> IDS> inline bool anyOutdated(uint64_t fbUpdate, auto& target) {
+      if constexpr(IDS && IDS[0] != NONE) {
+	static constexpr const resourceReference RR = *findResourceReferenceToConsumer(TL.resources, IDS[0]);
+	return fbUpdate < target.template get<RR.resourceSlotId>().frameUpdated(frame + RR.frameLatency) ||
+	  anyOutdated<TL, IDS.sub(1)>(fbUpdate, target);
+      }
+      return false;
+    };
+
+    template<targetLayout TL, literalList<uint64_t> IDS, uint32_t idx> inline void updateIfNeeded(frameBufferBundle& fbb, auto& target) {
+      if constexpr(IDS && IDS[0] != NONE) {
+	static constexpr const resourceReference RR = *findResourceReferenceToConsumer(TL.resources, IDS[0]);
+	auto& img = target.template get<RR.resourceSlotId>();
+	bool outdated = img.frameUpdated(frame + RR.frameLatency);
+	if(outdated)
+	  getActiveGarbageCollector().push(fbb.attachments[idx]);
+	if(!fbb.fb || outdated) [[likely]]
+	  fbb.attachments[idx] = img.template createView<RR.subresource.viewType, getSubresource(findById(OD.RSS, RR.resourceSlotId).requirementId, RR)>(frame + RR.frameLatency);
+	updateIfNeeded<TL, IDS.sub(1), idx+1>(fbb, target);
+      }
+    };
+
+    template<targetLayout TL, literalList<uint64_t> IDS> inline void validateFbSizes(const vk::Rect2D& size, auto& target) {
+#ifdef DEBUG
+      if constexpr(IDS && IDS[0] != NONE) {
+	static constexpr const resourceReference RR = *findResourceReferenceToConsumer(TL.resources, IDS[0]);
+	ASSERT_TRAP(size == target.template get<RR.resourceSlotId>().getSizeRect(frame + RR.frameLatency),
+		    "framebuffer attachment size mismatch");
+	validateFbSizes<TL, IDS.sub(1)>(size, target);
+      }
+#endif
+    };
+
+    template<renderPassRequirements RP, targetLayout TL>
     inline void recordRenders_l3(auto& target, perTargetLayout& ptl, vk::CommandBuffer cmd) {
-      static constexpr const resourceReference* colorRR = findResourceReferenceToConsumer(TL.resources, RP.color),
-	*depthRR = findResourceReferenceToConsumer(TL.resources, RP.depth);
-      if constexpr(colorRR != NULL && (depthRR != NULL || RP.depth == NONE)) {
+      static constexpr const resourceReference* depthRR = findResourceReferenceToConsumer(TL.resources, RP.depth);
+      static_assert(RP.color || RP.depth != NONE, "render pass must have a depth or at least one color attachment");
+      if constexpr(satisfies(TL.resources, RP.color) &&
+		   satisfies(TL.resources, RP.input) &&
+		   (depthRR != NULL || RP.depth == NONE)) {
 	PROFILEME;
 	vk::RenderPass& rp = ptl.rpByRequirementId[RP.id];
 	if(!rp) [[unlikely]] {
 	  VK_ASSERT(dev->getVkDevice().createRenderPass(&renderPassInfoBundle<RP, TL>::rpci, ALLOCCB, &rp),
 		    "failed to create render pass ", TL.id, " ", RP.id);
 	}
-	auto& color = target.template get<colorRR->resourceSlotId>();
-	static constexpr resourceSlot colorRS = findById(OD.RSS, colorRR->resourceSlotId);
 	frameBufferBundle& fbb = target.fbByRpIdByFrame[RP.id][frame % target_t<TL.id>::maxFrameswap];
-	bool depthOutdated;
-	if constexpr(RP.depth != NONE)
-	  depthOutdated = fbb.fb && fbb.lastUpdatedFrame < target.template get<depthRR->resourceSlotId>().frameUpdated(frame + depthRR->frameLatency);
-	else
-	  depthOutdated = false;
-	bool colorOutdated = fbb.fb && fbb.lastUpdatedFrame < color.frameUpdated(frame + colorRR->frameLatency);
-	vk::Rect2D size = color.getSizeRect(frame + colorRR->frameLatency);
-	if(!fbb.fb || colorOutdated || depthOutdated) [[unlikely]] {
-	  if(fbb.fb)
+	vk::Rect2D size = getRenderSize<RP, TL>(target);
+	static constexpr uint32_t attachmentCount = renderPassInfoBundle<RP, TL>::attachments.len;
+	if(!fbb.fb ||
+	   anyOutdated<TL, RP.input>(fbb.lastUpdatedFrame, target) ||
+	   anyOutdated<TL, RP.color>(fbb.lastUpdatedFrame, target) ||
+	   anyOutdated<TL, RP.depth>(fbb.lastUpdatedFrame, target)) [[unlikely]] {
+	  if(fbb.fb) {
 	    getActiveGarbageCollector().push(fbb.fb);
-	  if constexpr(RP.depth != NONE)
-	    ASSERT_TRAP(size == target.template get<depthRR->resourceSlotId>().getSizeRect(frame + depthRR->frameLatency), "framebuffer depth color size mismatch");
+	    ASSERT_TRAP(fbb.fbci.attachmentCount == attachmentCount,
+			"fbb attachment count shifted (should never happen)");
+	  } else {
+	    ASSERT_TRAP(!fbb.attachments, "fbb did not exist but attechment collection did?");
+	    fbb.attachments = std::make_unique<vk::ImageView[]>(attachmentCount);
+	    fbb.fbci.attachmentCount = attachmentCount;
+	    fbb.fbci.pAttachments = fbb.attachments.get();
+	  }
 	  fbb.fbci.renderPass = rp;
 	  fbb.fbci.width = size.extent.width;
 	  fbb.fbci.height = size.extent.height;
 	  fbb.fbci.layers = 1;
-	  if constexpr(RP.depth == NONE)
-	    fbb.fbci.attachmentCount = 1;
-	  else
-	    fbb.fbci.attachmentCount = 2;
-	  if(colorOutdated)
-	    getActiveGarbageCollector().push(fbb.attachments[0]);
-	  if(depthOutdated)
-	    getActiveGarbageCollector().push(fbb.attachments[1]);
-	  if(!fbb.fb || colorOutdated)
-	    fbb.attachments[0] = color.template createView<colorRR->subresource.viewType, getSubresource(colorRS.requirementId, *colorRR)>(frame + colorRR->frameLatency);
-	  if constexpr(RP.depth != NONE)
-	    if(!fbb.fb || depthOutdated)
-	      fbb.attachments[1] = target.template get<depthRR->resourceSlotId>().
-		template createView<depthRR->subresource.viewType,
-				    getSubresource(findById(OD.RSS, depthRR->resourceSlotId).requirementId, *depthRR)>
-		(frame + depthRR->frameLatency);
+	  validateFbSizes<TL, RP.color>(size, target);
+	  validateFbSizes<TL, RP.input>(size, target);
+	  validateFbSizes<TL, RP.depth>(size, target);
+	  updateIfNeeded<TL, RP.color, 0>(fbb, target);
+	  updateIfNeeded<TL, RP.input, renderPassInfoBundle<RP, TL>::firstInput>(fbb, target);
+	  updateIfNeeded<TL, RP.depth, renderPassInfoBundle<RP, TL>::firstDepth>(fbb, target);
 	  VK_ASSERT(dev->getVkDevice().createFramebuffer(&fbb.fbci, ALLOCCB, &fbb.fb), "failed to create framebuffer");
 	  fbb.lastUpdatedFrame = frame;
 	}
@@ -1540,8 +1594,10 @@ namespace WITE {
 	vk::Viewport viewport = { 0, 0, (float)size.extent.width, (float)size.extent.height, 0.0f, 1.0f };
 	cmd.setViewport(0, 1, &viewport);
 	cmd.setScissor(0, 1, &size);
-	static constexpr vk::ClearValue clears[2] { RP.clearColorValue, RP.clearDepthValue };
-	vk::RenderPassBeginInfo rpBegin(rp, fbb.fb, size, (uint32_t)RP.clearColor + (uint32_t)RP.clearDepth, RP.clearColor ? clears : clears+1);
+	static constexpr copyableArray<vk::ClearValue, attachmentCount> clears = [](size_t i){
+	  return i < RP.color.len ? vk::ClearValue(RP.clearColorValue) : vk::ClearValue(RP.clearDepthValue);
+	};
+	vk::RenderPassBeginInfo rpBegin(rp, fbb.fb, size, attachmentCount, clears.ptr());
 	cmd.beginRenderPass(&rpBegin, vk::SubpassContents::eInline);
 	// WARN("RP begin");
 	recordRenders_l4<TL, RP, RP.shaders>(target, ptl, rp, cmd);

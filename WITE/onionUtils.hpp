@@ -375,7 +375,7 @@ namespace WITE {
   };
 
   consteval resourceConsumer consumerForInputAttachment(uint64_t id) {
-    return { id, vk::ShaderStageFlagBits::eFragment, vk::AccessFlagBits2::eInputAttachmentRead };
+    return { id, vk::ShaderStageFlagBits::eFragment, vk::AccessFlagBits2::eInputAttachmentRead, vk::DescriptorType::eInputAttachment };
   };
 
   consteval size_t calculateDescriptorCount(literalList<resourceConsumer> resources) {

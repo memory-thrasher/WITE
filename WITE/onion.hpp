@@ -189,6 +189,7 @@ namespace WITE {
 	  for(uint64_t color : pass.color)
 	    if(referencesByConsumerId.contains(color))
 	      ret.push_back({ layerIdx, substep_e::render, consumerForColorAttachment(color), referencesByConsumerId[color].frameLatency, passIdx, passId });
+	  //TODO allow input attachments to stay in the appropriate *AttachmentOptimal layout
 	  for(uint64_t input : pass.input)
 	    if(referencesByConsumerId.contains(input))
 	      ret.push_back({ layerIdx, substep_e::render, consumerForInputAttachment(input), referencesByConsumerId[input].frameLatency, passIdx, passId });
@@ -1477,6 +1478,13 @@ namespace WITE {
       //TODO more flexibility with draw. Allow source layout to ask for multi-draw, indexed, indirect etc. Allow (dynamic) less than the whole buffer.
     };
 
+    template<renderPassRequirements RP, graphicsShaderRequirements GSR> struct implicitResources {
+      static constexpr copyableArray<resourceConsumer, RP.input.len> inputs = [](size_t i) {
+	return consumerForInputAttachment(RP.input[i]);
+      };
+      static constexpr auto allTargetProvided = concat<resourceConsumer, GSR.targetProvidedResources, inputs>();
+    };
+
     template<targetLayout TL, renderPassRequirements RP, literalList<graphicsShaderRequirements> GSRS>
     inline void recordRenders_l4(auto& target, perTargetLayout& ptl, vk::RenderPass rp, vk::CommandBuffer cmd) {
       if constexpr(GSRS.len) {
@@ -1491,7 +1499,7 @@ namespace WITE {
 	    size_t frameMod = frame % target_t<TL.id>::maxFrameswap;
 	    auto& descriptorBundle = target.perShaderByIdByFrame[frameMod].template get<GSR.id>();
 	    perTargetLayoutPerShader& ptlps = ptl.perShader[GSR.id];
-	    prepareDescriptors<object_t<TL.objectLayoutId>::RSS, TL.resources, GSR.targetProvidedResources>
+	    prepareDescriptors<object_t<TL.objectLayoutId>::RSS, TL.resources, implicitResources<RP, GSR>::allTargetProvided>
 	      (descriptorBundle, ptlps.descriptorPool, *target.allObjectResources, frameMod);
 	    if constexpr(GSR.sourceProvidedResources.len)
 	      recordRenders_l5<TL, RP, GSR, OD.SLS>(target, ptl, ptlps, descriptorBundle, rp, cmd);

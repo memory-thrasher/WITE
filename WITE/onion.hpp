@@ -56,6 +56,7 @@ namespace WITE {
     static constexpr auto allTargetIds = map<targetLayout, uint64_t, OD.TLS>([](const targetLayout& l){ return l.id; });
     static constexpr auto allSourceIds = map<sourceLayout, uint64_t, OD.SLS>([](const sourceLayout& l){ return l.id; });
     static constexpr auto allLayoutIds = concat<uint64_t, allTargetIds, allSourceIds>();
+    static constexpr size_t layerIdx_OPTE = OD.LRS.len-1;
 
     uint64_t frame = 1;//can't signal a timeline semaphore with 0
     syncLock mutex;
@@ -87,6 +88,7 @@ namespace WITE {
       vk::SemaphoreCreateInfo semCI({}, &semTypeCI);
       VK_ASSERT(dev->getVkDevice().createSemaphore(&semCI, ALLOCCB, &semaphore), "failed to create semaphore");
 #ifdef WITE_DEBUG_IMAGE_BARRIERS
+      #error this needs updated if/when it is needed because layout handing was reimagined
       WARN("In image barrier debug mode, dumping image barrier information");
       for(const auto& mb : allBarriers()) {
 	WARN("barrier for resource: objectLayoutId: ", mb.objectLayoutId, ", resourceSlotId: ", mb.resourceSlotId, ", requirementId: ", mb.requirementId, ", at frame latency: ", (int)mb.frameLatency, " will be transitioned from access: ", std::hex, (uint64_t)mb.before.usage.access, " (layout ", (int)imageLayoutFor(mb.before.usage.access), ") to access ", (uint64_t)mb.after.usage.access, " (layout ", (int)imageLayoutFor(mb.after.usage.access), std::dec, ") on: layerIdx: ", mb.timing.layerIdx, ", substep: ", (int)mb.timing.substep, ", passId: ", mb.timing.passId, ", shaderId: ", mb.timing.shaderId);
@@ -167,59 +169,70 @@ namespace WITE {
 	for(uint64_t substepId : layer.copies) {
 	  const auto& substep = findById(OD.CSS, substepId);
 	  if(referencesByConsumerId.contains(substep.src))
-	    ret.push_back({ layerIdx, substep_e::copy, { substep.src, {}, vk::AccessFlagBits2::eTransferRead }, referencesByConsumerId[substep.src].frameLatency });
+	    ret.push_back({ layerIdx, substep_e::copy, {}, vk::AccessFlagBits2::eTransferRead, referencesByConsumerId[substep.src].frameLatency });
 	  if(referencesByConsumerId.contains(substep.dst))
-	    ret.push_back({ layerIdx, substep_e::copy, { substep.dst, {}, vk::AccessFlagBits2::eTransferWrite }, referencesByConsumerId[substep.dst].frameLatency });
+	    ret.push_back({ layerIdx, substep_e::copy, {}, vk::AccessFlagBits2::eTransferWrite, referencesByConsumerId[substep.dst].frameLatency });
 	}
 	//clear:
 	for(uint64_t substepId : layer.clears) {
 	  const auto& substep = findById(OD.CLS, substepId);
 	  if(referencesByConsumerId.contains(substep.id))
-	    ret.push_back({ layerIdx, substep_e::clear, { substep.id, {}, vk::AccessFlagBits2::eTransferWrite }, referencesByConsumerId[substep.id].frameLatency });
+	    ret.push_back({ layerIdx, substep_e::clear, {}, vk::AccessFlagBits2::eTransferWrite, referencesByConsumerId[substep.id].frameLatency });
 	}
 	//rendering:
 	static_assert(std::numeric_limits<decltype(resourceBarrier::frameLatency)>::min() == 0);
-	size_t shaderIdx;
 	for(uint64_t passIdx = 0;passIdx < layer.renders.len;passIdx++) {
 	  uint64_t passId = layer.renders[passIdx];
-	  shaderIdx = 1;//first shader per pass is idx 1 so 0 can mean "before the first shader" (for attachments)
 	  const auto& pass = findById(OD.RPRS, passId);
 	  if(referencesByConsumerId.contains(pass.depth))
-	    ret.push_back({ layerIdx, substep_e::render, consumerForDepthAttachment(pass.depth), referencesByConsumerId[pass.depth].frameLatency, passIdx, passId });
+	    ret.push_back({ layerIdx, substep_e::render, vk::ShaderStageFlagBits::eFragment, vk::AccessFlagBits2::eColorAttachmentWrite | vk::AccessFlagBits2::eColorAttachmentRead, referencesByConsumerId[pass.depth].frameLatency, passIdx, passId });
 	  for(uint64_t color : pass.color)
 	    if(referencesByConsumerId.contains(color))
-	      ret.push_back({ layerIdx, substep_e::render, consumerForColorAttachment(color), referencesByConsumerId[color].frameLatency, passIdx, passId });
-	  //TODO allow input attachments to stay in the appropriate *AttachmentOptimal layout
+	      ret.push_back({ layerIdx, substep_e::render, vk::ShaderStageFlagBits::eFragment, vk::AccessFlagBits2::eDepthStencilAttachmentWrite | vk::AccessFlagBits2::eDepthStencilAttachmentRead, referencesByConsumerId[color].frameLatency, passIdx, passId });
 	  for(uint64_t input : pass.input)
 	    if(referencesByConsumerId.contains(input))
-	      ret.push_back({ layerIdx, substep_e::render, consumerForInputAttachment(input), referencesByConsumerId[input].frameLatency, passIdx, passId });
+	      ret.push_back({ layerIdx, substep_e::render, vk::ShaderStageFlagBits::eFragment, vk::AccessFlagBits2::eInputAttachmentRead | vk::AccessFlagBits2::eInputAttachmenRead, referencesByConsumerId[input].frameLatency, passIdx, passId });
 	  for(const graphicsShaderRequirements& gsr : pass.shaders) {
+	    //NOTE: graphical shaders use shader id of 0 because all shaders in a render pass are considered concurrent.
 	    for(const resourceConsumer& srr : gsr.targetProvidedResources)
 	      if(referencesByConsumerId.contains(srr.id))
-		ret.push_back({ layerIdx, substep_e::render, srr, referencesByConsumerId[srr.id].frameLatency, passIdx, passId, shaderIdx, gsr.id });
+		ret.push_back({ layerIdx, substep_e::render, srr.stages, srr.access, referencesByConsumerId[srr.id].frameLatency, passIdx, passId });
 	    for(const resourceConsumer& srr : gsr.sourceProvidedResources)
 	      if(referencesByConsumerId.contains(srr.id))
-		ret.push_back({ layerIdx, substep_e::render, srr, referencesByConsumerId[srr.id].frameLatency, passIdx, passId, shaderIdx, gsr.id });
-	    shaderIdx++;
+		ret.push_back({ layerIdx, substep_e::render, srr.stages, srr.access, referencesByConsumerId[srr.id].frameLatency, passIdx, passId });
 	  }
 	}
 	//compute:
-	shaderIdx = 0;
+	size_t shaderIdx = 0;
 	for(uint64_t csrId : layer.computeShaders) {
 	  const computeShaderRequirements& csr = findById(OD.CSRS, csrId);
 	  for(const resourceConsumer& srr : csr.targetProvidedResources)
 	    if(referencesByConsumerId.contains(srr.id))
-	      ret.push_back({ layerIdx, substep_e::compute, srr, referencesByConsumerId[srr.id].frameLatency, NONE, NONE, shaderIdx, csr.id });
+	      ret.push_back({ layerIdx, substep_e::compute, srr.stages, srr.access, referencesByConsumerId[srr.id].frameLatency, shaderIdx, csr.id });
 	  for(const resourceConsumer& srr : csr.sourceProvidedResources)
 	    if(referencesByConsumerId.contains(srr.id))
-	      ret.push_back({ layerIdx, substep_e::compute, srr, referencesByConsumerId[srr.id].frameLatency, NONE, NONE, shaderIdx, csr.id });
+	      ret.push_back({ layerIdx, substep_e::compute, srr.stages, srr.access, referencesByConsumerId[srr.id].frameLatency, shaderIdx, csr.id });
 	  shaderIdx++;
 	}
       }
       for(auto& ol : OD.OLS)
 	if(referencesByConsumerId.contains(ol.windowConsumerId))
-	  ret.push_back({ OD.LRS.len-1, substep_e::post, { NONE, {}, vk::AccessFlagBits2::eTransferRead }, referencesByConsumerId[ol.windowConsumerId].frameLatency });
+	  ret.push_back({ OD.LRS.len-1, substep_e::post, {}, vk::AccessFlagBits2::eTransferRead, referencesByConsumerId[ol.windowConsumerId].frameLatency });
       std::sort(ret.begin(), ret.end());
+      //now combine any simultaneous groups (which will now be contiguous)
+      size_t removed = 0;
+      for(size_t i = 1, j = 0;i < ret.size();i++) {
+	if(ret[i] == ret[j]) {//compares timing not access
+	  ret[j].stages |= ret[i].stages;
+	  ret[j].access |= ret[i].access;
+	  ++removed;
+	} else {
+	  ++j;
+	  if(i != j)
+	    ret[j] = ret[i];
+	}
+      }
+      ret.resize(ret.size() - removed);
       return ret;
     };
 
@@ -246,16 +259,16 @@ namespace WITE {
 	  rb.timing.substep = substep_e::barrier0;
 	} else if(rb.after.substep != rb.before.substep) {//next prefer between steps
 	  rb.timing.substep = (substep_e)((int)rb.after.substep - 1);
-	} else if(rb.after.passId != rb.before.passId) {//barriers between render passes are also allowed
+	} else if(rb.after.passOrShaderId != rb.before.passOrShaderId) {//barriers between render passes are also allowed
 	  constexpr_assert(rb.after.substep == substep_e::render);//only render has passes
 	  rb.timing.substep = rb.after.substep;
-	  rb.timing.passId = rb.after.passId;
-	  rb.timing.shaderId = NONE;
+	  rb.timing.passOrShaderId = rb.after.passOrShaderId;
+	  rb.timing.passOrShaderId = NONE;
 	} else {//otherwise wait as long as possible
 	  constexpr_assert(rb.after.substep == substep_e::compute);//mid-pass barriers not supported (would need dependencies)
 	  //also, multiple target layouts would execute the same barrier repeatedly
 	  rb.timing.substep = rb.after.substep;
-	  rb.timing.shaderId = rb.after.shaderId;
+	  rb.timing.passOrShaderId = rb.after.passOrShaderId;
 	}
 	//having used the timing for the initial "after" value to decide when to drop the barrier, we can now absorb future usages that don't need a barrier after this one
 	afterIdx++;
@@ -267,24 +280,43 @@ namespace WITE {
 	before = rb.after;
       }
       ret[0].before = before;
+      if(containsId(OD.IRS, RB.requirementId)) {
+	auto IR = findById(OD.IRS, RB.requirementId);
+	for(auto& r : ret) {
+	  r.beforeLayout = bestLayoutFor(r.before.access, IR.usage);
+	  r.afterLayout = bestLayoutFor(r.after.access, IR.usage);
+	}
+      }
       return ret;
     };
 
-    template<uint64_t resourceSlotId, imageRequirements IR> static consteval auto findFinalUsagePerFrame() {
-      auto usages = findUsages(resourceSlotId);
+    template<uint64_t resourceSlotId, imageRequirements IR>
+    static consteval copyableArray<resourceBarrier, IR.frameswapCount> findFinalBarrierPerFrame() {
+      auto barriers = findBarriers(resourceSlotId);
       constexpr_assert(usages.size() > 0);
-      copyableArray<resourceAccessTime, IR.frameswapCount> ret;
-      for(auto& b : usages)
+      copyableArray<resourceBarrier, IR.frameswapCount> ret;
+      for(auto& b : barriers)
 	ret[b.frameLatency] = b;
       for(size_t i = 0;i < ret.LENGTH;i++) {
 	auto& b = ret[i];
-	if(b.layerIdx == NONE_size) //empty frame slot when default initialized
-	  for(size_t j = ret.LENGTH;j && b.layerIdx == NONE_size;j--)
+	if(b.after.layerIdx == NONE_size) //empty frame slot when default initialized
+	  for(size_t j = ret.LENGTH;j && b.after.layerIdx == NONE_size;j--)
 	    b = ret[(i + j - 1) % ret.LENGTH];
 	constexpr_assert(b.layerIdx != NONE_size);//image never used, so can't pick which layout to init to
 	//MAYBE add flag to not init? But why would it be in the onion if not used
       }
       return ret;
+    };
+
+    consteval layoutAccessMatrix_t getLayoutForImage(uint64_t resourceSlotId, resourceInstanceBarrierTiming BT) {
+      constexpr auto barriers = findBarriers(resourceSlotId);
+      constexpr_assert(barriers.LEN > 0);
+      if(barriers.LEN == 1 || barriers[0].timing > BT)
+	return barriers[0].beforeLayout;
+      size_t i = 0;
+      while(i < barriers.LEN && barriers[i].timing < BT)
+	i++;
+      return barriers[i].afterLayout;
     };
 
     template<uint64_t objectLayoutId>
@@ -448,8 +480,8 @@ namespace WITE {
       template<uint64_t FS> inline void preRender_l2(uint64_t frame, vk::CommandBuffer cmd, garbageCollector& gc) {
 	PROFILEME;
 	if constexpr(RT::isImage) {
-	  static constexpr resourceConsumer RC = findFinalUsagePerFrame<RS.id, RT::IR>()[FS].usage;
-	  at().template applyPendingResize<RS.resizeBehavior, RC.access>(frame + FS, cmd, gc);
+	  static constexpr auto RB = findFinalBarrierPerFrame<RS.id, RT::IR>()[FS];
+	  at().template applyPendingResize<RS.resizeBehavior, RB.afterLayout.layout>(frame + FS, cmd, gc);
 	  if constexpr(FS < RT::IR.frameswapCount-1)
 	    preRender_l2<FS+1>(frame, cmd, gc);
 	}
@@ -478,15 +510,15 @@ namespace WITE {
       inline static consteval auto initBaselineBarriers() {
 	//consteval lambdas are finicky, need to be wrapped in a consteval function
 	if constexpr(RT::isImage) {
-	  constexpr auto finalUsagePerFrame = findFinalUsagePerFrame<RS.id, RT::IR>();
+	  static constexpr auto finalUsagePerFrame = findFinalBarrierPerFrame<RS.id, RT::IR>();
 	  return copyableArray<vk::ImageMemoryBarrier2, RT::IR.frameswapCount>([&](size_t i) consteval {
 	    return vk::ImageMemoryBarrier2 {
 	      vk::PipelineStageFlagBits2::eNone,
 	      vk::AccessFlagBits2::eNone,
-	      toPipelineStage2(finalUsagePerFrame[i]),
-	      finalUsagePerFrame[i].usage.access,
+	      toPipelineStage2(finalUsagePerFrame[i].after),
+	      finalUsagePerFrame[i].after.access,
 	      vk::ImageLayout::eUndefined,
-	      imageLayoutFor(finalUsagePerFrame[i].usage.access),
+	      finalUsagePerFrame[i].afterLayout.layout,
 	      {}, {}, {},
 	      getAllInclusiveSubresource(RT::IR)
 	    };
@@ -843,11 +875,9 @@ namespace WITE {
       inline void postRender(vk::SemaphoreSubmitInfo& renderWaitSem) {
 	PROFILEME;
 	if constexpr(hasWindow) {
-	  static constexpr resourceConsumer windowRC = consumerForWindowForObject(objectLayoutId);
-	  static constexpr resourceReference windowRR = *findResourceReferenceToConsumer(allRRS, windowRC.id);
-	  static constexpr resourceSlot windowRS = findById<resourceSlot>(RSS, windowRR.resourceSlotId);
-	  auto& img = get<windowRS.id>();
-	  static constexpr vk::ImageLayout layout = imageLayoutFor(windowRC.access);
+	  static constexpr resourceReference windowRR = *findResourceReferenceToConsumer(allRRS, findById(OD.OLS, objectLayoutId).windowConsumerId);
+	  auto& img = get<windowRR.resourceSlotId>();
+	  static constexpr vk::ImageLayout layout = getLayoutForImage(windowRR.resourceSlotId, { layerIdx_OPTE, substep_e::post });
 	  static_assert(layout == vk::ImageLayout::eGeneral || layout == vk::ImageLayout::eTransferSrcOptimal);
 	  auto f = owner->frame + windowRR.frameLatency;
 	  presentWindow.present(img.frameImage(f), layout, img.getSizeOffset(f), renderWaitSem);
@@ -923,6 +953,7 @@ namespace WITE {
     template<literalList<resourceSlot> RSS,
 	     literalList<resourceReference> RRS,
 	     literalList<resourceConsumer> RCS,
+	     resourceBarrierTiming RBT,
 	     size_t descriptors, uint64_t objectId,
 	     uint64_t RCIDX = 0>
     inline void fillWrites(descriptorUpdateData_t<descriptors>& data, mappedResourceTuple<objectId>& rm, vk::DescriptorSet ds,
@@ -956,7 +987,7 @@ namespace WITE {
 		  getActiveGarbageCollector().push(img.imageView);
 		img.imageView = res.template createView<RR.subresource.viewType,
 							getSubresource(RS.requirementId, RR)>(frameMod);
-		img.imageLayout = imageLayoutFor(RC.access);
+		img.imageLayout = getLayoutForImage(RR.resourceSlotId, { RR.frameLatency, RBT });
 		if(waitFrameOut) [[likely]]
 		  *waitFrameOut = max(*waitFrameOut, frame - findById(OD.IRS, RS.requirementId).frameswapCount);
 	      } else {
@@ -976,13 +1007,14 @@ namespace WITE {
 	    }
 	  }
 	}
-	fillWrites<RSS, RRS, RCS, descriptors, objectId, RCIDX+1>(data, rm, ds, frameMod, frameLastUpdated, waitFrameOut);
+	fillWrites<RSS, RRS, RCS, RBT, descriptors, objectId, RCIDX+1>(data, rm, ds, frameMod, frameLastUpdated, waitFrameOut);
       }
     };
 
     template<literalList<resourceSlot> RSS,
 	     literalList<resourceReference> RRS,
 	     literalList<resourceConsumer> RCS,
+	     resourceBarrierTiming RBT,
 	     size_t descriptors, uint64_t objectId>
     inline void prepareDescriptors(descriptorUpdateData_t<descriptors>& descriptorBundle,
 				   std::unique_ptr<descriptorPoolPoolBase>& dpp,
@@ -994,13 +1026,13 @@ namespace WITE {
 	  dpp.reset(new descriptorPoolPool<RCS, OD.GPUID>());
 	descriptorBundle.descriptorSet = dpp->allocate();
 	descriptorBundle.reset();
-	fillWrites<RSS, RRS, RCS, descriptors>(descriptorBundle, resources, descriptorBundle.descriptorSet, frameMod, NONE, NULL);
+	fillWrites<RSS, RRS, RCS, RBT, descriptors>(descriptorBundle, resources, descriptorBundle.descriptorSet, frameMod, NONE, NULL);
 	dev->getVkDevice().updateDescriptorSets(descriptorBundle.writeCount, descriptorBundle.writes, 0, NULL);
 	descriptorBundle.frameLastUpdated = frame;
       } else if(descriptorBundle.frameLastUpdated < resources.frameLastUpdated(frame)) [[unlikely]] {
 	descriptorBundle.reset();
 	uint64_t waitFrame = 0;
-	fillWrites<RSS, RRS, RCS>(descriptorBundle, resources, descriptorBundle.descriptorSet, frameMod, descriptorBundle.frameLastUpdated, &waitFrame);
+	fillWrites<RSS, RRS, RCS, RBT>(descriptorBundle, resources, descriptorBundle.descriptorSet, frameMod, descriptorBundle.frameLastUpdated, &waitFrame);
 	waitForFrame(waitFrame);
 	dev->getVkDevice().updateDescriptorSets(descriptorBundle.writeCount, descriptorBundle.writes, 0, NULL);
 	descriptorBundle.frameLastUpdated = frame;
@@ -1063,8 +1095,8 @@ namespace WITE {
 		RB.before.usage.access,
 		toPipelineStage2(RB.after),
 		RB.after.usage.access,
-		imageLayoutFor(RB.before.usage.access),
-		imageLayoutFor(RB.after.usage.access),
+		RB.beforeLayout.layout,
+		RB.afterLayout.layout,
 		{}, {}, {},
 		getAllInclusiveSubresource(findById(OD.IRS, RB.requirementId))
 	      });
@@ -1123,7 +1155,7 @@ namespace WITE {
       recordBarriers<BTS, BT>(cmd);
     };
 
-    template<copyStep CS, literalList<uint64_t> XLS> inline void recordCopies_l2(vk::CommandBuffer cmd) {
+    template<size_t layerIdx, copyStep CS, literalList<uint64_t> XLS> inline void recordCopies_l2(vk::CommandBuffer cmd) {
       if constexpr(XLS.len) {
 	{
 	  PROFILEME;
@@ -1148,9 +1180,9 @@ namespace WITE {
 		blitInfo.srcOffsets = src.getSize(SRR->frameLatency + frame);
 		blitInfo.dstOffsets = dst.getSize(DRR->frameLatency + frame);
 		cmd.blitImage(src.frameImage(SRR->frameLatency + frame),
-			      imageLayoutFor(vk::AccessFlagBits2::eTransferRead),
+			      getLayoutForImage(SRS.id, { SRR->frameLatency, layerIdx, substep_e::copy }),
 			      dst.frameImage(DRR->frameLatency + frame),
-			      imageLayoutFor(vk::AccessFlagBits2::eTransferWrite),
+			      getLayoutForImage(DRS.id, { DRR->frameLatency, layerIdx, substep_e::copy }),
 			      1, &blitInfo, CS.filter);
 	      }
 	    } else {//buffer to buffer
@@ -1168,19 +1200,19 @@ namespace WITE {
 	    }
 	  }
 	}
-	recordCopies_l2<CS, XLS.sub(1)>(cmd);
+	recordCopies_l2<layerIdx, CS, XLS.sub(1)>(cmd);
       }
     };
 
-    template<literalList<uint64_t> CSIDS> inline void recordCopies(vk::CommandBuffer cmd) {
+    template<size_t layerIdx, literalList<uint64_t> CSIDS> inline void recordCopies(vk::CommandBuffer cmd) {
       if constexpr(CSIDS.len) {
 	static constexpr copyStep CS = findById(OD.CSS, CSIDS[0]);
-	recordCopies_l2<CS, allLayoutIds>(cmd);
-	recordCopies<CSIDS.sub(1)>(cmd);
+	recordCopies_l2<layerIdx, CS, allLayoutIds>(cmd);
+	recordCopies<layerIdx, CSIDS.sub(1)>(cmd);
       }
     };
 
-    template<clearStep CS, literalList<uint64_t> XLS> inline void recordClears_l2(vk::CommandBuffer cmd) {
+    template<size_t layerIdx, clearStep CS, literalList<uint64_t> XLS> inline void recordClears_l2(vk::CommandBuffer cmd) {
       if constexpr(XLS.len) {
 	{
 	  PROFILEME;
@@ -1194,9 +1226,11 @@ namespace WITE {
 	    for(auto& cluster : getAllOfLayout<XL.id>()) {
 	      auto img = cluster->template get<RS.id>().frameImage(RR->frameLatency + frame);
 	      if constexpr(isDepth(IR)) {
-		cmd.clearDepthStencilImage(img, vk::ImageLayout::eTransferDstOptimal, &CS.clearValue.depthStencil, 1, &SR);
+		cmd.clearDepthStencilImage(img, getLayoutForImage(RS.id, { RR->frameLatency, layerIdx, substep_e::clear }),
+					   &CS.clearValue.depthStencil, 1, &SR);
 	      } else {
-		cmd.clearColorImage(img, vk::ImageLayout::eTransferDstOptimal, &CS.clearValue.color, 1, &SR);
+		cmd.clearColorImage(img, getLayoutForImage(RS.id, { RR->frameLatency, layerIdx, substep_e::clear }),
+				    &CS.clearValue.color, 1, &SR);
 	      }
 	    }
 	  }
@@ -1213,6 +1247,7 @@ namespace WITE {
       }
     };
 
+    #error need layer id and pass id
     template<resourceConsumer RC, const resourceReference* RR, bool clear, uint32_t idx> struct attachmentInfo {
       static constexpr resourceSlot RS = findById(OD.RSS, RR->resourceSlotId);
       static constexpr imageRequirements IR = findById(OD.IRS, RS.requirementId);
@@ -1258,7 +1293,7 @@ namespace WITE {
 
     //MAYBE match like clusters of shaders, sources, and targets so they can share layouts and descriptor pools?
 
-    template<targetLayout TL, renderPassRequirements RP, graphicsShaderRequirements GSR, literalList<sourceLayout> SLS>
+    template<size_t layerIdx, targetLayout TL, renderPassRequirements RP, graphicsShaderRequirements GSR, literalList<sourceLayout> SLS>
     inline void recordRenders_l5(auto& target, perTargetLayout& ptl, perTargetLayoutPerShader& ptlps, descriptorUpdateData_t<GSR.targetProvidedResources.len>& targetDescriptors, vk::RenderPass rp, vk::CommandBuffer cmd) {
       if constexpr(SLS.len) {
 	{
@@ -1322,7 +1357,8 @@ namespace WITE {
 		  continue;
 	      size_t frameMod = frame % source_t<SL.id>::maxFrameswap;
 	      auto& descriptorBundle = source->perShaderByIdByFrame[frameMod].template get<GSR.id>();
-	      prepareDescriptors<object_t<SL.objectLayoutId>::RSS, SL.resources, GSR.sourceProvidedResources>
+	      prepareDescriptors<object_t<SL.objectLayoutId>::RSS, SL.resources, GSR.sourceProvidedResources,
+		{ layerIdx, substep_e::render, findIdx(OD.LRS[layerIdx].renders, RP.id) }>
 		(descriptorBundle, pslps.descriptorPool, *source->allObjectResources, frameMod);
 	      if constexpr(GSR.sourceProvidedResources)
 		cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, shaderInstance.pipelineLayout, 0, 1, &descriptorBundle.descriptorSet, 0, NULL);
@@ -1427,16 +1463,18 @@ namespace WITE {
 		  cmd.drawMeshTasksEXT(GSR.meshGroupCountX, GSR.meshGroupCountY, GSR.meshGroupCountZ);
 		}
 	      }
+	      // if(frame == 10)
+	      // 	WARN("Drew ", vertices, " verts from nested shader ", GSR.id);
 	    }
 	  // } else {
 	  //   WARN("skipping shader ", GSR.id, " for source ", SL.id);
 	  }
 	}
-	recordRenders_l5<TL, RP, GSR, SLS.sub(1)>(target, ptl, ptlps, targetDescriptors, rp, cmd);
+	recordRenders_l5<layerIdx, TL, RP, GSR, SLS.sub(1)>(target, ptl, ptlps, targetDescriptors, rp, cmd);
       }
     };
 
-    template<renderPassRequirements RP, graphicsShaderRequirements GSR>
+    template<size_t layerIdx, renderPassRequirements RP, graphicsShaderRequirements GSR>
     inline void recordRenders_targetOnly(auto& target, perTargetLayout& ptl, perTargetLayoutPerShader& ptlps, descriptorUpdateData_t<GSR.targetProvidedResources.len>& targetDescriptors, vk::RenderPass rp, vk::CommandBuffer cmd) {
       PROFILEME;
       //for now, target only rendering must not supply a vertex or instance buffer, so vert count must come from an override
@@ -1474,18 +1512,12 @@ namespace WITE {
       static_assert(containsStage<GSR.modules, vk::ShaderStageFlagBits::eVertex>(),
 		    "vertex shader required. Mesh shaders not yet implemented for target-only rendering");
       cmd.draw(GSR.vertexCountOverride, GSR.instanceCountOverride ? GSR.instanceCountOverride : 1, 0, 0);
-      // WARN("Drew ", GSR.vertexCountOverride, " from target only");
+      // if(frame == 10)
+      // 	WARN("Drew ", GSR.vertexCountOverride, " from target only shader ", GSR.id);
       //TODO more flexibility with draw. Allow source layout to ask for multi-draw, indexed, indirect etc. Allow (dynamic) less than the whole buffer.
     };
 
-    template<renderPassRequirements RP, graphicsShaderRequirements GSR> struct implicitResources {
-      static constexpr copyableArray<resourceConsumer, RP.input.len> inputs = [](size_t i) {
-	return consumerForInputAttachment(RP.input[i]);
-      };
-      static constexpr auto allTargetProvided = concat<resourceConsumer, GSR.targetProvidedResources, inputs>();
-    };
-
-    template<targetLayout TL, renderPassRequirements RP, literalList<graphicsShaderRequirements> GSRS>
+    template<size_t layerIdx, targetLayout TL, renderPassRequirements RP, literalList<graphicsShaderRequirements> GSRS>
     inline void recordRenders_l4(auto& target, perTargetLayout& ptl, vk::RenderPass rp, vk::CommandBuffer cmd) {
       if constexpr(GSRS.len) {
 	{
@@ -1499,15 +1531,16 @@ namespace WITE {
 	    size_t frameMod = frame % target_t<TL.id>::maxFrameswap;
 	    auto& descriptorBundle = target.perShaderByIdByFrame[frameMod].template get<GSR.id>();
 	    perTargetLayoutPerShader& ptlps = ptl.perShader[GSR.id];
-	    prepareDescriptors<object_t<TL.objectLayoutId>::RSS, TL.resources, implicitResources<RP, GSR>::allTargetProvided>
+	    prepareDescriptors<object_t<TL.objectLayoutId>::RSS, TL.resources, GSR.targetProvidedResources,
+	      { layerIdx, substep_e::render, findIdx(OD.LRS[layerIdx].renders, RP.id) }>
 	      (descriptorBundle, ptlps.descriptorPool, *target.allObjectResources, frameMod);
 	    if constexpr(GSR.sourceProvidedResources.len)
-	      recordRenders_l5<TL, RP, GSR, OD.SLS>(target, ptl, ptlps, descriptorBundle, rp, cmd);
+	      recordRenders_l5<layerIdx, TL, RP, GSR, OD.SLS>(target, ptl, ptlps, descriptorBundle, rp, cmd);
 	    else
-	      recordRenders_targetOnly<RP, GSR>(target, ptl, ptlps, descriptorBundle, rp, cmd);
+	      recordRenders_targetOnly<layerIdx, RP, GSR>(target, ptl, ptlps, descriptorBundle, rp, cmd);
 	  }
 	}
-	recordRenders_l4<TL, RP, GSRS.sub(1)>(target, ptl, rp, cmd);
+	recordRenders_l4<layerIdx, TL, RP, GSRS.sub(1)>(target, ptl, rp, cmd);
       }
     };
 
@@ -1555,7 +1588,7 @@ namespace WITE {
 #endif
     };
 
-    template<renderPassRequirements RP, targetLayout TL>
+    template<size_t layerIdx, renderPassRequirements RP, targetLayout TL>
     inline void recordRenders_l3(auto& target, perTargetLayout& ptl, vk::CommandBuffer cmd) {
       static constexpr const resourceReference* depthRR = findResourceReferenceToConsumer(TL.resources, RP.depth);
       static_assert(RP.color || RP.depth != NONE, "render pass must have a depth or at least one color attachment");
@@ -1608,22 +1641,22 @@ namespace WITE {
 	vk::RenderPassBeginInfo rpBegin(rp, fbb.fb, size, attachmentCount, clears.ptr());
 	cmd.beginRenderPass(&rpBegin, vk::SubpassContents::eInline);
 	// WARN("RP begin");
-	recordRenders_l4<TL, RP, RP.shaders>(target, ptl, rp, cmd);
+	recordRenders_l4<layerIdx, TL, RP, RP.shaders>(target, ptl, rp, cmd);
 	cmd.endRenderPass();
       // } else {
       // 	if(frame == 1) [[unlikely]] WARN("Warning: skipping rp ", RP.id, " on TL ", TL.id);
       }
     };
 
-    template<renderPassRequirements RP, literalList<targetLayout> TLS>
+    template<size_t layerIdx, renderPassRequirements RP, literalList<targetLayout> TLS>
     inline void recordRenders_l2(vk::CommandBuffer cmd) {
       if constexpr(TLS.len) {
 	PROFILEME;
 	static constexpr targetLayout TL = TLS[0];
 	perTargetLayout& ptl = od.perTL[TL.id];
 	for(auto* target : allTargets.template ofLayout<TL.id>())
-	  recordRenders_l3<RP, TL>(*target, ptl, cmd);
-	recordRenders_l2<RP, TLS.sub(1)>(cmd);
+	  recordRenders_l3<layerIdx, RP, TL>(*target, ptl, cmd);
+	recordRenders_l2<layerIdx, RP, TLS.sub(1)>(cmd);
       }
     };
 
@@ -1632,8 +1665,8 @@ namespace WITE {
       if constexpr(RPIDS.len) {
 	PROFILEME;
 	static constexpr renderPassRequirements RP = findById(OD.RPRS, RPIDS[0]);
-	recordBarriersForTime<resourceBarrierTiming { .layerIdx = layerIdx, .substep = substep_e::render, .passId = RP.id, .shaderId = NONE }>(cmd);
-	recordRenders_l2<RP, OD.TLS>(cmd);
+	recordBarriersForTime<resourceBarrierTiming { .layerIdx = layerIdx, .substep = substep_e::render, .passOrShaderIdx = findId(OD.RPRS, RP.id) }>(cmd);
+	recordRenders_l2<layerIdx, RP, OD.TLS>(cmd);
 	recordRenders<layerIdx, RPIDS.sub(1)>(cmd);
       }
     };
@@ -1657,7 +1690,7 @@ namespace WITE {
       }
     };
 
-    template<computeShaderRequirements CS, literalList<sourceLayout> SLS>
+    template<size_t layerIdx, computeShaderRequirements CS, literalList<sourceLayout> SLS>
     inline void recordComputeDispatches_sourceOnly(vk::CommandBuffer cmd) {
       if constexpr(SLS.len) {
 	{
@@ -1668,7 +1701,8 @@ namespace WITE {
 	      perSourceLayoutPerShader& pslps = od.perSL[SL.id].perShader[CS.id];
 	      size_t frameMod = frame % source_t<SL.id>::maxFrameswap;
 	      auto& descriptorBundle = source->perShaderByIdByFrame[frameMod].template get<CS.id>();
-	      prepareDescriptors<object_t<SL.objectLayoutId>::RSS, SL.resources, CS.sourceProvidedResources>
+	      prepareDescriptors<object_t<SL.objectLayoutId>::RSS, SL.resources, CS.sourceProvidedResources,
+		{ layerIdx, substep_e::compute, findIdx(OD.LRS[layerIdx].computeShaders, CS.id) }>
 		(descriptorBundle, pslps.descriptorPool, *source->allObjectResources, frameMod);
 	      if(!pslps.sourceOnlyShader.pipeline) [[unlikely]] {
 		PROFILEME_MSG("compute pipeline creation, source only");
@@ -1688,11 +1722,11 @@ namespace WITE {
 	    }
 	  }
 	}
-	recordComputeDispatches_sourceOnly<CS, SLS.sub(1)>(cmd);
+	recordComputeDispatches_sourceOnly<layerIdx, CS, SLS.sub(1)>(cmd);
       }
     };
 
-    template<computeShaderRequirements CS, literalList<targetLayout> TLS>
+    template<size_t layerIdx, computeShaderRequirements CS, literalList<targetLayout> TLS>
     inline void recordComputeDispatches_targetOnly(vk::CommandBuffer cmd) {
       if constexpr(TLS.len) {
 	{
@@ -1703,7 +1737,8 @@ namespace WITE {
 	      perTargetLayoutPerShader& ptlps = od.perTL[TL.id].perShader[CS.id];
 	      size_t frameMod = frame % target_t<TL.id>::maxFrameswap;
 	      auto& descriptorBundle = target->perShaderByIdByFrame[frameMod].template get<CS.id>();
-	      prepareDescriptors<object_t<TL.objectLayoutId>::RSS, TL.resources, CS.targetProvidedResources>
+	      prepareDescriptors<object_t<TL.objectLayoutId>::RSS, TL.resources, CS.targetProvidedResources,
+		{ layerIdx, substep_e::compute, findIdx(OD.LRS[layerIdx].computeShaders, CS.id) }>
 		(descriptorBundle, ptlps.descriptorPool, *target->allObjectResources, frameMod);
 	      if(!ptlps.targetOnlyShader.pipeline) [[unlikely]] {
 		PROFILEME_MSG("compute pipeline creation, target only");
@@ -1723,11 +1758,11 @@ namespace WITE {
 	    }
 	  }
 	}
-	recordComputeDispatches_targetOnly<CS, TLS.sub(1)>(cmd);
+	recordComputeDispatches_targetOnly<layerIdx, CS, TLS.sub(1)>(cmd);
       }
     };
 
-    template<computeShaderRequirements CS, targetLayout TL, literalList<sourceLayout> SLS>
+    template<size_t layerIdx, computeShaderRequirements CS, targetLayout TL, literalList<sourceLayout> SLS>
     inline void recordComputeDispatches_nested_l2(target_t<TL.id>* target, perTargetLayoutPerShader& ptlps, descriptorUpdateData_t<CS.targetProvidedResources.len>& perShader, vk::CommandBuffer cmd) {
       if constexpr(SLS.len) {
 	{
@@ -1762,7 +1797,8 @@ namespace WITE {
 		  continue;
 	      size_t frameMod = frame % source_t<SL.id>::maxFrameswap;
 	      auto& descriptorBundle = source->perShaderByIdByFrame[frameMod].template get<CS.id>();
-	      prepareDescriptors<object_t<SL.objectLayoutId>::RSS, SL.resources, CS.sourceProvidedResources>
+	      prepareDescriptors<object_t<SL.objectLayoutId>::RSS, SL.resources, CS.sourceProvidedResources,
+		{ layerIdx, substep_e::compute, findIdx(OD.LRS[layerIdx].computeShaders, CS.id) }>
 		(descriptorBundle, pslps.descriptorPool, source->resources, frameMod);
 	      if constexpr(CS.sourceProvidedResources)
 		cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute, shaderInstance.pipelineLayout, 0, 1, &descriptorBundle.descriptorSet, 0, NULL);
@@ -1772,11 +1808,11 @@ namespace WITE {
 	    }
 	  }
 	}
-	recordComputeDispatches_nested_l2<CS, TL, SLS.sub(1)>(target, ptlps, perShader, cmd);
+	recordComputeDispatches_nested_l2<layerIdx, CS, TL, SLS.sub(1)>(target, ptlps, perShader, cmd);
       }
     };
 
-    template<computeShaderRequirements CS, literalList<targetLayout> TLS, literalList<sourceLayout> SLS>
+    template<size_t layerIdx, computeShaderRequirements CS, literalList<targetLayout> TLS, literalList<sourceLayout> SLS>
     inline void recordComputeDispatches_nested(vk::CommandBuffer cmd) {
       if constexpr(TLS.len) {
 	{
@@ -1787,13 +1823,14 @@ namespace WITE {
 	      perTargetLayoutPerShader& ptlps = od.perTL[TL.id].perShader[CS.id];
 	      size_t frameMod = frame % target_t<TL.id>::maxFrameswap;
 	      auto& descriptorBundle = target->perShaderByIdByFrame[frameMod].template get<CS.id>();
-	      prepareDescriptors<object_t<TL.objectLayoutId>::RSS, TL.resources, CS.targetProvidedResources>
+	      prepareDescriptors<object_t<TL.objectLayoutId>::RSS, TL.resources, CS.targetProvidedResources,
+		{ layerIdx, substep_e::compute, findIdx(OD.LRS[layerIdx].computeShaders, CS.id) }>
 		(descriptorBundle, ptlps.descriptorPool, target->resources, frameMod);
-	      recordComputeDispatches_nested_l2<CS, TL, SLS>(target, ptlps, descriptorBundle, cmd);
+	      recordComputeDispatches_nested_l2<layerIdx, CS, TL, SLS>(target, ptlps, descriptorBundle, cmd);
 	    }
 	  }
 	}
-	recordComputeDispatches_nested<CS, TLS.sub(1), SLS>(cmd);
+	recordComputeDispatches_nested<layerIdx, CS, TLS.sub(1), SLS>(cmd);
       }
     };
 
@@ -1802,14 +1839,14 @@ namespace WITE {
       if constexpr(CSS.len) {
 	{
 	  PROFILEME;
-	  recordBarriersForTime<resourceBarrierTiming { .layerIdx = layerIdx, .substep = substep_e::compute, .shaderId = CSS[0] }>(cmd);
+	  recordBarriersForTime<resourceBarrierTiming { .layerIdx = layerIdx, .substep = substep_e::compute, .passOrShaderIdx = findId(OD.CSRS, CSS[0]) }>(cmd);
 	  static constexpr computeShaderRequirements CS = findById(OD.CSRS, CSS[0]);
 	  if constexpr(CS.targetProvidedResources.len == 0)
-	    recordComputeDispatches_sourceOnly<CS, OD.SLS>(cmd);
+	    recordComputeDispatches_sourceOnly<layerIdx, CS, OD.SLS>(cmd);
 	  else if constexpr(CS.sourceProvidedResources.len == 0)
-	    recordComputeDispatches_targetOnly<CS, OD.TLS>(cmd);
+	    recordComputeDispatches_targetOnly<layerIdx, CS, OD.TLS>(cmd);
 	  else
-	    recordComputeDispatches_nested<CS, OD.TLS, OD.SLS>(cmd);
+	    recordComputeDispatches_nested<layerIdx, CS, OD.TLS, OD.SLS>(cmd);
 	}
 	recordComputeDispatches<layerIdx, CSS.sub(1)>(cmd);
       }
@@ -1821,7 +1858,7 @@ namespace WITE {
 	  PROFILEME;
 	  static constexpr layerRequirements LR = OD.LRS[layerIdx];
 	  recordBarriersForTime<resourceBarrierTiming { .layerIdx = layerIdx, .substep = substep_e::barrier0 }>(cmd);
-	  recordCopies<LR.copies>(cmd);
+	  recordCopies<layerIdx, LR.copies>(cmd);
 	  recordBarriersForTime<resourceBarrierTiming { .layerIdx = layerIdx, .substep = substep_e::barrier1 }>(cmd);
 	  recordClears<LR.clears>(cmd);
 	  recordBarriersForTime<resourceBarrierTiming { .layerIdx = layerIdx, .substep = substep_e::barrier2 }>(cmd);

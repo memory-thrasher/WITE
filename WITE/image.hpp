@@ -89,9 +89,8 @@ namespace WITE {
       frameCiUpdated = frame;
     };
 
-    template<resizeBehavior_t B, vk::AccessFlags2 A>
+    template<resizeBehavior_t B, vk::ImageLayout layout>
     inline void applyPendingResize(uint64_t frame, vk::CommandBuffer cmd, garbageCollector& gc) {
-      static constexpr vk::ImageLayout layout = imageLayoutFor(A);
       size_t idx = frameImageIdx(frame);
       ASSERT_TRAP(frame >= frameImageCreated[idx], "image creation framestamp is in the future");
       if(frameCiUpdated <= frameImageCreated[idx])

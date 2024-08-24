@@ -76,6 +76,14 @@ namespace WITE {
     return ret;
   };
 
+  template<class T> WITE_DEBUG_IB_CE size_t findIdx(literalList<T> l, T id) {
+    for(size_t i = 0;i < l.len;i++)
+      if(l[i] == id)
+	return i;
+    constexprAssertFailed();
+    return l.len;
+  };
+
   template<class T> WITE_DEBUG_IB_CE size_t findId(literalList<T> l, uint64_t id) {
     for(size_t i = 0;i < l.len;i++)
       if(l[i].id == id)
@@ -133,12 +141,11 @@ namespace WITE {
   struct resourceAccessTime {
     size_t layerIdx = NONE_size;
     substep_e substep;
-    resourceConsumer usage;
+    vk::ShaderStageFlags stages = {};
+    vk::AccessFlags2 access = {};
     uint8_t frameLatency;
-    size_t passIdx = 0;//for sorting only
-    uint64_t passId = NONE;//forwarded to timing (NONE for compute shaders)
-    size_t shaderIdx = 0;//for sorting only
-    uint64_t shaderId = NONE;//forwarded to timing
+    size_t passOrShaderIdx = 0;
+    uint64_t passOrShaderId = NONE;
     constexpr auto operator<=>(const resourceAccessTime& r) const {
       auto comp = frameLatency <=> r.frameLatency;
       if(comp != 0) return comp;
@@ -146,9 +153,7 @@ namespace WITE {
       if(comp != 0) return comp;
       comp = substep <=> r.substep;
       if(comp != 0) return comp;
-      comp = passIdx <=> r.passIdx;
-      if(comp != 0) return comp;
-      return shaderIdx <=> r.shaderIdx;
+      return passOrShaderIdx <=> r.passOrShaderIdx;
     };
     constexpr bool compatibleWith(const resourceAccessTime r) {
       //true means there need not be a barrier between them (with this coming before r)
@@ -159,17 +164,24 @@ namespace WITE {
   };
 
   struct resourceBarrierTiming {//used to key a map to ask what barrier(s) should happen at a given step, so frameLatency is not a factor
-    size_t layerIdx;
+    size_t layerIdx = NONE_size;
     substep_e substep;
-    uint64_t passId = NONE;
-    uint64_t shaderId = NONE;
+    size_t passOrShaderIdx = 0;//shader idx is for compute, pass idx is for rendering (since shaders within an rp can and should be parallel).
+    constexpr auto operator<=>(const resourceBarrierTiming& r) const = default;
+  };
+
+  struct resourceInstanceBarrierTiming {
+    uint8_t frameLatency = 0;
+    resourceBarrierTiming barrierId;
+    constexpr resourceInstanceBarrierTiming(uint8_t fl, const resourceBarrierTiming& b) : frameLatenct(fl), barrierId(b) {};
+    constexpr resourceInstanceBarrierTiming(uint8_t fl, size_t layerIdx, substep_e substep, size_t passOrShaderIdx = 0) : frameLatenct(fl), barrierId(layerIdx, substep, passOrShaderIdx) {};
     constexpr auto operator<=>(const resourceBarrierTiming& r) const = default;
   };
 
   struct resourceBarrier {
-    resourceBarrierTiming timing;
-    uint8_t frameLatency = 0;
+    resourceInstanceBarrierTiming timing;
     resourceAccessTime before, after;
+    layoutAccessMatrix_t beforeLayout, afterLayout;
     uint64_t objectLayoutId, resourceSlotId, requirementId = NONE;
   };
 
@@ -224,20 +236,33 @@ namespace WITE {
     return { vk::PipelineStageFlagBits2::eAllCommands, vk::AccessFlagBits2::eNone, vk::PipelineStageFlagBits2::eAllCommands, vk::AccessFlagBits2::eNone, oldLayout, newLayout, 0, 0, {}, getAllInclusiveSubresource(R) };
   };
 
-  WITE_DEBUG_IB_CE vk::ImageLayout imageLayoutFor(vk::AccessFlags2 access) {
-    vk::ImageLayout ret = vk::ImageLayout::eUndefined;
-    if(access & (vk::AccessFlagBits2::eIndirectCommandRead | vk::AccessFlagBits2::eIndexRead | vk::AccessFlagBits2::eVertexAttributeRead | vk::AccessFlagBits2::eUniformRead | vk::AccessFlagBits2::eInputAttachmentRead | vk::AccessFlagBits2::eShaderRead | vk::AccessFlagBits2::eShaderSampledRead | vk::AccessFlagBits2::eShaderStorageRead))
-      ret = vk::ImageLayout::eShaderReadOnlyOptimal;
-    if(access & (vk::AccessFlagBits2::eShaderWrite | vk::AccessFlagBits2::eHostRead | vk::AccessFlagBits2::eHostWrite | vk::AccessFlagBits2::eMemoryRead | vk::AccessFlagBits2::eMemoryWrite | vk::AccessFlagBits2::eShaderStorageWrite))
-      ret = vk::ImageLayout::eGeneral;
-    if(access & (vk::AccessFlagBits2::eColorAttachmentWrite | vk::AccessFlagBits2::eColorAttachmentRead))
-      ret = ret == vk::ImageLayout::eUndefined ? vk::ImageLayout::eColorAttachmentOptimal : vk::ImageLayout::eGeneral;
-    if(access & (vk::AccessFlagBits2::eDepthStencilAttachmentWrite | vk::AccessFlagBits2::eDepthStencilAttachmentRead))
-      ret = ret == vk::ImageLayout::eUndefined ? vk::ImageLayout::eDepthStencilAttachmentOptimal : vk::ImageLayout::eGeneral;
-    if(access & vk::AccessFlagBits2::eTransferRead)
-      ret = ret == vk::ImageLayout::eUndefined ? vk::ImageLayout::eTransferSrcOptimal : vk::ImageLayout::eGeneral;
-    if(access & vk::AccessFlagBits2::eTransferWrite)
-      ret = ret == vk::ImageLayout::eUndefined ? vk::ImageLayout::eTransferDstOptimal : vk::ImageLayout::eGeneral;
+  struct layoutAccessMatrix_t {
+    vk::ImageLayout layout;
+    vk::AccessFlags2 access;
+    uint32_t score;
+    vk::ImageUsageFlags requiredUsage;//any of
+  };
+
+  constexpr layoutAccessMatrix_t layoutAccessMatrix[] = {
+    { vk::ImageLayout::eGeneral, FlagTraits<AccessFlagBits2>::allFlags, {}, 0 },
+    { vk::ImageLayout::eColorAttachmentOptimal, vk::AccessFlagBits2::eColorAttachmentWrite | vk::AccessFlagBits2::eColorAttachmentRead, 50100, vk::ImageUsageFlagBits::eColorAttachment },
+    { vk::ImageLayout::eDepthStencilAttachmentOptimal, vk::AccessFlagBits2::eDepthStencilAttachmentRead | vk::AccessFlagBits2::eDepthStencilAttachmentWrite, 50500, vk::ImageUsageFlagBits::eDepthStencilAttachment },
+    { vk::ImageLayout::eDepthStencilReadOnlyOptimal, vk::AccessFlagBits2::eDepthStencilAttachmentRead | vk::AccessFlagBits2::eShaderSampledRead | vk::AccessFlagBits2::eInputAttachmentRead, 10100, vk::ImageUsageFlagBits::eDepthStencilAttachment },
+    { vk::ImageLayout::eShaderReadOnlyOptimal, vk::AccessFlagBits2::eShaderSampledRead | vk::AccessFlagBits2::eInputAttachmentRead, 5000, vk::ImageUsageFlagBits::eInputAttachment | vk::ImageUsageFlagBits::eSampled },
+    { vk::ImageLayout::eTransferSrcOptimal, vk::AccessFlagBits2::eTransferRead, 500, vk::ImageUsageFlagBits::eTransferSrc },
+    { vk::ImageLayout::eTransferDstOptimal, vk::AccessFlagBits2::eTransferWrite, 500, vk::ImageUsageFlagBits::eTransferDst },
+    { vk::ImageLayout::eReadOnlyOptimal, vk::AccessFlagBits2::eDepthStencilAttachmentRead | vk::AccessFlagBits2::eColorAttachmentRead | vk::AccessFlagBits2::eShaderSampledRead | vk::AccessFlagBits2::eInputAttachmentRead, 100, vk::ImageUsageFlagBits::eInputAttachment | vk::ImageUsageFlagBits::eSampled },
+    { vk::ImageLayout::eAttachmentOptimal, vk::AccessFlagBits2::eDepthStencilAttachmentRead | vk::AccessFlagBits2::eDepthStencilAttachmentWrite | vk::AccessFlagBits2::eColorAttachmentWrite | vk::AccessFlagBits2::eColorAttachmentRead, 10, vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eColorAttachment },
+    // { vk::ImageLayout::eFragmentDensityMapOptimalEXT, ! },
+    // { vk::ImageLayout::eFragmentShadingRateAttachmentOptimalKHR, ! },
+    // { vk::ImageLayout::eAttachmentFeedbackLoopOptimalEXT, ! },
+  };
+
+  WITE_DEBUG_IB_CE const layoutAccessMatrix_t& bestImageLayoutFor(vk::AccessFlags2 access, vk::ImageUsageFlags usage) {
+    const layoutAccessMatrix_t& ret = layoutAccessMatrix[0];
+    for(const auto& lam : layoutAccessMatrix)
+      if((bool(lam.usage & usage) || lam.usage == 0)&& (access & lam.access) == access && lam.score > ret.score)
+	ret = lam;
     return ret;
   };
 

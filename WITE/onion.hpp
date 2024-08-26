@@ -180,7 +180,7 @@ namespace WITE {
 	    ret.push_back({ layerIdx, substep_e::clear, {}, vk::AccessFlagBits2::eTransferWrite, referencesByConsumerId[substep.id].frameLatency });
 	}
 	//rendering:
-	static_assert(std::numeric_limits<decltype(resourceBarrier::frameLatency)>::min() == 0);
+	static_assert(std::numeric_limits<decltype(resourceInstanceBarrierTiming::frameLatency)>::min() == 0);
 	for(uint64_t passIdx = 0;passIdx < layer.renders.len;passIdx++) {
 	  uint64_t passId = layer.renders[passIdx];
 	  const auto& pass = findById(OD.RPRS, passId);
@@ -191,7 +191,7 @@ namespace WITE {
 	      ret.push_back({ layerIdx, substep_e::render, vk::ShaderStageFlagBits::eFragment, vk::AccessFlagBits2::eDepthStencilAttachmentWrite | vk::AccessFlagBits2::eDepthStencilAttachmentRead, referencesByConsumerId[color].frameLatency, passIdx, passId });
 	  for(uint64_t input : pass.input)
 	    if(referencesByConsumerId.contains(input))
-	      ret.push_back({ layerIdx, substep_e::render, vk::ShaderStageFlagBits::eFragment, vk::AccessFlagBits2::eInputAttachmentRead | vk::AccessFlagBits2::eInputAttachmenRead, referencesByConsumerId[input].frameLatency, passIdx, passId });
+	      ret.push_back({ layerIdx, substep_e::render, vk::ShaderStageFlagBits::eFragment, vk::AccessFlagBits2::eInputAttachmentRead | vk::AccessFlagBits2::eInputAttachmentRead, referencesByConsumerId[input].frameLatency, passIdx, passId });
 	  for(const graphicsShaderRequirements& gsr : pass.shaders) {
 	    //NOTE: graphical shaders use shader id of 0 because all shaders in a render pass are considered concurrent.
 	    for(const resourceConsumer& srr : gsr.targetProvidedResources)
@@ -238,9 +238,9 @@ namespace WITE {
 
     static WITE_DEBUG_IB_CE std::vector<resourceBarrier> findBarriers(uint64_t resourceSlotId) {
       auto usage = findUsages(resourceSlotId);
+      constexpr_assert(usage.size() > 0);//all resources should be used at least once
       size_t afterIdx = 0;
       std::vector<resourceBarrier> ret;
-      if(usage.size() < 2) return ret;
       resourceAccessTime before = usage[usage.size()-1];
       resourceSlot RS = findById(OD.RSS, resourceSlotId);
       while(afterIdx < usage.size()) {
@@ -250,25 +250,24 @@ namespace WITE {
 	rb.resourceSlotId = RS.id;
 	rb.requirementId = RS.requirementId;
 	rb.objectLayoutId = RS.objectLayoutId;
-	rb.timing.layerIdx = rb.after.layerIdx;
-	rb.frameLatency = rb.after.frameLatency;
+	rb.timing.barrierId.layerIdx = rb.after.layerIdx;
+	rb.timing.frameLatency = rb.after.frameLatency;
 	if(rb.after.frameLatency != rb.before.frameLatency || //after takes place on a later frame
 	   rb.before.layerIdx != rb.after.layerIdx ||
 	   afterIdx == 0) { //afterIdx == 0: edge case for only having 1 layer
 	  //prefer top of layer for barriers.
-	  rb.timing.substep = substep_e::barrier0;
+	  rb.timing.barrierId.substep = substep_e::barrier0;
 	} else if(rb.after.substep != rb.before.substep) {//next prefer between steps
-	  rb.timing.substep = (substep_e)((int)rb.after.substep - 1);
+	  rb.timing.barrierId.substep = (substep_e)((int)rb.after.substep - 1);
 	} else if(rb.after.passOrShaderId != rb.before.passOrShaderId) {//barriers between render passes are also allowed
 	  constexpr_assert(rb.after.substep == substep_e::render);//only render has passes
-	  rb.timing.substep = rb.after.substep;
-	  rb.timing.passOrShaderId = rb.after.passOrShaderId;
-	  rb.timing.passOrShaderId = NONE;
+	  rb.timing.barrierId.substep = rb.after.substep;
+	  rb.timing.barrierId.passOrShaderIdx = rb.after.passOrShaderIdx;
 	} else {//otherwise wait as long as possible
 	  constexpr_assert(rb.after.substep == substep_e::compute);//mid-pass barriers not supported (would need dependencies)
 	  //also, multiple target layouts would execute the same barrier repeatedly
-	  rb.timing.substep = rb.after.substep;
-	  rb.timing.passOrShaderId = rb.after.passOrShaderId;
+	  rb.timing.barrierId.substep = rb.after.substep;
+	  rb.timing.barrierId.passOrShaderIdx = rb.after.passOrShaderIdx;
 	}
 	//having used the timing for the initial "after" value to decide when to drop the barrier, we can now absorb future usages that don't need a barrier after this one
 	afterIdx++;
@@ -280,11 +279,11 @@ namespace WITE {
 	before = rb.after;
       }
       ret[0].before = before;
-      if(containsId(OD.IRS, RB.requirementId)) {
-	auto IR = findById(OD.IRS, RB.requirementId);
+      if(containsId(OD.IRS, RS.requirementId)) {
+	auto IR = findById(OD.IRS, RS.requirementId);
 	for(auto& r : ret) {
-	  r.beforeLayout = bestLayoutFor(r.before.access, IR.usage);
-	  r.afterLayout = bestLayoutFor(r.after.access, IR.usage);
+	  r.beforeLayout = bestImageLayoutFor(r.before.access, IR.usage);
+	  r.afterLayout = bestImageLayoutFor(r.after.access, IR.usage);
 	}
       }
       return ret;
@@ -293,30 +292,30 @@ namespace WITE {
     template<uint64_t resourceSlotId, imageRequirements IR>
     static consteval copyableArray<resourceBarrier, IR.frameswapCount> findFinalBarrierPerFrame() {
       auto barriers = findBarriers(resourceSlotId);
-      constexpr_assert(usages.size() > 0);
+      constexpr_assert(barriers.size() > 0);
       copyableArray<resourceBarrier, IR.frameswapCount> ret;
       for(auto& b : barriers)
-	ret[b.frameLatency] = b;
+	ret[b.timing.frameLatency] = b;
       for(size_t i = 0;i < ret.LENGTH;i++) {
 	auto& b = ret[i];
 	if(b.after.layerIdx == NONE_size) //empty frame slot when default initialized
 	  for(size_t j = ret.LENGTH;j && b.after.layerIdx == NONE_size;j--)
 	    b = ret[(i + j - 1) % ret.LENGTH];
-	constexpr_assert(b.layerIdx != NONE_size);//image never used, so can't pick which layout to init to
+	constexpr_assert(b.timing.barrierId.layerIdx != NONE_size);//image never used, so can't pick which layout to init to
 	//MAYBE add flag to not init? But why would it be in the onion if not used
       }
       return ret;
     };
 
-    consteval layoutAccessMatrix_t getLayoutForImage(uint64_t resourceSlotId, resourceInstanceBarrierTiming BT) {
-      constexpr auto barriers = findBarriers(resourceSlotId);
-      constexpr_assert(barriers.LEN > 0);
-      if(barriers.LEN == 1 || barriers[0].timing > BT)
+    static consteval layoutAccessMatrix_t getLayoutForImage(uint64_t resourceSlotId, resourceInstanceBarrierTiming BT) {
+      auto barriers = findBarriers(resourceSlotId);
+      constexpr_assert(barriers.size() > 0);
+      if(barriers.size() == 1 || barriers[0].timing > BT)
 	return barriers[0].beforeLayout;
-      size_t i = 0;
-      while(i < barriers.LEN && barriers[i].timing < BT)
+      size_t i = 1;
+      while(i < barriers.size() && barriers[i].timing < BT)
 	i++;
-      return barriers[i].afterLayout;
+      return barriers[i-1].afterLayout;
     };
 
     template<uint64_t objectLayoutId>
@@ -510,7 +509,7 @@ namespace WITE {
       inline static consteval auto initBaselineBarriers() {
 	//consteval lambdas are finicky, need to be wrapped in a consteval function
 	if constexpr(RT::isImage) {
-	  static constexpr auto finalUsagePerFrame = findFinalBarrierPerFrame<RS.id, RT::IR>();
+	  constexpr auto finalUsagePerFrame = findFinalBarrierPerFrame<RS.id, RT::IR>();
 	  return copyableArray<vk::ImageMemoryBarrier2, RT::IR.frameswapCount>([&](size_t i) consteval {
 	    return vk::ImageMemoryBarrier2 {
 	      vk::PipelineStageFlagBits2::eNone,
@@ -877,7 +876,7 @@ namespace WITE {
 	if constexpr(hasWindow) {
 	  static constexpr resourceReference windowRR = *findResourceReferenceToConsumer(allRRS, findById(OD.OLS, objectLayoutId).windowConsumerId);
 	  auto& img = get<windowRR.resourceSlotId>();
-	  static constexpr vk::ImageLayout layout = getLayoutForImage(windowRR.resourceSlotId, { layerIdx_OPTE, substep_e::post });
+	  static constexpr vk::ImageLayout layout = getLayoutForImage(windowRR.resourceSlotId, { windowRR.frameLatency, layerIdx_OPTE, substep_e::post }).layout;
 	  static_assert(layout == vk::ImageLayout::eGeneral || layout == vk::ImageLayout::eTransferSrcOptimal);
 	  auto f = owner->frame + windowRR.frameLatency;
 	  presentWindow.present(img.frameImage(f), layout, img.getSizeOffset(f), renderWaitSem);
@@ -987,7 +986,7 @@ namespace WITE {
 		  getActiveGarbageCollector().push(img.imageView);
 		img.imageView = res.template createView<RR.subresource.viewType,
 							getSubresource(RS.requirementId, RR)>(frameMod);
-		img.imageLayout = getLayoutForImage(RR.resourceSlotId, { RR.frameLatency, RBT });
+		img.imageLayout = getLayoutForImage(RR.resourceSlotId, { RR.frameLatency, RBT }).layout;
 		if(waitFrameOut) [[likely]]
 		  *waitFrameOut = max(*waitFrameOut, frame - findById(OD.IRS, RS.requirementId).frameswapCount);
 	      } else {
@@ -1048,7 +1047,7 @@ namespace WITE {
 
     static consteval std::vector<resourceBarrier> barriersForTime_v(resourceBarrierTiming BT) {
       auto ret = allBarriers();
-      std::erase_if(ret, [BT](auto x){ return x.timing != BT; });
+      std::erase_if(ret, [BT](auto x){ return x.timing.barrierId != BT; });
       return ret;
     };
 
@@ -1092,9 +1091,9 @@ namespace WITE {
 	    //the only field that ever changes is the image handle itself, so save this for future reuse.
 	    static copyableArray<vk::ImageMemoryBarrier2, barrierBatchSize> barriers(vk::ImageMemoryBarrier2 {
 		toPipelineStage2(RB.before),
-		RB.before.usage.access,
+		RB.before.access,
 		toPipelineStage2(RB.after),
-		RB.after.usage.access,
+		RB.after.access,
 		RB.beforeLayout.layout,
 		RB.afterLayout.layout,
 		{}, {}, {},
@@ -1105,7 +1104,7 @@ namespace WITE {
 	    size_t mbIdx = 0;
 	    for(object_t<RB.objectLayoutId>* cluster : allObjects.template ofLayout<RB.objectLayoutId>()) {
 	      auto& img = cluster->template get<RB.resourceSlotId>();
-	      barriers[mbIdx].image = img.frameImage(RB.frameLatency + frame);
+	      barriers[mbIdx].image = img.frameImage(RB.timing.frameLatency + frame);
 	      WITE_DEBUG_IBT(barriers[mbIdx], cmd, BT);
 	      mbIdx++;
 	      if(mbIdx == barrierBatchSize) [[unlikely]] {
@@ -1120,16 +1119,16 @@ namespace WITE {
 	  } else {
 	    static copyableArray<vk::BufferMemoryBarrier2, barrierBatchSize> barriers(vk::BufferMemoryBarrier2 {
 		toPipelineStage2(RB.before),
-		RB.before.usage.access,
+		RB.before.access,
 		toPipelineStage2(RB.after),
-		RB.after.usage.access,
+		RB.after.access,
 		{}, {}, {}, 0, VK_WHOLE_SIZE
 	      });
 	    DI.pBufferMemoryBarriers = barriers.ptr();
 	    DI.bufferMemoryBarrierCount = barrierBatchSize;
 	    size_t mbIdx = 0;
 	    for(object_t<RB.objectLayoutId>* cluster : allObjects.template ofLayout<RB.objectLayoutId>()) {
-	      barriers[mbIdx].buffer = cluster->template get<RB.resourceSlotId>().frameBuffer(RB.frameLatency + frame);
+	      barriers[mbIdx].buffer = cluster->template get<RB.resourceSlotId>().frameBuffer(RB.timing.frameLatency + frame);
 	      mbIdx++;
 	      if(mbIdx == barrierBatchSize) [[unlikely]] {
 		cmd.pipelineBarrier2(&DI);
@@ -1247,42 +1246,43 @@ namespace WITE {
       }
     };
 
-    #error need layer id and pass id
-    template<resourceConsumer RC, const resourceReference* RR, bool clear, uint32_t idx> struct attachmentInfo {
+    template<size_t layerIdx, size_t rpIdx, resourceConsumer RC, const resourceReference* RR, bool clear, uint32_t idx> struct attachmentInfo {
       static constexpr resourceSlot RS = findById(OD.RSS, RR->resourceSlotId);
       static constexpr imageRequirements IR = findById(OD.IRS, RS.requirementId);
-      static constexpr vk::AttachmentReference AR { idx, imageLayoutFor(RC.access) };
-      static constexpr vk::AttachmentDescription AD { {}, IR.format, vk::SampleCountFlagBits::e1, clear ? vk::AttachmentLoadOp::eClear : vk::AttachmentLoadOp::eLoad, vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare, imageLayoutFor(RC.access), AR.layout };
+      static constexpr vk::ImageLayout layout = getLayoutForImage(RS.id, { RR->frameLatency, layerIdx, substep_e::render, rpIdx }).layout;
+      static constexpr vk::AttachmentReference AR { idx, layout };
+      static constexpr vk::AttachmentDescription AD { {}, IR.format, vk::SampleCountFlagBits::e1, clear ? vk::AttachmentLoadOp::eClear : vk::AttachmentLoadOp::eLoad, vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare, layout, AR.layout };
       static constexpr uint32_t len = 1;
     };
 
-    template<resourceConsumer RC, const resourceReference* RR, bool clear, uint32_t idx> requires(RC.id == NONE || RR == NULL)
-      struct attachmentInfo<RC, RR, clear, idx> {
+    template<size_t layerIdx, size_t rpIdx, resourceConsumer RC, const resourceReference* RR, bool clear, uint32_t idx> requires(RC.id == NONE || RR == NULL)
+      struct attachmentInfo<layerIdx, rpIdx, RC, RR, clear, idx> {
 	//for the depth member of depth-less RPs
 	static constexpr vk::AttachmentReference AR { };
 	static constexpr vk::AttachmentDescription AD { };
 	static constexpr uint32_t len = 0;
       };
 
-    template<literalList<uint64_t> RC_IDL, targetLayout TL, bool clear, uint32_t idx, vk::AccessFlagBits2 A> struct attachmentInfoTuple {
+    template<size_t layerIdx, size_t rpIdx, literalList<uint64_t> RC_IDL, targetLayout TL, bool clear, uint32_t idx, vk::AccessFlagBits2 A> struct attachmentInfoTuple {
       static constexpr uint64_t ID = RC_IDL[0];
-      typedef attachmentInfo<resourceConsumer(ID, vk::ShaderStageFlagBits::eFragment, A), findResourceReferenceToConsumer(TL.resources, ID), clear, idx> AI;
-      typedef attachmentInfoTuple<RC_IDL.sub(1), TL, clear, idx+1, A> rest;
+      typedef attachmentInfo<layerIdx, rpIdx, resourceConsumer(ID, vk::ShaderStageFlagBits::eFragment, A), findResourceReferenceToConsumer(TL.resources, ID), clear, idx> AI;
+      typedef attachmentInfoTuple<layerIdx, rpIdx, RC_IDL.sub(1), TL, clear, idx+1, A> rest;
       static constexpr auto AR_all = concat<vk::AttachmentReference, AI::AR, rest::AR_all>();
       static constexpr auto AD_all = concat<vk::AttachmentDescription, AI::AD, rest::AD_all>();
     };
 
-    template<literalList<uint64_t> RC_IDL, targetLayout TL, bool clear, uint32_t idx, vk::AccessFlagBits2 A> requires(!RC_IDL)
-    struct attachmentInfoTuple<RC_IDL, TL, clear, idx, A> {
+    template<size_t layerIdx, size_t rpIdx, literalList<uint64_t> RC_IDL, targetLayout TL, bool clear, uint32_t idx, vk::AccessFlagBits2 A> requires(!RC_IDL)
+    struct attachmentInfoTuple<layerIdx, rpIdx, RC_IDL, TL, clear, idx, A> {
       static constexpr copyableArray<vk::AttachmentReference, 0> AR_all;
       static constexpr copyableArray<vk::AttachmentDescription, 0> AD_all;
     };
 
-    template<renderPassRequirements RP, targetLayout TL> struct renderPassInfoBundle {
+    template<size_t layerIdx, renderPassRequirements RP, targetLayout TL> struct renderPassInfoBundle {
       static constexpr size_t firstInput = RP.color.count(), firstDepth = RP.input.count() + RP.color.count();
-      typedef attachmentInfoTuple<RP.input, TL, false, firstInput, vk::AccessFlagBits2::eInputAttachmentRead> inputAIS;
-      typedef attachmentInfoTuple<RP.color, TL, RP.clearColor, 0, vk::AccessFlagBits2::eColorAttachmentRead> colorAIS;
-      typedef attachmentInfo<consumerForDepthAttachment(RP.depth), findResourceReferenceToConsumer(TL.resources, RP.depth), RP.clearDepth, firstDepth> depthAI;
+      static constexpr size_t rpIdx = findIdx(OD.LRS[layerIdx].renders, RP.id);
+      typedef attachmentInfoTuple<layerIdx, rpIdx, RP.input, TL, false, firstInput, vk::AccessFlagBits2::eInputAttachmentRead> inputAIS;
+      typedef attachmentInfoTuple<layerIdx, rpIdx, RP.color, TL, RP.clearColor, 0, vk::AccessFlagBits2::eColorAttachmentRead> colorAIS;
+      typedef attachmentInfo<layerIdx, rpIdx, consumerForDepthAttachment(RP.depth), findResourceReferenceToConsumer(TL.resources, RP.depth), RP.clearDepth, firstDepth> depthAI;
       static constexpr vk::SubpassDescription subpass { {}, vk::PipelineBindPoint::eGraphics, inputAIS::AR_all.len, inputAIS::AR_all.ptr(), colorAIS::AR_all.len, colorAIS::AR_all.ptr(), NULL, depthAI::len ? &depthAI::AR : NULL };
       static constexpr literalList<vk::AttachmentDescription> depthWrapper = depthAI::len ? literalList<vk::AttachmentDescription>{depthAI::AD} : literalList<vk::AttachmentDescription>{};
       static constexpr auto attachments = concat<vk::AttachmentDescription, colorAIS::AD_all, inputAIS::AD_all, depthWrapper>();
@@ -1598,12 +1598,12 @@ namespace WITE {
 	PROFILEME;
 	vk::RenderPass& rp = ptl.rpByRequirementId[RP.id];
 	if(!rp) [[unlikely]] {
-	  VK_ASSERT(dev->getVkDevice().createRenderPass(&renderPassInfoBundle<RP, TL>::rpci, ALLOCCB, &rp),
+	  VK_ASSERT(dev->getVkDevice().createRenderPass(&renderPassInfoBundle<layerIdx, RP, TL>::rpci, ALLOCCB, &rp),
 		    "failed to create render pass ", TL.id, " ", RP.id);
 	}
 	frameBufferBundle& fbb = target.fbByRpIdByFrame[RP.id][frame % target_t<TL.id>::maxFrameswap];
 	vk::Rect2D size = getRenderSize<RP, TL>(target);
-	static constexpr uint32_t attachmentCount = renderPassInfoBundle<RP, TL>::attachments.len;
+	static constexpr uint32_t attachmentCount = renderPassInfoBundle<layerIdx, RP, TL>::attachments.len;
 	if(!fbb.fb ||
 	   anyOutdated<TL, RP.input>(fbb.lastUpdatedFrame, target) ||
 	   anyOutdated<TL, RP.color>(fbb.lastUpdatedFrame, target) ||
@@ -1626,8 +1626,8 @@ namespace WITE {
 	  validateFbSizes<TL, RP.input>(size, target);
 	  validateFbSizes<TL, RP.depth>(size, target);
 	  updateIfNeeded<TL, RP.color, 0>(fbb, target);
-	  updateIfNeeded<TL, RP.input, renderPassInfoBundle<RP, TL>::firstInput>(fbb, target);
-	  updateIfNeeded<TL, RP.depth, renderPassInfoBundle<RP, TL>::firstDepth>(fbb, target);
+	  updateIfNeeded<TL, RP.input, renderPassInfoBundle<layerIdx, RP, TL>::firstInput>(fbb, target);
+	  updateIfNeeded<TL, RP.depth, renderPassInfoBundle<layerIdx, RP, TL>::firstDepth>(fbb, target);
 	  VK_ASSERT(dev->getVkDevice().createFramebuffer(&fbb.fbci, ALLOCCB, &fbb.fb), "failed to create framebuffer");
 	  fbb.lastUpdatedFrame = frame;
 	}

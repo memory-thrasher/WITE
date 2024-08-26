@@ -107,8 +107,8 @@ namespace WITE {
     return l[0];
   };
 
-  constexpr bool mightWrite(resourceConsumer usage) {
-    return uint64_t(usage.access & (vk::AccessFlagBits2::eShaderStorageWrite | vk::AccessFlagBits2::eMemoryWrite | vk::AccessFlagBits2::eHostWrite | vk::AccessFlagBits2::eTransferWrite | vk::AccessFlagBits2::eDepthStencilAttachmentWrite | vk::AccessFlagBits2::eColorAttachmentWrite | vk::AccessFlagBits2::eShaderWrite));
+  constexpr bool mightWrite(vk::AccessFlags2 access) {
+    return uint64_t(access & (vk::AccessFlagBits2::eShaderStorageWrite | vk::AccessFlagBits2::eMemoryWrite | vk::AccessFlagBits2::eHostWrite | vk::AccessFlagBits2::eTransferWrite | vk::AccessFlagBits2::eDepthStencilAttachmentWrite | vk::AccessFlagBits2::eColorAttachmentWrite | vk::AccessFlagBits2::eShaderWrite));
   };
 
   template<const shaderModule* M, uint64_t GPUID> struct shaderFactory {
@@ -136,6 +136,13 @@ namespace WITE {
     return false;
   };
 
+  struct layoutAccessMatrix_t {
+    vk::ImageLayout layout = vk::ImageLayout::eUndefined;
+    vk::AccessFlags2 access = {};
+    uint32_t score = 0;
+    vk::ImageUsageFlags requiredUsage = {};//any of
+  };
+
   enum class substep_e : uint8_t { barrier0, copy, barrier1, clear, barrier2, render, barrier3, compute, barrier4, post };
 
   struct resourceAccessTime {
@@ -155,9 +162,10 @@ namespace WITE {
       if(comp != 0) return comp;
       return passOrShaderIdx <=> r.passOrShaderIdx;
     };
+    constexpr bool operator==(const resourceAccessTime& r) const { return *this <=> r == 0; };
     constexpr bool compatibleWith(const resourceAccessTime r) {
       //true means there need not be a barrier between them (with this coming before r)
-      return !mightWrite(usage) && !mightWrite(r.usage) && frameLatency == r.frameLatency;
+      return !mightWrite(access) && !mightWrite(access) && frameLatency == r.frameLatency;
       //MAYBE should the layout for the given usage impact this?
       //not compatible if on different frameLatency so final usage per frame can be accurate
     };
@@ -173,9 +181,10 @@ namespace WITE {
   struct resourceInstanceBarrierTiming {
     uint8_t frameLatency = 0;
     resourceBarrierTiming barrierId;
-    constexpr resourceInstanceBarrierTiming(uint8_t fl, const resourceBarrierTiming& b) : frameLatenct(fl), barrierId(b) {};
-    constexpr resourceInstanceBarrierTiming(uint8_t fl, size_t layerIdx, substep_e substep, size_t passOrShaderIdx = 0) : frameLatenct(fl), barrierId(layerIdx, substep, passOrShaderIdx) {};
-    constexpr auto operator<=>(const resourceBarrierTiming& r) const = default;
+    constexpr resourceInstanceBarrierTiming() = default;
+    constexpr resourceInstanceBarrierTiming(uint8_t fl, const resourceBarrierTiming& b) : frameLatency(fl), barrierId(b) {};
+    constexpr resourceInstanceBarrierTiming(uint8_t fl, size_t layerIdx, substep_e substep, size_t passOrShaderIdx = 0) : frameLatency(fl), barrierId(layerIdx, substep, passOrShaderIdx) {};
+    constexpr auto operator<=>(const resourceInstanceBarrierTiming& r) const = default;
   };
 
   struct resourceBarrier {
@@ -195,9 +204,10 @@ namespace WITE {
   WITE_DEBUG_IB_CE resourceAccessTime& operator|=(resourceAccessTime&l, const resourceAccessTime& r) {
     l.layerIdx = r.layerIdx;
     l.substep = r.substep;
-    l.usage |= r.usage;
+    l.access |= r.access;
+    l.stages |= r.stages;
     l.frameLatency = r.frameLatency;
-    l.shaderIdx = r.shaderIdx;
+    l.passOrShaderIdx = r.passOrShaderIdx;
     return l;
   };
 
@@ -236,15 +246,8 @@ namespace WITE {
     return { vk::PipelineStageFlagBits2::eAllCommands, vk::AccessFlagBits2::eNone, vk::PipelineStageFlagBits2::eAllCommands, vk::AccessFlagBits2::eNone, oldLayout, newLayout, 0, 0, {}, getAllInclusiveSubresource(R) };
   };
 
-  struct layoutAccessMatrix_t {
-    vk::ImageLayout layout;
-    vk::AccessFlags2 access;
-    uint32_t score;
-    vk::ImageUsageFlags requiredUsage;//any of
-  };
-
   constexpr layoutAccessMatrix_t layoutAccessMatrix[] = {
-    { vk::ImageLayout::eGeneral, FlagTraits<AccessFlagBits2>::allFlags, {}, 0 },
+    { vk::ImageLayout::eGeneral, vk::FlagTraits<vk::AccessFlagBits2>::allFlags, 0, {} },
     { vk::ImageLayout::eColorAttachmentOptimal, vk::AccessFlagBits2::eColorAttachmentWrite | vk::AccessFlagBits2::eColorAttachmentRead, 50100, vk::ImageUsageFlagBits::eColorAttachment },
     { vk::ImageLayout::eDepthStencilAttachmentOptimal, vk::AccessFlagBits2::eDepthStencilAttachmentRead | vk::AccessFlagBits2::eDepthStencilAttachmentWrite, 50500, vk::ImageUsageFlagBits::eDepthStencilAttachment },
     { vk::ImageLayout::eDepthStencilReadOnlyOptimal, vk::AccessFlagBits2::eDepthStencilAttachmentRead | vk::AccessFlagBits2::eShaderSampledRead | vk::AccessFlagBits2::eInputAttachmentRead, 10100, vk::ImageUsageFlagBits::eDepthStencilAttachment },
@@ -258,17 +261,19 @@ namespace WITE {
     // { vk::ImageLayout::eAttachmentFeedbackLoopOptimalEXT, ! },
   };
 
-  WITE_DEBUG_IB_CE const layoutAccessMatrix_t& bestImageLayoutFor(vk::AccessFlags2 access, vk::ImageUsageFlags usage) {
-    const layoutAccessMatrix_t& ret = layoutAccessMatrix[0];
+  constexpr const layoutAccessMatrix_t& bestImageLayoutFor(vk::AccessFlags2 access, vk::ImageUsageFlags usage) {
+    const layoutAccessMatrix_t* ret = &layoutAccessMatrix[0];
     for(const auto& lam : layoutAccessMatrix)
-      if((bool(lam.usage & usage) || lam.usage == 0)&& (access & lam.access) == access && lam.score > ret.score)
-	ret = lam;
-    return ret;
+      if((bool(lam.requiredUsage & usage) || !lam.requiredUsage) &&
+	 (access & lam.access) == access &&
+	 lam.score > ret->score)
+	ret = &lam;
+    return *ret;
   };
 
   WITE_DEBUG_IB_CE vk::PipelineStageFlags2 toPipelineStage2(resourceAccessTime rat) {
-    const auto f = rat.usage.stages;
-    const auto a = rat.usage.access;
+    const auto f = rat.stages;
+    const auto a = rat.access;
     if(f & vk::ShaderStageFlagBits::eAll)
       return vk::PipelineStageFlagBits2::eAllCommands;
     vk::PipelineStageFlags2 ret;

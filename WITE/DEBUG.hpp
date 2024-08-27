@@ -87,7 +87,7 @@ namespace WITE {
 
 #ifdef WITE_DEBUG_IMAGE_BARRIERS
 #define WITE_DEBUG_IB(B, C) { WARN("barrier: command buffer: ", std::hex, C, ", image: ", B.image, std::dec, ", layout: ", (int)B.oldLayout, "->", (int)B.newLayout) }
-#define WITE_DEBUG_IBT(B, C, T) { WARN("barrier: command buffer: ", std::hex, C, ", image: ", B.image, std::dec, ", layout: ", (int)B.oldLayout, "->", (int)B.newLayout, " for timing: layerIdx: ", T.layerIdx, ", substep: ", (int)T.substep, ", passId: ", T.passId, ", shaderId: ", T.shaderId) }
+#define WITE_DEBUG_IBT(B, C, T) { WARN("barrier: command buffer: ", std::hex, C, ", image: ", B.image, std::dec, ", layout: ", (int)B.oldLayout, "->", (int)B.newLayout, " for timing: layerIdx: ", T.layerIdx, ", substep: ", (int)T.substep, ", pass/shader idx: ", T.passOrShaderIdx) }
 #define WITE_DEBUG_IB_CE constexpr
 #else
 #define WITE_DEBUG_IB(B, C) {}

@@ -88,10 +88,9 @@ namespace WITE {
       vk::SemaphoreCreateInfo semCI({}, &semTypeCI);
       VK_ASSERT(dev->getVkDevice().createSemaphore(&semCI, ALLOCCB, &semaphore), "failed to create semaphore");
 #ifdef WITE_DEBUG_IMAGE_BARRIERS
-      #error this needs updated if/when it is needed because layout handing was reimagined
       WARN("In image barrier debug mode, dumping image barrier information");
       for(const auto& mb : allBarriers()) {
-	WARN("barrier for resource: objectLayoutId: ", mb.objectLayoutId, ", resourceSlotId: ", mb.resourceSlotId, ", requirementId: ", mb.requirementId, ", at frame latency: ", (int)mb.frameLatency, " will be transitioned from access: ", std::hex, (uint64_t)mb.before.usage.access, " (layout ", (int)imageLayoutFor(mb.before.usage.access), ") to access ", (uint64_t)mb.after.usage.access, " (layout ", (int)imageLayoutFor(mb.after.usage.access), std::dec, ") on: layerIdx: ", mb.timing.layerIdx, ", substep: ", (int)mb.timing.substep, ", passId: ", mb.timing.passId, ", shaderId: ", mb.timing.shaderId);
+	WARN("barrier for resource: objectLayoutId: ", mb.objectLayoutId, ", resourceSlotId: ", mb.resourceSlotId, ", requirementId: ", mb.requirementId, ", at frame latency: ", (int)mb.timing.frameLatency, " will be transitioned from access: ", std::hex, (uint64_t)mb.before.access, std::dec, " (layout ", (int)mb.beforeLayout.layout, ") to access ", std::hex, (uint64_t)mb.after.access, std::dec, " (layout ", (int)mb.afterLayout.layout, ") on: layerIdx: ", mb.timing.barrierId.layerIdx, ", substep: ", (int)mb.timing.barrierId.substep, ", pass/shader idx: ", mb.timing.barrierId.passOrShaderIdx);
       }
 #endif
     };
@@ -185,13 +184,13 @@ namespace WITE {
 	  uint64_t passId = layer.renders[passIdx];
 	  const auto& pass = findById(OD.RPRS, passId);
 	  if(referencesByConsumerId.contains(pass.depth))
-	    ret.push_back({ layerIdx, substep_e::render, vk::ShaderStageFlagBits::eFragment, vk::AccessFlagBits2::eColorAttachmentWrite | vk::AccessFlagBits2::eColorAttachmentRead, referencesByConsumerId[pass.depth].frameLatency, passIdx, passId });
+	    ret.push_back({ layerIdx, substep_e::render, vk::ShaderStageFlagBits::eFragment, vk::AccessFlagBits2::eDepthStencilAttachmentWrite | vk::AccessFlagBits2::eDepthStencilAttachmentRead, referencesByConsumerId[pass.depth].frameLatency, passIdx, passId });
 	  for(uint64_t color : pass.color)
 	    if(referencesByConsumerId.contains(color))
-	      ret.push_back({ layerIdx, substep_e::render, vk::ShaderStageFlagBits::eFragment, vk::AccessFlagBits2::eDepthStencilAttachmentWrite | vk::AccessFlagBits2::eDepthStencilAttachmentRead, referencesByConsumerId[color].frameLatency, passIdx, passId });
+	      ret.push_back({ layerIdx, substep_e::render, vk::ShaderStageFlagBits::eFragment, vk::AccessFlagBits2::eColorAttachmentWrite | vk::AccessFlagBits2::eColorAttachmentRead, referencesByConsumerId[color].frameLatency, passIdx, passId });
 	  for(uint64_t input : pass.input)
 	    if(referencesByConsumerId.contains(input))
-	      ret.push_back({ layerIdx, substep_e::render, vk::ShaderStageFlagBits::eFragment, vk::AccessFlagBits2::eInputAttachmentRead | vk::AccessFlagBits2::eInputAttachmentRead, referencesByConsumerId[input].frameLatency, passIdx, passId });
+	      ret.push_back({ layerIdx, substep_e::render, vk::ShaderStageFlagBits::eFragment, vk::AccessFlagBits2::eInputAttachmentRead, referencesByConsumerId[input].frameLatency, passIdx, passId });
 	  for(const graphicsShaderRequirements& gsr : pass.shaders) {
 	    //NOTE: graphical shaders use shader id of 0 because all shaders in a render pass are considered concurrent.
 	    for(const resourceConsumer& srr : gsr.targetProvidedResources)
@@ -1148,7 +1147,7 @@ namespace WITE {
     template<resourceBarrierTiming BT> inline void recordBarriersForTime(vk::CommandBuffer cmd) {
       PROFILEME;
 #ifdef WITE_DEBUG_IMAGE_BARRIERS
-      WARN("recording barriers for timing: layerIdx: ", BT.layerIdx, ", substep: ", (int)BT.substep, ", passId: ", BT.passId, ", shaderId: ", BT.shaderId, " on frame: ", frame);
+      WARN("recording barriers for timing: layerIdx: ", BT.layerIdx, ", substep: ", (int)BT.substep, ", pass/shader idx: ", BT.passOrShaderIdx, " on frame: ", frame);
 #endif
       static constexpr auto BTS = barriersForTime<BT>();
       recordBarriers<BTS, BT>(cmd);

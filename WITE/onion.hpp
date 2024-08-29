@@ -1341,7 +1341,8 @@ namespace WITE {
 	      static constexpr vk::PipelineMultisampleStateCreateInfo multisample = { {}, vk::SampleCountFlagBits::e1, 0, 0, NULL, 0, 0 };
 	      // static constexpr vk::StencilOpState stencilOp = {vk::StencilOp::eKeep, vk::StencilOp::eKeep, vk::StencilOp::eKeep, vk::CompareOp::eAlways, 0, 0, 0 };
 	      static constexpr vk::PipelineDepthStencilStateCreateInfo depth = { {}, RP.depth != NONE, true, GSR.depthCompareMode };//not set: depth bounds and stencil test stuff
-	      static constexpr vk::PipelineColorBlendStateCreateInfo blend = { {}, false, vk::LogicOp::eNoOp, 1, &GSR.blend, { 1, 1, 1, 1 } };
+	      static constexpr vk::PipelineColorBlendStateCreateInfo blend = { {}, false, vk::LogicOp::eNoOp, GSR.blend.len, GSR.blend.data, { 1, 1, 1, 1 } };
+	      static_assert(GSR.blend.len == RP.color.len || RP.color.len == 0, "must match unless there are no colors");
 	      static constexpr vk::DynamicState dynamics[] = { vk::DynamicState::eScissor, vk::DynamicState::eViewport };
 	      static constexpr vk::PipelineDynamicStateCreateInfo dynamic = { {}, 2, dynamics };
 	      vk::GraphicsPipelineCreateInfo gpci { {}, GSR.modules.len, stages, &verts, &assembly, /*tesselation*/ NULL, &vp, &raster, &multisample, &depth, &blend, &dynamic, shaderInstance.pipelineLayout, rp, /*subpass idx*/ 0 };//not set: derivitive pipeline stuff
@@ -1498,7 +1499,9 @@ namespace WITE {
 	// static constexpr vk::StencilOpState stencilOp = {vk::StencilOp::eKeep, vk::StencilOp::eKeep, vk::StencilOp::eKeep,
 	//   vk::CompareOp::eAlways, 0, 0, 0 };
 	static constexpr vk::PipelineDepthStencilStateCreateInfo depth = { {}, RP.depth != NONE, true, GSR.depthCompareMode };//not set: depth bounds and stencil test stuff
-	static constexpr vk::PipelineColorBlendStateCreateInfo blend = { {}, false, vk::LogicOp::eNoOp, 1, &GSR.blend, { 1, 1, 1, 1 } };
+	static constexpr vk::PipelineColorBlendStateCreateInfo blend = { {}, false, vk::LogicOp::eNoOp, GSR.blend.len, GSR.blend.data, { 1, 1, 1, 1 } };
+	static_assert(GSR.blend.len == RP.color.len || RP.color.len == 0, "must match unless there are no colors");
+	//default blend is a single sensible color blend state and we want to accept that even if there are no color attachments
 	static constexpr vk::DynamicState dynamics[] = { vk::DynamicState::eScissor, vk::DynamicState::eViewport };
 	static constexpr vk::PipelineDynamicStateCreateInfo dynamic = { {}, 2, dynamics };
 	vk::GraphicsPipelineCreateInfo gpci { {}, GSR.modules.len, stages, &verts, &assembly, /*tesselation*/ NULL, &vp, &raster, &multisample, &depth, &blend, &dynamic, shaderInstance.pipelineLayout, rp, /*subpass idx*/ 0 };//not set: derivitive pipeline stuff

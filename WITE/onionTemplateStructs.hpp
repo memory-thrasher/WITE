@@ -154,6 +154,8 @@ namespace WITE {
     //one invocation per member of primary output. If reference is an image, one invocation per stride pixels (workgroup [x, y, z] = pixels [x/strideX, y/strideY, z/strideZ; if image is 2d array, z = array layer. If reference is a buffer, one invocation per strideX of bytes (workgroup has only an X value, other strides ignored)
   };
 
+  constexpr vk::PipelineColorBlendAttachmentState defaultBlend = { false, {}, {}, {}, {}, {}, {}, vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA };
+
   struct graphicsShaderRequirements {
     uint64_t id;//unique among shaders
     literalList<shaderModule> modules;
@@ -164,7 +166,7 @@ namespace WITE {
     bool windCounterClockwise = false;
     vk::DeviceSize vertexCountOverride = 0, instanceCountOverride = 0;//0 means don't override, figure it out based on buffer size.
     uint32_t meshGroupCountX = 0, meshGroupCountY = 1, meshGroupCountZ = 1;//direct mesh only
-    vk::PipelineColorBlendAttachmentState blend = { false, vk::BlendFactor::eOne, vk::BlendFactor::eOne, vk::BlendOp::eAdd, vk::BlendFactor::eOne, vk::BlendFactor::eOne, vk::BlendOp::eAdd, vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA };
+    literalList<vk::PipelineColorBlendAttachmentState> blend = defaultBlend;
     vk::CompareOp depthCompareMode = vk::CompareOp::eLessOrEqual;
   };
 

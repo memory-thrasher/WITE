@@ -1340,7 +1340,7 @@ namespace WITE {
 	      static constexpr vk::PipelineRasterizationStateCreateInfo raster = { {}, false, false, vk::PolygonMode::eFill, GSR.cullMode, GSR.windCounterClockwise ? vk::FrontFace::eCounterClockwise : vk::FrontFace::eClockwise, false, 0, 0, 0, 1.0f };
 	      static constexpr vk::PipelineMultisampleStateCreateInfo multisample = { {}, vk::SampleCountFlagBits::e1, 0, 0, NULL, 0, 0 };
 	      // static constexpr vk::StencilOpState stencilOp = {vk::StencilOp::eKeep, vk::StencilOp::eKeep, vk::StencilOp::eKeep, vk::CompareOp::eAlways, 0, 0, 0 };
-	      static constexpr vk::PipelineDepthStencilStateCreateInfo depth = { {}, RP.depth != NONE, true, GSR.depthCompareMode };//not set: depth bounds and stencil test stuff
+	      static constexpr vk::PipelineDepthStencilStateCreateInfo depth = { {}, RP.depth != NONE, GSR.depthWrite, GSR.depthCompareMode };//not set: depth bounds and stencil test stuff
 	      static constexpr vk::PipelineColorBlendStateCreateInfo blend = { {}, false, vk::LogicOp::eNoOp, GSR.blend.len, GSR.blend.data, { 1, 1, 1, 1 } };
 	      static_assert(GSR.blend.len == RP.color.len || RP.color.len == 0, "must match unless there are no colors");
 	      static constexpr vk::DynamicState dynamics[] = { vk::DynamicState::eScissor, vk::DynamicState::eViewport };
@@ -1498,7 +1498,7 @@ namespace WITE {
 	static constexpr vk::PipelineMultisampleStateCreateInfo multisample = { {}, vk::SampleCountFlagBits::e1, 0, 0, NULL, 0, 0 };
 	// static constexpr vk::StencilOpState stencilOp = {vk::StencilOp::eKeep, vk::StencilOp::eKeep, vk::StencilOp::eKeep,
 	//   vk::CompareOp::eAlways, 0, 0, 0 };
-	static constexpr vk::PipelineDepthStencilStateCreateInfo depth = { {}, RP.depth != NONE, true, GSR.depthCompareMode };//not set: depth bounds and stencil test stuff
+	static constexpr vk::PipelineDepthStencilStateCreateInfo depth = { {}, RP.depth != NONE, GSR.depthWrite, GSR.depthCompareMode };//not set: depth bounds and stencil test stuff
 	static constexpr vk::PipelineColorBlendStateCreateInfo blend = { {}, false, vk::LogicOp::eNoOp, GSR.blend.len, GSR.blend.data, { 1, 1, 1, 1 } };
 	static_assert(GSR.blend.len == RP.color.len || RP.color.len == 0, "must match unless there are no colors");
 	//default blend is a single sensible color blend state and we want to accept that even if there are no color attachments

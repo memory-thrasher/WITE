@@ -168,6 +168,7 @@ namespace WITE {
     uint32_t meshGroupCountX = 0, meshGroupCountY = 1, meshGroupCountZ = 1;//direct mesh only
     literalList<vk::PipelineColorBlendAttachmentState> blend = defaultBlend;
     vk::CompareOp depthCompareMode = vk::CompareOp::eLessOrEqual;
+    bool depthWrite = true;
   };
 
   struct renderPassRequirements {

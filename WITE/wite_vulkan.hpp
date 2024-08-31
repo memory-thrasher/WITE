@@ -31,14 +31,23 @@ namespace WITE {
     return TO(TO::MaskType(FROM::MaskType(f))) & vk::FlagTraits<TO>::allFlags;
   };
 
-  template<typename T, int C> auto& operator<<(std::ostream& s, glm::vec<C, T> v) {
-    for(size_t i = 0;i < C;i++)
-      s << v[i] << " ";
-    return s;
-  };
-
   std::ostream& operator<<(std::ostream& s, vk::Result r);
 
 }
 
+//clang doesn't find these overloads if they're inside WITE
+
+template<glm::length_t C, typename T, glm::qualifier Q>
+std::ostream& operator<<(std::ostream& s, const glm::vec<C, T, Q>& v) {
+  for(size_t i = 0;i < C;i++)
+    s << v[i] << " ";
+  return s;
+};
+
+template<glm::length_t R, glm::length_t C, typename T, glm::qualifier Q>
+std::ostream& operator<<(std::ostream& s, const glm::mat<R, C, T, Q>& m) {
+  for(size_t i = 0;i < C;i++)
+    s << "(" << m[i] << ") ";
+  return s;
+};
 

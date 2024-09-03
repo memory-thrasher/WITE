@@ -76,6 +76,15 @@ namespace WITE {
     return ret;
   };
 
+  consteval imageRequirements stagingRequirementsFor(imageRequirements r, uint8_t fc = 2) {
+    imageRequirements ret = r;
+    ret.hostVisible = true;
+    ret.usage = vk::ImageUsageFlagBits::eTransferSrc;
+    ret.frameswapCount = fc;
+    ret.mipLevels = 1;//??? are they computed automatically?
+    return ret;
+  };
+
   template<class T> WITE_DEBUG_IB_CE size_t findIdx(literalList<T> l, T id) {
     for(size_t i = 0;i < l.len;i++)
       if(l[i] == id)

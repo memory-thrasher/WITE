@@ -37,7 +37,7 @@ namespace WITE {
 
     image(vk::Extent2D ext) : image(ext.width, ext.height) {};
 
-    image(uint32_t w, uint32_t h, uint32_t d = 1) {
+    image(uint32_t w, uint32_t h, uint32_t d) {
       static constexpr vk::ImageCreateInfo defaultCI = getDefaultCI(R);
       ci = defaultCI;
       ci.extent.width = w;
@@ -63,7 +63,7 @@ namespace WITE {
       }
     };
 
-    image() : image(256, 256) {}
+    image() : image(R.defaultW, R.defaultH, R.defaultD) {}
 
     ~image() {
       gpu& dev = gpu::get(R.deviceId);
@@ -150,6 +150,19 @@ namespace WITE {
 	WARN("Created image with handle ", std::hex, vkImage[idx], " to replace image ", oldImage, std::dec, " as part of resizing operation to size ", ci.extent.width, ", ", ci.extent.height, ", ", ci.extent.depth, ". New image has been transitioned to layout ", (int)phase2.newLayout);
 #endif
       }
+    };
+
+    template<typename src_t> void set(uint64_t frame, const src_t& src) {
+      static_assert(R.hostVisible);
+      size_t idx = frameImageIdx(frame);
+      auto extent = frameImageExtent[idx];
+      //the relationship between format, extent, and memory size is opaque, use the memory requirements used to allocate
+      size_t len = min(sizeof(src), rams[idx].mai.allocationSize);
+      auto dev = gpu::get(R.deviceId).getVkDevice();
+      void* data;
+      VK_ASSERT(dev.mapMemory(rams[idx].handle, 0, len, {}, &data), "Failed to map memory.");
+      std::memcpy(data, reinterpret_cast<void*>(&src), len);
+      dev.unmapMemory(rams[idx].handle);
     };
 
     inline vk::Extent3D getSizeExtent(uint64_t frame) const {

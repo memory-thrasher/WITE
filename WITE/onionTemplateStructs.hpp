@@ -29,6 +29,7 @@ namespace WITE {
     uint8_t dimensions = 2, frameswapCount = 1;
     bool isCube = false, hostVisible = false;
     uint32_t arrayLayers = 1, mipLevels = 1;
+    uint32_t defaultW = 256, defaultH = 256, defaultD = 1;
     //MAYBE sample count
   };
 

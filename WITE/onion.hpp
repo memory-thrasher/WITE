@@ -605,6 +605,8 @@ namespace WITE {
     template<literalList<uint64_t> shaders, bool forSource> requires(shaders.len == 0)
       struct descriptorTuple<shaders, forSource> : std::false_type {};
 
+    template<uint64_t> struct object_t;
+
     template<uint64_t TARGET_ID> class target_t {
     public:
       static_assert(containsId(OD.TLS, TARGET_ID));
@@ -618,13 +620,21 @@ namespace WITE {
 
     private:
       onion<OD>* o;
-      mappedResourceTuple<TL.objectLayoutId>* allObjectResources;
+      object_t<TL.objectLayoutId>* obj;
       std::map<uint64_t, frameBufferBundle[maxFrameswap]> fbByRpIdByFrame;
       perShaderByIdByFrame_t perShaderByIdByFrame[maxFrameswap];
       uint64_t objectId;
 
       target_t(const target_t&) = delete;
       target_t() = delete;
+
+      inline mappedResourceTuple<TL.objectLayoutId>* allObjectResources() {
+	return &obj->resources;
+      };
+
+      template<uint64_t stepId> inline bool stepEnabled() {
+	return obj->stepEnablement.template enabled<stepId>();
+      };
 
       friend onion;
 
@@ -634,7 +644,7 @@ namespace WITE {
       template<uint64_t resourceSlotId> auto& get() {
 	PROFILEME;
 	static_assert(findResourceReferenceToSlot(TL.resources, resourceSlotId));//sanity check that this layout uses that slot
-	return allObjectResources->template at<resourceSlotId>();
+	return allObjectResources()->template at<resourceSlotId>();
       };
 
       template<uint64_t resourceSlotId> void write(auto t, size_t hostAccessOffset = 0) {
@@ -690,12 +700,20 @@ namespace WITE {
 
     private:
       onion<OD>* o;
-      mappedResourceTuple<SL.objectLayoutId>* allObjectResources;
+      object_t<SL.objectLayoutId>* obj;
       descriptorTuple<shaders, true> perShaderByIdByFrame[maxFrameswap];
       uint64_t objectId;
 
       source_t(const source_t&) = delete;
       source_t() = delete;
+
+      inline mappedResourceTuple<SL.objectLayoutId>* allObjectResources() {
+	return &obj->resources;
+      };
+
+      template<uint64_t stepId> inline bool stepEnabled() {
+	return obj->stepEnablement.template enabled<stepId>();
+      };
 
       friend onion;
 
@@ -705,7 +723,7 @@ namespace WITE {
       template<uint64_t resourceSlotId> auto& get() {
 	PROFILEME;
 	static_assert(findResourceReferenceToSlot(SL.resources, resourceSlotId));//sanity check that this layout uses that slot
-	return allObjectResources->template at<resourceSlotId>();
+	return allObjectResources()->template at<resourceSlotId>();
       };
 
       template<uint64_t resourceSlotId> void write(auto t, size_t hostAccessOffset = 0) {
@@ -756,13 +774,13 @@ namespace WITE {
       T* data;
       sourcePointerTuple<SLS.sub(1)> rest;
 
-      void createAll(onion<OD>* o, mappedResourceTuple<SLS[0].objectLayoutId>* resources, uint64_t objectId) {
+      void createAll(onion<OD>* o, object_t<SLS[0].objectLayoutId>* obj, uint64_t objectId) {
 	PROFILEME;
 	data = o->createSource<SID>();
-	data->allObjectResources = resources;
+	data->obj = obj;
 	data->objectId = objectId;
 	if constexpr(SLS.len > 1)
-	  rest.createAll(o, resources);
+	  rest.createAll(o, obj, objectId);
       };
 
       void freeAll(onion<OD>* o) {
@@ -790,13 +808,13 @@ namespace WITE {
       T* data;
       targetPointerTuple<TLS.sub(1)> rest;
 
-      void createAll(onion<OD>* o, mappedResourceTuple<TLS[0].objectLayoutId>* resources, uint64_t objectId) {
+      void createAll(onion<OD>* o, object_t<TLS[0].objectLayoutId>* obj, uint64_t objectId) {
 	PROFILEME;
 	data = o->createTarget<TID>();
-	data->allObjectResources = resources;
+	data->obj = obj;
 	data->objectId = objectId;
 	if constexpr(TLS.len > 1)
-	  rest.createAll(o, resources, objectId);
+	  rest.createAll(o, obj, objectId);
       };
 
       void freeAll(onion<OD>* o) {
@@ -818,6 +836,86 @@ namespace WITE {
 
     template<literalList<targetLayout> SLS> requires(SLS.len == 0) struct targetPointerTuple<SLS> : std::false_type {};
 
+    template<literalList<uint64_t> IDS> struct alignas(1) stepEnablementTuple {
+      static constexpr uint64_t ID = IDS[0];
+      bool isEnabled = true;
+      stepEnablementTuple<IDS.sub(1)> rest;
+      template<uint64_t id> bool& enabled() {
+	if constexpr(id == ID)
+	  return isEnabled;
+	else
+	  return rest.template enabled<id>();
+      };
+    };
+
+    template<literalList<uint64_t> IDS> requires(IDS.len == 0) struct stepEnablementTuple<IDS> : public std::false_type {
+    };
+
+    static consteval std::vector<uint64_t> getStepIds_v(literalList<resourceReference> rrs) {
+      std::vector<uint64_t> consumers;
+      for(auto& rr : rrs)
+	consumers.push_back(rr.resourceConsumerId);
+      std::vector<uint64_t> ret;
+      for(size_t layerIdx = 0;layerIdx < OD.LRS.len;layerIdx++) {
+	const layerRequirements& layer = OD.LRS[layerIdx];
+	//copy:
+	for(uint64_t substepId : layer.copies) {
+	  const auto& substep = findById(OD.CSS, substepId);
+	  if(contains(consumers, substep.src) || contains(consumers, substep.dst))
+	    ret.push_back(substepId);
+	}
+	//clear:
+	for(uint64_t substepId : layer.clears) {
+	  const auto& substep = findById(OD.CLS, substepId);
+	  if(contains(consumers, substep.id))
+	    ret.push_back(substepId);
+	}
+	//rendering:
+	for(uint64_t passIdx = 0;passIdx < layer.renders.len;passIdx++) {
+	  uint64_t passId = layer.renders[passIdx];
+	  auto pass = findById(OD.RPRS, passId);
+	  auto depthRR = findResourceReferenceToConsumer(rrs, pass.depth);
+	  bool inPass = satisfies(rrs, pass.color) &&
+	    satisfies(rrs, pass.input) &&
+	    (depthRR != NULL || pass.depth == NONE);
+	  for(const graphicsShaderRequirements& gsr : pass.shaders) {
+	    //NOTE: graphical shaders use shader id of 0 because all shaders in a render pass are considered concurrent.
+	    for(const resourceConsumer& srr : gsr.targetProvidedResources)
+	      if(contains(consumers, srr.id))
+		inPass = true;
+	    for(const resourceConsumer& srr : gsr.sourceProvidedResources)
+	      if(contains(consumers, srr.id))
+		inPass = true;
+	    if(inPass)
+	      ret.push_back(gsr.id);
+	  }
+	  if(inPass)
+	    ret.push_back(passId);
+	}
+	//compute:
+	for(uint64_t csrId : layer.computeShaders) {
+	  const computeShaderRequirements& csr = findById(OD.CSRS, csrId);
+	  for(const resourceConsumer& srr : csr.targetProvidedResources)
+	    if(contains(consumers, srr.id))
+	      ret.push_back(csrId);
+	  for(const resourceConsumer& srr : csr.sourceProvidedResources)
+	    if(contains(consumers, srr.id))
+	      ret.push_back(csrId);
+	}
+      }
+      std::sort(ret.begin(), ret.end());
+      ret.resize(std::unique(ret.begin(), ret.end()) - ret.begin());
+      return ret;
+    };
+
+    static consteval size_t getStepIds_c(literalList<resourceReference> rrs) {
+      return getStepIds_v(rrs).size();
+    };
+
+    template<literalList<resourceReference> rrs> static consteval copyableArray<uint64_t, getStepIds_c(rrs)> getStepIds() {
+      return getStepIds_v(rrs);
+    };
+
     template<uint64_t objectLayoutId>
     struct object_t {
       static_assert(containsId(OD.OLS, objectLayoutId), "object layout id not present in onion data");
@@ -828,11 +926,13 @@ namespace WITE {
       static constexpr auto allRRS = getResourceReferences<objectLayoutId>();
       static constexpr objectLayout OL = findById(OD.OLS, objectLayoutId);
       static constexpr bool hasWindow = OL.windowConsumerId != NONE;
+      static constexpr auto allStepIds = getStepIds<allRRS>();
 
       uint64_t objectId;
       mappedResourceTuple<objectLayoutId> resources;
       targetPointerTuple<TLS> targets;
       sourcePointerTuple<SLS> sources;
+      stepEnablementTuple<allStepIds> stepEnablement;
       std::conditional_t<hasWindow, window, size_t> presentWindow = { OD.GPUID };
       onion<OD>* owner;
 
@@ -858,6 +958,10 @@ namespace WITE {
 	PROFILEME;
 	scopeLock lock(&owner->mutex);
 	resources.template set<resourceSlotId>(t, owner->frame);
+      };
+
+      template<uint64_t id> inline bool& stepEnabled() {
+	return stepEnablement.template enabled<id>();
       };
 
       inline void preRender(vk::CommandBuffer cmd) {
@@ -887,9 +991,9 @@ namespace WITE {
 	resources.init(frame, cmd);
 	objectId = owner->od.objectIdSeed++;
 	if constexpr(TLS.len)
-	  targets.createAll(owner, &resources, objectId);
+	  targets.createAll(owner, this, objectId);
 	if constexpr(SLS.len)
-	  sources.createAll(owner, &resources, objectId);
+	  sources.createAll(owner, this, objectId);
 	if constexpr(hasWindow)
 	  presentWindow.show();
       };
@@ -1173,6 +1277,7 @@ namespace WITE {
 	      vk::ImageBlit blitInfo(getAllInclusiveSubresourceLayers(findById(OD.IRS, SRS.requirementId)), srcBounds,
 				     getAllInclusiveSubresourceLayers(findById(OD.IRS, DRS.requirementId)), dstBounds);
 	      for(auto* cluster : getAllOfLayout<XL.id>()) {
+		if(!cluster->template stepEnabled<CS.id>()) [[unlikely]] continue;
 		auto& src = cluster->template get<SRS.id>();
 		auto& dst = cluster->template get<DRS.id>();
 		blitInfo.srcOffsets = src.getSize(SRR->frameLatency + frame);
@@ -1188,6 +1293,7 @@ namespace WITE {
 		TBR = findById(OD.BRS, DRS.requirementId);
 	      static constexpr vk::BufferCopy copyInfo(0, 0, min(SBR.size, TBR.size));
 	      for(auto* cluster : getAllOfLayout<XL.id>()) {
+		if(!cluster->template stepEnabled<CS.id>()) [[unlikely]] continue;
 		auto& src = cluster->template get<SRS.id>();
 		auto& dst = cluster->template get<DRS.id>();
 		cmd.copyBuffer(src.frameBuffer(SRR->frameLatency + frame),
@@ -1222,6 +1328,7 @@ namespace WITE {
 	    static constexpr imageRequirements IR = findById(OD.IRS, RS.requirementId);
 	    static constexpr vk::ImageSubresourceRange SR = getAllInclusiveSubresource(IR);
 	    for(auto& cluster : getAllOfLayout<XL.id>()) {
+	      if(!cluster.template stepEnabled<CS.id>()) [[unlikely]] continue;
 	      auto img = cluster->template get<RS.id>().frameImage(RR->frameLatency + frame);
 	      if constexpr(isDepth(IR)) {
 		cmd.clearDepthStencilImage(img, getLayoutForImage(RS.id, { RR->frameLatency, layerIdx, substep_e::clear }),
@@ -1355,11 +1462,12 @@ namespace WITE {
 	      if constexpr(!TL.selfRender && SL.objectLayoutId == TL.objectLayoutId)
 		if(source->objectId == target.objectId) [[unlikely]]
 		  continue;
+	      if(!source->template stepEnabled<RP.id>() || !source->template stepEnabled<GSR.id>()) [[unlikely]] continue;
 	      size_t frameMod = frame % source_t<SL.id>::maxFrameswap;
 	      auto& descriptorBundle = source->perShaderByIdByFrame[frameMod].template get<GSR.id>();
 	      prepareDescriptors<object_t<SL.objectLayoutId>::RSS, SL.resources, GSR.sourceProvidedResources,
 		{ layerIdx, substep_e::render, findIdx(OD.LRS[layerIdx].renders, RP.id) }>
-		(descriptorBundle, pslps.descriptorPool, *source->allObjectResources, frameMod);
+		(descriptorBundle, pslps.descriptorPool, *source->allObjectResources(), frameMod);
 	      if constexpr(GSR.sourceProvidedResources)
 		cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, shaderInstance.pipelineLayout, 0, 1, &descriptorBundle.descriptorSet, 0, NULL);
 	      //for now, source must provide all vertex info
@@ -1529,17 +1637,19 @@ namespace WITE {
 			containsStage<GSR.modules, vk::ShaderStageFlagBits::eVertex>(),
 			"graphics shaders must have a vertex or a mesh shader but not both");
 	  if constexpr(satisfies(TL.resources, GSR.targetProvidedResources)) {
-	    // WARN("Begin shader ", GSR.id, " using target ", TL.id);
-	    size_t frameMod = frame % target_t<TL.id>::maxFrameswap;
-	    auto& descriptorBundle = target.perShaderByIdByFrame[frameMod].template get<GSR.id>();
-	    perTargetLayoutPerShader& ptlps = ptl.perShader[GSR.id];
-	    prepareDescriptors<object_t<TL.objectLayoutId>::RSS, TL.resources, GSR.targetProvidedResources,
-	      { layerIdx, substep_e::render, findIdx(OD.LRS[layerIdx].renders, RP.id) }>
-	      (descriptorBundle, ptlps.descriptorPool, *target.allObjectResources, frameMod);
-	    if constexpr(GSR.sourceProvidedResources.len)
-	      recordRenders_l5<layerIdx, TL, RP, GSR, OD.SLS>(target, ptl, ptlps, descriptorBundle, rp, cmd);
-	    else
-	      recordRenders_targetOnly<layerIdx, RP, GSR>(target, ptl, ptlps, descriptorBundle, rp, cmd);
+	    if(target.template stepEnabled<RP.id>() && target.template stepEnabled<GSRS[0].id>()) [[likely]] {
+	      // WARN("Begin shader ", GSR.id, " using target ", TL.id);
+	      size_t frameMod = frame % target_t<TL.id>::maxFrameswap;
+	      auto& descriptorBundle = target.perShaderByIdByFrame[frameMod].template get<GSR.id>();
+	      perTargetLayoutPerShader& ptlps = ptl.perShader[GSR.id];
+	      prepareDescriptors<object_t<TL.objectLayoutId>::RSS, TL.resources, GSR.targetProvidedResources,
+		{ layerIdx, substep_e::render, findIdx(OD.LRS[layerIdx].renders, RP.id) }>
+		(descriptorBundle, ptlps.descriptorPool, *target.allObjectResources(), frameMod);
+	      if constexpr(GSR.sourceProvidedResources.len)
+		recordRenders_l5<layerIdx, TL, RP, GSR, OD.SLS>(target, ptl, ptlps, descriptorBundle, rp, cmd);
+	      else
+		recordRenders_targetOnly<layerIdx, RP, GSR>(target, ptl, ptlps, descriptorBundle, rp, cmd);
+	    }
 	  }
 	}
 	recordRenders_l4<layerIdx, TL, RP, GSRS.sub(1)>(target, ptl, rp, cmd);
@@ -1700,12 +1810,13 @@ namespace WITE {
 	  static constexpr sourceLayout SL = SLS[0];
 	  if constexpr(satisfies(SL.resources, CS.sourceProvidedResources)) {
 	    for(source_t<SL.id>* source : allSources.template ofLayout<SL.id>()) {
+	      if(!source->template stepEnabled<CS.id>()) [[unlikely]] continue;
 	      perSourceLayoutPerShader& pslps = od.perSL[SL.id].perShader[CS.id];
 	      size_t frameMod = frame % source_t<SL.id>::maxFrameswap;
 	      auto& descriptorBundle = source->perShaderByIdByFrame[frameMod].template get<CS.id>();
 	      prepareDescriptors<object_t<SL.objectLayoutId>::RSS, SL.resources, CS.sourceProvidedResources,
 		{ layerIdx, substep_e::compute, findIdx(OD.LRS[layerIdx].computeShaders, CS.id) }>
-		(descriptorBundle, pslps.descriptorPool, *source->allObjectResources, frameMod);
+		(descriptorBundle, pslps.descriptorPool, *source->allObjectResources(), frameMod);
 	      if(!pslps.sourceOnlyShader.pipeline) [[unlikely]] {
 		PROFILEME_MSG("compute pipeline creation, source only");
 		pslps.sourceOnlyShader.pipelineLayout = dev->getPipelineLayout<descriptorPoolPool<CS.sourceProvidedResources, OD.GPUID>::dslci>();
@@ -1736,12 +1847,13 @@ namespace WITE {
 	  static constexpr targetLayout TL = TLS[0];
 	  if constexpr(satisfies(TL.resources, CS.targetProvidedResources)) {
 	    for(target_t<TL.id>* target : allTargets.template ofLayout<TL.id>()) {
+	      if(!target->template stepEnabled<CS.id>()) [[unlikely]] continue;
 	      perTargetLayoutPerShader& ptlps = od.perTL[TL.id].perShader[CS.id];
 	      size_t frameMod = frame % target_t<TL.id>::maxFrameswap;
 	      auto& descriptorBundle = target->perShaderByIdByFrame[frameMod].template get<CS.id>();
 	      prepareDescriptors<object_t<TL.objectLayoutId>::RSS, TL.resources, CS.targetProvidedResources,
 		{ layerIdx, substep_e::compute, findIdx(OD.LRS[layerIdx].computeShaders, CS.id) }>
-		(descriptorBundle, ptlps.descriptorPool, *target->allObjectResources, frameMod);
+		(descriptorBundle, ptlps.descriptorPool, *target->allObjectResources(), frameMod);
 	      if(!ptlps.targetOnlyShader.pipeline) [[unlikely]] {
 		PROFILEME_MSG("compute pipeline creation, target only");
 		ptlps.targetOnlyShader.pipelineLayout = dev->getPipelineLayout<descriptorPoolPool<CS.targetProvidedResources, OD.GPUID>::dslci>();
@@ -1797,6 +1909,7 @@ namespace WITE {
 	      if constexpr(!TL.selfRender && SL.objectLayoutId == TL.objectLayoutId)
 		if(source->objectId == target->objectId) [[unlikely]]
 		  continue;
+	      if(!source->template stepEnabled<CS.id>()) [[unlikely]] continue;
 	      size_t frameMod = frame % source_t<SL.id>::maxFrameswap;
 	      auto& descriptorBundle = source->perShaderByIdByFrame[frameMod].template get<CS.id>();
 	      prepareDescriptors<object_t<SL.objectLayoutId>::RSS, SL.resources, CS.sourceProvidedResources,
@@ -1822,6 +1935,7 @@ namespace WITE {
 	  static constexpr targetLayout TL = TLS[0];
 	  if constexpr(satisfies(TL.resources, CS.targetProvidedResources)) {
 	    for(target_t<TL.id>* target : allTargets.template ofLayout<TL.id>()) {
+	      if(!target->template stepEnabled<CS.id>()) [[unlikely]] continue;
 	      perTargetLayoutPerShader& ptlps = od.perTL[TL.id].perShader[CS.id];
 	      size_t frameMod = frame % target_t<TL.id>::maxFrameswap;
 	      auto& descriptorBundle = target->perShaderByIdByFrame[frameMod].template get<CS.id>();

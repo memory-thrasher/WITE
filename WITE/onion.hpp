@@ -944,11 +944,13 @@ namespace WITE {
       };
 
       template<uint64_t resourceSlotId> auto& get() {
+	static_assert_show(containsId<resourceSlot>(RSS, resourceSlotId), resourceSlotId);
 	PROFILEME;
 	return resources.template at<resourceSlotId>();
       };
 
       template<uint64_t resourceSlotId> void write(auto t, size_t hostAccessOffset = 0) {
+	static_assert_show(containsId<resourceSlot>(RSS, resourceSlotId), resourceSlotId);
 	PROFILEME;
 	scopeLock lock(&owner->mutex);
 	get<resourceSlotId>().set(owner->frame + hostAccessOffset, t);
@@ -1273,19 +1275,19 @@ namespace WITE {
 	    if constexpr(srcIsImage && dstIsImage) {
 	      //always blit, no way to know at compile time if they're the same size
 	      //TODO resolve if different sample counts
-	      std::array<vk::Offset3D, 2> srcBounds, dstBounds;
-	      vk::ImageBlit blitInfo(getAllInclusiveSubresourceLayers(findById(OD.IRS, SRS.requirementId)), srcBounds,
-				     getAllInclusiveSubresourceLayers(findById(OD.IRS, DRS.requirementId)), dstBounds);
+	      vk::ImageBlit blitInfo(getAllInclusiveSubresourceLayers(findById(OD.IRS, SRS.requirementId)), {},
+				     getAllInclusiveSubresourceLayers(findById(OD.IRS, DRS.requirementId)), {});
 	      for(auto* cluster : getAllOfLayout<XL.id>()) {
 		if(!cluster->template stepEnabled<CS.id>()) [[unlikely]] continue;
+		//TODO if same size (and mip?), use ImageCopy
 		auto& src = cluster->template get<SRS.id>();
 		auto& dst = cluster->template get<DRS.id>();
-		blitInfo.srcOffsets = src.getSize(SRR->frameLatency + frame);
-		blitInfo.dstOffsets = dst.getSize(DRR->frameLatency + frame);
+		blitInfo.srcOffsets[1] = src.getSizeOffset(SRR->frameLatency + frame);
+		blitInfo.dstOffsets[1] = dst.getSizeOffset(DRR->frameLatency + frame);
 		cmd.blitImage(src.frameImage(SRR->frameLatency + frame),
-			      getLayoutForImage(SRS.id, { SRR->frameLatency, layerIdx, substep_e::copy }),
+			      getLayoutForImage(SRS.id, { SRR->frameLatency, layerIdx, substep_e::copy }).layout,
 			      dst.frameImage(DRR->frameLatency + frame),
-			      getLayoutForImage(DRS.id, { DRR->frameLatency, layerIdx, substep_e::copy }),
+			      getLayoutForImage(DRS.id, { DRR->frameLatency, layerIdx, substep_e::copy }).layout,
 			      1, &blitInfo, CS.filter);
 	      }
 	    } else {//buffer to buffer

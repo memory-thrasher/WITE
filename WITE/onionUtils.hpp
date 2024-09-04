@@ -28,9 +28,9 @@ namespace WITE {
   constexpr bool isValid(const imageRequirements& ir) {
     return (ir.deviceId != NONE)
       && (ir.format != vk::Format::eUndefined)
-      //logically usage should have an in and an out, some can do both
-      && (ir.usage & (vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eDepthStencilAttachment))
-      && (ir.usage & (vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eInputAttachment | vk::ImageUsageFlagBits::eDepthStencilAttachment))
+      //logically usage should have an in and an out, some can do both. hostVisible can do both.
+      && (ir.usage & (vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eDepthStencilAttachment) || ir.hostVisible)
+      && (ir.usage & (vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eInputAttachment | vk::ImageUsageFlagBits::eDepthStencilAttachment) || ir.hostVisible)
       && (ir.dimensions > 1)
       && (ir.dimensions < 4)
       && (ir.frameswapCount > 0)
@@ -61,10 +61,11 @@ namespace WITE {
   WITE_DEBUG_IB_CE vk::ImageCreateInfo getDefaultCI(imageRequirements r) {
     ASSERT_CONSTEXPR(isValid(r));
     vk::ImageCreateInfo ret { {}, (vk::ImageType)(r.dimensions-1), r.format, {}, r.mipLevels, r.arrayLayers,
-      vk::SampleCountFlagBits::e1, r.hostVisible ? vk::ImageTiling::eLinear : vk::ImageTiling::eOptimal, r.usage,
+      vk::SampleCountFlagBits::e1, // r.hostVisible ? vk::ImageTiling::eLinear :
+      vk::ImageTiling::eOptimal, r.usage,
       vk::SharingMode::eExclusive };
     if(r.isCube) ret.flags |= vk::ImageCreateFlagBits::eCubeCompatible;
-    if(r.dimensions == 3) ret.flags |= vk::ImageCreateFlagBits::e2DArrayCompatible;
+    // if(r.dimensions == 3) ret.flags |= vk::ImageCreateFlagBits::e2DArrayCompatible;
     return ret;
   };
 

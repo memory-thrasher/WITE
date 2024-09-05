@@ -197,6 +197,8 @@ namespace WITE {
   template<> struct fieldTypeFor<vk::Format::eR64G64B64A64Uint> { typedef uint64_t type; static constexpr uint8_t qty = 4; };
   template<> struct fieldTypeFor<vk::Format::eR64G64B64A64Sfloat> { typedef float type; static constexpr uint8_t qty = 4; };
 
+  template<> struct fieldTypeFor<vk::Format::eB10G11R11UfloatPack32> { typedef uint32_t type; static constexpr uint8_t qty = 1; };//only exists as packed type
+
   template<udm U> consteval uint32_t sizeofUdm() {
     if constexpr(U.len == 0)
       return 0;
@@ -209,6 +211,10 @@ namespace WITE {
   };
 
   template<vk::Format F> using fieldFor = fieldTypeFor<F>::type[fieldTypeFor<F>::qty];
+
+  template<vk::Format F> consteval uint32_t sizeofFormat() {
+    return sizeof(fieldFor<F>);
+  };
 
   //tuple-like struct that matches the given description, which can also be mapped to a vert buffer
   template<udm U, size_t remaining = U.len> struct alignas(0) udmObject {

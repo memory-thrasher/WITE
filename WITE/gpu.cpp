@@ -158,9 +158,14 @@ namespace WITE {
   };
 
   void gpu::allocate(const vk::MemoryRequirements& mr, vk::MemoryPropertyFlags requiredFlags, vram* out) {
-    uint8_t type;
+    static constexpr uint8_t type_none = std::numeric_limits<uint8_t>::max();
+    uint8_t type = type_none;
     int64_t bestScore = std::numeric_limits<int64_t>::lowest();
+    //WARN("Listing compatible formats:");
     for(auto t : bitmaskIterator(mr.memoryTypeBits)) {
+      ASSERT_TRAP(t < pdmp.memoryProperties.memoryTypeCount,
+		  "got memory requirements claiming compatibility with a type that does not exist: ", t);
+      //WARN("type: ", t, " with flags ", (vk::MemoryPropertyFlags::MaskType)memoryFlagsByType[t], " and free space ", freeMemoryByHeap[pdmp.memoryProperties.memoryTypes[t].heapIndex]);
       if(memoryScoreByType[t] > bestScore &&
 	 freeMemoryByHeap[pdmp.memoryProperties.memoryTypes[t].heapIndex] > mr.size &&
 	 (memoryFlagsByType[t] & requiredFlags) == requiredFlags) {
@@ -168,6 +173,7 @@ namespace WITE {
 	type = t;
       }
     }
+    ASSERT_TRAP(type != type_none, "cannot find appropriate memory size: ", mr.size, ", type: ", std::hex, mr.memoryTypeBits, " with flags: ", (vk::MemoryPropertyFlags::MaskType)requiredFlags, std::dec);
     //TODO care about (free) space. Multiply score by free memory in mb? Track free memory in an atomic per type
     new(out)vram(mr, type, this);
     freeMemoryByHeap[pdmp.memoryProperties.memoryTypes[type].heapIndex] -= mr.size;

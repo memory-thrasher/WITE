@@ -21,6 +21,7 @@ Stable and intermediate releases may be made continually. For this reason, a yea
 #include "math.hpp"
 #include "descriptorPoolPool.hpp"
 #include "hash.hpp"
+#include "udm.hpp"
 #include "DEBUG.hpp"
 
 namespace WITE {
@@ -77,13 +78,14 @@ namespace WITE {
     return ret;
   };
 
-  consteval imageRequirements stagingRequirementsFor(imageRequirements r, uint8_t fc = 2) {
-    imageRequirements ret = r;
-    ret.hostVisible = true;
-    ret.usage = vk::ImageUsageFlagBits::eTransferSrc;
-    ret.frameswapCount = fc;
-    ret.mipLevels = 1;//??? are they computed automatically?
-    return ret;
+  template<imageRequirements r> consteval bufferRequirements stagingRequirementsFor(uint8_t fc = 2) {
+    return {
+      .deviceId = r.deviceId,
+      .usage = vk::BufferUsageFlagBits::eTransferSrc,
+      .size = r.defaultW * r.defaultH * r.defaultD * sizeofFormat<r.format>(),
+      .frameswapCount = fc,
+      .hostVisible = true,
+    };
   };
 
   template<class T> WITE_DEBUG_IB_CE size_t findIdx(literalList<T> l, T id) {

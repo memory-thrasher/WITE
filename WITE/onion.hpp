@@ -647,7 +647,7 @@ namespace WITE {
 	return allObjectResources()->template at<resourceSlotId>();
       };
 
-      template<uint64_t resourceSlotId> void write(auto t, size_t hostAccessOffset = 0) {
+      template<uint64_t resourceSlotId> void write(const auto& t, size_t hostAccessOffset = 0) {
 	PROFILEME;
 	scopeLock lock(&o->mutex);
 	get<resourceSlotId>().set(o->frame + hostAccessOffset, t);
@@ -726,7 +726,7 @@ namespace WITE {
 	return allObjectResources()->template at<resourceSlotId>();
       };
 
-      template<uint64_t resourceSlotId> void write(auto t, size_t hostAccessOffset = 0) {
+      template<uint64_t resourceSlotId> void write(const auto& t, size_t hostAccessOffset = 0) {
 	PROFILEME;
 	scopeLock lock(&o->mutex);
 	get<resourceSlotId>().set(o->frame + hostAccessOffset, t);
@@ -949,7 +949,7 @@ namespace WITE {
 	return resources.template at<resourceSlotId>();
       };
 
-      template<uint64_t resourceSlotId> void write(auto t, size_t hostAccessOffset = 0) {
+      template<uint64_t resourceSlotId> void write(const auto& t, size_t hostAccessOffset = 0) {
 	static_assert_show(containsId<resourceSlot>(RSS, resourceSlotId), resourceSlotId);
 	PROFILEME;
 	scopeLock lock(&owner->mutex);
@@ -1271,7 +1271,6 @@ namespace WITE {
 	      DRS = findById(OD.RSS, DRR->resourceSlotId);
 	    static constexpr bool srcIsImage = containsId(OD.IRS, SRS.requirementId),
 	      dstIsImage = containsId(OD.IRS, DRS.requirementId);
-	    static_assert(!(srcIsImage ^ dstIsImage));//NYI buffer to/from image (why would you do that?)
 	    if constexpr(srcIsImage && dstIsImage) {
 	      //always blit, no way to know at compile time if they're the same size
 	      //TODO resolve if different sample counts
@@ -1290,10 +1289,29 @@ namespace WITE {
 			      getLayoutForImage(DRS.id, { DRR->frameLatency, layerIdx, substep_e::copy }).layout,
 			      1, &blitInfo, CS.filter);
 	      }
+	    } else if constexpr(!srcIsImage && dstIsImage) {
+	      //some image formats cannot be staged as images on some devices/drivers
+	      vk::BufferImageCopy copyInfo(SRR->subresource.offset, 0, 0,
+					   //w/h set to 0 means calculate assuming "tightly packed"
+					   getAllInclusiveSubresourceLayers(findById(OD.IRS, DRS.requirementId)), {}, {});
+	      for(auto* cluster : getAllOfLayout<XL.id>()) {
+		if(!cluster->template stepEnabled<CS.id>()) [[unlikely]] continue;
+		auto& src = cluster->template get<SRS.id>();
+		auto& dst = cluster->template get<DRS.id>();
+		copyInfo.imageExtent = dst.getSizeExtent(DRR->frameLatency + frame);
+		//this uses the image to decide how much buffer to copy, so check the buffer is at least that big
+		ASSERT_TRAP(copyInfo.imageExtent.width * copyInfo.imageExtent.height * copyInfo.imageExtent.depth * sizeofFormat<findById(OD.IRS, DRS.requirementId).format>() <= findById(OD.BRS, SRS.requirementId).size, "image (", DRS.requirementId, ") too big to populate from buffer (", SRS.requirementId, ")");
+		cmd.copyBufferToImage(src.frameBuffer(SRR->frameLatency + frame),
+				      dst.frameImage(DRR->frameLatency + frame),
+				      getLayoutForImage(DRS.id, { DRR->frameLatency, layerIdx, substep_e::copy }).layout,
+				      1, &copyInfo);
+	      }
+	    } else if constexpr(srcIsImage && !dstIsImage) {
+	      static_assert(false, "NYI image to buffer copy");
 	    } else {//buffer to buffer
 	      static constexpr bufferRequirements SBR = findById(OD.BRS, SRS.requirementId),
 		TBR = findById(OD.BRS, DRS.requirementId);
-	      static constexpr vk::BufferCopy copyInfo(0, 0, min(SBR.size, TBR.size));
+	      static constexpr vk::BufferCopy copyInfo(SRR->subresource.offset, DRR->subresource.offset, min(SRR->subresource.length != VK_WHOLE_SIZE ? SRR->subresource.length : (SBR.size - SRR->subresource.offset), DRR->subresource.length != VK_WHOLE_SIZE ? DRR->subresource.length : (TBR.size - DRR->subresource.offset)));
 	      for(auto* cluster : getAllOfLayout<XL.id>()) {
 		if(!cluster->template stepEnabled<CS.id>()) [[unlikely]] continue;
 		auto& src = cluster->template get<SRS.id>();

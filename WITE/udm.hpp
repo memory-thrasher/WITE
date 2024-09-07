@@ -197,6 +197,9 @@ namespace WITE {
   template<> struct fieldTypeFor<vk::Format::eR64G64B64A64Uint> { typedef uint64_t type; static constexpr uint8_t qty = 4; };
   template<> struct fieldTypeFor<vk::Format::eR64G64B64A64Sfloat> { typedef float type; static constexpr uint8_t qty = 4; };
 
+  template<> struct fieldTypeFor<vk::Format::eR8Unorm> { typedef uint8_t type; static constexpr uint8_t qty = 1; };
+  template<> struct fieldTypeFor<vk::Format::eR16Sfloat> { typedef uint16_t type; static constexpr uint8_t qty = 1; };
+  template<> struct fieldTypeFor<vk::Format::eR16G16B16A16Sfloat> { typedef uint16_t type; static constexpr uint8_t qty = 4; };//there's no sfloat16 in c++
   template<> struct fieldTypeFor<vk::Format::eB10G11R11UfloatPack32> { typedef uint32_t type; static constexpr uint8_t qty = 1; };//only exists as packed type
 
   template<udm U> consteval uint32_t sizeofUdm() {

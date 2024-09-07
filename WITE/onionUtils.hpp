@@ -79,10 +79,12 @@ namespace WITE {
   };
 
   template<imageRequirements r> consteval bufferRequirements stagingRequirementsFor(uint8_t fc = 2) {
+    static_assert(r.usage & vk::ImageUsageFlagBits::eTransferDst, "can't stage for an image without transfer dst usage");
     return {
       .deviceId = r.deviceId,
       .usage = vk::BufferUsageFlagBits::eTransferSrc,
-      .size = r.defaultW * r.defaultH * r.defaultD * sizeofFormat<r.format>(),
+      .size = sizeofFormat<r.format>() * r.arrayLayers * r.defaultW * r.defaultH * r.defaultD,
+      //note: ^ not including mip, assuming the gpu will be tasked to calculate them
       .frameswapCount = fc,
       .hostVisible = true,
     };

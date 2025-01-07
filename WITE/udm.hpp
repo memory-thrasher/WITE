@@ -30,6 +30,7 @@ namespace WITE {
     constexpr vk::Format R16norm = vk::Format::eR16Snorm;
     constexpr vk::Format R16uint = vk::Format::eR16Uint;
     constexpr vk::Format R16unorm = vk::Format::eR16Unorm;
+    constexpr vk::Format R16float = vk::Format::eR16Sfloat;
     constexpr vk::Format R32int = vk::Format::eR32Sint;
     constexpr vk::Format R32uint = vk::Format::eR32Uint;
     constexpr vk::Format R32float = vk::Format::eR32Sfloat;
@@ -45,6 +46,7 @@ namespace WITE {
     constexpr vk::Format RG16norm = vk::Format::eR16G16Snorm;
     constexpr vk::Format RG16uint = vk::Format::eR16G16Uint;
     constexpr vk::Format RG16unorm = vk::Format::eR16G16Unorm;
+    constexpr vk::Format RG16float = vk::Format::eR16G16Sfloat;
     constexpr vk::Format RG32int = vk::Format::eR32G32Sint;
     constexpr vk::Format RG32uint = vk::Format::eR32G32Uint;
     constexpr vk::Format RG32float = vk::Format::eR32G32Sfloat;
@@ -60,6 +62,7 @@ namespace WITE {
     constexpr vk::Format RGB16norm = vk::Format::eR16G16B16Snorm;
     constexpr vk::Format RGB16uint = vk::Format::eR16G16B16Uint;
     constexpr vk::Format RGB16unorm = vk::Format::eR16G16B16Unorm;
+    constexpr vk::Format RGB16float = vk::Format::eR16G16B16Sfloat;
     constexpr vk::Format RGB32int = vk::Format::eR32G32B32Sint;
     constexpr vk::Format RGB32uint = vk::Format::eR32G32B32Uint;
     constexpr vk::Format RGB32float = vk::Format::eR32G32B32Sfloat;
@@ -75,6 +78,7 @@ namespace WITE {
     constexpr vk::Format RGBA16norm = vk::Format::eR16G16B16A16Snorm;
     constexpr vk::Format RGBA16uint = vk::Format::eR16G16B16A16Uint;
     constexpr vk::Format RGBA16unorm = vk::Format::eR16G16B16A16Unorm;
+    constexpr vk::Format RGBA16float = vk::Format::eR16G16B16A16Sfloat;
     constexpr vk::Format RGBA32int = vk::Format::eR32G32B32A32Sint;
     constexpr vk::Format RGBA32uint = vk::Format::eR32G32B32A32Uint;
     constexpr vk::Format RGBA32float = vk::Format::eR32G32B32A32Sfloat;
@@ -103,6 +107,7 @@ namespace WITE {
     defineUDM(R8uint, Format::R8uint);
     defineUDM(R16int, Format::R16int);
     defineUDM(R16uint, Format::R16uint);
+    defineUDM(R16float, Format::R16float);
     defineUDM(R32int, Format::R32int);
     defineUDM(R32uint, Format::R32uint);
     defineUDM(R32float, Format::R32float);
@@ -114,6 +119,7 @@ namespace WITE {
     defineUDM(RG8uint, Format::RG8uint);
     defineUDM(RG16int, Format::RG16int);
     defineUDM(RG16uint, Format::RG16uint);
+    defineUDM(RG16float, Format::RG16float);
     defineUDM(RG32int, Format::RG32int);
     defineUDM(RG32uint, Format::RG32uint);
     defineUDM(RG32float, Format::RG32float);
@@ -125,6 +131,7 @@ namespace WITE {
     defineUDM(RGB8uint, Format::RGB8uint);
     defineUDM(RGB16int, Format::RGB16int);
     defineUDM(RGB16uint, Format::RGB16uint);
+    defineUDM(RGB16float, Format::RGB16float);
     defineUDM(RGB32int, Format::RGB32int);
     defineUDM(RGB32uint, Format::RGB32uint);
     defineUDM(RGB32float, Format::RGB32float);
@@ -136,6 +143,7 @@ namespace WITE {
     defineUDM(RGBA8uint, Format::RGBA8uint);
     defineUDM(RGBA16int, Format::RGBA16int);
     defineUDM(RGBA16uint, Format::RGBA16uint);
+    defineUDM(RGBA16float, Format::RGBA16float);
     defineUDM(RGBA32int, Format::RGBA32int);
     defineUDM(RGBA32uint, Format::RGBA32uint);
     defineUDM(RGBA32float, Format::RGBA32float);
@@ -157,6 +165,7 @@ namespace WITE {
   template<> struct fieldTypeFor<vk::Format::eR8Uint> { typedef uint8_t type; static constexpr uint8_t qty = 1; };
   template<> struct fieldTypeFor<vk::Format::eR16Sint> { typedef int16_t type; static constexpr uint8_t qty = 1; };
   template<> struct fieldTypeFor<vk::Format::eR16Uint> { typedef uint16_t type; static constexpr uint8_t qty = 1; };
+  template<> struct fieldTypeFor<vk::Format::eR16Sfloat> { typedef uint16_t type; static constexpr uint8_t qty = 1; };
   template<> struct fieldTypeFor<vk::Format::eR32Sint> { typedef int32_t type; static constexpr uint8_t qty = 1; };
   template<> struct fieldTypeFor<vk::Format::eR32Uint> { typedef uint32_t type; static constexpr uint8_t qty = 1; };
   template<> struct fieldTypeFor<vk::Format::eR32Sfloat> { typedef float type; static constexpr uint8_t qty = 1; };
@@ -168,6 +177,7 @@ namespace WITE {
   template<> struct fieldTypeFor<vk::Format::eR8G8Uint> { typedef uint8_t type; static constexpr uint8_t qty = 2; };
   template<> struct fieldTypeFor<vk::Format::eR16G16Sint> { typedef int16_t type; static constexpr uint8_t qty = 2; };
   template<> struct fieldTypeFor<vk::Format::eR16G16Uint> { typedef uint16_t type; static constexpr uint8_t qty = 2; };
+  template<> struct fieldTypeFor<vk::Format::eR16G16Sfloat> { typedef uint16_t type; static constexpr uint8_t qty = 2; };
   template<> struct fieldTypeFor<vk::Format::eR32G32Sint> { typedef int32_t type; static constexpr uint8_t qty = 2; };
   template<> struct fieldTypeFor<vk::Format::eR32G32Uint> { typedef uint32_t type; static constexpr uint8_t qty = 2; };
   template<> struct fieldTypeFor<vk::Format::eR32G32Sfloat> { typedef float type; static constexpr uint8_t qty = 2; };
@@ -179,6 +189,7 @@ namespace WITE {
   template<> struct fieldTypeFor<vk::Format::eR8G8B8Uint> { typedef uint8_t type; static constexpr uint8_t qty = 3; };
   template<> struct fieldTypeFor<vk::Format::eR16G16B16Sint> { typedef int16_t type; static constexpr uint8_t qty = 3; };
   template<> struct fieldTypeFor<vk::Format::eR16G16B16Uint> { typedef uint16_t type; static constexpr uint8_t qty = 3; };
+  template<> struct fieldTypeFor<vk::Format::eR16G16B16Sfloat> { typedef uint16_t type; static constexpr uint8_t qty = 3; };
   template<> struct fieldTypeFor<vk::Format::eR32G32B32Sint> { typedef int32_t type; static constexpr uint8_t qty = 3; };
   template<> struct fieldTypeFor<vk::Format::eR32G32B32Uint> { typedef uint32_t type; static constexpr uint8_t qty = 3; };
   template<> struct fieldTypeFor<vk::Format::eR32G32B32Sfloat> { typedef float type; static constexpr uint8_t qty = 3; };
@@ -190,6 +201,7 @@ namespace WITE {
   template<> struct fieldTypeFor<vk::Format::eR8G8B8A8Uint> { typedef uint8_t type; static constexpr uint8_t qty = 4; };
   template<> struct fieldTypeFor<vk::Format::eR16G16B16A16Sint> { typedef int16_t type; static constexpr uint8_t qty = 4; };
   template<> struct fieldTypeFor<vk::Format::eR16G16B16A16Uint> { typedef uint16_t type; static constexpr uint8_t qty = 4; };
+  template<> struct fieldTypeFor<vk::Format::eR16G16B16A16Sfloat> { typedef uint16_t type; static constexpr uint8_t qty = 4; };
   template<> struct fieldTypeFor<vk::Format::eR32G32B32A32Sint> { typedef int32_t type; static constexpr uint8_t qty = 4; };
   template<> struct fieldTypeFor<vk::Format::eR32G32B32A32Uint> { typedef uint32_t type; static constexpr uint8_t qty = 4; };
   template<> struct fieldTypeFor<vk::Format::eR32G32B32A32Sfloat> { typedef float type; static constexpr uint8_t qty = 4; };
@@ -198,8 +210,6 @@ namespace WITE {
   template<> struct fieldTypeFor<vk::Format::eR64G64B64A64Sfloat> { typedef float type; static constexpr uint8_t qty = 4; };
 
   template<> struct fieldTypeFor<vk::Format::eR8Unorm> { typedef uint8_t type; static constexpr uint8_t qty = 1; };
-  template<> struct fieldTypeFor<vk::Format::eR16Sfloat> { typedef uint16_t type; static constexpr uint8_t qty = 1; };
-  template<> struct fieldTypeFor<vk::Format::eR16G16B16A16Sfloat> { typedef uint16_t type; static constexpr uint8_t qty = 4; };//there's no sfloat16 in c++
   template<> struct fieldTypeFor<vk::Format::eB10G11R11UfloatPack32> { typedef uint32_t type; static constexpr uint8_t qty = 1; };//only exists as packed type
 
   template<udm U> consteval uint32_t sizeofUdm() {

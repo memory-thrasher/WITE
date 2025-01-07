@@ -44,10 +44,11 @@ fi
 if [ -z "$VK_INCLUDE" -a -n "$VK_SDK_PATH" ]; then
     VK_INCLUDE="-I${VK_SDK_PATH}/include"
 fi
-if [ -n "$vk_lib_path" ]; then
-    PATH="$vk_lib_path:$PATH"
-fi;
-LINKOPTS="-fuse-ld=lld -lrt -latomic -lvulkan -lSDL2"
+LINKOPTS="-fuse-ld=lld -lrt -latomic -lvulkan -lSDL2 -L${VK_SDK_PATH}/lib"
+# if [ -n "$vk_lib_path" ]; then
+#     #PATH="$vk_lib_path:$PATH"
+#     LINKOPTS="-L$vk_lib_path $LINKOPTS"
+# fi;
 WINLINKOPTS=" /defaultlib:SDL2" #/defaultlib:vulkan
 #-L${vk_lib_path}
 

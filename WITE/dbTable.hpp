@@ -20,6 +20,7 @@ Stable and intermediate releases may be made continually. For this reason, a yea
 #include "stdExtensions.hpp"
 #include "shared.hpp"
 #include "dbFile.hpp"
+#include "dbUtils.hpp"
 
 namespace WITE {
 
@@ -30,12 +31,14 @@ namespace WITE {
   };
 
   //content is serialized to disk. R is expected to behave when memcpy'd around (no atomics etc).
-  template<class R, size_t AU = 128, size_t AU_LOG = AU * 4> class dbTable : public dbTableBase {//R for raw
+  template<class R> class dbTable : public dbTableBase {//R for raw
   private:
     typedef R RAW;
     typedef uint64_t U;//underlaying type for raw data, to avoid using constructors and storage qualifiers on disk
     static constexpr size_t TCnt = (sizeof(R) - 1) / sizeof(U) + 1;
     typedef U T[TCnt];
+    static constexpr size_t AU = dbAllocationBatchSizeOf<R>::value,
+      AU_LOG = dbLogAllocationBatchSizeOf<R>::value;
 
     enum class eLogType : uint64_t {
       eUpdate,

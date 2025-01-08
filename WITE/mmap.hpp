@@ -37,6 +37,8 @@ namespace WITE {
 
   bool writeFile(fileHandle fd, const void* src, uint32_t bytes);
 
+  size_t fileSizeMultiple();
+
   void* mmapFile(fileHandle fd, size_t start, size_t length);
 
   void closeMmapFile(void*, size_t length);

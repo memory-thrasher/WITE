@@ -48,16 +48,19 @@ namespace WITE {
 
     syncLock fileMutex, blocksMutex, allocationMutex;
     header_t* header;
-    std::vector<au_t*> blocks;//these are mmaped regions (or subdivisions thereof)
+    std::vector<au_t*> blocks;//these are pointers into mmaped regions
+    struct mmap_t { void*region; size_t len; };
+    std::vector<mmap_t> mmapedRegions;//for later gc, because elements of `blocks` might be trimmed due to alignment requirements
     fileHandle fd;
     const std::filesystem::path filename;
+    size_t fileSize;
 #if DEBUG
     std::set<uint64_t> freeSpaceBitmap;//sanity check for debugging only, duplicates the on-disk allocation queue
 #endif
 
     void initialize(uint64_t auId) {
       ASSERT_TRAP(header->freeSpaceLen <= auId * AU, "queue position invalid before initializing new allocation unit");
-      uint64_t base = auId * au_size;
+      uint64_t base = auId * AU;
       WITE_DEBUG_DB_HEADER;
       for(uint32_t i = 0;i < AU;i++) {
 	int j = base + i;
@@ -92,19 +95,20 @@ namespace WITE {
       ASSERT_TRAP(std::filesystem::is_directory(dir, ec), "not a directory ", ec);
       fd = WITE::openFile(filename, true, clobber);
       ASSERT_TRAP_OR_RUN(WITE::lockFile(fd), "failed to lock file ", filename); //lock will be closed when fd is closed
-      size_t size = static_cast<size_t>(std::filesystem::file_size(filename));
-      size_t existingAUs = size ? (size - sizeof(header_t)) / au_size : 0;
+      fileSize = static_cast<size_t>(std::filesystem::file_size(filename));
+      size_t existingAUs = fileSize ? (fileSize - sizeof(header_t)) / au_size : 0;
       if(existingAUs) [[likely]] {//load
-	ASSERT_TRAP((size - sizeof(header_t)) % au_size == 0, "attempted to load file with invalid size");
+	ASSERT_TRAP((fileSize - sizeof(header_t)) % au_size == 0, "attempted to load file with invalid size");
 	WITE::seekFileEnd(fd);
       } else {//init
 	header_t temph;
 	writeFile(fd, &temph);
 	writeArrayFile(fd, plug, au_size);
-	size = au_size + sizeof(header_t);
+	fileSize = au_size + sizeof(header_t);
       }
       //TODO maximum size?
-      void* mm = WITE::mmapFile(fd, 0, size);
+      void* mm = WITE::mmapFile(fd, 0, fileSize);
+      mmapedRegions.emplace_back(mm, fileSize);
       header = reinterpret_cast<header_t*>(mm);
       blocks.emplace_back(reinterpret_cast<au_t*>(reinterpret_cast<uint8_t*>(mm) + sizeof(header_t)));
       if(existingAUs) [[likely]] {
@@ -129,9 +133,8 @@ namespace WITE {
 
     void close() {
       scopeLock fl(&fileMutex), bm(&blocksMutex), am(&allocationMutex);
-      WITE::closeMmapFile(reinterpret_cast<void*>(header), sizeof(header_t));
-      for(au_t* b : blocks)
-	WITE::closeMmapFile(reinterpret_cast<void*>(b), au_size);
+      for(mmap_t& m : mmapedRegions)
+	WITE::closeMmapFile(m.region, m.len);
       WITE::closeFile(fd);
     };
 
@@ -143,8 +146,14 @@ namespace WITE {
 	scopeLock fl(&fileMutex), bm(&blocksMutex);
 	uint64_t auId = blocks.size();
 	writeArrayFile(fd, plug, au_size);
-	void* mm = WITE::mmapFile(fd, auId * au_size + sizeof(header_t), au_size);
-	blocks.emplace_back(reinterpret_cast<au_t*>(mm));
+	size_t pageSize = fileSizeMultiple(),
+	  start = auId * au_size + sizeof(header_t),
+	  realStart = start / pageSize * pageSize,
+	  entryPad = start - realStart,
+	  realLength = au_size + entryPad;
+	void* mm = WITE::mmapFile(fd, realStart, realLength);
+	mmapedRegions.emplace_back(mm, realLength);
+	blocks.emplace_back(reinterpret_cast<au_t*>(reinterpret_cast<uint8_t*>(mm) + entryPad));
 	initialize(auId);
       }
       ASSERT_TRAP(header->freeSpaceLen, "disk allocation failed?");

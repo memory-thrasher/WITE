@@ -47,6 +47,12 @@ namespace WITE {
     return ret;
   };
 
+  size_t fileSizeMultiple_impl() {
+    SYSTEM_INFO sysinfo;
+    GetSystemInfo(&sysinfo);
+    return sysinfo.dwAllocationGranularity;
+  };
+
   void* mmapFile(fileHandle fd, size_t start, size_t length) {
     HANDLE mapping = CreateFileMappingA(fd, NULL, PAGE_READWRITE, static_cast<DWORD>(length >> 32), static_cast<DWORD>(length),
 					NULL);
@@ -96,9 +102,18 @@ namespace WITE {
     return ::write(fd, src, bytes) == bytes;
   };
 
+  size_t fileSizeMultiple_impl() {
+    //almost certainly will always be 4096. Currently that's hard-coded in all x64 linux
+    return sysconf(_SC_PAGE_SIZE);
+  };
+
   void* mmapFile(fileHandle fd, size_t start, size_t length) {
+    ASSERT_TRAP(length, "attempted to mmap empty region");
     void* ret = mmap(NULL, length, PROT_READ | PROT_WRITE, MAP_SHARED, fd, start);
-    ASSERT_TRAP(ret && ret != MAP_FAILED, "mmap fail ", errno);
+    #ifdef DEBUG
+    auto en = errno;
+    #endif
+    ASSERT_TRAP(ret && ret != MAP_FAILED, "mmap fail ", en, " fd: ", fd, " start: ", start, " length: ", length);
     return ret;
   };
 
@@ -114,5 +129,17 @@ namespace WITE {
 }
 
 #endif
+
+namespace WITE {
+
+  size_t fileSizeMultiple_value = 0;
+
+  size_t fileSizeMultiple() {
+    if(!fileSizeMultiple_value) [[unlikely]]
+      fileSizeMultiple_value = fileSizeMultiple_impl();
+    return fileSizeMultiple_value;
+  }
+
+}
 
 

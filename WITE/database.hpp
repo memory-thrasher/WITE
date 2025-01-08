@@ -19,15 +19,17 @@ Stable and intermediate releases may be made continually. For this reason, a yea
 
 namespace WITE {
 
-  /*each type given to the db must have the following static members or typedefs:
+  /*each type given to the db must have the following static members (constexpr if data member) or typedefs:
     uint64_t typeId
     std::string dbFileId
 optional members:
-    update(uint64_t objectId, void* db) //called every frame
-    allocated(uint64_t objectId, void* db) //called when object is first created (should init persistent data)
-    freed(uint64_t objectId, void* db) //called when object is destroyed (rare, should free db children)
-    spunUp(uint64_t objectId, void* db) //called when object is created or loaded from disk (should set up any vulkan or other transients)
-    spunDown(uint64_t objectId, void* db) //called when the object is destroyed or when the game is closing (should clean up transients)
+    void update(uint64_t objectId, void* db) //called every frame
+    void allocated(uint64_t objectId, void* db) //called when object is first created (should init persistent data)
+    void freed(uint64_t objectId, void* db) //called when object is destroyed (rare, should free db children)
+    void spunUp(uint64_t objectId, void* db) //called when object is created or loaded from disk (should set up any vulkan or other transients)
+    void spunDown(uint64_t objectId, void* db) //called when the object is destroyed or when the game is closing (should clean up transients)
+    size_t dbAllocationBatchSize
+    size_t dbLogAllocationBatchSize
    */
 
   //each type is stored as-is on disk (memcpy and mmap) so should be simple. POD except for static members is recommended.

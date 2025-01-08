@@ -213,7 +213,7 @@ namespace WITE {
     if(inited.exchange(true))
       return;
     running = true;
-    vk::ApplicationInfo appI(appName, 0, "WITE Engine", 0, (1 << 22) | (3 << 12) | (216));
+    vk::ApplicationInfo appI(appName, 0, "WITE Engine", 0, (1 << 22) | (3 << 12) | (283));
     strcpy(gpu::appName, appName);
     vk::InstanceCreateInfo ci((vk::InstanceCreateFlags)0, &appI);
     std::vector<const char*> extensions(appRequestedExtensions);

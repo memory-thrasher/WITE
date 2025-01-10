@@ -223,11 +223,11 @@ optional members:
     };
 
     template<class A> void destroy(uint64_t oid) {
-      bobby.template get<A::typeId>().free(oid, currentFrame);
       if constexpr(has_spunDown<A>::value)
 	A::spunDown(oid, this);
       if constexpr(has_freed<A>::value)
 	A::freed(oid, this);
+      bobby.template get<A::typeId>().free(oid, currentFrame);
     };
 
     //true if object exists and was copied to `out`, false otherwise

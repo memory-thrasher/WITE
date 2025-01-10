@@ -171,6 +171,7 @@ namespace WITE {
     //`free` must only be called once for each `allocate`. `store` should never be concurrent with `free` on the same id. `store` should never be called after free on the same id unless that id has since been returned by `allocate`.
     void free(uint64_t id, uint64_t frame) {
       appendLog(id, L { .type = eLogType::eDelete, .frame = frame });
+      masterDataFile.free(id);
     };
 
     //reads the state of the requested object as of the requested frame, if possible, or otherwise, the oldest known state
@@ -232,8 +233,9 @@ namespace WITE {
       //if there is a delete log, it will be the last one
       switch(tl->type) {
       case eLogType::eDelete:
-	ASSERT_TRAP(tl->nextLog == NONE, "delete is not the last log for that object");
-	masterDataFile.free(id);
+	//freeing immediately now so it doesn't get updates, and can be re-allocated even before it's flushed
+	// ASSERT_TRAP(tl->nextLog == NONE, "delete is not the last log for that object");
+	// masterDataFile.free(id);
 	break;
       case eLogType::eUpdate: [[likely]]
 	memcpy(master.data, tl->data);

@@ -217,6 +217,11 @@ optional members:
       return ret;
     };
 
+    template<class A, class... Args> uint64_t create(Args... args) {
+      A a(std::forward<Args>(args)...);
+      return create(&a);
+    };
+
     template<class A> void destroy(uint64_t oid) {
       bobby.template get<A::typeId>().free(oid, currentFrame);
       if constexpr(has_spunDown<A>::value)

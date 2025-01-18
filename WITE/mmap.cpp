@@ -35,6 +35,10 @@ namespace WITE {
     return true;//no-op bc windows files are locked on openFile bc shareMode = 0
   };
 
+  bool unlockFile(fileHandle fd) {
+    return true;
+  };
+
   void seekFileEnd(fileHandle fd) {
     //SetFilePointer(fd, 0, NULL, FILE_END); //no-op as long as OVERLAPPED is enabled, offset is provided by writeFile
   };
@@ -80,6 +84,8 @@ namespace WITE {
 #include <sys/file.h>
 #include <sys/mman.h>
 
+#include "thread.hpp"
+
 namespace WITE {
 
   fileHandle openFile(const std::filesystem::path& filename, bool writable, bool clobber) {
@@ -89,8 +95,22 @@ namespace WITE {
   };
 
   bool lockFile(fileHandle fd) {
-    bool ret = ::flock(fd, LOCK_EX | LOCK_NB) == 0;
-    if(!ret) WARN("failed to lock file with errno: ", errno);
+    uint32_t sleepCnt = 0;
+    int e;
+    bool ret;
+    do {
+      ret = ::flock(fd, LOCK_EX | LOCK_NB) == 0;
+      e = errno;
+      thread::sleepShort(sleepCnt);//escalating wait time, no wait on first pass
+    } while(!ret && e == EAGAIN && sleepCnt < 1000);
+    if(!ret) WARN("failed to lock file with errno: ", e);
+    return ret;
+  };
+
+  bool unlockFile(fileHandle fd) {
+    int ret = ::flock(fd, LOCK_UN) == 0;
+    bool e = errno;
+    if(!ret) WARN("failed to unlock file with errno: ", e);
     return ret;
   };
 

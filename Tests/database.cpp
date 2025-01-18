@@ -133,7 +133,7 @@ void unit::spunDown(uint64_t oid, void* db_unused) {
 void timer::update(uint64_t oid, void* db_unused) {
   timer s;
   if(!db->readCommitted<timer>(oid, &s)) return;
-  if(db->getFrame() > 5000)
+  if(db->getFrame() > 500)
     running = false;
   db->write<timer>(oid, &s);
 };

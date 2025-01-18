@@ -31,6 +31,8 @@ namespace WITE {
 
   bool lockFile(fileHandle fd);
 
+  bool unlockFile(fileHandle fd);
+
   //seekFileEnd + writeFile = append
   //TODO refactor to a single grow command that might also handle remapping IF needed
   void seekFileEnd(fileHandle);

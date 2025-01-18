@@ -1038,7 +1038,7 @@ namespace WITE {
 
     template<uint64_t objectLayoutId> object_t<objectLayoutId>* create() {
       PROFILEME;
-      scopeLock lock(&mutex);
+      scopeLock lock(&mutex);//TODO eliminate this lock by stashing created objects into a pending container (per object, with its own mutex) that gets processed between renders
       object_t<objectLayoutId>* ret = allObjects.template ofLayout<objectLayoutId>().allocate();
       auto cmd = dev->getTempCmd();
       ret->reinit(frame, cmd.cmd);

@@ -133,9 +133,13 @@ namespace WITE {
 
     void close() {
       scopeLock fl(&fileMutex), bm(&blocksMutex), am(&allocationMutex);
-      for(mmap_t& m : mmapedRegions)
-	WITE::closeMmapFile(m.region, m.len);
-      WITE::closeFile(fd);
+      if(mmapedRegions.size()) {
+	WITE::unlockFile(fd);
+	for(mmap_t& m : mmapedRegions)
+	  WITE::closeMmapFile(m.region, m.len);
+	WITE::closeFile(fd);
+	mmapedRegions.clear();
+      }
     };
 
     uint64_t allocate() {

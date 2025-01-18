@@ -3,7 +3,7 @@ VertBufferFreeCube
 SpaceFragment
 SpaceSpheres
 InputTest
-database
+#database
 IndirectText
 GeometryIcoSphere
 HelloWorld

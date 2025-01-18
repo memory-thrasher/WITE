@@ -41,6 +41,8 @@ namespace WITE {
     std::unique_ptr<vk::Fence[]> cmdFences;
     size_t activeSwapSem = 0, swapSemCount;
 
+    void handlePresentError(vk::Result);
+
   public:
     static void addInstanceExtensionsTo(std::vector<const char*>& extensions);
     static intBox3D getScreenBounds(size_t idx = 0);

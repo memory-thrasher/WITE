@@ -31,7 +31,13 @@ namespace WITE {
     return TO(TO::MaskType(FROM::MaskType(f))) & vk::FlagTraits<TO>::allFlags;
   };
 
-  std::ostream& operator<<(std::ostream& s, vk::Result r);
+  //clang doesn't find these overloads if they're not inside WITE
+  template<class T> requires requires(T t) { vk::to_string(t); }//provided by vk for vk enums
+  std::ostream& operator<<(std::ostream& s, const T& t) {
+    return s << vk::to_string(t);
+  };
+
+  std::ostream& operator<<(std::ostream& s, const vk::Extent2D& ex);
 
 }
 

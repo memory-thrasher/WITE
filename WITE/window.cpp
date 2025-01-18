@@ -218,7 +218,9 @@ namespace WITE {
 	std::atomic_fetch_add_explicit(&framesSkipped, 1, std::memory_order_relaxed);
 	return;
       case vk::Result::eSuboptimalKHR:
-	//TODO handle
+      case vk::Result::eErrorOutOfDateKHR:
+	handlePresentError(acquireRes);
+	return;
       case vk::Result::eSuccess:
 	//proceed with present
 	break;
@@ -288,11 +290,24 @@ namespace WITE {
     }
     {
       PROFILEME_MSG("present");
-      VK_ASSERT(dev.getQueue().presentKHR(&presentInfo), "Present failed");
+      vk::Result res = dev.getQueue().presentKHR(&presentInfo);
+      if(res == vk::Result::eErrorOutOfDateKHR || res == vk::Result::eSuboptimalKHR) {
+	handlePresentError(res);
+	return;
+      } else {
+	VK_ASSERT(res, "Present failed");
+      }
     }
     activeSwapSem++;
     if(activeSwapSem >= swapSemCount) [[unlikely]] activeSwapSem = 0;
-    //TODO handle suboptimal return. Send resize request to target_t?
+  };
+
+  void window::handlePresentError(vk::Result res) {
+    WARN("WARNING: present failure detected: ", res, " with swapchain size: ", swapCI.imageExtent, " and window size ", getSize(), " {TODO recreate swapchain if this happens}");
+#ifdef DEBUG
+    static std::atomic_uint64_t fails = 0;
+    ASSERT_TRAP(fails++ < 1000, "too many present fails");
+#endif
   };
 
   void window::hide() {

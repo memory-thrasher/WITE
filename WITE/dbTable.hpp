@@ -294,15 +294,22 @@ namespace WITE {
 
     uint64_t maxFrame() {
       uint64_t ret = 0;
-      for(uint64_t id : masterDataFile)
-	ret = max(ret, logDataFile.deref(masterDataFile.deref(id).lastLog).frame);
+      for(uint64_t id : masterDataFile) {
+	const auto& m = masterDataFile.deref(id);
+	ret = m.lastLog == NONE ?
+	  max(ret, m.lastLogAppliedFrame, m.lastCreatedFrame, m.lastDeletedFrame) :
+	  max(ret, logDataFile.deref(m.lastLog).frame);
+      }
       return ret;
     };
 
     uint64_t minFrame() {
       uint64_t ret = NONE;
-      for(uint64_t id : masterDataFile)
-	ret = min(ret, logDataFile.deref(masterDataFile.deref(id).firstLog).frame);
+      //earliest COMPLETE frame, max frame among actualized data
+      for(uint64_t id : masterDataFile) {
+	const auto& m = masterDataFile.deref(id);
+	ret = max(ret, m.lastLogAppliedFrame, m.lastCreatedFrame, m.lastDeletedFrame);
+      }
       return ret;
     };
 

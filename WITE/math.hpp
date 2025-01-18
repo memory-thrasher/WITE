@@ -71,7 +71,7 @@ namespace WITE {
     return Compare()(a, b) ? a : T(b);
   };
 
-  template<class T, class U, class V, class Compare = std::less<T>, class... WX>
+  template<class T, class U, class Compare = std::less<T>, class V, class... WX>
   constexpr inline T min(T a, U b, V c, WX... more) {
     U bx = min<U, V, Compare, WX...>(b, c, std::forward<WX>(more)...);
     return min<T, U, Compare>(a, bx);
@@ -81,7 +81,7 @@ namespace WITE {
     return Compare()(a, b) ? T(b) : a;
   };
 
-  template<class T, class U, class V, class Compare = std::less<T>, class... WX>
+  template<class T, class U, class Compare = std::less<T>, class V, class... WX>
   constexpr inline T max(T a, U b, V c, WX... more) {
     U bx = max<U, V, Compare, WX...>(b, c, std::forward<WX>(more)...);
     return max<T, U, Compare>(a, bx);

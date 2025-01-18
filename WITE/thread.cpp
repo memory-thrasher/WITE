@@ -89,8 +89,7 @@ namespace WITE {
     //test case is 15% faster with the limited busy wait
     if(counter >= busyCount) [[unlikely]]
       sleepShort();
-    else
-      counter++;
+    counter++;
   };
 
   int32_t thread::guessCpuCount() {//static

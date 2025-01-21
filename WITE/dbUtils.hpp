@@ -54,11 +54,12 @@ namespace WITE {
     };
   };
 
-  template<class T> struct dbAllocationBatchSizeOf : public std::integral_constant<size_t, 128> {};
+  //shoot for 64kb page
+  template<class T> struct dbAllocationBatchSizeOf : public std::integral_constant<size_t, 65536/sizeof(T)+1> {};
   template<class T> requires requires() { {T::dbAllocationBatchSize}; }
   struct dbAllocationBatchSizeOf<T> : public std::integral_constant<size_t, T::dbAllocationBatchSize> {};
 
-  template<class T> struct dbLogAllocationBatchSizeOf : public std::integral_constant<size_t, 256> {};
+  template<class T> struct dbLogAllocationBatchSizeOf : public std::integral_constant<size_t, max(65536/sizeof(T)+1, 4)> {};
   template<class T> requires requires() { {T::dbLogAllocationBatchSize}; }
   struct dbLogAllocationBatchSizeOf<T> : public std::integral_constant<size_t, T::dbLogAllocationBatchSize> {};
 

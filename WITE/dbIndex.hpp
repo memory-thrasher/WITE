@@ -55,7 +55,7 @@ namespace WITE {
 
       //can't store owner as a field bc node is on disk and outlives its owner
       void insert(uint64_t entity, const F& v, dbIndex* owner) {
-	uint64_t& next = *this < v ? low : high;//is the smell worth avoiding a few more ternaries?
+	uint64_t& next = *this < v ? high : low;
 	if(next != NONE) [[likely]] {
 	  owner->file.deref(next).insert(entity, v, owner);
 	} else {
@@ -117,8 +117,8 @@ namespace WITE {
       };
 
       uint64_t count(dbIndex* owner) {
-	uint64_t lowCnt = low == NONE ? 0 : owner->file.deref(low).count(owner, low);
-	uint64_t highCnt = high == NONE ? 0 : owner->file.deref(high).count(owner, high);
+	uint64_t lowCnt = low == NONE ? 0 : owner->file.deref(low).count(owner);
+	uint64_t highCnt = high == NONE ? 0 : owner->file.deref(high).count(owner);
 	return lowCnt + highCnt + 1;
       };
 
@@ -153,8 +153,10 @@ namespace WITE {
 
     dbIndex(const std::filesystem::path& fn, bool clobber, read_cb read) : file(fn, clobber), read(read) {
       //file.first() is used to track the pseudo node that holds a reference to the root node (high)
-      if(file.first() == NONE)
-	file.allocate();
+      if(file.first() == NONE) {
+	node& n = file.deref(file.allocate());
+	n.low = n.high = NONE;
+      }
     };
 
     //if this is needed, we will need to rearrange nodes, probably start over with a new list
@@ -168,7 +170,7 @@ namespace WITE {
     //returns number of records in index
     uint64_t rebalance() {//probably very slow
       concurrentReadLock_write lock(&mutex);
-      uint64_t nid = file.deref(file.first()).high;
+      uint64_t& nid = file.deref(file.first()).high;
       if(nid == NONE) [[unlikely]] return 0;
       return file.deref(nid).rebalance(this, nid);
     };
@@ -188,9 +190,16 @@ namespace WITE {
       return file.deref(nid).findAny(v, this);
     };
 
+    void remove(const F& v) {
+      concurrentReadLock_read lock(&mutex);
+      uint64_t& nid = file.deref(file.first()).high;
+      if(nid == NONE) [[unlikely]] return;
+      return file.deref(nid).remove(v, this, nid);
+    };
+
     void insert(uint64_t entity, const F& v) {
       concurrentReadLock_write lock(&mutex);
-      uint64_t nid = file.deref(file.first()).high;
+      uint64_t& nid = file.deref(file.first()).high;
       if(nid == NONE) [[unlikely]] { //first insert
 	nid = file.allocate();
 	node& n = file.deref(nid);

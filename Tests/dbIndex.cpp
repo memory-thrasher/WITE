@@ -14,21 +14,77 @@ Stable and intermediate releases may be made continually. For this reason, a yea
 
 #include "../WITE/WITE.hpp"
 
+constexpr uint64_t testSize = 50000;
+
+uint64_t getNs() {
+  return std::chrono::time_point_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now()).time_since_epoch().count();
+};
+
 int main(int argc, const char** argv) {
   WITE::configuration::setOptions(argc, argv);
   std::filesystem::path path = std::filesystem::temp_directory_path() / "wite_dbindex_test.wdb";
   auto* dbi = new WITE::dbIndex<float>(path, true, WITE::dbIndex<float>::read_cb_F::make([](uint64_t i, float& o) { o = i / 5.0f; }));
-  for(uint64_t i = 0;i < 500;i++) {
+  uint64_t lastTime = getNs(), time;
+  for(uint64_t i = 0;i < testSize;i++) {
     dbi->insert(i*3);
     dbi->insert(i*3+1);
   }
-  for(uint64_t i = 0;i < 500;i++)
+  time = getNs();
+  WARN("inserts: ", (time - lastTime)/1000000);
+  lastTime = time;
+  for(uint64_t i = 0;i < testSize;i++)
     dbi->remove((i*3+1)/5.0f);
-  ASSERT_TRAP(dbi->count() == 500, "got wrong count");
-  for(uint64_t i = 0;i < 1600;i++)
-    ASSERT_TRAP((dbi->findAny(i / 5.0f) == WITE::NONE) ^ (i < 1500 && i % 3 == 0), "test case failed", i);
-  ASSERT_TRAP(dbi->rebalance() == 500, "rebalance got wrong count");
-  for(uint64_t i = 0;i < 1600;i++)
-    ASSERT_TRAP((dbi->findAny(i / 5.0f) == WITE::NONE) ^ (i < 1500 && i % 3 == 0), "test case failed (after)", i);
+  time = getNs();
+  WARN("removes: ", (time - lastTime)/1000000);
+  lastTime = time;
+#ifdef DEBUG
+  uint64_t temp =
+#endif
+    dbi->count();
+  ASSERT_TRAP(temp == testSize, "got wrong count: ", temp);
+  time = getNs();
+  WARN("count: ", (time - lastTime)/1000000);
+  lastTime = time;
+  for(uint64_t i = 0;i < testSize*3 + 100;i++)
+    ASSERT_TRAP((dbi->findAny(i / 5.0f) == WITE::NONE) ^ (i < testSize*3 && i % 3 == 0), "test case failed", i);
+  time = getNs();
+  WARN("pre-rebalance presence check: ", (time - lastTime)/1000000);
+  lastTime = time;
+#ifdef DEBUG
+  temp =
+#endif
+    dbi->rebalance();
+  time = getNs();
+  WARN("rebalance: ", (time - lastTime)/1000000);
+  lastTime = time;
+  ASSERT_TRAP(temp == testSize, "rebalance got wrong count: ", temp);
+#ifdef DEBUG
+  temp =
+#endif
+    dbi->count();
+  ASSERT_TRAP(temp == testSize, "(post-rebalance count) got wrong count: ", temp);
+  for(uint64_t i = 0;i < testSize*3 + 100;i++)
+    ASSERT_TRAP((dbi->findAny(i / 5.0f) == WITE::NONE) ^ (i < testSize*3 && i % 3 == 0), "test case failed (after)", i);
+  time = getNs();
+  WARN("post-rebalance presence check: ", (time - lastTime)/1000000);
+  lastTime = time;
+#ifdef DEBUG
+  temp =
+#endif
+    dbi->rebalance();
+  time = getNs();
+  WARN("rebalance 2: ", (time - lastTime)/1000000);
+  lastTime = time;
+  ASSERT_TRAP(temp == testSize, "rebalance got wrong count: ", temp);
+#ifdef DEBUG
+  temp =
+#endif
+    dbi->count();
+  ASSERT_TRAP(temp == testSize, "(post-rebalance count) got wrong count: ", temp);
+  for(uint64_t i = 0;i < testSize*3 + 100;i++)
+    ASSERT_TRAP((dbi->findAny(i / 5.0f) == WITE::NONE) ^ (i < testSize*3 && i % 3 == 0), "test case failed (after)", i);
+  time = getNs();
+  WARN("post-rebalance 2 presence check: ", (time - lastTime)/1000000);
+  lastTime = time;
 };
 

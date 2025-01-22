@@ -19,16 +19,16 @@ Stable and intermediate releases may be made continually. For this reason, a yea
 namespace WITE {
 
   //allows one write hold with no reads, or many read holds with no write
-  class concurentReadSyncLock {
+  class concurrentReadSyncLock {
   private:
     syncLock internalMutex;
     bool writeLocked = false;
     uint64_t readLocks = 0;
   public:
-    concurentReadSyncLock() = default;
-    concurentReadSyncLock(const concurentReadSyncLock&) = delete;
-    concurentReadSyncLock(concurentReadSyncLock&&) = delete;
-    ~concurentReadSyncLock() = default;
+    concurrentReadSyncLock() = default;
+    concurrentReadSyncLock(const concurrentReadSyncLock&) = delete;
+    concurrentReadSyncLock(concurrentReadSyncLock&&) = delete;
+    ~concurrentReadSyncLock() = default;
     void acquireRead();
     void releaseRead();
     void acquireWrite();
@@ -39,23 +39,23 @@ namespace WITE {
 
   class concurrentReadLock_read {
   private:
-    concurentReadSyncLock* lock;
+    concurrentReadSyncLock* lock;
   public:
     concurrentReadLock_read() = delete;
     concurrentReadLock_read(const concurrentReadLock_read&) = delete;
     concurrentReadLock_read(concurrentReadLock_read&&) = delete;
-    concurrentReadLock_read(concurentReadSyncLock*);
+    concurrentReadLock_read(concurrentReadSyncLock*);
     ~concurrentReadLock_read();
   };
 
   class concurrentReadLock_write {
   private:
-    concurentReadSyncLock* lock;
+    concurrentReadSyncLock* lock;
   public:
     concurrentReadLock_write() = delete;
     concurrentReadLock_write(const concurrentReadLock_write&) = delete;
     concurrentReadLock_write(concurrentReadLock_write&&) = delete;
-    concurrentReadLock_write(concurentReadSyncLock*);
+    concurrentReadLock_write(concurrentReadSyncLock*);
     ~concurrentReadLock_write();
   };
 

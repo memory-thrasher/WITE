@@ -14,6 +14,8 @@ Stable and intermediate releases may be made continually. For this reason, a yea
 
 #pragma once
 
+#include <concepts>
+
 #include "dbFile.hpp"
 #include "callback.hpp"
 #include "concurrentReadSyncLock.hpp"
@@ -23,11 +25,16 @@ namespace WITE {
   //not to be embedded into a datatype or database, but should target data that is
   //ideally the per-record value of the field being indexed should not change. If it does, it is the caller's responsibility to call update()
   //rebalance should be called externally after significant cumulative changes
-  template<class F, class Compare = std::less<F>> struct dbIndex {
+  template<class F, class Compare = std::less<F>> requires requires(F& a, F& b) {
+    { Compare()(a, b) } -> std::convertible_to<bool>;
+    { F{} };
+    { a = b };
+  }
+  struct dbIndex {
     struct node {
       F targetValue;
       /*T*/ uint64_t target = NONE;
-      /*node*/ uint64_t high = NONE, low = NONE, behind = NONE;
+      /*node*/ uint64_t high = NONE, low = NONE;
 
       std::strong_ordering operator<=>(const F& r) const {
 	if(Compare()(targetValue, r)) return std::strong_ordering::less;
@@ -40,34 +47,103 @@ namespace WITE {
       };
 
       uint64_t findAny(const F& v, dbIndex* owner) {
-	auto comp = n <=> v;
+	auto comp = *this <=> v;
 	if(comp == 0) return target;
-	uint64_t nid = comp < 0 ? n.high : n.low;
+	uint64_t nid = comp < 0 ? high : low;
 	return nid == NONE ? NONE : owner->file.deref(nid).findAny(v, owner);
       };
 
       //can't store owner as a field bc node is on disk and outlives its owner
-      void insert(uint64_t entity, const F& v, dbIndex* owner, uint64_t thisId) {
+      void insert(uint64_t entity, const F& v, dbIndex* owner) {
 	uint64_t& next = *this < v ? low : high;//is the smell worth avoiding a few more ternaries?
 	if(next != NONE) [[likely]] {
-	  owner->file.deref(next).insert(etity, v, owner);
+	  owner->file.deref(next).insert(entity, v, owner);
 	} else {
 	  next = owner->file.allocate();
 	  node& n = owner->file.deref(next);
 	  n.targetValue = v;
 	  n.target = entity;
-	  n.behind = thisId;
+	  n.high = n.low = NONE;
 	}
       };
 
-      void update(dbIndex* owner) {
-	owner->read(target, targetValue);
+      // void update(dbIndex* owner) {
+      // 	owner->read(target, targetValue);
+      // };
+
+      // void updateAll(dbIndex* owner) {
+      // 	update(owner);
+      // 	if(high != NONE) [[likely]] owner->file.deref(high).updateAll(owner);
+      // 	if(low != NONE) [[likely]] owner->file.deref(low).updateAll(owner);
+      // };
+
+      void remove(const F& v, dbIndex* owner, uint64_t& thisId) {
+	auto comp = *this <=> v;
+	if(comp == 0) {
+	  //either low or high will replace this branch, and the other will be linked by the end of the replacement's chain, following the extreme edge. Just avoid removing things, or rebalance after.
+	  uint64_t temp = thisId;
+	  if(low == NONE) {
+	    thisId = high;
+	  } else if(high == NONE) {
+	    thisId = low;
+	  } else {
+	    uint64_t lowCnt = 0, lowId = low;
+	    while(true) {
+	      uint64_t next = owner->file.deref(lowId).high;
+	      if(next == NONE) break;
+	      lowId = next;
+	    }
+	    uint64_t highCnt = 0, highId = high;
+	    while(true) {
+	      uint64_t next = owner->file.deref(highId).low;
+	      if(next == NONE) break;
+	      highId = next;
+	    }
+	    if(highCnt < lowCnt) {//high replaces this, low appended to low side of high
+	      thisId = high;
+	      owner->file.deref(highId).low = low;
+	    } else {//low replaces this, high appended to high side of low
+	      thisId = low;
+	      owner->file.deref(lowId).high = high;
+	    }
+	  }
+	  owner->file.free(temp);
+	  return;
+	} else if(comp < 0) {
+	  if(high != NONE) [[likely]] owner->file.deref(high).remove(v, owner, high);
+	} else {
+	  if(low != NONE) [[likely]] owner->file.deref(low).remove(v, owner, low);
+	}
       };
 
-      void updateAll(dbIndex* owner) {
-	update(owner);
-	if(high != NONE) [[likely]] owner->file.deref(high).updateAll(owner);
-	if(low != NONE) [[likely]] owner->file.deref(low).updateAll(owner);
+      uint64_t count(dbIndex* owner) {
+	uint64_t lowCnt = low == NONE ? 0 : owner->file.deref(low).count(owner, low);
+	uint64_t highCnt = high == NONE ? 0 : owner->file.deref(high).count(owner, high);
+	return lowCnt + highCnt + 1;
+      };
+
+      //@param thisId is updated if this node is moved
+      uint64_t rebalance(dbIndex* owner, uint64_t& thisId) {
+	uint64_t lowCnt = low == NONE ? 0 : owner->file.deref(low).rebalance(owner, low);
+	uint64_t highCnt = high == NONE ? 0 : owner->file.deref(high).rebalance(owner, high);
+	if(lowCnt + lowCnt/4 + 1 < highCnt) {
+	  node& other = owner->file.deref(high);
+	  uint64_t temp = thisId;
+	  thisId = high;
+	  high = other.low;
+	  other.low = temp;
+	  rebalance(owner, other.low);
+	} else if(highCnt + highCnt/4 + 1 < lowCnt) {
+	  node& other = owner->file.deref(low);
+	  uint64_t temp = thisId;
+	  thisId = low;
+	  low = other.high;
+	  other.high = temp;
+	  rebalance(owner, other.high);
+	}
+	return lowCnt + highCnt + 1;
+      };
+
     };
 
     dbFile<node, 65536/sizeof(node)+1> file;//shoot for 64kb page
@@ -75,39 +151,55 @@ namespace WITE {
     read_cb read;
     concurrentReadSyncLock mutex;
 
-    dbIndex(const std::filesystem::path& fn, bool clobber, read_cb read) : file(fn, clobber), read(read) {};
-
-    void update() {//updates targetValue from target on every node
-      uint64_t nid = file.first();
-      if(nid == NONE) [[unlikely]] return;
-      file.deref(nid).updateAll(this);
+    dbIndex(const std::filesystem::path& fn, bool clobber, read_cb read) : file(fn, clobber), read(read) {
+      //file.first() is used to track the pseudo node that holds a reference to the root node (high)
+      if(file.first() == NONE)
+	file.allocate();
     };
 
-    void rebalance() {//probably very slow
-      uint64_t nid = file.first();
-      if(nid == NONE) [[unlikely]] return;
-      // file.deref(nid).rebalance(this);
-      #error TODO
+    //if this is needed, we will need to rearrange nodes, probably start over with a new list
+    // void update() {//updates targetValue from target on every node
+    //   concurrentReadLock_write lock(&mutex);
+    //   uint64_t nid = file.deref(file.first()).high;
+    //   if(nid == NONE) [[unlikely]] return;
+    //   file.deref(nid).updateAll(this);
+    // };
+
+    //returns number of records in index
+    uint64_t rebalance() {//probably very slow
+      concurrentReadLock_write lock(&mutex);
+      uint64_t nid = file.deref(file.first()).high;
+      if(nid == NONE) [[unlikely]] return 0;
+      return file.deref(nid).rebalance(this, nid);
+    };
+
+    uint64_t count() {
+      concurrentReadLock_write lock(&mutex);
+      uint64_t nid = file.deref(file.first()).high;
+      if(nid == NONE) [[unlikely]] return 0;
+      return file.deref(nid).count(this);
     };
 
     uint64_t findAny(const F& v) {
-      uint64_t nid = file.first();
+      concurrentReadLock_read lock(&mutex);
+      uint64_t nid = file.deref(file.first()).high;
       if(nid == NONE) [[unlikely]]
 	return NONE;
       return file.deref(nid).findAny(v, this);
     };
 
     void insert(uint64_t entity, const F& v) {
-      uint64_t nid = file.first();
+      concurrentReadLock_write lock(&mutex);
+      uint64_t nid = file.deref(file.first()).high;
       if(nid == NONE) [[unlikely]] { //first insert
 	nid = file.allocate();
 	node& n = file.deref(nid);
 	n.target = entity;
 	n.targetValue = v;
-	n.high = n.low = n.behind = NONE;
+	n.high = n.low = NONE;
       } else {
 	node& n = file.deref(nid);
-	n.insert(entity, v, this, nid);
+	n.insert(entity, v, this);
       }
     };
 

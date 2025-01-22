@@ -122,26 +122,57 @@ namespace WITE {
 	return lowCnt + highCnt + 1;
       };
 
+      uint64_t depth(dbIndex* owner) {
+	return max(high == NONE ? 0 : owner->file.deref(high).depth(owner),
+		   low == NONE ? 0 : owner->file.deref(low).depth(owner)) + 1;
+      };
+
       //@param thisId is updated if this node is moved
+      //@returns number of rotations made
       uint64_t rebalance(dbIndex* owner, uint64_t& thisId) {
-	uint64_t lowCnt = low == NONE ? 0 : owner->file.deref(low).rebalance(owner, low);
-	uint64_t highCnt = high == NONE ? 0 : owner->file.deref(high).rebalance(owner, high);
-	if(lowCnt + lowCnt/4 + 1 < highCnt) {
+	//only test the nodes that would change in height (if we swap with low, low.high becomes our high, which is no net improvement)
+	uint64_t lowDeepCnt;
+	if(low == NONE)
+	  lowDeepCnt = 0;
+	else {
+	  node& lowN = owner->file.deref(low);
+	  if(lowN.low == NONE)
+	    lowDeepCnt = 1;
+	  else
+	    lowDeepCnt = 1 + owner->file.deref(lowN.low).count(owner);
+	}
+	uint64_t highDeepCnt;
+	if(high == NONE)
+	  highDeepCnt = 0;
+	else {
+	  node& highN = owner->file.deref(high);
+	  if(highN.high == NONE)
+	    highDeepCnt = 1;
+	  else
+	    highDeepCnt = 1 + owner->file.deref(highN.high).count(owner);
+	}
+	uint64_t lowCnt = low == NONE ? 0 : owner->file.deref(low).count(owner);
+	uint64_t highCnt = high == NONE ? 0 : owner->file.deref(high).count(owner);
+	if(lowCnt + 2 < highDeepCnt) {
 	  node& other = owner->file.deref(high);
 	  uint64_t temp = thisId;
 	  thisId = high;
 	  high = other.low;
 	  other.low = temp;
-	  rebalance(owner, other.low);
-	} else if(highCnt + highCnt/4 + 1 < lowCnt) {
+	  // rebalance(owner, other.low);
+	  return 1 + other.rebalance(owner, thisId);
+	} else if(highCnt + 2 < lowDeepCnt) {
 	  node& other = owner->file.deref(low);
 	  uint64_t temp = thisId;
 	  thisId = low;
 	  low = other.high;
 	  other.high = temp;
-	  rebalance(owner, other.high);
+	  // rebalance(owner, other.high);
+	  return 1 + other.rebalance(owner, thisId);
+	} else {
+	  return (low != NONE ? owner->file.deref(low).rebalance(owner, low) : 0) +
+	    (high != NONE ? owner->file.deref(high).rebalance(owner, high) : 0);
 	}
-	return lowCnt + highCnt + 1;
       };
 
     };
@@ -194,7 +225,8 @@ namespace WITE {
       concurrentReadLock_read lock(&mutex);
       uint64_t& nid = file.deref(file.first()).high;
       if(nid == NONE) [[unlikely]] return;
-      return file.deref(nid).remove(v, this, nid);
+      file.deref(nid).remove(v, this, nid);
+      // file.deref(nid).rebalance(this, nid);
     };
 
     void insert(uint64_t entity, const F& v) {
@@ -207,8 +239,8 @@ namespace WITE {
 	n.targetValue = v;
 	n.high = n.low = NONE;
       } else {
-	node& n = file.deref(nid);
-	n.insert(entity, v, this);
+	file.deref(nid).insert(entity, v, this);
+	// file.deref(nid).rebalance(this, nid);
       }
     };
 

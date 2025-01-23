@@ -21,6 +21,7 @@ Stable and intermediate releases may be made continually. For this reason, a yea
 #endif
 
 #include "syncLock.hpp"
+#include "concurrentReadSyncLock.hpp"
 #include "DEBUG.hpp"
 #include "shared.hpp"
 #include "mmap.hpp"
@@ -46,7 +47,8 @@ namespace WITE {
     static constexpr size_t au_size = sizeof(au_t);
     static constexpr uint8_t plug[au_size] = { 0 };
 
-    syncLock fileMutex, blocksMutex, allocationMutex;
+    syncLock fileMutex;
+    concurrentReadSyncLock blocksMutex, allocationMutex;
     header_t* header;
     std::vector<au_t*> blocks;//these are pointers into mmaped regions
     struct mmap_t { void*region; size_t len; };
@@ -87,7 +89,8 @@ namespace WITE {
     dbFile(dbFile&&) = delete;
 
     dbFile(const std::filesystem::path& fn, bool clobber) : filename(fn) {
-      scopeLock fl(&fileMutex), bm(&blocksMutex), am(&allocationMutex);
+      scopeLock fl(&fileMutex);
+      concurrentReadLock_write bm(&blocksMutex), am(&allocationMutex);
       const std::filesystem::path dir = filename.parent_path();
       std::error_code ec;
       if(!std::filesystem::exists(dir))
@@ -132,7 +135,8 @@ namespace WITE {
     };
 
     void close() {
-      scopeLock fl(&fileMutex), bm(&blocksMutex), am(&allocationMutex);
+      scopeLock fl(&fileMutex);
+      concurrentReadLock_write bm(&blocksMutex), am(&allocationMutex);
       if(mmapedRegions.size()) {
 	WITE::unlockFile(fd);
 	for(mmap_t& m : mmapedRegions)
@@ -143,11 +147,51 @@ namespace WITE {
     };
 
     uint64_t allocate() {
-      scopeLock am(&allocationMutex);
+      concurrentReadLock_write am(&allocationMutex);
       uint64_t ret;
       WITE_DEBUG_DB_HEADER;
       if(!header->freeSpaceLen) [[unlikely]] {
-	scopeLock fl(&fileMutex), bm(&blocksMutex);
+	scopeLock fl(&fileMutex);
+	concurrentReadLock_write bm(&blocksMutex);
+	uint64_t auId = blocks.size();
+	writeArrayFile(fd, plug, au_size);
+	size_t pageSize = fileSizeMultiple(),
+	  start = auId * au_size + sizeof(header_t),
+	  realStart = start / pageSize * pageSize,
+	  entryPad = start - realStart,
+	  realLength = au_size + entryPad;
+	void* mm = WITE::mmapFile(fd, realStart, realLength);
+	mmapedRegions.emplace_back(mm, realLength);
+	blocks.emplace_back(reinterpret_cast<au_t*>(reinterpret_cast<uint8_t*>(mm) + entryPad));
+	initialize(auId);
+      }
+      ASSERT_TRAP(header->freeSpaceLen, "disk allocation failed?");
+      ret = freeSpaceLEA(--header->freeSpaceLen);
+#if DEBUG
+      auto iter = freeSpaceBitmap.find(ret);
+      ASSERT_TRAP(iter != freeSpaceBitmap.end(), "allocated entity from free space queue not in bitmap ", ret);
+      freeSpaceBitmap.erase(iter);
+#endif
+      link_t& l = allocatedLEA(ret);
+      l.previous = header->allocatedLast;//might be NONE
+      l.next = NONE;
+      if(header->allocatedFirst == NONE) [[unlikely]] {//list was empty
+	header->allocatedFirst = ret;
+      } else {
+	ASSERT_TRAP(header->allocatedLast != NONE, "root node in invalid state");
+	link_t& oldLast = allocatedLEA(header->allocatedLast);
+	ASSERT_TRAP(oldLast.next == NONE, "last node didn't know it was last.");
+	oldLast.next = ret;
+      }
+      header->allocatedLast = ret;
+      WITE_DEBUG_DB_HEADER;
+      return ret;
+    };
+
+    uint64_t allocate_unsafe() {
+      uint64_t ret;
+      WITE_DEBUG_DB_HEADER;
+      if(!header->freeSpaceLen) [[unlikely]] {
 	uint64_t auId = blocks.size();
 	writeArrayFile(fd, plug, au_size);
 	size_t pageSize = fileSizeMultiple(),
@@ -185,7 +229,11 @@ namespace WITE {
 
     //NOTE: free might break an iterator (if the iteratee is freed)
     void free(uint64_t idx) {
-      scopeLock am(&allocationMutex);
+      concurrentReadLock_write am(&allocationMutex);
+      free_unsafe(idx);
+    };
+
+    void free_unsafe(uint64_t idx) {
       ASSERT_TRAP(idx < blocks.size() * AU, "idx too big");
       WITE_DEBUG_DB_HEADER;
       freeSpaceLEA(header->freeSpaceLen) = idx;
@@ -210,7 +258,11 @@ namespace WITE {
     };
 
     T& deref(uint64_t idx) {
-      scopeLock bm(&blocksMutex);
+      concurrentReadLock_read bm(&blocksMutex);
+      return deref_unsafe(idx);
+    };
+
+    T& deref_unsafe(uint64_t idx) {
       ASSERT_TRAP(idx / AU < blocks.size(), "out of bounds: block does not exist");
       return blocks[idx / AU]->data[idx % AU];
     };
@@ -221,19 +273,27 @@ namespace WITE {
     };
 
     void copy(const std::filesystem::path& dstFilename) {
-      scopeLock am(&allocationMutex);
+      concurrentReadLock_read am(&allocationMutex);
       std::filesystem::copy_file(filename, dstFilename, std::filesystem::copy_options::overwrite_existing);
     };
 
     inline uint64_t first() {
-      scopeLock am(&allocationMutex);
+      concurrentReadLock_read am(&allocationMutex);
+      return first_unsafe();
+    };
+
+    inline uint64_t first_unsafe() {
       WITE_DEBUG_DB_HEADER;
       ASSERT_TRAP(header->freeSpaceLen <= blocks.size() * AU, "invalid header, pointer trouble?");
       return header->allocatedFirst;
     };
 
     inline uint64_t after(uint64_t id) {
-      scopeLock am(&allocationMutex);
+      concurrentReadLock_read am(&allocationMutex);
+      return after_unsafe(id);
+    };
+
+    inline uint64_t after_unsafe(uint64_t id) {
       WITE_DEBUG_DB_ALLOCATION(id);
       return allocatedLEA(id).next;
     };
@@ -288,7 +348,11 @@ namespace WITE {
     };
 
     inline uint64_t capacity() {
-      scopeLock bm(&blocksMutex);
+      concurrentReadLock_read bm(&blocksMutex);
+      return capacity_unsafe();
+    };
+
+    inline uint64_t capacity_unsafe() {
       return blocks.size() * AU;
     };
 

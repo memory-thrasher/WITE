@@ -50,17 +50,17 @@ namespace WITE {
 	auto comp = *this <=> v;
 	if(comp == 0) return target;
 	uint64_t nid = comp < 0 ? high : low;
-	return nid == NONE ? NONE : owner->file.deref(nid).findAny(v, owner);
+	return nid == NONE ? NONE : owner->file.deref_unsafe(nid).findAny(v, owner);
       };
 
       //can't store owner as a field bc node is on disk and outlives its owner
       void insert(uint64_t entity, const F& v, dbIndex* owner) {
 	uint64_t& next = *this < v ? high : low;
 	if(next != NONE) [[likely]] {
-	  owner->file.deref(next).insert(entity, v, owner);
+	  owner->file.deref_unsafe(next).insert(entity, v, owner);
 	} else {
-	  next = owner->file.allocate();
-	  node& n = owner->file.deref(next);
+	  next = owner->file.allocate_unsafe();
+	  node& n = owner->file.deref_unsafe(next);
 	  n.targetValue = v;
 	  n.target = entity;
 	  n.high = n.low = NONE;
@@ -73,8 +73,8 @@ namespace WITE {
 
       // void updateAll(dbIndex* owner) {
       // 	update(owner);
-      // 	if(high != NONE) [[likely]] owner->file.deref(high).updateAll(owner);
-      // 	if(low != NONE) [[likely]] owner->file.deref(low).updateAll(owner);
+      // 	if(high != NONE) [[likely]] owner->file.deref_unsafe(high).updateAll(owner);
+      // 	if(low != NONE) [[likely]] owner->file.deref_unsafe(low).updateAll(owner);
       // };
 
       void remove(const F& v, dbIndex* owner, uint64_t& thisId) {
@@ -89,42 +89,42 @@ namespace WITE {
 	  } else {
 	    uint64_t lowCnt = 0, lowId = low;
 	    while(true) {
-	      uint64_t next = owner->file.deref(lowId).high;
+	      uint64_t next = owner->file.deref_unsafe(lowId).high;
 	      if(next == NONE) break;
 	      lowId = next;
 	    }
 	    uint64_t highCnt = 0, highId = high;
 	    while(true) {
-	      uint64_t next = owner->file.deref(highId).low;
+	      uint64_t next = owner->file.deref_unsafe(highId).low;
 	      if(next == NONE) break;
 	      highId = next;
 	    }
 	    if(highCnt < lowCnt) {//high replaces this, low appended to low side of high
 	      thisId = high;
-	      owner->file.deref(highId).low = low;
+	      owner->file.deref_unsafe(highId).low = low;
 	    } else {//low replaces this, high appended to high side of low
 	      thisId = low;
-	      owner->file.deref(lowId).high = high;
+	      owner->file.deref_unsafe(lowId).high = high;
 	    }
 	  }
-	  owner->file.free(temp);
+	  owner->file.free_unsafe(temp);
 	  return;
 	} else if(comp < 0) {
-	  if(high != NONE) [[likely]] owner->file.deref(high).remove(v, owner, high);
+	  if(high != NONE) [[likely]] owner->file.deref_unsafe(high).remove(v, owner, high);
 	} else {
-	  if(low != NONE) [[likely]] owner->file.deref(low).remove(v, owner, low);
+	  if(low != NONE) [[likely]] owner->file.deref_unsafe(low).remove(v, owner, low);
 	}
       };
 
       uint64_t count(dbIndex* owner) {
-	uint64_t lowCnt = low == NONE ? 0 : owner->file.deref(low).count(owner);
-	uint64_t highCnt = high == NONE ? 0 : owner->file.deref(high).count(owner);
+	uint64_t lowCnt = low == NONE ? 0 : owner->file.deref_unsafe(low).count(owner);
+	uint64_t highCnt = high == NONE ? 0 : owner->file.deref_unsafe(high).count(owner);
 	return lowCnt + highCnt + 1;
       };
 
       uint64_t depth(dbIndex* owner) {
-	return max(high == NONE ? 0 : owner->file.deref(high).depth(owner),
-		   low == NONE ? 0 : owner->file.deref(low).depth(owner)) + 1;
+	return max(high == NONE ? 0 : owner->file.deref_unsafe(high).depth(owner),
+		   low == NONE ? 0 : owner->file.deref_unsafe(low).depth(owner)) + 1;
       };
 
       //@param thisId is updated if this node is moved
@@ -135,26 +135,26 @@ namespace WITE {
 	if(low == NONE)
 	  lowDeepCnt = 0;
 	else {
-	  node& lowN = owner->file.deref(low);
+	  node& lowN = owner->file.deref_unsafe(low);
 	  if(lowN.low == NONE)
 	    lowDeepCnt = 1;
 	  else
-	    lowDeepCnt = 1 + owner->file.deref(lowN.low).count(owner);
+	    lowDeepCnt = 1 + owner->file.deref_unsafe(lowN.low).count(owner);
 	}
 	uint64_t highDeepCnt;
 	if(high == NONE)
 	  highDeepCnt = 0;
 	else {
-	  node& highN = owner->file.deref(high);
+	  node& highN = owner->file.deref_unsafe(high);
 	  if(highN.high == NONE)
 	    highDeepCnt = 1;
 	  else
-	    highDeepCnt = 1 + owner->file.deref(highN.high).count(owner);
+	    highDeepCnt = 1 + owner->file.deref_unsafe(highN.high).count(owner);
 	}
-	uint64_t lowCnt = low == NONE ? 0 : owner->file.deref(low).count(owner);
-	uint64_t highCnt = high == NONE ? 0 : owner->file.deref(high).count(owner);
+	uint64_t lowCnt = low == NONE ? 0 : owner->file.deref_unsafe(low).count(owner);
+	uint64_t highCnt = high == NONE ? 0 : owner->file.deref_unsafe(high).count(owner);
 	if(lowCnt + 2 < highDeepCnt) {
-	  node& other = owner->file.deref(high);
+	  node& other = owner->file.deref_unsafe(high);
 	  uint64_t temp = thisId;
 	  thisId = high;
 	  high = other.low;
@@ -162,7 +162,7 @@ namespace WITE {
 	  // rebalance(owner, other.low);
 	  return 1 + other.rebalance(owner, thisId);
 	} else if(highCnt + 2 < lowDeepCnt) {
-	  node& other = owner->file.deref(low);
+	  node& other = owner->file.deref_unsafe(low);
 	  uint64_t temp = thisId;
 	  thisId = low;
 	  low = other.high;
@@ -170,8 +170,8 @@ namespace WITE {
 	  // rebalance(owner, other.high);
 	  return 1 + other.rebalance(owner, thisId);
 	} else {
-	  return (low != NONE ? owner->file.deref(low).rebalance(owner, low) : 0) +
-	    (high != NONE ? owner->file.deref(high).rebalance(owner, high) : 0);
+	  return (low != NONE ? owner->file.deref_unsafe(low).rebalance(owner, low) : 0) +
+	    (high != NONE ? owner->file.deref_unsafe(high).rebalance(owner, high) : 0);
 	}
       };
 
@@ -181,11 +181,12 @@ namespace WITE {
     typedefCB(read_cb, void, uint64_t, F&);//might contain a read op from a database or another dbFile
     read_cb read;
     concurrentReadSyncLock mutex;
+    //this lock protects the underlaying dbFile too, so the "unsafe" endpoints are used to avoid locking every single node many times per operation. The file MUST NOT be accessed from outside this api.
 
     dbIndex(const std::filesystem::path& fn, bool clobber, read_cb read) : file(fn, clobber), read(read) {
-      //file.first() is used to track the pseudo node that holds a reference to the root node (high)
-      if(file.first() == NONE) {
-	node& n = file.deref(file.allocate());
+      //file.first_unsafe() is used to track the pseudo node that holds a reference to the root node (high)
+      if(file.first_unsafe() == NONE) {
+	node& n = file.deref_unsafe(file.allocate_unsafe());
 	n.low = n.high = NONE;
       }
     };
@@ -193,54 +194,52 @@ namespace WITE {
     //if this is needed, we will need to rearrange nodes, probably start over with a new list
     // void update() {//updates targetValue from target on every node
     //   concurrentReadLock_write lock(&mutex);
-    //   uint64_t nid = file.deref(file.first()).high;
+    //   uint64_t nid = file.deref_unsafe(file.first_unsafe()).high;
     //   if(nid == NONE) [[unlikely]] return;
-    //   file.deref(nid).updateAll(this);
+    //   file.deref_unsafe(nid).updateAll(this);
     // };
 
     //returns number of records in index
     uint64_t rebalance() {//probably very slow
       concurrentReadLock_write lock(&mutex);
-      uint64_t& nid = file.deref(file.first()).high;
+      uint64_t& nid = file.deref_unsafe(file.first_unsafe()).high;
       if(nid == NONE) [[unlikely]] return 0;
-      return file.deref(nid).rebalance(this, nid);
+      return file.deref_unsafe(nid).rebalance(this, nid);
     };
 
     uint64_t count() {
       concurrentReadLock_write lock(&mutex);
-      uint64_t nid = file.deref(file.first()).high;
+      uint64_t nid = file.deref_unsafe(file.first_unsafe()).high;
       if(nid == NONE) [[unlikely]] return 0;
-      return file.deref(nid).count(this);
+      return file.deref_unsafe(nid).count(this);
     };
 
     uint64_t findAny(const F& v) {
       concurrentReadLock_read lock(&mutex);
-      uint64_t nid = file.deref(file.first()).high;
+      uint64_t nid = file.deref_unsafe(file.first_unsafe()).high;
       if(nid == NONE) [[unlikely]]
 	return NONE;
-      return file.deref(nid).findAny(v, this);
+      return file.deref_unsafe(nid).findAny(v, this);
     };
 
     void remove(const F& v) {
       concurrentReadLock_read lock(&mutex);
-      uint64_t& nid = file.deref(file.first()).high;
+      uint64_t& nid = file.deref_unsafe(file.first_unsafe()).high;
       if(nid == NONE) [[unlikely]] return;
-      file.deref(nid).remove(v, this, nid);
-      // file.deref(nid).rebalance(this, nid);
+      file.deref_unsafe(nid).remove(v, this, nid);
     };
 
     void insert(uint64_t entity, const F& v) {
       concurrentReadLock_write lock(&mutex);
-      uint64_t& nid = file.deref(file.first()).high;
+      uint64_t& nid = file.deref_unsafe(file.first_unsafe()).high;
       if(nid == NONE) [[unlikely]] { //first insert
-	nid = file.allocate();
-	node& n = file.deref(nid);
+	nid = file.allocate_unsafe();
+	node& n = file.deref_unsafe(nid);
 	n.target = entity;
 	n.targetValue = v;
 	n.high = n.low = NONE;
       } else {
-	file.deref(nid).insert(entity, v, this);
-	// file.deref(nid).rebalance(this, nid);
+	file.deref_unsafe(nid).insert(entity, v, this);
       }
     };
 

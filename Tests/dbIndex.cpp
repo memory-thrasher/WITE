@@ -98,6 +98,18 @@ rebalance 2: 18 (Tests/dbIndex.cpp: 147)
 post-rebalance 2 presence check: 65 (Tests/dbIndex.cpp: 157)
 
 conclusion: ideally rebalance happens after small batches
+
+50000 w/ above + bypassing dbFile locks (dbIndex has its own)
+inserts: 9227 (Tests/dbIndex.cpp: 121)
+removes: 143 (Tests/dbIndex.cpp: 126)
+count: 0 (Tests/dbIndex.cpp: 134)
+pre-rebalance presence check: 286 (Tests/dbIndex.cpp: 139)
+rebalance changes made: 45323 (Tests/dbIndex.cpp: 141)
+rebalance: 252 (Tests/dbIndex.cpp: 143)
+post-rebalance presence check: 41 (Tests/dbIndex.cpp: 153)
+rebalance 2 changes made: 499 (Tests/dbIndex.cpp: 155)
+rebalance 2: 9 (Tests/dbIndex.cpp: 157)
+post-rebalance 2 presence check: 41 (Tests/dbIndex.cpp: 167)
 */
 
 constexpr uint64_t testSize = 50000;

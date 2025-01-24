@@ -87,7 +87,7 @@ namespace WITE {
     };
   };
 
-#define defineSwappedUniformBuffer(gpuId, size) ::WITE::simpleUB<gpuId, __LINE__, size>::value
+#define defineSwappedUniformBuffer(gpuId, size) ::WITE::swappableUB<gpuId, __LINE__, size>::value
   template<size_t GPUID, uint64_t ID, uint32_t size> struct swappableUB {
     static constexpr bufferRequirements value {
       .deviceId = GPUID,

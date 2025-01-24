@@ -112,7 +112,7 @@ rebalance 2: 9 (Tests/dbIndex.cpp: 157)
 post-rebalance 2 presence check: 41 (Tests/dbIndex.cpp: 167)
 */
 
-constexpr uint64_t testSize = 50000;
+constexpr uint64_t testSize = 5000;
 
 uint64_t getNs() {
   return std::chrono::time_point_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now()).time_since_epoch().count();

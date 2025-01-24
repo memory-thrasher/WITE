@@ -14,7 +14,7 @@ Stable and intermediate releases may be made continually. For this reason, a yea
 
 #include <map>
 
-#include "syncLock.hpp"
+#include "concurrentReadSyncLock.hpp"
 #include "SDL.hpp"
 #include "winput.hpp"
 #include "shutdown.hpp"
@@ -23,7 +23,7 @@ Stable and intermediate releases may be made continually. For this reason, a yea
 namespace WITE::winput {
 
   std::map<inputIdentifier, compositeInputData> allInputData;
-  syncLock allInputData_mutex;
+  concurrentReadSyncLock allInputData_mutex;
 
   void handleEvent(uint32_t timestamp, const inputIdentifier& ii, float x = NAN, float y = NAN, float z = NAN) {
     compositeInputData& cid = allInputData[ii];
@@ -170,7 +170,7 @@ namespace WITE::winput {
 
   void pollInput() {//static
     SDL_Event event;
-    scopeLock lock(&allInputData_mutex);
+    concurrentReadLock_write lock(&allInputData_mutex);
     //reset input counters
     for(auto& pair : allInputData) {
       compositeInputData& cid = pair.second;
@@ -191,7 +191,7 @@ namespace WITE::winput {
   };
 
   void getInput(const inputIdentifier& ii, compositeInputData& out) {
-    scopeLock lock(&allInputData_mutex);
+    concurrentReadLock_read lock(&allInputData_mutex);
     out = allInputData[ii];
   };
 
@@ -199,6 +199,14 @@ namespace WITE::winput {
     compositeInputData cid;
     getInput(ii, cid);
     return cid.axes[0].isPressed();
+  };
+
+  void getLatest(inputPair& out) {
+    concurrentReadLock_read lock(&allInputData_mutex);
+    inputPair ret;
+    for(const auto& pair : allInputData)
+      if(pair.second.lastTime > ret.data.lastTime)
+	ret = { pair.first, pair.second };
   };
 
   bool compositeInputData::axis::isPressed() {

@@ -2039,10 +2039,10 @@ namespace WITE {
       PROFILEME;
       if(frame == 0) [[unlikely]] return;//first frame is 1
       ASSERT_TRAP(frame < this->frame, "attempted to wait future frame");
-#ifdef DEBUG
-      if(frame == this->frame - 1 && !isJoining) [[unlikely]]
-	WARN("WARNING: waiting on the previous frame is a bad idea. Need more frameswap?");
-#endif
+// #ifdef DEBUG //this fires on prepareDescriptors when spawning objects with single frameswap. Removing because single frameswap with occassional waiting on the last frame is preferable to having multiple identical buffers
+//       if(frame == this->frame - 1 && !isJoining) [[unlikely]]
+// 	WARN("WARNING: waiting on the previous frame is a bad idea. Need more frameswap? frame: ", frame, " this->frame: ", this->frame, " cmdFrameswapCount: ", cmdFrameswapCount);
+// #endif
       if(frame < this->frame - cmdFrameswapCount) [[unlikely]] {
 #ifdef WITE_DEBUG_FENCES
 	WARN("(not) waiting on ancient frame ", frame, " current frame is ", this->frame);

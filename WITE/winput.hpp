@@ -40,6 +40,11 @@ namespace WITE::winput {
     axis axes[3];
   };
 
+  struct inputPair {
+    inputIdentifier id;
+    compositeInputData data;
+  };
+
   constexpr inputIdentifier mouseWheel { type_e::mouseWheel, 0, 0 },
 	      mouse { type_e::mouse, 0, 0 },
 	      lmb { type_e::mouseButton, 0, 1 },
@@ -50,5 +55,6 @@ namespace WITE::winput {
   void pollInput();
   void getInput(const inputIdentifier&, compositeInputData&);
   bool getButton(const inputIdentifier&);
+  void getLatest(inputPair& out);//for creating control mappings
 
 }

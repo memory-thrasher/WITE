@@ -1,5 +1,5 @@
 /*
-Copyright 2020-2024 Wafflecat Games, LLC
+Copyright 2020-2025 Wafflecat Games, LLC
 
 This file is part of WITE.
 

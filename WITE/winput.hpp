@@ -45,6 +45,9 @@ namespace WITE::winput {
     compositeInputData data;
   };
 
+  constexpr size_t maxFrameKeyboardBuffer = 1024;
+  extern uint32_t frameKeyboardBuffer[maxFrameKeyboardBuffer];
+
   constexpr inputIdentifier mouseWheel { type_e::mouseWheel, 0, 0 },
 	      mouse { type_e::mouse, 0, 0 },
 	      lmb { type_e::mouseButton, 0, 1 },

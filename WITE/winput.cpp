@@ -26,6 +26,8 @@ namespace WITE::winput {
   std::map<inputIdentifier, compositeInputData> allInputData;
   concurrentReadSyncLock allInputData_mutex;
   uint32_t frameStart = 0, lastFrameStart = 0;
+  uint32_t frameKeyboardBuffer[maxFrameKeyboardBuffer];
+  size_t frameKeyboardInsertPnt = 0;
 
   void handleAxis(uint32_t timestamp, compositeInputData::axis& a, float x) {
     if(x != x) [[likely]] return;
@@ -55,6 +57,8 @@ namespace WITE::winput {
       requestShutdown();
       break;
     case SDL_KEYDOWN:
+      frameKeyboardBuffer[frameKeyboardInsertPnt++] = static_cast<uint32_t>(event->key.keysym.sym);
+      frameKeyboardBuffer[frameKeyboardInsertPnt] = 0;
     case SDL_KEYUP:
       static_assert(sizeof(event->key.keysym.sym) == sizeof(uint32_t));//sdl lib uses signed int, with negatives being invalid
       handleEvent(event->common.timestamp, { type_e::key, 0, static_cast<uint32_t>(event->key.keysym.sym) }, event->key.state == SDL_PRESSED ? 1 : 0);
@@ -170,6 +174,8 @@ namespace WITE::winput {
 	a.min = a.max = a.current;
       }
     }
+    frameKeyboardBuffer[0] = 0;
+    frameKeyboardInsertPnt = 0;
     //process new events (since last frame stopped polling)
     while(SDL_PollEvent(&event))
       processEvent(NULL, &event);

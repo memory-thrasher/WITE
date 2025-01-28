@@ -26,16 +26,16 @@ namespace WITE::winput {
 
   struct compositeInputData {
     struct axis {
-      uint16_t numNegative, numPositive, numZero;
-      float average, min, max, current, delta;
+      uint16_t numNegative = 0, numPositive = 0, numZero = 0;
+      uint32_t lastChange = 0;
+      float average = 0, min = 0, max = 0, current = 0, delta = 0;
       bool isPressed();//regardless of when
       bool justChanged();//this is the first frame after a change
       bool justPressed();
       bool justReleased();
       bool justClicked();//press and release on the same frame, unlikely
     };
-    // syncLock mutex;
-    uint32_t firstTime = 0, lastTime;
+    uint32_t lastChange = 0;
     // uint32_t windowId; //if needed later, last event only, probably only useful for mouse location
     axis axes[3];
   };
@@ -51,10 +51,21 @@ namespace WITE::winput {
 	      mmb { type_e::mouseButton, 0, 2 },
 	      rmb { type_e::mouseButton, 0, 3 };
 
+  template<uint32_t SDLK> struct key {
+    static constexpr WITE::winput::inputIdentifier v { WITE::winput::type_e::key, 0, SDLK };
+  };
+
   void initInput();
   void pollInput();
   void getInput(const inputIdentifier&, compositeInputData&);
   bool getButton(const inputIdentifier&);
   void getLatest(inputPair& out);//for creating control mappings
+  uint32_t getFrameStart();
+
+  template<uint32_t SDLK> bool keyPressed() {
+    compositeInputData cid;
+    getInput(key<SDLK>::v, cid);
+    return cid.axes[0].isPressed();
+  };
 
 }

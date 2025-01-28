@@ -19,43 +19,34 @@ Stable and intermediate releases may be made continually. For this reason, a yea
 #include "winput.hpp"
 #include "shutdown.hpp"
 #include "DEBUG.hpp"
+#include "math.hpp"
 
 namespace WITE::winput {
 
   std::map<inputIdentifier, compositeInputData> allInputData;
   concurrentReadSyncLock allInputData_mutex;
+  uint32_t frameStart = 0, lastFrameStart = 0;
+
+  void handleAxis(uint32_t timestamp, compositeInputData::axis& a, float x) {
+    if(x != x) [[likely]] return;
+    if(x < -0) a.numNegative++;
+    else if(x > 0) a.numPositive++;
+    else a.numZero++;
+    a.average += (timestamp - max(frameStart, a.lastChange)) * a.current;
+    if(x > a.max) a.max = x;
+    if(x < a.min) a.min = x;
+    if(a.current != x)
+      a.lastChange = timestamp;
+    a.current = x;
+    a.delta += x;
+  };
 
   void handleEvent(uint32_t timestamp, const inputIdentifier& ii, float x = NAN, float y = NAN, float z = NAN) {
     compositeInputData& cid = allInputData[ii];
-    uint32_t oldDelta = cid.lastTime - cid.firstTime;
-    float axes[3] = { x, y, z };
-    for(int i = 0;i < 3;i++) {
-      float newValue = axes[i];
-      if(std::isnan(axes[i])) [[likely]] //NAN
-	newValue = cid.axes[i].current;
-      cid.axes[i].delta += newValue - cid.axes[i].current;
-      if(newValue != cid.axes[i].current) {
-	if(newValue > 0)
-	  cid.axes[i].numPositive++;
-	else if(newValue < -0)
-	  cid.axes[i].numNegative++;
-	else
-	  cid.axes[i].numZero++;
-      }
-      if(oldDelta) [[likely]] {
-	uint32_t newDelta = timestamp - cid.lastTime;
-	cid.axes[i].average = (cid.axes[i].average * oldDelta + cid.axes[i].current * newDelta) / (newDelta + oldDelta);
-	if(newValue < cid.axes[i].min)
-	  cid.axes[i].min = newValue;
-	if(newValue > cid.axes[i].max)
-	  cid.axes[i].max = newValue;
-      } else {
-	cid.axes[i].average = cid.axes[i].current;
-	cid.axes[i].min = cid.axes[i].max = newValue;
-      }
-      cid.axes[i].current = newValue;
-    }
-    cid.lastTime = timestamp;
+    handleAxis(timestamp, cid.axes[0], x);
+    handleAxis(timestamp, cid.axes[1], y);
+    handleAxis(timestamp, cid.axes[2], z);
+    cid.lastChange = max(cid.axes[1].lastChange, cid.axes[2].lastChange, cid.axes[0].lastChange);
   };
 
   int processEvent(void*, SDL_Event* event) {
@@ -173,21 +164,25 @@ namespace WITE::winput {
     concurrentReadLock_write lock(&allInputData_mutex);
     //reset input counters
     for(auto& pair : allInputData) {
-      compositeInputData& cid = pair.second;
-      cid.firstTime = cid.lastTime;//end of last frame polling
-      for(int i = 0;i < 3;i++) {
-	cid.axes[i].delta = cid.axes[i].numNegative = cid.axes[i].numPositive = cid.axes[i].numZero = 0;
-	cid.axes[i].average = cid.axes[i].min = cid.axes[i].max = cid.axes[i].current;
+      for(compositeInputData::axis& a : pair.second.axes) {
+	a.delta = a.numNegative = a.numPositive = a.numZero = 0;
+	a.average = 0;
+	a.min = a.max = a.current;
       }
     }
     //process new events (since last frame stopped polling)
-    while(SDL_PollEvent(&event)) {
+    while(SDL_PollEvent(&event))
       processEvent(NULL, &event);
-    }
     //fill in the space between the most recent event and now with the current value
-    uint32_t now = SDL_GetTicks();
-    for(auto& pair : allInputData)
-      handleEvent(now, pair.first);
+    // auto oldDelta = frameStart - lastFrameStart;
+    lastFrameStart = frameStart;
+    frameStart = SDL_GetTicks();
+    auto newDelta = frameStart - lastFrameStart;
+    for(auto& pair : allInputData) {
+      for(compositeInputData::axis& a : pair.second.axes) {
+	a.average = (a.average + max(frameStart, pair.second.lastChange) * a.current) / newDelta;
+      }
+    }
   };
 
   void getInput(const inputIdentifier& ii, compositeInputData& out) {
@@ -201,36 +196,36 @@ namespace WITE::winput {
     return cid.axes[0].isPressed();
   };
 
-  void getLatest(inputPair& out) {
+  void getLatest(inputPair& ret) {
     concurrentReadLock_read lock(&allInputData_mutex);
-    inputPair ret;
+    ret.data.lastChange = 0;
     for(const auto& pair : allInputData)
-      if(pair.second.lastTime > ret.data.lastTime)
+      if(pair.second.lastChange > ret.data.lastChange)
 	ret = { pair.first, pair.second };
   };
 
-  bool compositeInputData::axis::isPressed() {
-    return current > 0.5f || numPositive > 0;
+  uint32_t getFrameStart() {
+    return frameStart;
   };
 
+  bool compositeInputData::axis::isPressed() {
+    return current > 0.5f;
+  };
 
   bool compositeInputData::axis::justChanged() {
-    return min != max;
+    return numPositive + numNegative + numZero;
   };
-
 
   bool compositeInputData::axis::justPressed() {
-    return isPressed() && delta > 0;
+    return numPositive > 0;
   };
-
 
   bool compositeInputData::axis::justReleased() {
-    return !isPressed() && delta < 0;
+    return numZero > 0;
   };
 
-
   bool compositeInputData::axis::justClicked() {
-    return delta <= 0 && max > current;
+    return justReleased();
   };
 
 }

@@ -196,6 +196,12 @@ namespace WITE::winput {
     out = allInputData[ii];
   };
 
+  void getAll(std::map<inputIdentifier, compositeInputData>& out) {
+    concurrentReadLock_read lock(&allInputData_mutex);
+    for(const auto& pair : allInputData)
+      out[pair.first] = pair.second;
+  };
+
   bool getButton(const inputIdentifier& ii) {
     compositeInputData cid;
     getInput(ii, cid);

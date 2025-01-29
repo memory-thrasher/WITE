@@ -64,6 +64,7 @@ namespace WITE::winput {
   bool getButton(const inputIdentifier&);
   void getLatest(inputPair& out);//for creating control mappings
   uint32_t getFrameStart();
+  void getAll(std::map<inputIdentifier, compositeInputData>& out);
 
   template<uint32_t SDLK> bool keyPressed() {
     compositeInputData cid;

@@ -13,6 +13,8 @@ Stable and intermediate releases may be made continually. For this reason, a yea
 */
 #pragma once
 
+#include "concurrentReadSyncLock.hpp"
+
 namespace WITE::winput {
 
   enum class type_e : uint8_t { key, mouse, mouseButton, mouseWheel, joyButton, joyAxis };//controllerX = joyX
@@ -47,6 +49,8 @@ namespace WITE::winput {
 
   constexpr size_t maxFrameKeyboardBuffer = 1024;
   extern uint32_t frameKeyboardBuffer[maxFrameKeyboardBuffer];
+  extern std::map<inputIdentifier, compositeInputData> allInputData;
+  extern concurrentReadSyncLock allInputData_mutex;
 
   constexpr inputIdentifier mouseWheel { type_e::mouseWheel, 0, 0 },
 	      mouse { type_e::mouse, 0, 0 },
@@ -64,7 +68,6 @@ namespace WITE::winput {
   bool getButton(const inputIdentifier&);
   void getLatest(inputPair& out);//for creating control mappings
   uint32_t getFrameStart();
-  void getAll(std::map<inputIdentifier, compositeInputData>& out);
 
   template<uint32_t SDLK> bool keyPressed() {
     compositeInputData cid;

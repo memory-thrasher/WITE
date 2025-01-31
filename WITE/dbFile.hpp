@@ -116,7 +116,7 @@ namespace WITE {
       blocks.emplace_back(reinterpret_cast<au_t*>(reinterpret_cast<uint8_t*>(mm) + sizeof(header_t)));
       if(existingAUs) [[likely]] {
 #if DEBUG
-	ASSERT_TRAP(header->freeSpaceLen <= existingAUs, "invalid free space length (recovery nyi)");
+	ASSERT_TRAP(header->freeSpaceLen <= existingAUs * AU, "invalid free space length (recovery nyi)");
 	for(uint64_t i = 0;i < header->freeSpaceLen;i++) {
 	  uint64_t j = freeSpaceLEA(i);
 	  ASSERT_TRAP(freeSpaceBitmap.emplace(j).second, "duplicate entity found in free space queue ", j);

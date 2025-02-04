@@ -935,6 +935,7 @@ namespace WITE {
       stepEnablementTuple<allStepIds> stepEnablement;
       std::conditional_t<hasWindow, window, size_t> presentWindow = { OD.GPUID };
       onion<OD>* owner;
+      uint64_t frameCreated;
 
       explicit object_t(onion<OD>* o) : owner(o) {};
 
@@ -1038,8 +1039,12 @@ namespace WITE {
 
     template<uint64_t objectLayoutId> object_t<objectLayoutId>* create() {
       PROFILEME;
-      scopeLock lock(&mutex);//TODO eliminate this lock by stashing created objects into a pending container (per object, with its own mutex) that gets processed between renders
-      object_t<objectLayoutId>* ret = allObjects.template ofLayout<objectLayoutId>().allocate();
+      object_t<objectLayoutId>* ret;
+      {
+	scopeLock lock(&mutex);//TODO eliminate this lock by stashing created objects into a pending container (per object, with its own mutex) that gets processed between renders
+	ret = allObjects.template ofLayout<objectLayoutId>().allocate();
+	ret->frameCreated = frame;
+      }
       auto cmd = dev->getTempCmd();
       ret->reinit(frame, cmd.cmd);
       cmd.submit();
@@ -1208,6 +1213,7 @@ namespace WITE {
 	    DI.imageMemoryBarrierCount = barrierBatchSize;
 	    size_t mbIdx = 0;
 	    for(object_t<RB.objectLayoutId>* cluster : allObjects.template ofLayout<RB.objectLayoutId>()) {
+	      if(cluster->frameCreated >= frame) [[unlikely]] continue;
 	      auto& img = cluster->template get<RB.resourceSlotId>();
 	      barriers[mbIdx].image = img.frameImage(RB.timing.frameLatency + frame);
 	      WITE_DEBUG_IBT(barriers[mbIdx], cmd, BT);
@@ -1233,6 +1239,7 @@ namespace WITE {
 	    DI.bufferMemoryBarrierCount = barrierBatchSize;
 	    size_t mbIdx = 0;
 	    for(object_t<RB.objectLayoutId>* cluster : allObjects.template ofLayout<RB.objectLayoutId>()) {
+	      if(cluster->frameCreated >= frame) [[unlikely]] continue;
 	      barriers[mbIdx].buffer = cluster->template get<RB.resourceSlotId>().frameBuffer(RB.timing.frameLatency + frame);
 	      mbIdx++;
 	      if(mbIdx == barrierBatchSize) [[unlikely]] {
@@ -1277,6 +1284,7 @@ namespace WITE {
 	      vk::ImageBlit blitInfo(getAllInclusiveSubresourceLayers(findById(OD.IRS, SRS.requirementId)), {},
 				     getAllInclusiveSubresourceLayers(findById(OD.IRS, DRS.requirementId)), {});
 	      for(auto* cluster : getAllOfLayout<XL.id>()) {
+		if(cluster->obj->frameCreated >= frame) [[unlikely]] continue;
 		if(!cluster->template stepEnabled<CS.id>()) [[unlikely]] continue;
 		//TODO if same size (and mip?), use ImageCopy
 		auto& src = cluster->template get<SRS.id>();
@@ -1295,6 +1303,7 @@ namespace WITE {
 					   //w/h set to 0 means calculate assuming "tightly packed"
 					   getAllInclusiveSubresourceLayers(findById(OD.IRS, DRS.requirementId)), {}, {});
 	      for(auto* cluster : getAllOfLayout<XL.id>()) {
+		if(cluster->obj->frameCreated >= frame) [[unlikely]] continue;
 		if(!cluster->template stepEnabled<CS.id>()) [[unlikely]] continue;
 		auto& src = cluster->template get<SRS.id>();
 		auto& dst = cluster->template get<DRS.id>();
@@ -1313,6 +1322,7 @@ namespace WITE {
 		TBR = findById(OD.BRS, DRS.requirementId);
 	      static constexpr vk::BufferCopy copyInfo(SRR->subresource.offset, DRR->subresource.offset, min(SRR->subresource.length != VK_WHOLE_SIZE ? SRR->subresource.length : (SBR.size - SRR->subresource.offset), DRR->subresource.length != VK_WHOLE_SIZE ? DRR->subresource.length : (TBR.size - DRR->subresource.offset)));
 	      for(auto* cluster : getAllOfLayout<XL.id>()) {
+		if(cluster->obj->frameCreated >= frame) [[unlikely]] continue;
 		if(!cluster->template stepEnabled<CS.id>()) [[unlikely]] continue;
 		auto& src = cluster->template get<SRS.id>();
 		auto& dst = cluster->template get<DRS.id>();
@@ -1348,6 +1358,7 @@ namespace WITE {
 	    static constexpr imageRequirements IR = findById(OD.IRS, RS.requirementId);
 	    static constexpr vk::ImageSubresourceRange SR = getAllInclusiveSubresource(IR);
 	    for(auto& cluster : getAllOfLayout<XL.id>()) {
+	      if(cluster.obj->frameCreated >= frame) [[unlikely]] continue;
 	      if(!cluster.template stepEnabled<CS.id>()) [[unlikely]] continue;
 	      auto img = cluster->template get<RS.id>().frameImage(RR->frameLatency + frame);
 	      if constexpr(isDepth(IR)) {
@@ -1479,6 +1490,7 @@ namespace WITE {
 	    if constexpr(GSR.targetProvidedResources)
 	      cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, shaderInstance.pipelineLayout, 1, 1, &targetDescriptors.descriptorSet, 0, NULL);
 	    for(source_t<SL.id>* source : allSources.template ofLayout<SL.id>()) {
+	      if(source->obj->frameCreated >= frame) [[unlikely]] continue;
 	      if constexpr(!TL.selfRender && SL.objectLayoutId == TL.objectLayoutId)
 		if(source->objectId == target.objectId) [[unlikely]]
 		  continue;
@@ -1786,8 +1798,10 @@ namespace WITE {
 	PROFILEME;
 	static constexpr targetLayout TL = TLS[0];
 	perTargetLayout& ptl = od.perTL[TL.id];
-	for(auto* target : allTargets.template ofLayout<TL.id>())
+	for(auto* target : allTargets.template ofLayout<TL.id>()) {
+	  if(target->obj->frameCreated >= frame) [[unlikely]] continue;
 	  recordRenders_l3<layerIdx, RP, TL>(*target, ptl, cmd);
+	}
 	recordRenders_l2<layerIdx, RP, TLS.sub(1)>(cmd);
       }
     };
@@ -1830,6 +1844,7 @@ namespace WITE {
 	  static constexpr sourceLayout SL = SLS[0];
 	  if constexpr(satisfies(SL.resources, CS.sourceProvidedResources)) {
 	    for(source_t<SL.id>* source : allSources.template ofLayout<SL.id>()) {
+	      if(source->obj->frameCreated >= frame) [[unlikely]] continue;
 	      if(!source->template stepEnabled<CS.id>()) [[unlikely]] continue;
 	      perSourceLayoutPerShader& pslps = od.perSL[SL.id].perShader[CS.id];
 	      size_t frameMod = frame % source_t<SL.id>::maxFrameswap;
@@ -1867,6 +1882,7 @@ namespace WITE {
 	  static constexpr targetLayout TL = TLS[0];
 	  if constexpr(satisfies(TL.resources, CS.targetProvidedResources)) {
 	    for(target_t<TL.id>* target : allTargets.template ofLayout<TL.id>()) {
+	      if(target->obj->frameCreated >= frame) [[unlikely]] continue;
 	      if(!target->template stepEnabled<CS.id>()) [[unlikely]] continue;
 	      perTargetLayoutPerShader& ptlps = od.perTL[TL.id].perShader[CS.id];
 	      size_t frameMod = frame % target_t<TL.id>::maxFrameswap;
@@ -1926,6 +1942,7 @@ namespace WITE {
 	    if constexpr(CS.targetProvidedResources)
 	      cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute, shaderInstance.pipelineLayout, 1, 1, &perShader.descriptorSet, 0, NULL);
 	    for(source_t<SL.id>* source : allSources.template ofLayout<SL.id>()) {
+	      if(source->obj->frameCreated >= frame) [[unlikely]] continue;
 	      if constexpr(!TL.selfRender && SL.objectLayoutId == TL.objectLayoutId)
 		if(source->objectId == target->objectId) [[unlikely]]
 		  continue;
@@ -1955,6 +1972,7 @@ namespace WITE {
 	  static constexpr targetLayout TL = TLS[0];
 	  if constexpr(satisfies(TL.resources, CS.targetProvidedResources)) {
 	    for(target_t<TL.id>* target : allTargets.template ofLayout<TL.id>()) {
+	      if(target->obj->frameCreated >= frame) [[unlikely]] continue;
 	      if(!target->template stepEnabled<CS.id>()) [[unlikely]] continue;
 	      perTargetLayoutPerShader& ptlps = od.perTL[TL.id].perShader[CS.id];
 	      size_t frameMod = frame % target_t<TL.id>::maxFrameswap;
@@ -2013,6 +2031,7 @@ namespace WITE {
 	  PROFILEME;
 	  constexpr objectLayout OL = OLS[0];
 	  for(auto* object : allObjects.template ofLayout<OL.id>()) {
+	    if(object->frameCreated >= frame) [[unlikely]] continue;
 	    object->preRender(cmd);
 	  }
 	}
@@ -2027,6 +2046,7 @@ namespace WITE {
 	  constexpr objectLayout OL = OLS[0];
 	  if constexpr(object_t<OL.id>::hasWindow) {
 	    for(auto* object : allObjects.template ofLayout<OL.id>()) {
+	      if(object->frameCreated >= frame) [[unlikely]] continue;
 	      object->postRender(renderWaitSem);
 	    }
 	  }

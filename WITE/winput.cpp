@@ -13,6 +13,7 @@ Stable and intermediate releases may be made continually. For this reason, a yea
 */
 
 #include <map>
+#include <string>
 
 #include "concurrentReadSyncLock.hpp"
 #include "SDL.hpp"
@@ -51,6 +52,19 @@ namespace WITE::winput {
     cid.lastChange = max(cid.axes[1].lastChange, cid.axes[2].lastChange, cid.axes[0].lastChange);
   };
 
+  uint64_t joyId(SDL_JoystickID idx) {
+    static std::map<SDL_JoystickID, uint64_t> cache;
+    if(cache.contains(idx)) [[likely]]
+      return cache.at(idx);
+    SDL_Joystick* j = SDL_JoystickFromInstanceID(idx);
+    ASSERT_TRAP(j, "failed to get joystick by index ", idx);
+    if(j == NULL) [[unlikely]] return static_cast<uint64_t>(idx);
+    const char* serial = SDL_JoystickGetSerial(j);
+    return cache[idx] = (static_cast<uint64_t>(SDL_JoystickGetVendor(j)) << 48) |
+      (static_cast<uint64_t>(SDL_JoystickGetProduct(j)) << 32) |
+      static_cast<uint32_t>(std::hash<std::string>()(serial == NULL ? "0" : serial));//truncate to lower 32 bits of hash
+  };
+
   int processEvent(void*, SDL_Event* event) {
     switch(event->type) {
     case SDL_QUIT:
@@ -70,7 +84,7 @@ namespace WITE::winput {
     case SDL_MOUSEBUTTONUP:
     case SDL_MOUSEBUTTONDOWN:
       handleEvent(event->common.timestamp, { type_e::mouseButton, event->button.which, event->button.button },
-		  event->button.state == SDL_PRESSED ? 1 : 0, event->button.clicks);
+		  event->button.state == SDL_PRESSED ? 1 : 0);
       break;
     case SDL_MOUSEMOTION:
       handleEvent(event->common.timestamp, { type_e::mouse, event->motion.which, 0 }, event->motion.x, event->motion.y);
@@ -107,36 +121,36 @@ namespace WITE::winput {
     case SDL_JOYBUTTONUP://joy and controller structs are identical
     case SDL_JOYBUTTONDOWN:
       static_assert(sizeof(event->jbutton.which) == sizeof(uint32_t));//sdl lib uses signed int, with negatives being invalid
-      handleEvent(event->common.timestamp, { type_e::joyButton, static_cast<uint32_t>(event->jbutton.which), event->jbutton.button },
+      handleEvent(event->common.timestamp, { type_e::joyButton, joyId(event->jbutton.which), event->jbutton.button },
 		  event->jbutton.state == SDL_PRESSED ? 1 : 0);
       break;
     case SDL_CONTROLLERAXISMOTION://joy and controller structs are identical
     case SDL_JOYAXISMOTION:
       static_assert(sizeof(event->jaxis.which) == sizeof(uint32_t));//sdl lib uses signed int, with negatives being invalid
-      handleEvent(event->common.timestamp, { type_e::joyAxis, static_cast<uint32_t>(event->jaxis.which), event->jaxis.axis }, event->jaxis.value / 32768.0f);
+      handleEvent(event->common.timestamp, { type_e::joyAxis, joyId(event->jaxis.which), event->jaxis.axis }, event->jaxis.value / 32768.0f);
       break;
     case SDL_JOYHATMOTION: //a hat is 4 buttons
       static_assert(sizeof(event->jhat.which) == sizeof(uint32_t));//sdl lib uses signed int, with negatives being invalid
       static_assert(sizeof(event->jhat.hat) == 1);
-      handleEvent(event->common.timestamp, { type_e::joyButton, static_cast<uint32_t>(event->jhat.which),
-					    (static_cast<uint32_t>(event->jhat.hat) << 8) + 0 },
+      handleEvent(event->common.timestamp, { type_e::joyButton, joyId(event->jhat.which),
+					    (static_cast<uint32_t>(event->jhat.hat) << 2) + 4096 + 0 },
 	(event->jhat.value & SDL_HAT_UP) != 0 ? 1 : 0);
-      handleEvent(event->common.timestamp, { type_e::joyButton, static_cast<uint32_t>(event->jhat.which),
-					    (static_cast<uint32_t>(event->jhat.hat) << 8) + 1 },
+      handleEvent(event->common.timestamp, { type_e::joyButton, joyId(event->jhat.which),
+					    (static_cast<uint32_t>(event->jhat.hat) << 2) + 4096 + 1 },
 	(event->jhat.value & SDL_HAT_DOWN) != 0 ? 1 : 0);
-      handleEvent(event->common.timestamp, { type_e::joyButton, static_cast<uint32_t>(event->jhat.which),
-					    (static_cast<uint32_t>(event->jhat.hat) << 8) + 2 },
+      handleEvent(event->common.timestamp, { type_e::joyButton, joyId(event->jhat.which),
+					    (static_cast<uint32_t>(event->jhat.hat) << 2) + 4096 + 2 },
 	(event->jhat.value & SDL_HAT_LEFT) != 0 ? 1 : 0);
-      handleEvent(event->common.timestamp, { type_e::joyButton, static_cast<uint32_t>(event->jhat.which),
-					    (static_cast<uint32_t>(event->jhat.hat) << 8) + 3 },
+      handleEvent(event->common.timestamp, { type_e::joyButton, joyId(event->jhat.which),
+					    (static_cast<uint32_t>(event->jhat.hat) << 2) + 4096 + 3 },
 	(event->jhat.value & SDL_HAT_RIGHT) != 0 ? 1 : 0);
       break;
     case SDL_JOYBALLMOTION: //a ball is 2 axes //do these even exist?
-      handleEvent(event->common.timestamp, { type_e::joyAxis, static_cast<uint32_t>(event->jball.which),
-					    (static_cast<uint32_t>(event->jball.ball) << 8) },
+      handleEvent(event->common.timestamp, { type_e::joyAxis, joyId(event->jball.which),
+					    (static_cast<uint32_t>(event->jball.ball) << 2) + 4096 },
 	event->jball.xrel / 32768.0f);
-      handleEvent(event->common.timestamp, { type_e::joyAxis, static_cast<uint32_t>(event->jball.which),
-					    (static_cast<uint32_t>(event->jball.ball) << 8) + 1 },
+      handleEvent(event->common.timestamp, { type_e::joyAxis, joyId(event->jball.which),
+					    (static_cast<uint32_t>(event->jball.ball) << 2) + 4096 + 1 },
 	event->jball.yrel / 32768.0f);
       break;
     // case SDL_WINDOWEVENT:
@@ -157,8 +171,15 @@ namespace WITE::winput {
       SDL_CONTROLLERSENSORUPDATE, SDL_CONTROLLERTOUCHPADUP, SDL_CONTROLLERTOUCHPADMOTION, SDL_CONTROLLERTOUCHPADDOWN, SDL_CONTROLLERDEVICEREMAPPED, SDL_CONTROLLERDEVICEREMOVED, SDL_CONTROLLERDEVICEADDED, SDL_CONTROLLERBUTTONUP, SDL_CONTROLLERBUTTONDOWN, SDL_CONTROLLERAXISMOTION,
       SDL_JOYDEVICEREMOVED, SDL_JOYDEVICEADDED, SDL_JOYBUTTONUP, SDL_JOYBUTTONDOWN, SDL_JOYHATMOTION, SDL_JOYBALLMOTION, SDL_JOYAXISMOTION,
     };
+    SDL_InitSubSystem(SDL_INIT_JOYSTICK);
     for(const auto& et : enabledEvents)
       SDL_EventState(et, SDL_ENABLE);
+    for(int i = SDL_NumJoysticks()-1;i >= 0;i--) {
+      char guid[34];
+      SDL_JoystickGetGUIDString(SDL_JoystickGetDeviceGUID(i), guid, 34);
+      LOG("found game controller '", SDL_JoystickNameForIndex(i), "' with id ", std::hex, SDL_JoystickGetDeviceVendor(i), ":", SDL_JoystickGetDeviceProduct(i), std::dec, " and guid ", guid);
+      ASSERT_TRAP(SDL_JoystickOpen(i), "...but failed to open it");
+    }
     // SDL_AddEventWatch(&processEvent, NULL); //these don't work
     // SDL_SetEventFilter(&processEvent, NULL);
   };

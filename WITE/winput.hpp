@@ -21,7 +21,7 @@ namespace WITE::winput {
 
   struct inputIdentifier {
     type_e type;
-    uint32_t controllerId;//which mouse, controller, joystick (keyboard is always 0)
+    uint64_t controllerId;//which mouse, controller, joystick (keyboard is always 0)
     uint32_t controlId;//key, btn, axis etc;
     auto operator<=>(const inputIdentifier&) const = default;
   };
@@ -68,6 +68,7 @@ namespace WITE::winput {
   bool getButton(const inputIdentifier&);
   void getLatest(inputPair& out);//for creating control mappings
   uint32_t getFrameStart();
+  uint64_t joyId(int32_t idx);
 
   template<uint32_t SDLK> bool keyPressed() {
     compositeInputData cid;

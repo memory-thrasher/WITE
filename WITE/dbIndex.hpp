@@ -17,7 +17,6 @@ Stable and intermediate releases may be made continually. For this reason, a yea
 #include <concepts>
 
 #include "dbFile.hpp"
-#include "callback.hpp"
 #include "concurrentReadSyncLock.hpp"
 
 namespace WITE {
@@ -51,6 +50,21 @@ namespace WITE {
 	if(comp == 0) return target;
 	uint64_t nid = comp < 0 ? high : low;
 	return nid == NONE ? NONE : owner->file.deref_unsafe(nid).findAny(v, owner);
+      };
+
+      //for range [l, h] (inclusive, same for exact match)
+      //lambda callback because iterating a btree is inefficient without recursion on the thread stack
+      template<class L> void forEach(const F& l, const F& h, L cb, dbIndex* owner) {
+	ASSERT_TRAP(!Compare()(h, l), "inside-out range not supported");
+	//(un)likely: when outside range, exactly one of low or high will happen and this call will not
+	//but while inside range, all three will happen, so low and high are slightly >50% likely
+	if(low != NONE && !Compare()(targetValue, l)) [[likely]]
+	  owner->file.deref_unsafe(low).forEach(l, h, cb, owner);
+	if(!Compare()(targetValue, l) && !Compare()(h, targetValue)) [[unlikely]]
+	  //if l <= tv && tv <= h  but in terms of Compare
+	  cb(const_cast<const F&>(targetValue), target);
+	if(high != NONE && !Compare()(h, targetValue)) [[likely]]
+	  owner->file.deref_unsafe(high).forEach(l, h, cb, owner);
       };
 
       //can't store owner as a field bc node is on disk and outlives its owner
@@ -222,6 +236,24 @@ namespace WITE {
       return file.deref_unsafe(nid).findAny(v, this);
     };
 
+    template<class L> void forEach(const F& l, const F& h, L cb) {
+      concurrentReadLock_read lock(&mutex);
+      uint64_t nid = file.deref_unsafe(file.first_unsafe()).high;
+      if(nid == NONE) [[unlikely]] return;
+      file.deref_unsafe(nid).forEach(l, h, cb, this);
+    };
+
+    template<class L> void forEach(const F& v, L cb) {
+      forEach(v, v, cb);
+    };
+
+    //TODO make a dedicated recursive fn in node rather than using forEach
+    uint64_t count(const F& v) {
+      uint64_t ret = 0;
+      forEach(v, v, [&ret](const F& v, uint64_t){ ++ret; });
+      return ret;
+    };
+
     void remove(const F& v) {
       concurrentReadLock_read lock(&mutex);
       uint64_t& nid = file.deref_unsafe(file.first_unsafe()).high;
@@ -248,10 +280,6 @@ namespace WITE {
       read(entity, v);
       insert(entity, v);
     };
-
-    //implement if needed
-    // uint64_t findNth(const F& v, uint64_t n);//if multiple values exist that match F, find the nth one in an order that is consistent between calls to this (unmodified) index but otherwise undefined
-    // uint64_t count(const F& v);
 
   };
 

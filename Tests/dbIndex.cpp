@@ -125,6 +125,7 @@ int main(int argc, const char** argv) {
   uint64_t lastTime = getNs(), time;
   for(uint64_t i = 0;i < testSize;i++) {
     dbi->insert(i*3);
+    dbi->insert(i*3);
     dbi->insert(i*3+1);
     if(i%50 == 0)
       dbi->rebalance();
@@ -141,14 +142,19 @@ int main(int argc, const char** argv) {
   uint64_t temp =
 #endif
     dbi->count();
-  ASSERT_TRAP(temp == testSize, "got wrong count: ", temp);
+  ASSERT_TRAP(temp == testSize*2, "got wrong count: ", temp);
   time = getNs();
-  WARN("count: ", (time - lastTime)/1000000);
+  WARN("count specific: ", (time - lastTime)/1000000);
   lastTime = time;
   for(uint64_t i = 0;i < testSize*3 + 100;i++)
     ASSERT_TRAP((dbi->findAny(i / 5.0f) == WITE::NONE) ^ (i < testSize*3 && i % 3 == 0), "test case failed", i);
   time = getNs();
   WARN("pre-rebalance presence check: ", (time - lastTime)/1000000);
+  lastTime = time;
+  for(uint64_t i = 0;i < testSize*3 + 100;i++)
+    ASSERT_TRAP(dbi->count(i / 5.0f) == ((i < testSize*3 && i % 3 == 0) ? 2 : 0), "test case failed", i);
+  time = getNs();
+  WARN("pre-rebalance count check: ", (time - lastTime)/1000000);
   lastTime = time;
   WARN("rebalance changes made: ", dbi->rebalance());
   time = getNs();
@@ -158,7 +164,7 @@ int main(int argc, const char** argv) {
   temp =
 #endif
     dbi->count();
-  ASSERT_TRAP(temp == testSize, "(post-rebalance count) got wrong count: ", temp);
+  ASSERT_TRAP(temp == testSize*2, "(post-rebalance count) got wrong count: ", temp);
   for(uint64_t i = 0;i < testSize*3 + 100;i++)
     ASSERT_TRAP((dbi->findAny(i / 5.0f) == WITE::NONE) ^ (i < testSize*3 && i % 3 == 0), "test case failed (after)", i);
   time = getNs();
@@ -172,11 +178,17 @@ int main(int argc, const char** argv) {
   temp =
 #endif
     dbi->count();
-  ASSERT_TRAP(temp == testSize, "(post-rebalance count) got wrong count: ", temp);
+  ASSERT_TRAP(temp == testSize*2, "(post-rebalance count) got wrong count: ", temp);
   for(uint64_t i = 0;i < testSize*3 + 100;i++)
     ASSERT_TRAP((dbi->findAny(i / 5.0f) == WITE::NONE) ^ (i < testSize*3 && i % 3 == 0), "test case failed (after)", i);
   time = getNs();
   WARN("post-rebalance 2 presence check: ", (time - lastTime)/1000000);
   lastTime = time;
+  for(uint64_t i = 0;i < testSize*3 + 100;i++)
+    ASSERT_TRAP(dbi->count(i / 5.0f) == ((i < testSize*3 && i % 3 == 0) ? 2 : 0), "test case failed", i);
+  time = getNs();
+  WARN("post-rebalance 2 count check: ", (time - lastTime)/1000000);
+  lastTime = time;
+  delete dbi;
 };
 

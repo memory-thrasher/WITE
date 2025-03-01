@@ -91,42 +91,47 @@ namespace WITE {
       // 	if(low != NONE) [[likely]] owner->file.deref_unsafe(low).updateAll(owner);
       // };
 
-      void remove(const F& v, dbIndex* owner, uint64_t& thisId) {
+      void remove(const F& v, uint64_t id, dbIndex* owner, uint64_t& thisId) {
 	auto comp = *this <=> v;
-	if(comp == 0) {
-	  //either low or high will replace this branch, and the other will be linked by the end of the replacement's chain, following the extreme edge. Just avoid removing things, or rebalance after.
-	  uint64_t temp = thisId;
-	  if(low == NONE) {
-	    thisId = high;
-	  } else if(high == NONE) {
-	    thisId = low;
-	  } else {
-	    uint64_t lowCnt = 0, lowId = low;
-	    while(true) {
-	      uint64_t next = owner->file.deref_unsafe(lowId).high;
-	      if(next == NONE) break;
-	      lowId = next;
-	    }
-	    uint64_t highCnt = 0, highId = high;
-	    while(true) {
-	      uint64_t next = owner->file.deref_unsafe(highId).low;
-	      if(next == NONE) break;
-	      highId = next;
-	    }
-	    if(highCnt < lowCnt) {//high replaces this, low appended to low side of high
+	if(comp == 0) [[unlikely]] {
+	  if(id == NONE || id == target) [[likely]] {
+	    //either low or high will replace this branch, and the other will be linked by the end of the replacement's chain, following the extreme edge. Just avoid removing things, or rebalance after.
+	    uint64_t temp = thisId;
+	    if(low == NONE) {
 	      thisId = high;
-	      owner->file.deref_unsafe(highId).low = low;
-	    } else {//low replaces this, high appended to high side of low
+	    } else if(high == NONE) {
 	      thisId = low;
-	      owner->file.deref_unsafe(lowId).high = high;
+	    } else {
+	      uint64_t lowCnt = 0, lowId = low;
+	      while(true) {
+		uint64_t next = owner->file.deref_unsafe(lowId).high;
+		if(next == NONE) break;
+		lowId = next;
+	      }
+	      uint64_t highCnt = 0, highId = high;
+	      while(true) {
+		uint64_t next = owner->file.deref_unsafe(highId).low;
+		if(next == NONE) break;
+		highId = next;
+	      }
+	      if(highCnt < lowCnt) {//high replaces this, low appended to low side of high
+		thisId = high;
+		owner->file.deref_unsafe(highId).low = low;
+	      } else {//low replaces this, high appended to high side of low
+		thisId = low;
+		owner->file.deref_unsafe(lowId).high = high;
+	      }
 	    }
+	    owner->file.free_unsafe(temp);
+	    return;
+	  } else {
+	    if(high != NONE) [[likely]] owner->file.deref_unsafe(high).remove(v, id, owner, high);
+	    if(low != NONE) [[likely]] owner->file.deref_unsafe(low).remove(v, id, owner, low);
 	  }
-	  owner->file.free_unsafe(temp);
-	  return;
-	} else if(comp < 0) {
-	  if(high != NONE) [[likely]] owner->file.deref_unsafe(high).remove(v, owner, high);
+	} else if(comp < 0) [[likely]] {
+	  if(high != NONE) [[likely]] owner->file.deref_unsafe(high).remove(v, id, owner, high);
 	} else {
-	  if(low != NONE) [[likely]] owner->file.deref_unsafe(low).remove(v, owner, low);
+	  if(low != NONE) [[likely]] owner->file.deref_unsafe(low).remove(v, id, owner, low);
 	}
       };
 
@@ -254,11 +259,11 @@ namespace WITE {
       return ret;
     };
 
-    void remove(const F& v) {
+    void remove(const F& v, uint64_t id = NONE) {
       concurrentReadLock_read lock(&mutex);
       uint64_t& nid = file.deref_unsafe(file.first_unsafe()).high;
       if(nid == NONE) [[unlikely]] return;
-      file.deref_unsafe(nid).remove(v, this, nid);
+      file.deref_unsafe(nid).remove(v, id, this, nid);
     };
 
     void insert(uint64_t entity, const F& v) {

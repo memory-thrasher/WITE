@@ -21,7 +21,7 @@ namespace WITE {
 
   /*each type given to the db must have the following static members (constexpr if data member) or typedefs:
     uint64_t typeId
-    std::string dbFileId
+    char dbFileId[]
 optional members:
     void update(uint64_t objectId, void* db) //called every frame
     void allocated(uint64_t objectId, void* db) //called when object is first created (should init persistent data)
@@ -30,6 +30,7 @@ optional members:
     void spunDown(uint64_t objectId, void* db) //called when the object is destroyed or when the game is closing (should clean up transients)
     size_t dbAllocationBatchSize
     size_t dbLogAllocationBatchSize
+    TODO list of fields to created indexes for
    */
 
   //each type is stored as-is on disk (memcpy and mmap) so should be simple. POD except for static members is recommended.

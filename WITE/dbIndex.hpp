@@ -81,16 +81,6 @@ namespace WITE {
 	}
       };
 
-      // void update(dbIndex* owner) {
-      // 	owner->read(target, targetValue);
-      // };
-
-      // void updateAll(dbIndex* owner) {
-      // 	update(owner);
-      // 	if(high != NONE) [[likely]] owner->file.deref_unsafe(high).updateAll(owner);
-      // 	if(low != NONE) [[likely]] owner->file.deref_unsafe(low).updateAll(owner);
-      // };
-
       void remove(const F& v, uint64_t id, dbIndex* owner, uint64_t& thisId) {
 	auto comp = *this <=> v;
 	if(comp == 0) [[unlikely]] {
@@ -197,12 +187,10 @@ namespace WITE {
     };
 
     dbFile<node, 65536/sizeof(node)+1> file;//shoot for 64kb page
-    typedefCB(read_cb, void, uint64_t, F&);//might contain a read op from a database or another dbFile
-    read_cb read;
     concurrentReadSyncLock mutex;
     //this lock protects the underlaying dbFile too, so the "unsafe" endpoints are used to avoid locking every single node many times per operation. The file MUST NOT be accessed from outside this api.
 
-    dbIndex(const std::filesystem::path& fn, bool clobber, read_cb read) : file(fn, clobber), read(read) {
+    dbIndex(const std::filesystem::path& fn, bool clobber) : file(fn, clobber) {
       //file.first_unsafe() is used to track the pseudo node that holds a reference to the root node (high)
       if(file.first_unsafe() == NONE) {
 	node& n = file.deref_unsafe(file.allocate_unsafe());
@@ -210,13 +198,15 @@ namespace WITE {
       }
     };
 
-    //if this is needed, we will need to rearrange nodes, probably start over with a new list
-    // void update() {//updates targetValue from target on every node
-    //   concurrentReadLock_write lock(&mutex);
-    //   uint64_t nid = file.deref_unsafe(file.first_unsafe()).high;
-    //   if(nid == NONE) [[unlikely]] return;
-    //   file.deref_unsafe(nid).updateAll(this);
-    // };
+    void clear() {
+      concurrentReadLock_write lock(&mutex);
+      uint64_t root = file.first_unsafe();
+      for(uint64_t eid : file)
+	if(eid != root) [[likely]]
+	  file.free_unsafe(eid);
+      node& n = file.deref_unsafe(root);
+      n.high = n.low = NONE;
+    };
 
     //returns number of records in index
     uint64_t rebalance() {//probably very slow
@@ -227,10 +217,8 @@ namespace WITE {
     };
 
     uint64_t count() {
-      concurrentReadLock_write lock(&mutex);
-      uint64_t nid = file.deref_unsafe(file.first_unsafe()).high;
-      if(nid == NONE) [[unlikely]] return 0;
-      return file.deref_unsafe(nid).count(this);
+      concurrentReadLock_read lock(&mutex);
+      return file.size_unsafe() - 1;//root node always exists and doesn't count
     };
 
     uint64_t findAny(const F& v) {
@@ -260,7 +248,7 @@ namespace WITE {
     };
 
     void remove(const F& v, uint64_t id = NONE) {
-      concurrentReadLock_read lock(&mutex);
+      concurrentReadLock_write lock(&mutex);
       uint64_t& nid = file.deref_unsafe(file.first_unsafe()).high;
       if(nid == NONE) [[unlikely]] return;
       file.deref_unsafe(nid).remove(v, id, this, nid);
@@ -278,12 +266,6 @@ namespace WITE {
       } else {
 	file.deref_unsafe(nid).insert(entity, v, this);
       }
-    };
-
-    void insert(uint64_t entity) {
-      F v;
-      read(entity, v);
-      insert(entity, v);
     };
 
   };

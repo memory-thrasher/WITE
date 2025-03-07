@@ -34,6 +34,8 @@ struct unit {
   static void freed(uint64_t oid, void* db_unused);
   static void spunUp(uint64_t oid, void* db_unused);
   static void spunDown(uint64_t oid, void* db_unused);
+  typedef std::tuple<float, float> indices_t;
+  static indices_t getIndexValues(uint64_t oid, const unit& data, void* db_unused);
 };
 
 struct timer {
@@ -89,6 +91,15 @@ void unit::update(uint64_t oid, void* db_unused) {
   unit s;
   updates++;
   if(!db->readCommitted<unit>(oid, &s)) return;
+  { //test lookup that might have multiple hits, must include this one
+    ASSERT_TRAP((db->template findByIdx<unit, 0>(s.locationX) != WITE::NONE), "exact match not found but should at least find this one");
+    bool found = false;
+    db->foreachByIdx<unit, 1>(s.locationY, [&found, oid](float, uint64_t ooid) {
+      if(ooid == oid) [[unlikely]]
+	found = true;
+    });
+    ASSERT_TRAP(found, "could not find this object in the index of objects by locationY with this object's Y");
+  }
   if(s.ttl-- < 0) {
     db->destroy<unit>(oid);
     return;
@@ -128,6 +139,10 @@ void unit::spunUp(uint64_t oid, void* db_unused) {
 
 void unit::spunDown(uint64_t oid, void* db_unused) {
   spunDowns++;
+};
+
+unit::indices_t unit::getIndexValues(uint64_t oid, const unit& data, void*) {
+  return std::tie(data.locationX, data.locationY);
 };
 
 void timer::update(uint64_t oid, void* db_unused) {

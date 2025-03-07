@@ -30,7 +30,7 @@ optional members:
     void spunDown(uint64_t objectId, void* db) //called when the object is destroyed or when the game is closing (should clean up transients)
     size_t dbAllocationBatchSize
     size_t dbLogAllocationBatchSize
-    TODO list of fields to created indexes for
+    std::tuple<...> getIndexValues(uint64_t objectId, const T& data, void* db) //return type determines index types and order
    */
 
   //each type is stored as-is on disk (memcpy and mmap) so should be simple. POD except for static members is recommended.
@@ -118,6 +118,73 @@ optional members:
 	spinDownAll<REST...>();
     };
 
+    template<uint64_t O, class A, class I, class... REST>
+    inline bool checkAllIndices_L2(uint64_t expectedSize, dbIndexTuple<O, A, I, REST...>& idx) {
+      //check by count only (for now)
+      if(idx->count() != expectedSize)
+	return false;
+      if constexpr(sizeof...(REST) > 0)
+	return checkAllIndices_L2<O+1, A, REST...>(expectedSize, idx.next());
+      else
+	return true;
+    };
+
+    template<uint64_t O, class A, class I, class... REST>
+    inline void clearAllIndices(dbIndexTuple<O, A, I, REST...>& idx) {
+      idx->clear();
+      if constexpr(sizeof...(REST) > 0)
+	clearAllIndices<O+1, A, REST...>(idx.next());
+    };
+
+    template<uint64_t O, class A, class I, class... REST>
+    inline void rebalanceAllIndices(dbIndexTuple<O, A, I, REST...>& idx) {
+      idx->rebalance();
+      if constexpr(sizeof...(REST) > 0)
+	clearAllIndices<O+1, A, REST...>(idx.next());
+    };
+
+    template<uint64_t O, class A, class... IT>
+    inline void insertToAllIndices(uint64_t eid,
+				   const std::tuple<IT...>& tpl,
+				   dbIndexTuple<0, A, IT...>& idx)
+    {
+      idx.template get<O>().insert(eid, std::get<O>(tpl));
+      if constexpr(O + 1 < sizeof...(IT))
+	this->template insertToAllIndices<O+1, A, IT...>(eid, tpl, idx);
+    };
+
+    template<uint64_t O, class A, class... IT>
+    inline void removeFromAllIndices(uint64_t eid,
+				     const std::tuple<IT...>& tpl,
+				     dbIndexTuple<0, A, IT...>& idx)
+    {
+      idx.template get<O>().remove(std::get<O>(tpl), eid);
+      if constexpr(O + 1 < sizeof...(IT))
+	removeFromAllIndices<O+1, A, IT...>(eid, tpl, idx);
+    };
+
+    template<class A, class... REST> inline void checkAllIndices() {
+      auto& idx = bobby.template getIndices<A::typeId>();
+      if constexpr(std::remove_reference_t<decltype(idx)>::exists) {
+	if(!checkAllIndices_L2<0, A>(bobby.template get<A::typeId>().size(), *idx)) {
+	  //if one is broken, all might be, so rebuild them all
+	  clearAllIndices<0, A>(*idx);
+	  uint64_t i = 0;
+	  for(uint64_t eid : bobby.template get<A::typeId>()) {
+	    A data;
+	    read(eid, 0, &data);
+	    //getIndexValues exists on type because idx::exists
+	    auto tpl = A::getIndexValues(eid, data, reinterpret_cast<void*>(this));
+	    insertToAllIndices<0, A>(eid, tpl, *idx);
+	    if((++i) % 128 == 0)
+	      rebalanceAllIndices<0, A>(*idx);
+	  }
+	}
+      }
+      if constexpr(sizeof...(REST) > 0)
+	checkAllIndices<REST...>();
+    };
+
     template<class A, class... REST> inline void deleteFiles() {
       bobby.template get<A::typeId>().deleteFiles();
       if constexpr(sizeof...(REST) > 0)
@@ -134,6 +201,7 @@ optional members:
     database(const std::filesystem::path& basedir, bool clobberMaster, bool clobberLog) : bobby(basedir, clobberMaster, clobberLog) {
       ASSERT_TRAP(clobberLog || !clobberMaster, "cannot keep log without master");
       currentFrame = maxFrame() + 1;
+      checkAllIndices<TYPES...>();
       spinUpAll<TYPES...>();
     };
 
@@ -211,6 +279,10 @@ optional members:
 
     template<class A> uint64_t create(A* data) {
       uint64_t ret = bobby.template get<A::typeId>().allocate(currentFrame, data);
+      if constexpr(dbIndexTupleFor<A>::exists) {
+	auto tpl = A::getIndexValues(ret, *data, reinterpret_cast<void*>(this));
+	insertToAllIndices<0, A>(ret, tpl, *bobby.template getIndices<A::typeId>());
+      }
       if constexpr(has_allocated<A>::value)
 	A::allocated(ret, this);
       if constexpr(has_spunUp<A>::value)
@@ -224,6 +296,12 @@ optional members:
     };
 
     template<class A> void destroy(uint64_t oid) {
+      if constexpr(dbIndexTupleFor<A>::exists) {
+	A data;
+	read(oid, 0, &data);
+	auto tpl = A::getIndexValues(oid, data, reinterpret_cast<void*>(this));
+	removeFromAllIndices<0, A>(oid, tpl, *bobby.template getIndices<A::typeId>());
+      }
       if constexpr(has_spunDown<A>::value)
 	A::spunDown(oid, this);
       if constexpr(has_freed<A>::value)
@@ -252,6 +330,18 @@ optional members:
 
     //does NOT lock the row, externally lock if more than one write might happen in a frame.
     template<class A> inline void write(uint64_t oid, A* in) {
+      if constexpr(dbIndexTupleFor<A>::exists) {
+	auto newTpl = A::getIndexValues(oid, *in, reinterpret_cast<void*>(this));
+	A oldData;
+	read(oid, 0, &oldData);
+	auto oldTpl = A::getIndexValues(oid, oldData, reinterpret_cast<void*>(this));
+	if(newTpl != oldTpl) [[unlikely]] {
+	  //likeliness unknown, but when this does happen, the impact of unlikely is comparatively trivial
+	  auto& idx = *bobby.template getIndices<A::typeId>();
+	  removeFromAllIndices<0, A>(oid, oldTpl, idx);
+	  insertToAllIndices<0, A>(oid, newTpl, idx);
+	}
+      }
       return bobby.template get<A::typeId>().store(oid, currentFrame, in);
     };
 
@@ -262,6 +352,21 @@ optional members:
 
     inline uint64_t getFrame() {
       return currentFrame;
+    };
+
+    template<class A, size_t idxId> inline uint64_t findByIdx(const auto& value) {
+      static_assert(dbIndexTupleFor<A>::exists, "can't findByIdx when there is no idx");
+      return bobby.template getIndices<A::typeId>()->template get<idxId>().findAny(value);
+    };
+
+    template<class A, size_t idxId, class L> inline void foreachByIdx(const auto& value, L l) {
+      static_assert(dbIndexTupleFor<A>::exists, "can't when there is no idx");
+      bobby.template getIndices<A::typeId>()->template get<idxId>().forEach(value, l);
+    };
+
+    template<class A, size_t idxId, class L> inline void foreachByIdx(const auto& l, const auto& h, L cb) {
+      static_assert(dbIndexTupleFor<A>::exists, "can't when there is no idx");
+      bobby.template getIndices<A::typeId>()->template get<idxId>().forEach(l, h, cb);
     };
 
   };

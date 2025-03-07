@@ -121,12 +121,12 @@ uint64_t getNs() {
 int main(int argc, const char** argv) {
   WITE::configuration::setOptions(argc, argv);
   std::filesystem::path path = std::filesystem::temp_directory_path() / "wite_dbindex_test.wdb";
-  auto* dbi = new WITE::dbIndex<float>(path, true, WITE::dbIndex<float>::read_cb_F::make([](uint64_t i, float& o) { o = i / 5.0f; }));
+  auto* dbi = new WITE::dbIndex<float>(path, true);
   uint64_t lastTime = getNs(), time;
   for(uint64_t i = 0;i < testSize;i++) {
-    dbi->insert(i*3);
-    dbi->insert(i*3);
-    dbi->insert(i*3+1);
+    dbi->insert(i*3, (i*3)/5.0f);
+    dbi->insert(i*3, (i*3)/5.0f);
+    dbi->insert(i*3+1, (i*3+1)/5.0f);
     if(i%50 == 0)
       dbi->rebalance();
   }

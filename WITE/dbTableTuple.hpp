@@ -15,6 +15,7 @@ Stable and intermediate releases may be made continually. For this reason, a yea
 #pragma once
 
 #include "dbTable.hpp"
+#include "dbIndexTuple.hpp"
 
 namespace WITE {
 
@@ -32,11 +33,15 @@ namespace WITE {
 
     dbTable<R> data;
     dbTableTuple<REST...> rest;
+    dbIndexTupleFor<R> indices;
 
     dbTableTuple(const std::filesystem::path& basedir, bool clobberMaster, bool clobberLog) :
       data(basedir, R::dbFileId, clobberMaster, clobberLog),
-      rest(basedir, clobberMaster, clobberLog)
-    {};
+      rest(basedir, clobberMaster, clobberLog),
+      indices(basedir, clobberLog)
+    {
+      ASSERT_TRAP(clobberMaster || !clobberLog, "illegal argument: clobber master but keep log");
+    };
 
     template<uint64_t ID> inline auto& get() {
       if constexpr(ID == R::typeId) {
@@ -50,6 +55,14 @@ namespace WITE {
       if(id == R::typeId)
 	return &data;
       return rest.get(id);
+    }
+
+    template<uint64_t ID> inline auto& getIndices() {
+      if constexpr(ID == R::typeId) {
+	return indices;
+      } else {
+	return rest.template getIndices<ID>();
+      }
     }
 
   };

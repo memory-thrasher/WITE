@@ -96,9 +96,9 @@ namespace WITE {
 #endif
 
 #ifdef WITE_DEBUG_DB
-#define WITE_DEBUG_DB_HEADER WARN("dbFile: ", std::hex, this, std::dec, " Header: { freeSpaceLen: ", header->freeSpaceLen, ", allocatedFirst: ", header->allocatedFirst, ", allocatedLast: ", header->allocatedLast, " }")
-#define WITE_DEBUG_DB_ALLOCATION(A) WARN("dbFile: ", std::hex, this, std::dec, " Allocation map segment: ", allocatedLEA(A).previous, " <-- ", A, " --> ", allocatedLEA(A).next)
-#define WITE_DEBUG_DB_FREESPACE(A) WARN("dbFile: ", std::hex, this, std::dec, " Free space entry at idx ", A, " is now ", freeSpaceLEA(A))
+#define WITE_DEBUG_DB_HEADER WARN("dbFile: ", filename, " Header: { freeSpaceLen: ", header->freeSpaceLen, ", allocatedFirst: ", header->allocatedFirst, ", allocatedLast: ", header->allocatedLast, " }")
+#define WITE_DEBUG_DB_ALLOCATION(A) WARN("dbFile: ", filename, " Allocation map segment: ", allocatedLEA(A).previous, " <-- ", A, " --> ", allocatedLEA(A).next)
+#define WITE_DEBUG_DB_FREESPACE(A) WARN("dbFile: ", filename, " Free space entry at idx ", A, " is now ", freeSpaceLEA(A))
 #define WITE_DEBUG_DB_LOG(A) WARN("dbTable: ", std::hex, this, std::dec, " log chain segment: ", logDataFile.deref(A).previousLog, " <-- ", A, " --> ", logDataFile.deref(A).nextLog)
 #define WITE_DEBUG_DB_MASTER(A) WARN("dbTable: ", std::hex, this, std::dec, " master row ", A, " firstLog: ", masterDataFile.deref(A).firstLog, " lastLog: ", masterDataFile.deref(A).firstLog)
 #else

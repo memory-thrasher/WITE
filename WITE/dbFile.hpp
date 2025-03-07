@@ -185,6 +185,9 @@ namespace WITE {
       }
       header->allocatedLast = ret;
       WITE_DEBUG_DB_HEADER;
+#ifdef WITE_DEBUG_DB
+      WARN("dbFile: ", filename, "Allocated: ", ret);
+#endif
       return ret;
     };
 
@@ -224,6 +227,9 @@ namespace WITE {
       }
       header->allocatedLast = ret;
       WITE_DEBUG_DB_HEADER;
+#ifdef WITE_DEBUG_DB
+      WARN("dbFile: ", filename, "Allocated: ", ret);
+#endif
       return ret;
     };
 
@@ -234,6 +240,9 @@ namespace WITE {
     };
 
     void free_unsafe(uint64_t idx) {
+#ifdef WITE_DEBUG_DB
+      WARN("dbFile: ", filename, "Freeing: ", idx);
+#endif
       ASSERT_TRAP(idx < blocks.size() * AU, "idx too big");
       WITE_DEBUG_DB_HEADER;
       freeSpaceLEA(header->freeSpaceLen) = idx;
@@ -359,6 +368,14 @@ namespace WITE {
     inline uint64_t freeSpace() {
       WITE_DEBUG_DB_HEADER;
       return header->freeSpaceLen;
+    };
+
+    inline uint64_t size() {
+      return capacity() - freeSpace();
+    };
+
+    inline uint64_t size_unsafe() {
+      return capacity_unsafe() - freeSpace();
     };
 
   };
